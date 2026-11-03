@@ -43,6 +43,7 @@ public partial class Automation : Node
                 case "perf": await PerfRuns(); break;
                 case "scanperf": await ScanPerf(); break;
                 case "live": await Live(); break;
+                case "qualitystress": await QualityStress(); break;
                 default: Fail($"unknown automation '{_script}'"); break;
             }
         }
@@ -278,6 +279,40 @@ public partial class Automation : Node
         Check(c.State is ScanState.Cancelled or ScanState.Completed, $"cancel ended in {c.State} (Completed means the scan finished before the cancel landed)");
         await Frames(10);
         await Shot("live-05-after-cancel");
+    }
+
+    /// <summary>
+    /// A stability probe for the intermittent Vulkan device loss (docs/implementation-status.md, KD-01): toggles
+    /// quality repeatedly in both visualizations. Godot crashes outright on device loss, so a completed log is the
+    /// pass signal.
+    /// </summary>
+    private async Task QualityStress()
+    {
+        await WaitForScan(TimeSpan.FromSeconds(120));
+        if (_args.NoVsync)
+        {
+            DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+        }
+
+        var toggles = 0;
+        for (var round = 0; round < 40; round++)
+        {
+            if (!_args.StressDistrictOnly)
+            {
+                _main.SetVisualization(round % 4 < 2 ? 1 : 0);
+            }
+            else
+            {
+                _main.SetVisualization(1);
+            }
+
+            _main.SetQuality(round % 2 == 0 ? Quality.Low : Quality.High);
+            toggles++;
+            await Frames(20);
+            Log($"toggle {toggles}: vis={_main.ActiveVisualization.Name} quality={_main.Quality} msaa={_main.GetViewport().Msaa3D}");
+        }
+
+        Check(true, $"survived {toggles} quality/visualization toggles");
     }
 
     // ------------------------------------------------------------ helpers

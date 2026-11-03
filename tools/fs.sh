@@ -25,6 +25,6 @@ case "$cmd" in
   run) ARGS=""; for a in "$@"; do ARGS="$ARGS '$a'"; done
        ps "& '$GODOT_CONSOLE' --path '$APP_W' -- $ARGS 2>&1" ;;
   editor) ps "Start-Process '$GODOT_GUI' -ArgumentList '--editor','--path','$APP_W'" ;;
-  export) ps "New-Item -ItemType Directory -Force \"\$env:LOCALAPPDATA\\FileScape\\build\" | Out-Null; & '$GODOT_CONSOLE' --headless --path '$APP_W' --export-release 'Windows Desktop' \"\$env:LOCALAPPDATA\\FileScape\\build\\FileScape.exe\" 2>&1 | Select-Object -Last 25" ;;
+  export) ps "New-Item -ItemType Directory -Force \"\$env:LOCALAPPDATA\\FileScape\\build\" | Out-Null; & '$GODOT_CONSOLE' --headless --path '$APP_W' --export-release 'Windows Desktop' \"\$env:LOCALAPPDATA\\FileScape\\build\\FileScape.exe\" 2>&1" ;;
   *) sed -n '2,10p' "$0"; exit 2 ;;
 esac

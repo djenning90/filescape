@@ -139,7 +139,7 @@ public partial class Main : Node3D
             Visible = false,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
-        _spot = new SpotLight3D { SpotRange = 34, SpotAngle = 20, LightEnergy = 9, ShadowEnabled = false, Visible = false, RotationDegrees = new GVector3(-90, 0, 0) };
+        _spot = new SpotLight3D { SpotRange = 34, SpotAngle = 20, LightEnergy = 9, LightSpecular = 0.15f, ShadowEnabled = false, Visible = false, RotationDegrees = new GVector3(-90, 0, 0) };
         AddChild(_selectionBox);
         AddChild(_hoverBox);
         AddChild(_beam);

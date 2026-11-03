@@ -22,6 +22,7 @@ public sealed class FixtureManifest
     public string? DeniedDirectory { get; set; }
     public string? VanishingDirectory { get; set; }
     public string? SparseFile { get; set; }
+    public string? HardLink { get; set; }
     public long SparseLogicalSize { get; set; }
     public string? LongPathFile { get; set; }
     public List<string> UnicodeNames { get; } = [];
@@ -102,6 +103,21 @@ public static class FixtureBuilder
         WriteFile(m, Path.Combine(outliers, "one-byte.bin"), [42]);
         WriteFile(m, Path.Combine(outliers, "one-mib.bin"), new byte[1 << 20]);
         CreateSparse(m, Path.Combine(outliers, "sparse-10-gib.img"), 10L << 30);
+        if (OperatingSystem.IsWindows())
+        {
+            // A second name for one-mib.bin. FileScape counts each name, so totals double count it (FS-07).
+            var hard = Path.Combine(outliers, "hard-link-to-one-mib.bin");
+            if (CreateHardLinkW(hard, Path.Combine(outliers, "one-mib.bin"), IntPtr.Zero))
+            {
+                m.HardLink = hard;
+                m.ExpectedFiles++;
+                m.ExpectedLogicalBytes += 1 << 20;
+            }
+            else
+            {
+                m.Skipped.Add($"hard link (error {Marshal.GetLastWin32Error()})");
+            }
+        }
 
         var special = MakeDir(m, root, "special");
         var hidden = Path.Combine(special, "hidden-file.txt");
@@ -315,6 +331,9 @@ public static class FixtureBuilder
     private const uint FsctlSetSparse = 0x000900C4;
 
 #pragma warning disable SYSLIB1054
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CreateHardLinkW(string newFile, string existingFile, IntPtr security);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool DeviceIoControl(SafeFileHandle device, uint code, IntPtr inBuf, int inSize, IntPtr outBuf, int outSize, out int returned, IntPtr overlapped);
 #pragma warning restore SYSLIB1054

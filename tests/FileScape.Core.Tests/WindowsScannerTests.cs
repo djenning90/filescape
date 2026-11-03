@@ -145,6 +145,19 @@ public sealed class WindowsScannerTests : IDisposable
         tree.Find("zero-byte").Children.Select(c => tree[c].Size).Should().AllBeEquivalentTo(0L);
     }
 
+    /// <summary>FS-07: hard links are counted once per name, so totals can double count. This is labelled, not hidden.</summary>
+    [WindowsFact]
+    public void Hard_linked_file_is_counted_under_each_name()
+    {
+        var m = NewFixture(vanishing: false);
+        m.HardLink.Should().NotBeNull();
+        var (tree, _) = ScanRunner.Run(new DirectoryScanner(m.Root));
+        tree.Find("hard-link-to-one-mib.bin").Size.Should().Be(1 << 20);
+        tree.Find("one-mib.bin").Size.Should().Be(1 << 20);
+        var outliers = tree.Find("size-outliers");
+        outliers.DirectFileBytes.Should().Be(1 + (1 << 20) + (1 << 20) + (10L << 30), "both names of the hard-linked file are counted");
+    }
+
     [WindowsFact]
     public void Missing_root_produces_a_failed_root_not_an_exception()
     {

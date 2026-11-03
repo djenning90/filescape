@@ -23,6 +23,8 @@ public sealed record CommandLine
     public Vector2I? WindowSize { get; init; }
     public float? UiScale { get; init; }
     public string? OpenTest { get; init; }
+    public bool NoVsync { get; init; }
+    public bool StressDistrictOnly { get; init; }
 
     public static CommandLine Parse(string[] args)
     {
@@ -46,6 +48,8 @@ public sealed record CommandLine
             WindowSize = size,
             UiScale = Get("ui-scale") is { } u ? float.Parse(u, CultureInfo.InvariantCulture) : null,
             OpenTest = Get("open-test"),
+            NoVsync = Get("no-vsync") != null,
+            StressDistrictOnly = Get("district-only") != null,
         };
     }
 }
