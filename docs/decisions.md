@@ -67,3 +67,16 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Decision:** `rendering/rendering_device/driver.windows="d3d12"` in `app/project.godot`. Vulkan stays available via `--rendering-driver vulkan`.
 - **Evidence:** D3D12 had 0 crashes in 4 perf runs plus all final journey, scanperf and live runs. D3D12 means are about 10–30% higher than Vulkan, but its tails are tighter (see the status tables).
 - **Revisit when:** a newer AMD driver or Godot release is installed (re-run `stability.sh`-style comparisons), or D3D12 shows its own instability during dogfooding.
+
+## AD-12 Navigation model: orbit for inspection, hold-right fly for travel
+
+- **Problem:** DJ (not a gamer) tried the arrow keys, which were unbound, and found no discoverable way to travel. The baseline OS-input check also found real defects: an orbit drag interrupted by Alt-Tab stayed "stuck"; diagonals were about 41% faster; movement keys were polled even while dialogs were open.
+- **Decision:** Keep orbit as the resting mode (left-drag orbit, middle-drag pan, wheel zoom, ground keyboard movement). While the right mouse button is held, the camera flies: captured mouse-look, WASD/arrows along the view, Q/E world-vertical, and the wheel sets speed. Right-drag no longer pans; pan moved to the middle button (stated in Help). Both modes share one pose (target, yaw, look pitch, distance), so transitions are exact. After flight the orbit pivot moves onto whatever is under the screen centre without moving the camera. Inputs are named actions (`InputBindings`). Presses count only if no UI control consumed them, and releases are tracked before the GUI.
+- **Alternatives:** keep right-drag pan and put fly on a toggle key (less discoverable, and a toggle can be forgotten while the mouse is captured); fly-only navigation (worse for inspection and selection); a game-style mouse-captured default (hostile to clicking items).
+- **Revisit when:** DJ's hands-on feedback; a trackpad-only user (holding right is awkward there, so a toggle key may be needed); or a keybinding editor is wanted.
+
+## AD-13 Windows tooling through direct WSL interop
+
+- **Problem:** `tools/fs.sh` built PowerShell command strings and relied on `dotnet` being on the PowerShell PATH, which was false in the reviewer's environment. Its exit codes came from filtered text, and quoting broke on unusual paths.
+- **Decision:** Execute `dotnet.exe` and Godot directly via interop with argv arrays. `dotnet.exe` is discovered via `%ProgramFiles%`, then `where`, then the `FILESCAPE_DOTNET` override. The real exit codes are returned. Build servers are disabled via `WSLENV`-forwarded variables (this also fixed a ~10 min export stall). The export is verified by checking for the exe and its .NET assemblies.
+- **Evidence:** a missing dotnet gives exit 127; failing tests give exit 1; arguments with spaces and an apostrophe arrive intact (`docs/evidence/2026-11-03-navigation/args.log`); export takes 9 s.

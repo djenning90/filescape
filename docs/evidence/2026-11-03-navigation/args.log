@@ -1,0 +1,6 @@
+[19:38:57.601] automation=args out=C:/Users/David/AppData/Local/FileScape/evidence/args test adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1.25
+[19:38:57.604] arg <--automate=args>
+[19:38:57.604] arg <--root=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\O'Brien dir with spaces>
+[19:38:57.604] arg <--out=C:\Users\David\AppData\Local\FileScape\evidence\args test>
+[19:38:57.604] arg <two words>
+[19:38:57.604] done failures=0

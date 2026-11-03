@@ -16,6 +16,8 @@ To remove everything: delete `C:\Users\David\tools\godot` and `%LOCALAPPDATA%\Fi
 
 ## Commands (from WSL)
 
+`tools/fs.sh` runs Windows programs directly through WSL interop. Arguments keep their boundaries (spaces and apostrophes are fine) and the real exit code is returned. `dotnet.exe` is found via `%ProgramFiles%\dotnet`, then `where dotnet.exe`; override with `FILESCAPE_DOTNET`. Godot is found under `%USERPROFILE%\tools\godot\…`; override with `FILESCAPE_GODOT_DIR`. `tools/fs.sh which` shows what was found.
+
 ```
 tools/fs.sh build        # Windows dotnet build of app + Core (fails loudly on errors)
 tools/fs.sh test         # full test suite with Windows dotnet.exe (includes Windows-only tests)
@@ -25,8 +27,10 @@ tools/fs.sh editor       # open the Godot editor on app/
 tools/fs.sh export       # standalone build → %LOCALAPPDATA%\FileScape\build\FileScape.exe (+ data_FileScape.App_windows_x86_64\)
 ```
 
+Input verification tools: `--automate=navigation --out=DIR` injects input events through Godot's input pipeline and writes `navigation.log`. `tools/os-input-probe.ps1` sends real Win32 SendInput keyboard and mouse events (and Alt-Tab) to a running FileScape started with `--state-file=PATH`; it moves the real mouse and takes focus, so run it only when that is acceptable.
+
 App arguments go after `--`:
-`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=classic|district`, `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress --out=DIR [--open-test=NAME]`.
+`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=classic|district`, `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress|navigation|args --out=DIR [--open-test=NAME]`, `--state-file=PATH`.
 Engine arguments go before `--`, for example `--rendering-driver d3d12`.
 
 Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create|delete <dir>|delete-all`. It only creates under `%TEMP%\FileScape-fixtures` by default, and refuses to delete anything without its marker file.
@@ -34,7 +38,7 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 ## Quirks found and how they are handled
 
 1. **Shared tree, two hosts.** WSL and Windows builds would clobber each other's `obj/project.assets.json` (different absolute paths). `Directory.Build.props` sends Windows builds to `obj.win/` and `bin.win/`, and excludes both hosts' generated sources from compilation.
-2. **Hung pipes.** `Godot --build-solutions` and `dotnet build` with node reuse can leave build-server processes holding the PowerShell pipe open, so WSL waits forever. `fs.sh build` uses `dotnet build -nodeReuse:false /p:UseSharedCompilation=false`.
+2. **Hung pipes.** MSBuild nodes and the compiler server inherit stdout and outlive the build, so the caller waits (Godot's internal `dotnet publish` once stalled an export for about 10 min). `fs.sh` disables them for every Windows process via `WSLENV`-forwarded `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_USE_MSBUILD_SERVER=0`, `UseSharedCompilation=false`, plus `--disable-build-servers`.
 3. **apphost copy denied.** MSBuild intermittently got "access denied" copying `apphost.exe` to `bin.win\…\FileScape.Fixtures.exe` on the UNC share, while a plain PowerShell copy of an .exe to the same folder worked. Root cause not established. Mitigation: `UseAppHost=false` for the fixtures tool.
 4. **Export needs a solution file named after the assembly** (`app/FileScape.App.sln`). Without it, Godot exported a bare exe with no .NET assemblies, which then crashed on launch (0xC0000005).
 5. **Vulkan device loss (KD-01).** D3D12 is the project default (AD-11). `tools/compare-drivers.sh` repeats the Vulkan/D3D12 stability comparison on the exported build.

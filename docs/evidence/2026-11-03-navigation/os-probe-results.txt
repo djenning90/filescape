@@ -1,0 +1,17 @@
+focused: True
+hint visible at start: True
+PASS OS W moves (target moved 91.9 u)
+PASS OS Up arrow moves (91.9 u)
+PASS OS W+Up together ~ W alone (ratio 1; SendInput timing is coarse)
+PASS OS Left arrow strafes
+PASS OS right-hold enters fly with captured mouse and speed chip
+PASS OS mouse look turns (yaw 0 -> -24)
+PASS OS W flies forward
+PASS OS wheel raises flight speed (99.3 -> 155.2)
+PASS OS Alt-Tab during flight: flight ended, cursor released, nothing held (focused=False)
+refocused: True
+PASS OS after returning, moving the mouse with no button does nothing
+before Escape: mode=Fly mouse=Captured focused=True
+after Escape: mode=Orbit mouse=Visible consumed=1 selected=-1
+PASS OS Escape during flight ends it and releases the cursor
+PASS OS middle-drag pans

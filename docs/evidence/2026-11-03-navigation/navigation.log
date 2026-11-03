@@ -1,0 +1,63 @@
+[19:42:14.603] start: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[0,63.946,45.248],"target":[0,0.582,-64.5],"yaw":0,"lookPitch":-30,"up":0.866,"distance":126.726,"flySpeed":10,"held":[],"selected":-1,"vis":0,"hint":true,"flyChip":false,"consumedEscapes":0}
+[19:42:14.609] PASS first-run hint is visible: WASD / arrows move  ·  Hold right mouse to look  ·  Q/E elevation  ·  Shift faster  ·  Home reset  ·  F1 help
+[19:42:18.894] ground speeds u/s: W=114.50 Up=114.22 W+Up=114.30 W+D=114.26 Right=114.43 D=114.02 Shift+W=342.72
+[19:42:18.894] PASS W moves the view in orbit mode
+[19:42:18.894] PASS Up arrow = W speed (ratio 0.998)
+[19:42:18.894] PASS W+Up together does not double speed (ratio 0.998)
+[19:42:18.894] PASS diagonal W+D is not faster (ratio 0.998)
+[19:42:18.894] PASS W moves along the horizontal heading
+[19:42:18.894] PASS W+D moves at 45° (dot 0.707)
+[19:42:18.894] PASS Right arrow = D
+[19:42:18.894] PASS Shift accelerates ×3 (ratio 2.99)
+[19:42:19.708] PASS E raises the view (Δy 45.62)
+[19:42:19.708] PASS Q lowers the view (Δy -24.71)
+[19:42:20.773] PASS wheel zooms in orbit mode (126.7 → 95.9)
+[19:42:21.322] PASS holding right mouse enters fly mode and captures the mouse
+[19:42:21.322] PASS fly status shows speed: FLYING  ·  speed 228.6 u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop
+[19:42:21.323] PASS entering flight does not move or rotate the camera (Δpos 0.0000)
+[19:42:21.356] PASS mouse-look yaw: 100 px → -12.00°
+[19:42:21.389] PASS look up stops at 85.0° without flipping (camera up.y 0.087)
+[19:42:21.422] PASS look down stops at -85.0° without flipping
+[19:42:21.422] PASS no roll: camera right vector stays horizontal
+[19:42:24.785] look pitch set to -30.0°, altitude 2169 u
+[19:42:33.104] PASS instrument: the speed series stayed above ground (altitude 1421 u)
+[19:42:33.104] fly speeds u/s (speed setting 228.6): W=228.80 Up=228.81 W+Up=229.06 W+A=229.03 Left=229.04 Shift+W=685.15
+[19:42:33.104] PASS W flies along the view direction, descending when looking down (dot 1.000)
+[19:42:33.104] PASS Up arrow = W in flight (ratio 1.000)
+[19:42:33.104] PASS W+Up does not double flight speed (ratio 1.001)
+[19:42:33.104] PASS diagonal flight is not faster (ratio 1.001)
+[19:42:33.104] PASS strafe stays level
+[19:42:33.104] PASS Shift ×3 in flight (ratio 2.99)
+[19:42:35.284] PASS E ascends in world space while flying
+[19:42:35.284] PASS Q descends while flying
+[19:42:35.384] PASS wheel up ×3 raises flight speed 228.6 → 446.5 u/s
+[19:42:35.384] PASS flight speed shown while it changes
+[19:42:35.484] PASS wheel down restores the speed
+[19:42:35.484] PASS wheel in flight does not zoom
+[19:42:35.535] PASS releasing right mouse ends flight and restores the cursor
+[19:42:35.535] PASS leaving flight does not move the camera (Δpos 0.0007)
+[19:42:37.031] PASS no snap back to the old orbit target afterwards
+[19:42:38.062] PASS left-drag orbits around the post-flight pivot
+[19:42:39.676] PASS Escape ends flight and releases capture
+[19:42:39.677] PASS that Escape did not also navigate to the parent
+[19:42:39.777] PASS the next Escape navigates to the parent directory
+[19:42:42.007] PASS after flying 4.3 u, Tab switches to District and keeps the selection
+[19:42:42.124] PASS F frames the selection again
+[19:42:42.239] PASS clicking the Classic FSN toolbar button switches visualization
+[19:42:42.656] PASS arrow keys still move the view right after a toolbar click
+[19:42:43.138] PASS while a text field has focus, W and Up do not move the camera
+[19:42:43.139] PASS the text field received the typed key instead (text 'w')
+[19:42:43.620] PASS clicking the scene returns the keys to navigation
+[19:42:44.536] PASS with a dialog open, arrows and W do not move the camera
+[19:42:44.635] PASS Escape closes the dialog without navigating to the parent
+[19:42:45.052] PASS movement works again once the dialog is closed
+[19:42:45.303] PASS focus loss ends flight, releases capture, and forgets held keys
+[19:42:45.801] PASS nothing moves after focus returns until a key is pressed again
+[19:42:45.883] PASS instrument: the drag is active before focus is lost
+[19:42:47.166] PASS a drag interrupted by focus loss does not keep orbiting with no button held (dragging=False, Δpos 0.0085, Δyaw-basis 0.00038, settled=True)
+[19:42:50.261] PASS Home recovers the start view after flying away
+[19:42:54.299] stale-layout interval: 224 frames with tree ahead of layout; labels drawn in 224 of them
+[19:42:54.299] PASS the scan really exercised the stale-layout interval
+[19:42:54.300] PASS labels kept rendering during the interval
+[19:42:54.300] end: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[0.164,1216.03,23.48],"target":[0.164,3.234,-621.375],"yaw":0,"lookPitch":-62,"up":0.4695,"distance":1373.576,"flySpeed":13.302,"held":[],"selected":58819,"vis":0,"hint":false,"flyChip":false,"consumedEscapes":1}
+[19:42:54.300] done failures=0

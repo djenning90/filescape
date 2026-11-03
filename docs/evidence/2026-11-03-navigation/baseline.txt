@@ -1,0 +1,8 @@
+Baseline: previously installed export (commit 204b747), real OS input via tools/os-input-probe.ps1 (Win32 SendInput),
+window 1600x900. The value is the fraction of sampled scene pixels that changed between window screenshots (threshold 30/765).
+noise (no input):        0
+after W 0.7s:            0.496   -> W works
+after Up arrow 0.7s:     0       -> arrows unbound (missing binding)
+after Left arrow 0.7s:   0
+after right-drag 300px:  0       -> documented right-drag pan had no effect under SendInput (cause not investigated; superseded)
+left-drag, Alt-Tab, release outside, return, move mouse with NO button: 0.54 -> DEFECT: orbit drag stuck after lost release

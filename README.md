@@ -22,20 +22,31 @@ Rebuild it from WSL with `tools/fs.sh build && tools/fs.sh export`. It renders w
 tools/fs.sh build
 tools/fs.sh run                                    # synthetic sample data
 tools/fs.sh run -- --root='C:\Program Files\dotnet'   # a live folder
-tools/fs.sh test                                    # 57 tests with Windows dotnet.exe
+tools/fs.sh test                                    # 70 tests with Windows dotnet.exe (exit code = test result)
 ```
 
 It starts on **synthetic sample data**, shown by the amber badge "SYNTHETIC SAMPLE DATA". Use **Open folder…** to pick a real folder. The badge turns green ("LIVE · path"). Drive roots, your profile, OneDrive and network paths ask before scanning.
 
+### Controls (also in Help, F1)
+
+| To… | Do this |
+|---|---|
+| Move around | **W A S D** or **arrow keys** · **Q / E** down / up · hold **Shift** for 3× speed |
+| Look around and fly | **hold the right mouse button** and move the mouse; W A S D / arrows then move where you look; the **wheel** changes flight speed (shown at the top); release (or **Esc**) to stop |
+| Orbit / pan / zoom | **left-drag** orbits around the view centre · **middle-drag** pans · **wheel** zooms |
+| Inspect | **click** to select · **double-click** or **F** to fly to it · **Esc** parent · **Backspace** previous |
+| Recover | **Home** start view · **B** bird's-eye overview |
+| Open | **Enter** opens with Windows (asks first for programs, links, cloud files); MOCK on sample data |
+| Switch view | **Tab** Classic ↔ District (the selection stays) · **F2** quality · **F3** stats |
+
+Change from the first prototype: right-drag used to pan. It now flies (look around), and pan is on the middle button.
+
 ### What to try
 
-1. Click **Open folder…** and pick a project or tool folder with a few thousand files. Watch the status strip count entries while the landscape grows. Press **Cancel scan** on a big folder: the partial tree stays explorable, and unscanned directories are marked "(not scanned)".
-2. **Left-drag** to orbit, **right-drag** to pan, **wheel** to zoom, **WASD/QE** to move. **Click** a block to inspect it. **Double-click** or **F** to fly to it.
-3. Read the inspector: the full path, exact bytes, the visual height mapping (log scale and cap), timestamps, attributes, and any flags (hidden, link not followed, access denied).
-4. Press **Enter** (or **Open**) on a file. Windows opens it with its associated app. Programs, scripts, links and cloud placeholders ask first. On sample data, Open is clearly a MOCK.
-5. Press **Tab** to switch between **Classic FSN** and **District**. The same item stays selected.
-6. Get lost on purpose, then press **Home** to return to the root, or **B** for a bird's-eye overview. **Esc** selects the parent; **Backspace** goes back.
-7. **F2** toggles quality (High: SSAO, SSR, volumetric haze; Low: none of these). **F3** shows performance stats. **F1** shows help.
+1. Click **Open folder…** and pick a project or tool folder. Watch the landscape grow, and try **Cancel scan** on a big folder.
+2. Hold the **right mouse button**, look around, and fly with **W**/**arrows**. Use the **wheel** to go faster or slower. Let go, and **left-drag** to orbit what you were looking at.
+3. Click a block and read the inspector. Press **Enter** to open it with Windows.
+4. Press **Tab** to switch Classic ↔ District with the same item selected. Fly away, then press **Home**.
 
 ## Layout of the repository
 

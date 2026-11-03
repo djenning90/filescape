@@ -25,7 +25,7 @@ choose a root → scan with visible progress → navigate the 3D hierarchy → s
 | FS-10 | A purposeful node limit (1,000,000 entries) protects memory. Reaching it is reported, and the partial tree stays usable. | Demonstrated in a unit test (limit 50). Not exercised at 1M |
 | FS-11 | Deterministic synthetic data: wide/deep trees, zero-byte files, Unicode names, size outliers, simulated problem cases, always labelled SYNTHETIC. | Demonstrated |
 | FS-12 | Broad roots (drive root, user profile, OneDrive, network path) need confirmation. Nothing broad is scanned by default. | Implemented; not exercised in automation |
-| FS-13 | Directories marked RECALL_ON_DATA_ACCESS are not enumerated (Microsoft documents that enumerating them can fetch remote data). Even so, FileScape does not claim metadata access is hydration-free. | Implemented; not tested against a real cloud provider |
+| FS-13 | Directories marked RECALL_ON_DATA_ACCESS, **including a chosen root**, are shown but not enumerated (Microsoft documents that enumerating them can fetch remote data); the root then appears as "not listed — cloud placeholder directory". One policy function serves root and descendants; there is no override yet. FileScape does not claim metadata access is hydration-free. | Implemented; unit-tested with a simulated attribute (real placeholders need a cloud provider); not tested against a real provider |
 
 ## Visualization (VIS)
 
@@ -40,23 +40,29 @@ choose a root → scan with visible progress → navigate the 3D hierarchy → s
 | VIS-07 | Bounded labels (≤ 60), prioritized and overlap-rejected. | Demonstrated |
 | VIS-08 | Batching: chunked MultiMesh, with shared materials per geometry kind. No per-file scene objects. | Demonstrated |
 | VIS-09 | Quality presets (High/Low), so the cinematic look does not demand maximum effects. | Demonstrated |
+| VIS-10 | Every consumer of geometry (labels, picking, framing, Home, highlights) uses only nodes present in the *displayed* layout, which is deliberately older than the tree during scans. | Demonstrated (Core regression test; 224-frame stale interval in the navigation probe with commands injected, no errors) |
 
 ## Navigation and interaction (NAV)
 
 | ID | Requirement | Status |
 |---|---|---|
-| NAV-01 | Orbit, pan, zoom, and WASD/QE movement, all eased. | Demonstrated (scripted; hand feel not reviewed by DJ) |
+| NAV-01 | Inspection controls: left-drag orbit, middle-drag pan, wheel zoom, keyboard ground movement (heading-relative) plus Q/E elevation. | Demonstrated via injected and OS-level input (2026-11-03 navigation pass). Feel: awaiting DJ |
 | NAV-02 | Click selects; double-click or F flies to the selection. Picking resolves the intended node, including zero-byte tiles. | Demonstrated (40/40 in each run) |
 | NAV-03 | Parent (Esc) and Back (Backspace) navigation. | Demonstrated |
 | NAV-04 | Home/Reset recovers a useful view (root and its first children). | Demonstrated |
 | NAV-05 | Bird's-eye overview of the whole tree (B). | Demonstrated |
-| NAV-06 | Switching visualization preserves the selection (by node id) and re-frames it. | Demonstrated |
+| NAV-06 | Switching visualization preserves the selection (by node id) and re-frames it. | Demonstrated (also after flight, via injected Tab) |
+| NAV-07 | Arrow keys are aliases of WASD (Up/Down = W/S, Left/Right = A/D) in and out of flight. Pressing two aliases of one action does not double speed. Bindings are named actions (`InputBindings`) ready for remapping; there is no editor. | Demonstrated (injected: ratios 0.99–1.00; OS SendInput: arrows move, W+Up ≈ W) |
+| NAV-08 | Input ownership: a focused UI control or an open dialog keeps its keys. Focus loss (Alt-Tab), dialogs, and lost button releases leave no stuck keys, drags, or mouse capture, and recovery on return is clean. | Demonstrated (injected text field + dialog; simulated focus loss; real OS Alt-Tab during flight) |
+| NAV-09 | The horizon stays level (no roll). Look pitch is limited to ±85°, so the view never flips. Orbit↔fly transitions cause no jump, rotation, or snap back. Diagonal movement is normalized, and movement is frame-rate independent. | Demonstrated (injected: Δpos ≤ 0.0007 u on transitions; pitch clamps at ±85° with up.y > 0; Core tests) |
+| NAV-10 | Fly mode while the right mouse button is held: mouse-look with captured cursor; W/S along the view, A/D strafe, Q/E world-vertical, Shift ×3; wheel adjusts flight speed (×1.25 per notch, honouring multi-notch and fractional wheels) within 0.5–3000 u/s; the starting speed scales with viewing distance; release or Esc ends flight. | Demonstrated (injected and OS-level) |
+| NAV-11 | Discoverability: a compact first-run hint ("WASD / arrows move · Hold right mouse to look · …"), a "Help (F1)" toolbar button, Help that explains the wheel and the right/middle change, and a flight chip showing speed while flying. | Demonstrated (screenshot, injected checks) |
 
 ## Deliberate file actions (FILE)
 
 | ID | Requirement | Status |
 |---|---|---|
-| FILE-01 | Explicit Open uses the Windows association (ShellExecuteEx default verb). | Demonstrated for a directory (Explorer window observed externally, then closed). Not auto-verified for a document type (DJ's open Notepad session was not disturbed) |
+| FILE-01 | Explicit Open uses the Windows association (ShellExecuteEx default verb). | Demonstrated for a **directory** only (Explorer window observed externally, then closed). Opening a **document through its file association remains unverified** by automation; DJ's open Notepad session was not disturbed |
 | FILE-02 | Nothing opens or runs from hover, selection or navigation. | Demonstrated by design and code review; no automatic call sites |
 | FILE-03 | Confirmation before opening code-running files, links, or cloud placeholders. | Implemented; dialog not exercised in automation |
 | FILE-04 | Show in Explorer and Copy path. | Implemented; not exercised in automation |
@@ -81,5 +87,6 @@ Search, watchers/live refresh, persistent scan caches, bookmarks, split views, m
 
 - Is the Fishbone arrangement acceptable as "FSN-inspired"? The historical Rows arrangement is retained (AD-08).
 - Should single-click also *approach* (FSN behaviour), or stay select-only (current)?
+- Camera feel (speeds, sensitivities, fly-speed default) is provisional until DJ tries it.
 - What tree sizes matter in practice (10k vs 1M nodes)? This drives LOD and background layout work.
 - Which mutation (if any) belongs in the first useful release?
