@@ -1,0 +1,175 @@
+using System.Text;
+using FileScape.Core.Scanning;
+
+namespace FileScape.Core.Model;
+
+/// <summary>Whether the data shown is the live filesystem or generated sample data (requirement UX-06).</summary>
+public enum DataOrigin
+{
+    LiveFilesystem,
+    Synthetic,
+}
+
+/// <summary>Describes where a tree's data came from. The UI shows this permanently.</summary>
+public sealed record DataSourceInfo(DataOrigin Origin, string RootDisplayPath, string Description)
+{
+    public bool IsLive => Origin == DataOrigin.LiveFilesystem;
+
+    /// <summary>
+    /// The "now" that file ages are measured against. Live scans use the scan's start time. Synthetic data uses
+    /// a fixed date, so its colours are reproducible.
+    /// </summary>
+    public DateTime AgeReferenceUtc { get; init; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// The node store for one scan. Nodes arrive in <see cref="ScanBatch"/>es in strictly increasing id order and
+/// are applied on the consuming thread only (the Godot main thread in the app). The type is not thread-safe
+/// by design: the scanner never touches it (AD-04).
+/// </summary>
+public sealed class FsTree
+{
+    private readonly List<FsNode> _nodes = [];
+
+    public FsTree(DataSourceInfo source)
+    {
+        Source = source;
+    }
+
+    public DataSourceInfo Source { get; }
+    public int Count => _nodes.Count;
+    public FsNode Root => _nodes[0];
+    public IReadOnlyList<FsNode> Nodes => _nodes;
+
+    /// <summary>Increments on every applied batch, so consumers can tell whether layout is stale.</summary>
+    public int Version { get; private set; }
+
+    public int FlaggedProblemCount { get; private set; }
+
+    public FsNode this[int id] => _nodes[id];
+
+    public bool Contains(int id) => id >= 0 && id < _nodes.Count;
+
+    /// <summary>Applies one scanner batch: appends new nodes, then applies directory state updates.</summary>
+    public void Apply(ScanBatch batch)
+    {
+        foreach (var record in batch.NewNodes)
+        {
+            if (record.Id != _nodes.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Scan batch out of order: expected id {_nodes.Count}, got {record.Id}.");
+            }
+
+            var node = record.ToNode();
+            _nodes.Add(node);
+            if (node.ParentId >= 0)
+            {
+                var parent = _nodes[node.ParentId];
+                parent.Children.Add(node.Id);
+                AddToAggregates(parent, node);
+            }
+
+            if (IsProblem(node.Flags))
+            {
+                FlaggedProblemCount++;
+            }
+        }
+
+        foreach (var update in batch.DirectoryUpdates)
+        {
+            var dir = _nodes[update.Id];
+            var wasProblem = IsProblem(dir.Flags);
+            dir.ScanState = update.State;
+            dir.Flags |= update.AddFlags;
+            dir.Error = update.Error ?? dir.Error;
+            if (!wasProblem && IsProblem(dir.Flags))
+            {
+                FlaggedProblemCount++;
+            }
+        }
+
+        Version++;
+    }
+
+    private void AddToAggregates(FsNode parent, FsNode child)
+    {
+        switch (child.Kind)
+        {
+            case NodeKind.File:
+                parent.DirectFileCount++;
+                parent.DirectFileBytes += child.Size;
+                break;
+            case NodeKind.Directory:
+                parent.DirectDirCount++;
+                break;
+        }
+
+        var current = parent;
+        while (true)
+        {
+            if (child.Kind == NodeKind.File)
+            {
+                current.SubtreeFileCount++;
+                current.SubtreeBytes += child.Size;
+            }
+            else if (child.Kind == NodeKind.Directory)
+            {
+                current.SubtreeDirCount++;
+            }
+
+            if (current.ParentId < 0)
+            {
+                break;
+            }
+
+            current = _nodes[current.ParentId];
+        }
+    }
+
+    /// <summary>Flags that indicate missing or unreliable information. Hidden/system/link are facts, not problems.</summary>
+    public static bool IsProblem(NodeFlags flags) =>
+        (flags & (NodeFlags.AccessDenied | NodeFlags.Vanished | NodeFlags.EnumerationError)) != 0;
+
+    /// <summary>
+    /// Returns the node's full path. For live data this is a real Windows path built from the root path and the
+    /// names. For synthetic data it uses the synthetic:// display root.
+    /// </summary>
+    public string FullPath(int id)
+    {
+        var node = _nodes[id];
+        if (node.IsRoot)
+        {
+            return Source.RootDisplayPath;
+        }
+
+        var parts = new List<string>();
+        for (var current = node; !current.IsRoot; current = _nodes[current.ParentId])
+        {
+            parts.Add(current.Name);
+        }
+
+        var sb = new StringBuilder(Source.RootDisplayPath);
+        var separator = Source.IsLive ? '\\' : '/';
+        for (var i = parts.Count - 1; i >= 0; i--)
+        {
+            if (sb.Length > 0 && sb[^1] != separator)
+            {
+                sb.Append(separator);
+            }
+
+            sb.Append(parts[i]);
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>Lists ancestors, nearest first, excluding the node itself.</summary>
+    public IEnumerable<int> Ancestors(int id)
+    {
+        for (var p = _nodes[id].ParentId; p >= 0; p = _nodes[p].ParentId)
+        {
+            yield return p;
+        }
+    }
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Test method names describe behaviour with underscores. -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1001;CA1063;CA1816</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- FluentAssertions is pinned to 7.x: 7.2.0 is Apache-2.0. 8.x moved to the Xceed licence, which requires a paid licence for commercial use. -->
+    <PackageReference Include="FluentAssertions" Version="7.2.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FileScape.Core\FileScape.Core.csproj" />
+    <ProjectReference Include="..\..\src\FileScape.Fixtures\FileScape.Fixtures.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="FluentAssertions" />
+  </ItemGroup>
+</Project>

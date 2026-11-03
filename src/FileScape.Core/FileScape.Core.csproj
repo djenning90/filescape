@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Engine-independent filesystem model, scanning, layout, picking, selection and shell actions.
+       Must not reference Godot so it can be tested on its own (see docs/architecture.md). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>FileScape.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

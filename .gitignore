@@ -6,6 +6,8 @@
 # .NET
 bin/
 obj/
+obj.win/
+bin.win/
 TestResults/
 # Godot
 app/.godot/
