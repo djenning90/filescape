@@ -58,15 +58,30 @@ public abstract class Visualization
     public abstract void ConfigureEnvironment(WorldEnvironment world, DirectionalLight3D sun, MeshInstance3D ground, Quality quality);
 
     /// <summary>Rebuilds all instance batches from the layout. Returns the instance count.</summary>
-    public int Rebuild(FsTree tree, LayoutResult layout)
+    public int Rebuild(FsTree tree, LayoutResult layout) => Build(tree, layout, DepthFirstOrder(tree));
+
+    private readonly Dictionary<string, List<MultiMeshInstance3D>> _pools = [];
+
+    /// <summary>Builds a named batch into reused MultiMesh nodes (see <see cref="InstanceBatch.BuildInto"/>).</summary>
+    protected void Emit(string slot, InstanceBatch batch, Mesh mesh, Material material, bool castShadows = true)
     {
-        foreach (var child in Root.GetChildren())
+        if (!_pools.TryGetValue(slot, out var pool))
         {
-            Root.RemoveChild(child);
-            child.QueueFree();
+            pool = [];
+            _pools[slot] = pool;
         }
 
-        return Build(tree, layout, DepthFirstOrder(tree));
+        batch.BuildInto(pool, Root, mesh, material, castShadows);
+    }
+
+    /// <summary>Removes all geometry, for example when a new scan starts.</summary>
+    public void Clear()
+    {
+        foreach (var pool in _pools.Values)
+        {
+            foreach (var m in pool) m.QueueFree();
+            pool.Clear();
+        }
     }
 
     protected abstract int Build(FsTree tree, LayoutResult layout, List<int> order);

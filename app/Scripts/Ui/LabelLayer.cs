@@ -95,7 +95,7 @@ public partial class LabelLayer : Control
                 Kind.File => _fileSettings,
                 _ => _dirSettings,
             };
-            label.Text = Text(node, kind);
+            label.Text = Text(node, tree.DisplayName(id), kind);
             var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + new Vector2(10, 6);
             var rect = new Rect2(p - new Vector2(size.X / 2, size.Y + (node.IsDirectory ? 0 : 4)), size);
             if (kind is not (Kind.Selected or Kind.Hovered))
@@ -187,9 +187,8 @@ public partial class LabelLayer : Control
         LastShown = 0;
     }
 
-    private static string Text(FsNode n, Kind kind)
+    private static string Text(FsNode n, string name, Kind kind)
     {
-        var name = n.Name;
         var suffix = "";
         if ((n.Flags & NodeFlags.AccessDenied) != 0) suffix = "  ⚠ access denied";
         else if ((n.Flags & NodeFlags.Vanished) != 0) suffix = "  ⚠ vanished";

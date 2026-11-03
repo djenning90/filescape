@@ -204,13 +204,17 @@ public partial class Main : Node3D
         _selection.Reset();
         foreach (var v in _visualizations)
         {
-            foreach (var c in v.Root.GetChildren()) c.QueueFree();
+            v.Clear();
         }
 
-        _hud.SetSource(_tree.Source.IsLive ? $"LIVE · {_tree.Source.RootDisplayPath}" : "SYNTHETIC SAMPLE DATA — not your files", _tree.Source.IsLive);
+        _hud.SetSource(_tree.Source.IsLive ? $"LIVE · {MiddleTruncate(_tree.Source.RootDisplayPath, 48)}" : "SYNTHETIC SAMPLE DATA — not your files", _tree.Source.IsLive,
+            _tree.Source.IsLive ? $"Live Windows filesystem, metadata only: {_tree.Source.RootDisplayPath}" : _tree.Source.Description);
         _session.Start();
         UpdateInspector();
     }
+
+    private static string MiddleTruncate(string s, int max) =>
+        s.Length <= max ? s : string.Concat(s.AsSpan(0, max / 2 - 1), "…", s.AsSpan(s.Length - (max - max / 2)));
 
     public void CancelScan()
     {
@@ -805,7 +809,7 @@ public partial class Main : Node3D
         }
 
         var node = _tree[_selection.Selected];
-        _hud.SetInspector(node.IsRoot ? node.Name : node.Name, Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
+        _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
         _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
     }
 

@@ -137,7 +137,7 @@ public class LayoutAndInteractionTests
         var tree = Tree.Value;
         var layout = TreeLayout.Compute(tree, LayoutParams.District);
         layout.Connectors.Should().HaveCount(tree.Nodes.Count(n => n.IsDirectory) - 1);
-        layout.Connectors.Should().OnlyContain(c => (c.Points.Length == 2 || c.Points.Length == 4) && c.Points.All(p => p.Y < 0.1f));
+        layout.Connectors.Should().OnlyContain(c => (c.Points.Length == 2 || c.Points.Length == 4 || c.Points.Length == 6) && c.Points.All(p => p.Y < 0.1f));
         foreach (var c in layout.Connectors)
         {
             // Routes start at the parent's back edge and end at the child's front edge, and every segment is axis-aligned.
@@ -249,5 +249,37 @@ public class LayoutAndInteractionTests
         r.Succeeded.Should().BeFalse();
         r.WasMock.Should().BeTrue();
         r.Message.Should().StartWith("MOCK");
+    }
+
+    /// <summary>
+    /// AD-08: a directory with hundreds of children (a package cache, a photo dump) must not become a single
+    /// endless spine. Multi-spine fishbone keeps the block roughly square.
+    /// </summary>
+    [Fact]
+    public void Directory_with_hundreds_of_subdirectories_stays_roughly_square()
+    {
+        var tree = new FsTree(new DataSourceInfo(DataOrigin.Synthetic, "synthetic://many", "many"));
+        var batch = new ScanBatch();
+        batch.NewNodes.Add(new NodeRecord(0, -1, "root", NodeKind.Directory, 0, 0, 0, null, null, null, 0, DirScanState.Complete));
+        for (var i = 1; i <= 300; i++)
+        {
+            batch.NewNodes.Add(new NodeRecord(i, 0, $"pkg-{i:D3}", NodeKind.Directory, 0, 0, 0, null, null, null, 1, DirScanState.Complete));
+        }
+
+        tree.Apply(batch);
+        foreach (var style in new[] { LayoutParams.Classic, LayoutParams.District })
+        {
+            var b = TreeLayout.Compute(tree, style).Bounds.Size;
+            (MathF.Max(b.X, b.Z) / MathF.Min(b.X, b.Z)).Should().BeLessThan(3f, $"bounds {b.X:0}×{b.Z:0}");
+        }
+
+        var layout = TreeLayout.Compute(tree, LayoutParams.Classic);
+        for (var i = 1; i <= 300; i++)
+        {
+            for (var j = i + 1; j <= 300; j++)
+            {
+                layout.NodeBoxes[i].Overlaps(layout.NodeBoxes[j]).Should().BeFalse();
+            }
+        }
     }
 }

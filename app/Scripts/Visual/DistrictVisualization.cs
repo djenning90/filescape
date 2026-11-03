@@ -153,10 +153,10 @@ public sealed class DistrictVisualization : Visualization
             }
         }
 
-        plazas.Build(Root, _box, _plazaMaterial);
-        towers.Build(Root, _box, _towerMaterial);
-        streets.Build(Root, _box, _streetMaterial, castShadows: false);
-        markers.Build(Root, _box, _markerMaterial, castShadows: false);
+        Emit("plazas", plazas, _box, _plazaMaterial);
+        Emit("towers", towers, _box, _towerMaterial);
+        Emit("streets", streets, _box, _streetMaterial, castShadows: false);
+        Emit("markers", markers, _box, _markerMaterial, castShadows: false);
         return plazas.Count + towers.Count + streets.Count + markers.Count;
     }
 }

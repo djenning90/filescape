@@ -68,29 +68,51 @@ public sealed class InstanceBatch
         }
     }
 
-    /// <summary>Creates one MultiMeshInstance3D per chunk under <paramref name="parent"/>.</summary>
-    public void Build(Node3D parent, Mesh mesh, Material material, bool castShadows = true)
+    /// <summary>
+    /// Writes the batch into chunked MultiMeshInstance3D nodes under <paramref name="parent"/>. Nodes in
+    /// <paramref name="pool"/> are reused, so re-layout during a scan replaces buffers instead of re-creating
+    /// scene nodes. Surplus nodes are freed.
+    /// </summary>
+    public void BuildInto(List<MultiMeshInstance3D> pool, Node3D parent, Mesh mesh, Material material, bool castShadows = true)
     {
-        for (var start = 0; start < Count; start += ChunkSize)
+        var chunks = (Count + ChunkSize - 1) / ChunkSize;
+        for (var i = 0; i < chunks; i++)
         {
+            var start = i * ChunkSize;
             var n = Math.Min(ChunkSize, Count - start);
-            var mm = new MultiMesh
+            if (i >= pool.Count)
             {
-                TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-                UseColors = true,
-                UseCustomData = true,
-                Mesh = mesh,
-            };
-            mm.InstanceCount = n;
+                var created = new MultiMeshInstance3D
+                {
+                    Multimesh = new MultiMesh
+                    {
+                        TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+                        UseColors = true,
+                        UseCustomData = true,
+                        Mesh = mesh,
+                    },
+                    MaterialOverride = material,
+                    CastShadow = castShadows ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                parent.AddChild(created);
+                pool.Add(created);
+            }
+
+            var mm = pool[i].Multimesh;
+            if (mm.InstanceCount != n)
+            {
+                mm.InstanceCount = n;
+            }
+
             var slice = new float[n * Stride];
             Array.Copy(_data, start * Stride, slice, 0, slice.Length);
             mm.Buffer = slice;
-            parent.AddChild(new MultiMeshInstance3D
-            {
-                Multimesh = mm,
-                MaterialOverride = material,
-                CastShadow = castShadows ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-            });
+        }
+
+        for (var i = pool.Count - 1; i >= chunks; i--)
+        {
+            pool[i].QueueFree();
+            pool.RemoveAt(i);
         }
     }
 }

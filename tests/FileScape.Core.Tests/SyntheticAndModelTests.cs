@@ -160,4 +160,72 @@ public class SyntheticAndModelTests
             }
         }
     }
+
+    [Theory]
+    [InlineData(@"C:\Users\Someone\Projects", "Projects")]
+    [InlineData(@"C:\", @"C:\")]
+    [InlineData(@"\\server\share\folder", "folder")]
+    [InlineData("synthetic-demo", "synthetic-demo")]
+    public void Root_display_name_is_the_last_segment_so_labels_stay_short(string rootName, string expected)
+    {
+        var tree = new FsTree(new DataSourceInfo(DataOrigin.LiveFilesystem, rootName, "t"));
+        var batch = new ScanBatch();
+        batch.NewNodes.Add(new NodeRecord(0, -1, rootName, NodeKind.Directory, 0, 0, 0, null, null, null, 0, DirScanState.Complete));
+        tree.Apply(batch);
+        tree.DisplayName(0).Should().Be(expected);
+        tree.FullPath(0).Should().Be(rootName, "the inspector still shows the full path");
+    }
+
+    /// <summary>
+    /// FS-09: while a single OS call blocks, the UI can say so (current path and elapsed time), and Cancel is
+    /// acknowledged immediately as Cancelling. The scan stops as soon as the call returns, with no new work.
+    /// </summary>
+    [Fact]
+    public void Blocking_os_call_is_reported_and_cancel_is_acknowledged_before_it_returns()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "FileScape-fixtures", "blocking-" + Guid.NewGuid().ToString("N")[..8]);
+        // Siblings are enumerated in name order, so "a-slow" blocks before "z-after" would be reached.
+        Directory.CreateDirectory(Path.Combine(root, "a-slow"));
+        Directory.CreateDirectory(Path.Combine(root, "z-after"));
+        using var release = new ManualResetEventSlim(false);
+        try
+        {
+            var scanner = new DirectoryScanner(root)
+            {
+                BeforeEnumerateDirectory = path =>
+                {
+                    if (path.EndsWith("a-slow", StringComparison.Ordinal))
+                    {
+                        release.Wait(TimeSpan.FromSeconds(10)); // stands in for a hung network or provider call
+                    }
+                },
+            };
+            using var session = new ScanSession(scanner);
+            session.Start();
+            SpinWait.SpinUntil(() => session.Snapshot().CurrentPath?.EndsWith("a-slow", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(5)).Should().BeTrue();
+            Thread.Sleep(300);
+
+            var during = session.Snapshot();
+            during.CurrentOperationDuration.Should().BeGreaterThan(TimeSpan.FromMilliseconds(250));
+            session.Cancel();
+            session.Snapshot().State.Should().Be(ScanState.Cancelling, "the request is acknowledged while the OS call is still outstanding");
+            session.IsFinished.Should().BeFalse();
+
+            release.Set();
+            session.WaitForExit(TimeSpan.FromSeconds(5)).Should().BeTrue();
+            var tree = new FsTree(session.Source);
+            while (session.TryDequeue(out var b))
+            {
+                tree.Apply(b);
+            }
+
+            session.Snapshot().State.Should().Be(ScanState.Cancelled);
+            tree.Find("z-after").ScanState.Should().Be(DirScanState.Cancelled, "no new directory is enumerated after cancellation");
+        }
+        finally
+        {
+            release.Set();
+            Directory.Delete(root, true);
+        }
+    }
 }

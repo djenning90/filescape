@@ -44,7 +44,7 @@ public sealed class DirectoryScanner : IScanSource
         }
     }
 
-    /// <summary>A test hook, called on the scan thread just before a directory is enumerated.</summary>
+    /// <summary>A test hook, called on the scan thread just before a directory is enumerated, inside the reported OS-operation window.</summary>
     public Action<string>? BeforeEnumerateDirectory { get; init; }
 
     /// <summary>The number of entries per emitted batch for very large directories.</summary>
@@ -104,8 +104,7 @@ public sealed class DirectoryScanner : IScanSource
                 return;
             }
 
-            BeforeEnumerateDirectory?.Invoke(dirPath);
-            var (entries, failureFlags, error) = Enumerate(context, dirPath, ct);
+            var (entries, failureFlags, error) = Enumerate(context, dirPath, BeforeEnumerateDirectory, ct);
 
             // Deterministic order: directories, then links, then files, each ordinal case-insensitive.
             entries.Sort(static (a, b) =>
@@ -217,12 +216,14 @@ public sealed class DirectoryScanner : IScanSource
         DateTime? Created, DateTime? Modified, DateTime? Accessed);
 
     private static (List<Entry> Entries, NodeFlags FailureFlags, string? Error) Enumerate(
-        ScanContext context, string dirPath, CancellationToken ct)
+        ScanContext context, string dirPath, Action<string>? beforeEnumerate, CancellationToken ct)
     {
         var entries = new List<Entry>();
         context.BeginOperation(dirPath);
         try
         {
+            // Runs inside the operation window, so a test hook that blocks looks exactly like a slow OS call.
+            beforeEnumerate?.Invoke(dirPath);
             var enumerable = new FileSystemEnumerable<Entry>(dirPath, ToEntry, Options);
             foreach (var entry in enumerable)
             {

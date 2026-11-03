@@ -164,6 +164,23 @@ public sealed class FsTree
         return sb.ToString();
     }
 
+    /// <summary>
+    /// A short display name: the last path segment for the root (whose Name holds the full root path), otherwise
+    /// the entry name. A drive root keeps its full form ("C:\").
+    /// </summary>
+    public string DisplayName(int id)
+    {
+        var node = _nodes[id];
+        if (!node.IsRoot)
+        {
+            return node.Name;
+        }
+
+        var trimmed = node.Name.TrimEnd('\\', '/');
+        var cut = Math.Max(trimmed.LastIndexOf('\\'), trimmed.LastIndexOf('/'));
+        return cut >= 0 && cut < trimmed.Length - 1 ? trimmed[(cut + 1)..] : node.Name;
+    }
+
     /// <summary>Lists ancestors, nearest first, excluding the node itself.</summary>
     public IEnumerable<int> Ancestors(int id)
     {

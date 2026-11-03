@@ -263,7 +263,7 @@ public partial class Automation : Node
         // Cancellation timing on a fresh scan of the same root.
         var root = tree.Source.RootDisplayPath;
         _main.StartScan(new DirectoryScanner(root));
-        await Frames(6);
+        await Frames(1);
         var requestedAt = Time.GetTicksUsec();
         _main.CancelScan();
         var uiReturnUs = Time.GetTicksUsec() - requestedAt;

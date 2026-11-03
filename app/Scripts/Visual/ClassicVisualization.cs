@@ -142,10 +142,10 @@ public sealed class ClassicVisualization : Visualization
             }
         }
 
-        pedestals.Build(Root, _box, _pedestalMaterial);
-        blocks.Build(Root, _box, _blockMaterial);
-        wires.Build(Root, _box, _wireMaterial, castShadows: false);
-        markers.Build(Root, _box, _markerMaterial, castShadows: false);
+        Emit("pedestals", pedestals, _box, _pedestalMaterial);
+        Emit("blocks", blocks, _box, _blockMaterial);
+        Emit("wires", wires, _box, _wireMaterial, castShadows: false);
+        Emit("markers", markers, _box, _markerMaterial, castShadows: false);
         return pedestals.Count + blocks.Count + wires.Count + markers.Count;
     }
 }

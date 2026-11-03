@@ -316,9 +316,10 @@ public partial class Hud : CanvasLayer
         }
     }
 
-    public void SetSource(string text, bool live)
+    public void SetSource(string text, bool live, string tooltip)
     {
         _sourceBadge.Text = text;
+        _sourcePanel.TooltipText = tooltip;
         var sb = (StyleBoxFlat)_root.Theme.GetStylebox("panel", "PanelContainer").Duplicate();
         sb.BgColor = live ? new Color(0.03f, 0.22f, 0.12f, 0.92f) : new Color(0.3f, 0.2f, 0.02f, 0.92f);
         sb.BorderColor = live ? new Color(0.3f, 1f, 0.55f, 0.8f) : new Color(1f, 0.75f, 0.2f, 0.8f);

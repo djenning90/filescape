@@ -334,6 +334,7 @@ public static class TreeLayout
         var depth = new float[n];
         var relX = new float[n];
         var relZ = new float[n];
+        var spineOf = new float[n];      // X offset of the spine a child hangs from, relative to its parent
         var halfSpine = p.SpineWidth / 2;
         var gap = p.SiblingGap;
 
@@ -365,35 +366,84 @@ public static class TreeLayout
                 continue;
             }
 
-            float cursorL = 0, cursorR = 0, widestL = 0, widestR = 0;
+            // Many children: split them across k parallel spines joined by a cross street behind the parent. k is
+            // chosen so the block comes out roughly square. One spine is the classic fishbone.
+            var kids = new List<int>(node.DirectDirCount);
+            float sumD = 0, sumW = 0;
             foreach (var c in node.Children)
             {
-                if (!tree[c].IsDirectory)
+                if (tree[c].IsDirectory)
                 {
-                    continue;
-                }
-
-                // Place on the shorter side; ties go right, so the first child sits to the right of the spine.
-                var right = cursorR <= cursorL;
-                if (right)
-                {
-                    relX[c] = halfSpine + extL[c];
-                    relZ[c] = -(aisleStart + cursorR);
-                    cursorR += depth[c] + gap;
-                    widestR = MathF.Max(widestR, extL[c] + extR[c]);
-                }
-                else
-                {
-                    relX[c] = -(halfSpine + extR[c]);
-                    relZ[c] = -(aisleStart + cursorL);
-                    cursorL += depth[c] + gap;
-                    widestL = MathF.Max(widestL, extL[c] + extR[c]);
+                    kids.Add(c);
+                    sumD += depth[c] + gap;
+                    sumW += extL[c] + extR[c];
                 }
             }
 
-            extL[id] = MathF.Max(extL[id], widestL > 0 ? halfSpine + widestL : 0);
-            extR[id] = MathF.Max(extR[id], halfSpine + widestR);
-            depth[id] = aisleStart + MathF.Max(cursorL, cursorR) - gap;
+            var avgDepth = sumD / kids.Count;
+            var avgSpineWidth = 2 * (sumW / kids.Count) + p.SpineWidth + gap;
+            var spines = Math.Clamp((int)MathF.Round(MathF.Sqrt(kids.Count * avgDepth / (2 * avgSpineWidth))), 1, Math.Max(1, kids.Count / 2));
+            var perSpine = (int)MathF.Ceiling(kids.Count / (float)spines);
+
+            var spineLeft = new float[spines];
+            var spineRight = new float[spines];
+            var spineDepth = new float[spines];
+            for (var sIdx = 0; sIdx < spines; sIdx++)
+            {
+                float cursorL = 0, cursorR = 0, widestL = 0, widestR = 0;
+                for (var k = sIdx * perSpine; k < Math.Min(kids.Count, (sIdx + 1) * perSpine); k++)
+                {
+                    var c = kids[k];
+                    // Place on the shorter side; ties go right, so the first child sits to the right of its spine.
+                    // relX is relative to the spine for now and is shifted once the spine positions are known.
+                    if (cursorR <= cursorL)
+                    {
+                        relX[c] = halfSpine + extL[c];
+                        relZ[c] = -(aisleStart + cursorR);
+                        cursorR += depth[c] + gap;
+                        widestR = MathF.Max(widestR, extL[c] + extR[c]);
+                    }
+                    else
+                    {
+                        relX[c] = -(halfSpine + extR[c]);
+                        relZ[c] = -(aisleStart + cursorL);
+                        cursorL += depth[c] + gap;
+                        widestL = MathF.Max(widestL, extL[c] + extR[c]);
+                    }
+                }
+
+                spineLeft[sIdx] = halfSpine + widestL;
+                spineRight[sIdx] = halfSpine + widestR;
+                spineDepth[sIdx] = MathF.Max(cursorL, cursorR) - gap;
+            }
+
+            // Lay the spines side by side, centred on the parent.
+            var total = 0f;
+            for (var sIdx = 0; sIdx < spines; sIdx++)
+            {
+                total += spineLeft[sIdx] + spineRight[sIdx] + (sIdx > 0 ? gap : 0);
+            }
+
+            var x = -total / 2;
+            var deepest = 0f;
+            for (var sIdx = 0; sIdx < spines; sIdx++)
+            {
+                var spineX = spines == 1 ? 0 : x + spineLeft[sIdx];
+                x += spineLeft[sIdx] + spineRight[sIdx] + gap;
+                for (var k = sIdx * perSpine; k < Math.Min(kids.Count, (sIdx + 1) * perSpine); k++)
+                {
+                    relX[kids[k]] += spineX;
+                    spineOf[kids[k]] = spineX;
+                }
+
+                deepest = MathF.Max(deepest, spineDepth[sIdx]);
+            }
+
+            var leftEdge = spines == 1 ? spineLeft[0] : total / 2;
+            var rightEdge = spines == 1 ? spineRight[0] : total / 2;
+            extL[id] = MathF.Max(extL[id], spines == 1 && spineLeft[0] <= halfSpine ? 0 : leftEdge);
+            extR[id] = MathF.Max(extR[id], rightEdge);
+            depth[id] = aisleStart + deepest;
         }
 
         for (var id = 1; id < n; id++)
@@ -417,15 +467,34 @@ public static class TreeLayout
             }
             else
             {
-                // Down the spine, then across the clear gap just in front of the child.
+                var spineX = centreX[parent] + spineOf[id];
                 var crossZ = frontZ[id] + gap * 0.5f;
-                connectors.Add(new Connector(parent, id,
-                [
-                    start,
-                    new Vector3(centreX[parent], y, crossZ),
-                    new Vector3(centreX[id], y, crossZ),
-                    end,
-                ]));
+                if (MathF.Abs(spineOf[id]) < 1e-4f)
+                {
+                    // Down the parent's own spine, then across the clear gap just in front of the child.
+                    connectors.Add(new Connector(parent, id,
+                    [
+                        start,
+                        new Vector3(centreX[parent], y, crossZ),
+                        new Vector3(centreX[id], y, crossZ),
+                        end,
+                    ]));
+                }
+                else
+                {
+                    // Back to the cross street behind the parent, along it to this child's spine, down the spine,
+                    // then across into the child.
+                    var streetZ = frontZ[parent] - pedD[parent] - p.LevelGap * 0.25f;
+                    connectors.Add(new Connector(parent, id,
+                    [
+                        start,
+                        new Vector3(centreX[parent], y, streetZ),
+                        new Vector3(spineX, y, streetZ),
+                        new Vector3(spineX, y, crossZ),
+                        new Vector3(centreX[id], y, crossZ),
+                        end,
+                    ]));
+                }
             }
         }
     }
