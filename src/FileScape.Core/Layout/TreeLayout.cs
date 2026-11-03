@@ -112,6 +112,13 @@ public sealed class LayoutResult
     public List<Connector> Connectors { get; } = [];
     public Box Bounds => SubtreeBounds.Length == 0 ? Box.Empty : SubtreeBounds[0];
     public int Count => NodeBoxes.Length;
+
+    /// <summary>
+    /// True if this layout has geometry for <paramref name="id"/>. During a scan the tree can grow while the
+    /// displayed layout is deliberately kept (re-layout is throttled), so every geometry consumer must check this
+    /// rather than the tree's node count.
+    /// </summary>
+    public bool Contains(int id) => id >= 0 && id < NodeBoxes.Length;
 }
 
 /// <summary>

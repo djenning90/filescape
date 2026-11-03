@@ -10,10 +10,13 @@ namespace FileScape.Core.Interaction;
 /// </summary>
 public static class Picker
 {
-    /// <summary>Returns the nearest node hit by the ray, or -1. <paramref name="direction"/> must be unit length.</summary>
+    /// <summary>
+    /// Returns the nearest node hit by the ray, or -1. <paramref name="direction"/> must be unit length. The layout
+    /// may be older than the tree (during a scan). Nodes without geometry are skipped, because they are not drawn yet.
+    /// </summary>
     public static int Pick(FsTree tree, LayoutResult layout, Vector3 origin, Vector3 direction)
     {
-        if (tree.Count == 0 || layout.Count != tree.Count)
+        if (tree.Count == 0 || layout.Count == 0)
         {
             return -1;
         }
@@ -41,6 +44,11 @@ public static class Picker
             var node = tree[id];
             foreach (var c in node.Children)
             {
+                if (!layout.Contains(c))
+                {
+                    continue; // added to the tree after this layout was computed
+                }
+
                 if (tree[c].IsDirectory)
                 {
                     stack.Push(c);

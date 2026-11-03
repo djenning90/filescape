@@ -47,6 +47,19 @@ public sealed class DirectoryScanner : IScanSource
     /// <summary>A test hook, called on the scan thread just before a directory is enumerated, inside the reported OS-operation window.</summary>
     public Action<string>? BeforeEnumerateDirectory { get; init; }
 
+    /// <summary>
+    /// A test hook that replaces how the root's attributes are read. Real cloud-placeholder attributes cannot be
+    /// created without a cloud provider, so tests use this to exercise the root policy.
+    /// </summary>
+    public Func<string, FileAttributes>? RootAttributesProbe { get; init; }
+
+    /// <summary>
+    /// Policy FS-13, applied identically to the root and to every descendant: a directory marked
+    /// RECALL_ON_DATA_ACCESS is shown but not enumerated, because Microsoft documents that enumerating it can fetch
+    /// from the remote store. There is no override in this prototype.
+    /// </summary>
+    public static bool ShouldEnumerateDirectory(FileAttributes attributes) => (attributes & RecallOnDataAccess) == 0;
+
     /// <summary>The number of entries per emitted batch for very large directories.</summary>
     public int MaxBatchEntries { get; init; } = 4096;
 
@@ -62,7 +75,14 @@ public sealed class DirectoryScanner : IScanSource
         DateTime? created = null, modified = null, accessed = null;
         try
         {
-            rootAttrs = rootInfo.Attributes;
+            rootAttrs = RootAttributesProbe?.Invoke(_rootPath) ?? rootInfo.Attributes;
+            if ((int)rootAttrs == -1)
+            {
+                // .NET reports a missing path as all-bits-set attributes rather than throwing. Treat it as "no
+                // attributes", so enumeration fails visibly (Vanished) instead of looking like a cloud placeholder.
+                rootAttrs = 0;
+            }
+
             rootFlags = FlagsFor(rootAttrs) & ~(NodeFlags.ReparsePoint | NodeFlags.DirectoryLink);
             created = rootInfo.CreationTimeUtc;
             modified = rootInfo.LastWriteTimeUtc;
@@ -73,13 +93,24 @@ public sealed class DirectoryScanner : IScanSource
             rootFlags |= NodeFlags.EnumerationError;
         }
 
-        // The user chose the root explicitly, so it is traversed even if it is itself a link.
+        // The user chose the root explicitly, so it is traversed even if it is itself a link. The cloud policy
+        // still applies to it, exactly as to its descendants.
+        var enumerateRoot = (rootFlags & NodeFlags.EnumerationError) != 0 || ShouldEnumerateDirectory(rootAttrs);
+        if (!enumerateRoot)
+        {
+            rootFlags |= NodeFlags.CloudNotTraversed;
+        }
+
         rootBatch.NewNodes.Add(new NodeRecord(0, -1, _rootPath, NodeKind.Directory, rootFlags, rootAttrs, 0,
-            created, modified, accessed, 0, DirScanState.Pending));
+            created, modified, accessed, 0, enumerateRoot ? DirScanState.Pending : DirScanState.NotTraversed));
         context.Nodes = 1;
         context.Directories = 1;
-        context.Pending = 1;
+        context.Pending = enumerateRoot ? 1 : 0;
         context.Emit(rootBatch);
+        if (!enumerateRoot)
+        {
+            return;
+        }
 
         var queue = new Queue<(int Id, string Path, int Depth)>();
         queue.Enqueue((0, _rootPath, 0));
@@ -270,7 +301,7 @@ public sealed class DirectoryScanner : IScanSource
         else if (e.IsDirectory)
         {
             kind = NodeKind.Directory;
-            if ((attrs & RecallOnDataAccess) != 0)
+            if (!ShouldEnumerateDirectory(attrs))
             {
                 flags |= NodeFlags.CloudNotTraversed;
             }
@@ -295,10 +326,10 @@ public sealed class DirectoryScanner : IScanSource
         t.UtcDateTime.Year <= 1601 ? null : t.UtcDateTime;
 
     // Values from the Windows SDK (winnt.h). .NET's FileAttributes enum lacks the cloud attributes.
-    internal const FileAttributes RecallOnOpen = (FileAttributes)0x00040000;
-    internal const FileAttributes RecallOnDataAccess = (FileAttributes)0x00400000;
-    internal const FileAttributes Pinned = (FileAttributes)0x00080000;
-    internal const FileAttributes Unpinned = (FileAttributes)0x00100000;
+    public const FileAttributes RecallOnOpen = (FileAttributes)0x00040000;
+    public const FileAttributes RecallOnDataAccess = (FileAttributes)0x00400000;
+    public const FileAttributes Pinned = (FileAttributes)0x00080000;
+    public const FileAttributes Unpinned = (FileAttributes)0x00100000;
 
     internal static NodeFlags FlagsFor(FileAttributes attrs)
     {
