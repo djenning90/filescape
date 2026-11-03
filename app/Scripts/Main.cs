@@ -69,9 +69,11 @@ public partial class Main : Node3D
     public int VisualizationIndex => _visIndex;
     public Quality Quality => _quality;
     public string? LastShellMessage { get; private set; }
+    public int LabelsShown => _labels.LastShown;
 
     public override void _Ready()
     {
+        InputBindings.Register();
         var args = CommandLine.Parse(OS.GetCmdlineUserArgs());
         var dpiScale = Mathf.Clamp(DisplayServer.ScreenGetDpi() / 96f, 1f, 3f);
         GetWindow().ContentScaleFactor = args.UiScale ?? dpiScale;
@@ -81,6 +83,7 @@ public partial class Main : Node3D
             DisplayServer.WindowSetSize(ws);
         }
 
+        _stateFile = args.StateFile;
         BuildScene();
         _quality = args.Quality ?? Quality.High;
         _visIndex = args.Visualization ?? 0;
@@ -96,7 +99,11 @@ public partial class Main : Node3D
             StartScan(new SyntheticTreeSource { TargetNodes = args.SyntheticNodes ?? 12_000, NodesPerSecond = args.SyntheticRate ?? 0 });
         }
 
-        if (args.Automation is { } script)
+        if (args.Automation == "navigation")
+        {
+            AddChild(new NavigationProbe(this, args.OutputDirectory ?? OS.GetUserDataDir()));
+        }
+        else if (args.Automation is { } script)
         {
             var automation = new Automation(this, script, args.OutputDirectory ?? OS.GetUserDataDir(), args);
             AddChild(automation);
@@ -225,7 +232,11 @@ public partial class Main : Node3D
         }
     }
 
-    private void ShowFolderDialog() => _folderDialog?.Popup();
+    private void ShowFolderDialog()
+    {
+        ReleaseAllInput();
+        _folderDialog?.Popup();
+    }
 
     private void OnFolderChosen(string path)
     {
@@ -300,6 +311,12 @@ public partial class Main : Node3D
             UpdateStatus();
         }
 
+        if (_stateFile != null && now - _lastStateWrite > 0.15)
+        {
+            _lastStateWrite = now;
+            WriteState();
+        }
+
         if (now - _lastStatsRefresh > 0.25)
         {
             _lastStatsRefresh = now;
@@ -347,7 +364,7 @@ public partial class Main : Node3D
         }
 
         var anchor = _selection.Selected >= 0 ? _selection.Selected : 0;
-        GVector3? before = _layout != null && anchor < _layout.Count ? Visualization.Gd(_layout.NodeBoxes[anchor].Center) : null;
+        GVector3? before = _layout != null && _layout.Contains(anchor) ? Visualization.Gd(_layout.NodeBoxes[anchor].Center) : null;
 
         var sw = Stopwatch.StartNew();
         var vis = ActiveVisualization;
@@ -457,7 +474,7 @@ public partial class Main : Node3D
         var box = _layout.NodeBoxes[0];
         foreach (var c in _tree.Root.Children)
         {
-            box = box.Union(_layout.NodeBoxes[c]);
+            if (_layout.Contains(c)) box = box.Union(_layout.NodeBoxes[c]);
         }
 
         // Keep the home view a readable size even when the root has hundreds of children.
@@ -500,12 +517,18 @@ public partial class Main : Node3D
         }
 
         var id = _selection.Selected;
+        if (!_layout.Contains(id))
+        {
+            _hud.Toast("That item has just been scanned and is not placed yet. It appears after the next layout update.");
+            return;
+        }
+
         var box = _layout.NodeBoxes[id];
         if (_tree[id].IsDirectory)
         {
             foreach (var c in _tree[id].Children)
             {
-                if (!_tree[c].IsDirectory) box = box.Union(_layout.NodeBoxes[c]);
+                if (!_tree[c].IsDirectory && _layout.Contains(c)) box = box.Union(_layout.NodeBoxes[c]);
             }
         }
         else
@@ -602,6 +625,76 @@ public partial class Main : Node3D
     }
 
     // ---------------------------------------------------------------- input
+    //
+    // Input design (NAV-07..NAV-11, docs/decisions.md AD-12):
+    //  * Actions come from InputBindings, never raw keycodes, so aliases and future remapping live in one place.
+    //  * Presses count only when they reach _UnhandledInput, that is, when no UI control consumed them. A focused
+    //    control that owns the arrow keys therefore keeps them. Releases are observed in _Input, before the GUI, so
+    //    a key or button can never stay "held" because a control swallowed its release.
+    //  * Focus loss, dialogs, and lost button releases clear held keys, end drags, and release mouse capture.
+
+    private readonly HeldActions _held = new();
+    private string? _stateFile;
+    private double _lastStateWrite;
+    private bool _windowFocused = true;
+    private Vector2 _flyStartMouse;
+    private int _consumedEscapes;
+
+    /// <summary>True while a modal dialog is open; scene navigation is paused and held keys are cleared.</summary>
+    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false);
+
+    public bool WindowFocused => _windowFocused;
+    public bool IsDragging => _pressButton != MouseButton.None;
+    public IEnumerable<string> HeldActionNames => InputBindings.MovementActions.Where(_held.IsHeld);
+
+    public override void _Input(InputEvent @event)
+    {
+        // Releases first, whoever has focus.
+        if (@event is InputEventKey { Pressed: false } up)
+        {
+            foreach (var a in InputBindings.MovementActions)
+            {
+                if (up.IsAction(a)) _held.Release(a, InputBindings.KeyId(up));
+            }
+        }
+        else if (@event is InputEventMouseButton { Pressed: false } mbUp)
+        {
+            if (mbUp.ButtonIndex == MouseButton.Right && _rig.IsFlying)
+            {
+                EndFly();
+            }
+
+            if (mbUp.ButtonIndex == _pressButton && mbUp.ButtonIndex != MouseButton.Left)
+            {
+                _pressButton = MouseButton.None;
+            }
+        }
+
+        if (!_rig.IsFlying)
+        {
+            return;
+        }
+
+        // While flying, the scene owns the mouse: motion looks, the wheel sets speed, and Escape only ends flight.
+        switch (@event)
+        {
+            case InputEventMouseMotion motion:
+                _rig.Look(motion.Relative);
+                GetViewport().SetInputAsHandled();
+                break;
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
+                // Factor carries multi-notch and fractional (high-resolution wheel, touchpad) scrolling.
+                _rig.StepFlySpeed((wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1) * WheelNotches(wheel));
+                _hud.SetFlyStatus(true, _rig.FlySpeed, highlight: true);
+                GetViewport().SetInputAsHandled();
+                break;
+            case InputEventKey { Pressed: true, Echo: false } esc when esc.IsAction(InputBindings.Parent):
+                _consumedEscapes++;
+                EndFly();
+                GetViewport().SetInputAsHandled();
+                break;
+        }
+    }
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -613,16 +706,40 @@ public partial class Main : Node3D
             case InputEventMouseMotion mm:
                 HandleMouseMotion(mm);
                 break;
-            case InputEventKey { Pressed: true, Echo: false } key:
-                HandleKey(key);
+            case InputEventKey { Pressed: true } key:
+                foreach (var a in InputBindings.MovementActions)
+                {
+                    if (key.IsAction(a)) _held.Press(a, InputBindings.KeyId(key));
+                }
+
+                if (!key.Echo)
+                {
+                    HandleCommand(key);
+                }
+
                 break;
         }
     }
 
     private void HandleMouseButton(InputEventMouseButton mb)
     {
-        if (mb.ButtonIndex == MouseButton.WheelUp && mb.Pressed) { _rig.Zoom(0.87f); return; }
-        if (mb.ButtonIndex == MouseButton.WheelDown && mb.Pressed) { _rig.Zoom(1.15f); return; }
+        if (mb.Pressed)
+        {
+            // Clicking the scene takes keyboard focus away from any UI control, so movement keys apply to the scene again.
+            GetViewport().GuiReleaseFocus();
+        }
+
+        if (mb.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+        {
+            if (mb.Pressed && !_rig.IsFlying) _rig.Zoom(Mathf.Pow(mb.ButtonIndex == MouseButton.WheelUp ? 0.87f : 1.15f, WheelNotches(mb)));
+            return;
+        }
+
+        if (mb.Pressed && mb.IsAction(InputBindings.FlyLook))
+        {
+            BeginFly(mb.Position);
+            return;
+        }
 
         if (mb.Pressed)
         {
@@ -634,9 +751,13 @@ public partial class Main : Node3D
                 return;
             }
 
-            _pressPosition = mb.Position;
-            _pressButton = mb.ButtonIndex;
-            _dragged = false;
+            if (mb.IsAction(InputBindings.Orbit) || mb.IsAction(InputBindings.Pan))
+            {
+                _pressPosition = mb.Position;
+                _pressButton = mb.ButtonIndex;
+                _dragged = false;
+            }
+
             return;
         }
 
@@ -672,49 +793,163 @@ public partial class Main : Node3D
 
         if (_pressButton == MouseButton.Left)
         {
-            _rig.Orbit(-mm.Relative.X * 0.28f, mm.Relative.Y * 0.22f);
+            _rig.Orbit(-mm.Relative.X * CameraRig.OrbitYawSensitivity, -mm.Relative.Y * CameraRig.OrbitPitchSensitivity);
         }
-        else if (_pressButton is MouseButton.Right or MouseButton.Middle)
+        else if (_pressButton == MouseButton.Middle)
         {
             _rig.PanPixels(mm.Relative, GetViewport().GetVisibleRect().Size.Y);
         }
     }
 
-    private void HandleKey(InputEventKey key)
+    private void HandleCommand(InputEventKey key)
     {
-        switch (key.Keycode)
-        {
-            case Key.Enter or Key.KpEnter: RequestOpen(); break;
-            case Key.Backspace: if (_selection.Back()) FlyToSelection(); break;
-            case Key.Escape: if (_tree != null && _selection.Parent(_tree)) FlyToSelection(); break;
-            case Key.Home: ResetView(); break;
-            case Key.B: Overview(); break;
-            case Key.Tab: SetVisualization((_visIndex + 1) % _visualizations.Length); break;
-            case Key.F: FlyToSelection(); break;
-            case Key.F1: _hud.ToggleHelp(); break;
-            case Key.F2: ToggleQuality(); break;
-            case Key.F3: _hud.SetStats("", !_hud.StatsVisible); break;
-            case Key.O when key.CtrlPressed: ShowFolderDialog(); break;
-        }
+        if (key.IsAction(InputBindings.Open)) RequestOpen();
+        else if (key.IsAction(InputBindings.HistoryBack)) { if (_selection.Back()) FlyToSelection(); }
+        else if (key.IsAction(InputBindings.Parent)) HandleEscape();
+        else if (key.IsAction(InputBindings.Home)) ResetView();
+        else if (key.IsAction(InputBindings.Overview)) Overview();
+        else if (key.IsAction(InputBindings.SwitchVis)) SetVisualization((_visIndex + 1) % _visualizations.Length);
+        else if (key.IsAction(InputBindings.Frame)) FlyToSelection();
+        else if (key.IsAction(InputBindings.Help)) _hud.ToggleHelp();
+        else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
+        else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
+        else if (key.IsAction(InputBindings.OpenFolder)) ShowFolderDialog();
     }
 
-    private void HandleKeyboardMovement(float dt)
+    /// <summary>Escape peels back one layer at a time: help overlay, then parent directory. Flight is handled in _Input.</summary>
+    private void HandleEscape()
     {
-        if (GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit)
+        if (_hud.HelpVisible)
+        {
+            _hud.ToggleHelp();
+            return;
+        }
+
+        if (_tree != null && _selection.Parent(_tree)) FlyToSelection();
+    }
+
+    /// <summary>Godot reports 0 for ordinary single-notch events from some devices, so 0 counts as one notch.</summary>
+    private static float WheelNotches(InputEventMouseButton e) => e.Factor > 0 ? Mathf.Clamp(e.Factor, 0.05f, 10f) : 1f;
+
+    private void BeginFly(Vector2 mousePosition)
+    {
+        if (ModalOpen || !_windowFocused)
         {
             return;
         }
 
-        var input = GVector3.Zero;
-        if (Input.IsKeyPressed(Key.W)) input.Z -= 1;
-        if (Input.IsKeyPressed(Key.S)) input.Z += 1;
-        if (Input.IsKeyPressed(Key.A)) input.X -= 1;
-        if (Input.IsKeyPressed(Key.D)) input.X += 1;
-        if (Input.IsKeyPressed(Key.E)) input.Y += 1;
-        if (Input.IsKeyPressed(Key.Q)) input.Y -= 1;
-        if (input != GVector3.Zero)
+        _flyStartMouse = mousePosition;
+        _pressButton = MouseButton.None;
+        _rig.EnterFly();
+        Input.MouseMode = Input.MouseModeEnum.Captured;
+        _hud.SetFlyStatus(true, _rig.FlySpeed, highlight: false);
+        _hud.NoteInteraction(flew: true);
+    }
+
+    /// <summary>Ends flight without moving the camera. It restores the cursor where flight began and re-pivots on what is under the screen centre.</summary>
+    public void EndFly()
+    {
+        if (Input.MouseMode == Input.MouseModeEnum.Captured)
         {
-            _rig.MoveLocal(input * (Input.IsKeyPressed(Key.Shift) ? 3f : 1f), dt);
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+            if (_flyStartMouse != Vector2.Zero) Input.WarpMouse(_flyStartMouse);
+        }
+
+        if (!_rig.IsFlying)
+        {
+            return;
+        }
+
+        _rig.ExitFly();
+        _hud.SetFlyStatus(false, _rig.FlySpeed, highlight: false);
+        RepivotOnView();
+    }
+
+    /// <summary>After flight, orbit around whatever is under the screen centre: the picked surface, else the ground ahead.</summary>
+    private void RepivotOnView()
+    {
+        var cam = _rig.Camera;
+        var centre = GetViewport().GetVisibleRect().Size / 2;
+        var origin = cam.ProjectRayOrigin(centre);
+        var dir = cam.ProjectRayNormal(centre);
+        float? t = null;
+        if (_tree != null && _layout != null && Picker.Pick(_tree, _layout, Visualization.Num(origin), Visualization.Num(dir)) is var hit && hit >= 0)
+        {
+            t = _layout.NodeBoxes[hit].Intersect(Visualization.Num(origin), Visualization.Num(dir));
+        }
+
+        if (t == null && dir.Y < -0.05f)
+        {
+            t = -origin.Y / dir.Y;
+        }
+
+        if (t is { } d && d > 2f && d < 3000f)
+        {
+            _rig.SetPivotDistanceKeepingPose(d);
+        }
+    }
+
+    /// <summary>A snapshot of navigation state for external probes and automation logs.</summary>
+    public string StateJson()
+    {
+        var p = _rig.Camera.GlobalPosition;
+        var t = _rig.Target;
+        var up = _rig.Camera.GlobalTransform.Basis.Y;
+        return
+            System.FormattableString.Invariant($"{{\"mode\":\"{_rig.Mode}\",\"mouseMode\":\"{Input.MouseMode}\",\"focused\":{(_windowFocused ? "true" : "false")},\"modal\":{(ModalOpen ? "true" : "false")},\"dragging\":\"{_pressButton}\",") +
+            System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw:0.###},\"lookPitch\":{_rig.LookPitch:0.###},\"up\":{up.Y:0.####},") +
+            System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeed:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
+            System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes}}}");
+    }
+
+    private void WriteState()
+    {
+        try
+        {
+            System.IO.File.WriteAllText(_stateFile!, StateJson());
+        }
+        catch (System.IO.IOException)
+        {
+            // A reader may hold the file briefly; the next write catches up.
+        }
+    }
+
+    /// <summary>Clears every transient input state. Called on focus loss and when a modal dialog opens.</summary>
+    private void ReleaseAllInput()
+    {
+        EndFly();
+        _held.Clear();
+        _pressButton = MouseButton.None;
+        _dragged = false;
+    }
+
+    private void HandleKeyboardMovement(float dt)
+    {
+        // A focused UI control (or an open dialog) owns the keyboard; navigation resumes when it lets go.
+        var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null;
+        if (blocked)
+        {
+            if (_held.Any || _rig.IsFlying || _pressButton != MouseButton.None) ReleaseAllInput();
+            return;
+        }
+
+        // Lost button releases (for example a release outside the window that the OS did not deliver) end the drag or flight.
+        if (_rig.IsFlying && !Input.IsMouseButtonPressed(MouseButton.Right)) EndFly();
+        if (_pressButton != MouseButton.None && !Input.IsMouseButtonPressed(_pressButton)) _pressButton = MouseButton.None;
+
+        var input = new GVector3(
+            _held.Axis(InputBindings.Left, InputBindings.Right),
+            _held.Axis(InputBindings.Down, InputBindings.Up),
+            _held.Axis(InputBindings.Back, InputBindings.Forward));
+        var fast = _held.IsHeld(InputBindings.Fast);
+        if (_rig.IsFlying)
+        {
+            _rig.FlyMove(input, fast, dt);
+        }
+        else if (input != GVector3.Zero)
+        {
+            _rig.MoveGround(input, fast, dt);
+            _hud.NoteInteraction(flew: false);
         }
     }
 
@@ -788,8 +1023,9 @@ public partial class Main : Node3D
         _hud.Toast(r.Message, r.WasMock ? new Color(1f, 0.85f, 0.45f) : r.Succeeded ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f), 6);
     }
 
-    private void Confirm(string text, Action onOk)
+    public void Confirm(string text, Action onOk)
     {
+        ReleaseAllInput();
         _pendingConfirm = onOk;
         _confirm.DialogText = text;
         _confirm.PopupCentered(new Vector2I(560, 200));
@@ -890,6 +1126,16 @@ public partial class Main : Node3D
         if (what == NotificationWMCloseRequest || what == NotificationPredelete)
         {
             _session?.Dispose();
+        }
+        else if (what is (int)NotificationApplicationFocusOut or (int)NotificationWMWindowFocusOut)
+        {
+            // Alt-Tab and similar: release capture and forget held keys, so nothing is stuck on return.
+            _windowFocused = false;
+            if (_rig != null) ReleaseAllInput();
+        }
+        else if (what is (int)NotificationApplicationFocusIn or (int)NotificationWMWindowFocusIn)
+        {
+            _windowFocused = true;
         }
     }
 }

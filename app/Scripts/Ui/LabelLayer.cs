@@ -65,7 +65,7 @@ public partial class LabelLayer : Control
 
         void TryPlace(int id, Kind kind)
         {
-            if (used >= MaxLabels || id < 0 || !tree.Contains(id) || !shown.Add(id))
+            if (used >= MaxLabels || !layout.Contains(id) || !tree.Contains(id) || !shown.Add(id))
             {
                 return;
             }
@@ -116,57 +116,18 @@ public partial class LabelLayer : Control
             used++;
         }
 
-        TryPlace(selection.Selected, Kind.Selected);
-        TryPlace(selection.Hovered, Kind.Hovered);
-        if (selection.Selected >= 0 && tree.Contains(selection.Selected))
+        // Candidate choice lives in Core (LabelPlanner) and only yields ids the displayed layout contains, which
+        // matters while a scan grows the tree ahead of the throttled re-layout.
+        foreach (var (id, role) in LabelPlanner.Candidates(tree, layout, selection, Visual.Visualization.Num(camPos), MaxDirCandidates, MaxFileCandidates))
         {
-            var sel = tree[selection.Selected];
-            if (!sel.IsRoot)
+            TryPlace(id, role switch
             {
-                TryPlace(sel.ParentId, Kind.Related);
-            }
-
-            if (sel.IsDirectory)
-            {
-                foreach (var c in sel.Children)
-                {
-                    if (tree[c].IsDirectory)
-                    {
-                        TryPlace(c, Kind.Related);
-                    }
-                }
-            }
-        }
-
-        // Nearest directories and files in the frustum, nearest first.
-        var dirs = new List<(float D, int Id)>();
-        var files = new List<(float D, int Id)>();
-        var nodes = tree.Nodes;
-        for (var id = 0; id < nodes.Count; id++)
-        {
-            var c = layout.NodeBoxes[id].Center;
-            var gp = new Vector3(c.X, c.Y, c.Z);
-            var d = gp.DistanceSquaredTo(camPos);
-            if (nodes[id].IsDirectory)
-            {
-                dirs.Add((d, id));
-            }
-            else if (d < 900)
-            {
-                files.Add((d, id));
-            }
-        }
-
-        dirs.Sort((a, b) => a.D.CompareTo(b.D));
-        files.Sort((a, b) => a.D.CompareTo(b.D));
-        foreach (var (_, id) in dirs.Take(MaxDirCandidates))
-        {
-            TryPlace(id, Kind.Dir);
-        }
-
-        foreach (var (_, id) in files.Take(MaxFileCandidates))
-        {
-            TryPlace(id, Kind.File);
+                LabelRole.Selected => Kind.Selected,
+                LabelRole.Hovered => Kind.Hovered,
+                LabelRole.Related => Kind.Related,
+                LabelRole.Directory => Kind.Dir,
+                _ => Kind.File,
+            });
         }
 
         for (var i = used; i < _pool.Count; i++)

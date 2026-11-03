@@ -125,6 +125,7 @@ public partial class Hud : CanvasLayer
         BuildLegend();
         BuildHelp();
         BuildStatsAndToast();
+        BuildHintAndFlyChip();
     }
 
     private void BuildTopBar()
@@ -169,7 +170,9 @@ public partial class Hud : CanvasLayer
         row.AddChild(MakeButton("Overview", () => OverviewRequested?.Invoke(), "Bird's-eye view of the whole tree (B)."));
         _quality = MakeButton("Quality: High", () => QualityToggled?.Invoke(), "Toggle effects (F2). Low disables volumetric fog, SSR and SSAO.");
         row.AddChild(_quality);
-        row.AddChild(MakeButton("Help", () => HelpToggled?.Invoke(), "Show or hide controls (F1)."));
+        var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
+        help.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f));
+        row.AddChild(help);
 
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _sourcePanel = new PanelContainer();
@@ -268,14 +271,20 @@ public partial class Hud : CanvasLayer
             FitContent = true,
             CustomMinimumSize = new Vector2(560, 0),
             Text =
-                "[b]Controls[/b]\n" +
-                "[b]Click[/b] select and inspect      [b]Double-click[/b] fly to\n" +
-                "[b]Left-drag[/b] orbit      [b]Right/middle-drag[/b] pan      [b]Wheel[/b] zoom\n" +
-                "[b]W A S D[/b] move      [b]Q / E[/b] down / up      [b]Shift[/b] faster\n" +
-                "[b]Enter[/b] open with Windows (asks first for programs)\n" +
-                "[b]Backspace[/b] back      [b]Esc[/b] parent directory      [b]F[/b] fly to selection\n" +
-                "[b]Home[/b] reset view      [b]B[/b] bird's-eye overview      [b]Tab[/b] switch visualization\n" +
-                "[b]F1[/b] help      [b]F2[/b] quality      [b]F3[/b] performance stats\n\n" +
+                "[b]Moving around[/b]\n" +
+                "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +
+                "[b]Hold right mouse[/b]  fly: look around with the mouse while W A S D / arrows move you\n" +
+                "    where you look; the [b]wheel[/b] changes flight speed; release to stop (or [b]Esc[/b])\n" +
+                "[b]Left-drag[/b]  orbit around the view centre      [b]Middle-drag[/b]  pan\n" +
+                "[b]Wheel[/b]  zoom in / out (while flying: flight speed)\n" +
+                "[b]Home[/b]  back to the start view      [b]B[/b]  bird's-eye overview\n\n" +
+                "[b]Exploring[/b]\n" +
+                "[b]Click[/b]  select and inspect      [b]Double-click[/b] or [b]F[/b]  fly to the selection\n" +
+                "[b]Esc[/b]  parent directory      [b]Backspace[/b]  previous selection\n" +
+                "[b]Enter[/b]  open with Windows (asks first for programs, links and cloud files)\n" +
+                "[b]Tab[/b]  switch Classic / District (the selection stays)\n" +
+                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats\n\n" +
+                "Right-drag used to pan; pan is now on the middle button.\n" +
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
         };
         _help.AddChild(text);
@@ -310,6 +319,9 @@ public partial class Hud : CanvasLayer
 
     public override void _Process(double delta)
     {
+        var nowS = Time.GetTicksMsec() / 1000.0;
+        if (_hintPanel.Visible && nowS - _hintShownAt > 60) DismissHint();
+        _flyLabel.AddThemeColorOverride("font_color", nowS < _flyHighlightUntil ? new Color(1f, 0.92f, 0.5f) : new Color(0.75f, 0.95f, 1f));
         if (_toastPanel.Visible && Time.GetTicksMsec() / 1000.0 > _toastUntil)
         {
             _toastPanel.Visible = false;
@@ -406,7 +418,73 @@ public partial class Hud : CanvasLayer
 
     public bool StatsVisible => _stats.Visible;
 
-    public void ToggleHelp() => _help.Visible = !_help.Visible;
+    public void ToggleHelp()
+    {
+        _help.Visible = !_help.Visible;
+        if (_help.Visible) DismissHint();
+    }
+
+    public bool HelpVisible => _help.Visible;
+
+    /// <summary>The on-screen rectangle of a visualization button (for input automation that clicks the real toolbar).</summary>
+    public Rect2 VisualizationButtonRect(int index) => _visButtons[index].GetGlobalRect();
+
+    // ------------------------------------------------------------ hint and flight status
+
+    private PanelContainer _hintPanel = null!;
+    private PanelContainer _flyPanel = null!;
+    private Label _flyLabel = null!;
+    private double _hintShownAt;
+    private bool _movedOnce, _flewOnce;
+    private double _flyHighlightUntil;
+
+    /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
+    public const string HintText = "WASD / arrows move  ·  Hold right mouse to look  ·  Q/E elevation  ·  Shift faster  ·  Home reset  ·  F1 help";
+
+    private void BuildHintAndFlyChip()
+    {
+        _hintPanel = new PanelContainer();
+        _hintPanel.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
+        _hintPanel.GrowHorizontal = Control.GrowDirection.Both;
+        _hintPanel.GrowVertical = Control.GrowDirection.Begin;
+        _hintPanel.OffsetBottom = -14;
+        _hintPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+        var hint = new Label { Text = HintText, HorizontalAlignment = HorizontalAlignment.Center };
+        hint.AddThemeFontSizeOverride("font_size", 14);
+        hint.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
+        _hintPanel.AddChild(hint);
+        _root.AddChild(_hintPanel);
+        _hintShownAt = Time.GetTicksMsec() / 1000.0;
+
+        _flyPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _flyPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+        _flyPanel.GrowHorizontal = Control.GrowDirection.Both;
+        _flyPanel.OffsetTop = 118;
+        _flyLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+        _flyLabel.AddThemeFontSizeOverride("font_size", 14);
+        _flyPanel.AddChild(_flyLabel);
+        _root.AddChild(_flyPanel);
+    }
+
+    public bool HintVisible => _hintPanel.Visible;
+    public bool FlyChipVisible => _flyPanel.Visible;
+    public string FlyChipText => _flyLabel.Text;
+
+    public void DismissHint() => _hintPanel.Visible = false;
+
+    /// <summary>Records that the user moved or flew. The hint goes once they have done both.</summary>
+    public void NoteInteraction(bool flew)
+    {
+        if (flew) _flewOnce = true; else _movedOnce = true;
+        if (_movedOnce && _flewOnce) DismissHint();
+    }
+
+    public void SetFlyStatus(bool flying, float speed, bool highlight)
+    {
+        _flyPanel.Visible = flying;
+        _flyLabel.Text = $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
+        if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + 1.2;
+    }
 
     public void Toast(string text, Color? color = null, double seconds = 4.5)
     {
