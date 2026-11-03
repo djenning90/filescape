@@ -148,6 +148,9 @@ public sealed class ScanSession : IDisposable
 
     public bool TryDequeue(out ScanBatch batch) => _batches.TryDequeue(out batch!);
 
+    /// <summary>True while batches are waiting to be applied by the consumer.</summary>
+    public bool HasPendingBatches => !_batches.IsEmpty;
+
     /// <summary>Waits for the source thread to stop. Intended for tests and tools, not the UI thread.</summary>
     public bool WaitForExit(TimeSpan timeout) => _thread?.Join(timeout) ?? true;
 

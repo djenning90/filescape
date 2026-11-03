@@ -16,22 +16,53 @@ public class LayoutAndInteractionTests
 
     private static LayoutParams ParamsFor(string style) => style == "classic" ? LayoutParams.Classic : LayoutParams.District;
 
+    public static TheoryData<string> AllLayouts => new() { "classic", "district", "rows" };
+
+    private static LayoutParams ParamsForAny(string style) => style == "rows" ? LayoutParams.Classic with { Arrangement = Arrangement.Rows } : ParamsFor(style);
+
+    /// <summary>VIS-05: subtrees must never overlap; otherwise picking and reading the hierarchy become ambiguous.</summary>
     [Theory]
-    [MemberData(nameof(Styles))]
+    [MemberData(nameof(AllLayouts))]
     public void Sibling_subtrees_never_overlap(string style)
     {
         var tree = Tree.Value;
-        var layout = TreeLayout.Compute(tree, ParamsFor(style));
+        var layout = TreeLayout.Compute(tree, ParamsForAny(style));
         foreach (var dir in tree.Nodes.Where(n => n.IsDirectory))
         {
             var subdirs = dir.Children.Where(c => tree[c].IsDirectory).ToList();
-            for (var i = 1; i < subdirs.Count; i++)
+            for (var i = 0; i < subdirs.Count; i++)
             {
-                var left = layout.SubtreeBounds[subdirs[i - 1]];
-                var right = layout.SubtreeBounds[subdirs[i]];
-                right.Min.X.Should().BeGreaterThanOrEqualTo(left.Max.X - 1e-3f, $"siblings under {dir.Name} must not overlap");
+                for (var j = i + 1; j < subdirs.Count; j++)
+                {
+                    var a = Flatten(layout.SubtreeBounds[subdirs[i]]);
+                    var b = Flatten(layout.SubtreeBounds[subdirs[j]]);
+                    a.Overlaps(b, 1e-3f).Should().BeFalse($"subtrees {tree[subdirs[i]].Name} and {tree[subdirs[j]].Name} under {dir.Name} must not overlap");
+                }
+
+                // A child subtree must not overlap its parent's own pedestal either.
+                Flatten(layout.SubtreeBounds[subdirs[i]]).Overlaps(Flatten(layout.NodeBoxes[dir.Id]), 1e-3f).Should().BeFalse();
             }
         }
+    }
+
+    /// <summary>Compares footprints in the ground plane (XZ). Height does not matter for overlap.</summary>
+    private static Box Flatten(Box b) => new(b.Min with { Y = 0 }, b.Max with { Y = 1 });
+
+    /// <summary>
+    /// AD-08: the fishbone arrangement keeps real-shaped trees two-dimensional, so a single overview can show them.
+    /// The historical rows arrangement is kept for comparison and is expected to be much wider.
+    /// </summary>
+    [Fact]
+    public void Fishbone_is_far_more_compact_than_historical_rows()
+    {
+        var tree = Tree.Value;
+        var fish = TreeLayout.Compute(tree, LayoutParams.Classic).Bounds.Size;
+        var rows = TreeLayout.Compute(tree, LayoutParams.Classic with { Arrangement = Arrangement.Rows }).Bounds.Size;
+        var fishAspect = MathF.Max(fish.X, fish.Z) / MathF.Min(fish.X, fish.Z);
+        var rowsAspect = rows.X / rows.Z;
+        fishAspect.Should().BeLessThan(6f, $"fishbone bounds {fish.X:0}×{fish.Z:0}");
+        rowsAspect.Should().BeGreaterThan(fishAspect, $"rows bounds {rows.X:0}×{rows.Z:0}");
+        (fish.X * fish.Z).Should().BeLessThan(rows.X * rows.Z, "fishbone should use less ground area");
     }
 
     [Theory]
@@ -67,11 +98,12 @@ public class LayoutAndInteractionTests
         }
     }
 
-    [Fact]
-    public void Children_rows_recede_behind_their_parent()
+    [Theory]
+    [MemberData(nameof(AllLayouts))]
+    public void Children_recede_behind_their_parent(string style)
     {
         var tree = Tree.Value;
-        var layout = TreeLayout.Compute(tree, LayoutParams.Classic);
+        var layout = TreeLayout.Compute(tree, ParamsForAny(style));
         foreach (var n in tree.Nodes.Where(n => n.IsDirectory && !n.IsRoot))
         {
             layout.NodeBoxes[n.Id].Max.Z.Should().BeLessThan(layout.NodeBoxes[n.ParentId].Min.Z);
@@ -105,7 +137,18 @@ public class LayoutAndInteractionTests
         var tree = Tree.Value;
         var layout = TreeLayout.Compute(tree, LayoutParams.District);
         layout.Connectors.Should().HaveCount(tree.Nodes.Count(n => n.IsDirectory) - 1);
-        layout.Connectors.Should().OnlyContain(c => c.Points.Length == 4 && c.Points.All(p => p.Y < 0.1f));
+        layout.Connectors.Should().OnlyContain(c => (c.Points.Length == 2 || c.Points.Length == 4) && c.Points.All(p => p.Y < 0.1f));
+        foreach (var c in layout.Connectors)
+        {
+            // Routes start at the parent's back edge and end at the child's front edge, and every segment is axis-aligned.
+            c.Points[0].Z.Should().BeApproximately(layout.NodeBoxes[c.ParentId].Min.Z, 1e-3f);
+            c.Points[^1].Z.Should().BeApproximately(layout.NodeBoxes[c.ChildId].Max.Z, 1e-3f);
+            for (var i = 1; i < c.Points.Length; i++)
+            {
+                var d = c.Points[i] - c.Points[i - 1];
+                (MathF.Abs(d.X) < 1e-4f || MathF.Abs(d.Z) < 1e-4f).Should().BeTrue("streets are orthogonal");
+            }
+        }
     }
 
     [Fact]

@@ -1,0 +1,14 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <!-- The Godot application: visualization, interaction, and UI. Filesystem, layout and picking live in FileScape.Core. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>FileScape.App</RootNamespace>
+    <AssemblyName>FileScape.App</AssemblyName>
+    <!-- Godot resources are engine reference-counted; CA1001 disposal advice does not apply. Async void _Ready is Godot idiom. -->
+    <NoWarn>$(NoWarn);CA1001;CA2007;CA1063;CA1816</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\src\FileScape.Core\FileScape.Core.csproj" />
+  </ItemGroup>
+</Project>

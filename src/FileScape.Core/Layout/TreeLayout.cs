@@ -3,6 +3,23 @@ using FileScape.Core.Model;
 
 namespace FileScape.Core.Layout;
 
+/// <summary>How directory subtrees are arranged relative to their parent (AD-08).</summary>
+public enum Arrangement
+{
+    /// <summary>
+    /// The default. Child subtrees line both sides of a spine that runs back (-Z) from the parent pedestal, placed
+    /// on the shorter side each time. A single child continues the spine straight. The tree fills a 2D area like a
+    /// city plan, so overviews stay usable.
+    /// </summary>
+    Fishbone,
+
+    /// <summary>
+    /// Historical FSN arrangement: every hierarchy level shares one row receding along -Z, with children spread
+    /// along X. It is faithful, but real trees become extremely wide (a 12k-node sample is ~20× wider than deep).
+    /// </summary>
+    Rows,
+}
+
 public enum ConnectorStyle
 {
     /// <summary>FSN-style straight wire from the parent's back edge to the child's front edge.</summary>
@@ -22,8 +39,8 @@ public sealed record LayoutParams
     public float FileFootprint { get; init; } = 0.62f;
 
     public float PedestalMargin { get; init; } = 0.45f;
-    public float MinPedestalSize { get; init; } = 1.6f;
-    public float SiblingGap { get; init; } = 1.6f;
+    public float MinPedestalSize { get; init; } = 1.4f;
+    public float SiblingGap { get; init; } = 1.1f;
     public float LevelGap { get; init; } = 5.5f;
     public float PedestalBaseHeight { get; init; } = 0.3f;
 
@@ -34,6 +51,13 @@ public sealed record LayoutParams
     public float LinkHeight { get; init; } = 0.35f;
     public SizeScale Scale { get; init; } = SizeScale.Classic;
     public ConnectorStyle Connectors { get; init; } = ConnectorStyle.Wire;
+    public Arrangement Arrangement { get; init; } = Arrangement.Fishbone;
+
+    /// <summary>The width of the clear corridor along a fishbone spine, carrying wires/streets (Fishbone only).</summary>
+    public float SpineWidth { get; init; } = 1.4f;
+
+    /// <summary>The height at which connectors run.</summary>
+    public float ConnectorHeight { get; init; } = 0.12f;
 
     public static readonly LayoutParams Classic = new();
 
@@ -45,6 +69,8 @@ public sealed record LayoutParams
         MinPedestalSize = 3.0f,
         SiblingGap = 3.2f,
         LevelGap = 8.0f,
+        SpineWidth = 3.0f,
+        ConnectorHeight = 0.02f,
         PedestalBaseHeight = 0.08f,
         PedestalPerDecade = 0f,
         PedestalMaxHeight = 0.08f,
@@ -89,17 +115,16 @@ public sealed class LayoutResult
 }
 
 /// <summary>
-/// A deterministic tree layout in the FSN tradition. Each directory is a pedestal holding its files in a grid.
-/// Child directories form a row further back (-Z), and every level of the hierarchy shares one row depth.
-/// A subtree occupies a contiguous X range, so siblings never overlap.
+/// A deterministic tree layout. Each directory is a pedestal holding its files in a grid. Child directories are
+/// arranged behind it (-Z) according to <see cref="LayoutParams.Arrangement"/>. Subtrees never overlap.
 /// </summary>
 /// <remarks>
 /// Node ids are assigned breadth first, so a parent's id is always lower than its children's. Iterating ids from
 /// high to low therefore visits children before parents. This gives a post-order pass without recursion, which
 /// matters for 40+ level trees.
 /// <para>
-/// Spatial stability (VIS-06): a directory's own grid depends only on its own children. Adding nodes elsewhere can
-/// still shift whole subtrees sideways. The app compensates by keeping the selected node fixed on screen.
+/// Spatial stability (VIS-06): with Fishbone, a subtree's internal arrangement depends only on its own descendants.
+/// Growth elsewhere moves it as a rigid block. The app compensates by keeping the selected node fixed on screen.
 /// </para>
 /// </remarks>
 public static class TreeLayout
@@ -113,14 +138,11 @@ public static class TreeLayout
             return result;
         }
 
+        // Pedestal footprints, from each directory's leaf (file and link) count.
         var pedW = new float[n];
         var pedD = new float[n];
         var cols = new int[n];
-        var subtreeW = new float[n];
-        var maxDepth = 0;
-
-        // Pass 1 (post-order): pedestal footprint and subtree width.
-        for (var id = n - 1; id >= 0; id--)
+        for (var id = 0; id < n; id++)
         {
             var node = tree[id];
             if (!node.IsDirectory)
@@ -128,55 +150,27 @@ public static class TreeLayout
                 continue;
             }
 
-            maxDepth = Math.Max(maxDepth, node.Depth);
-            var leafCount = 0;
-            var childWidth = 0f;
-            var dirChildren = 0;
-            foreach (var c in node.Children)
-            {
-                if (tree[c].IsDirectory)
-                {
-                    childWidth += subtreeW[c];
-                    dirChildren++;
-                }
-                else
-                {
-                    leafCount++;
-                }
-            }
-
-            if (dirChildren > 1)
-            {
-                childWidth += p.SiblingGap * (dirChildren - 1);
-            }
-
-            var c0 = leafCount == 0 ? 0 : (int)MathF.Ceiling(MathF.Sqrt(leafCount));
-            var rows = c0 == 0 ? 0 : (int)MathF.Ceiling(leafCount / (float)c0);
+            var leaves = node.Children.Count - node.DirectDirCount;
+            var c0 = leaves == 0 ? 0 : (int)MathF.Ceiling(MathF.Sqrt(leaves));
+            var rows = c0 == 0 ? 0 : (int)MathF.Ceiling(leaves / (float)c0);
             cols[id] = c0;
             pedW[id] = MathF.Max(p.MinPedestalSize, c0 * p.FileCell + 2 * p.PedestalMargin);
             pedD[id] = MathF.Max(p.MinPedestalSize, rows * p.FileCell + 2 * p.PedestalMargin);
-            subtreeW[id] = MathF.Max(pedW[id], childWidth);
         }
 
-        // Each level shares a row. The row's Z spacing follows the deepest pedestal on that level.
-        var rowDepth = new float[maxDepth + 1];
-        for (var id = 0; id < n; id++)
-        {
-            var node = tree[id];
-            if (node.IsDirectory)
-            {
-                rowDepth[node.Depth] = MathF.Max(rowDepth[node.Depth], pedD[id]);
-            }
-        }
-
-        var rowZ = new float[maxDepth + 1];
-        for (var d = 1; d <= maxDepth; d++)
-        {
-            rowZ[d] = rowZ[d - 1] - (rowDepth[d - 1] / 2 + p.LevelGap + rowDepth[d] / 2);
-        }
-
-        // Pass 2 (pre-order): positions. centreX holds each directory's assigned X centre.
+        // The arrangement decides each pedestal's centre X and front-edge Z, and the connector routes.
         var centreX = new float[n];
+        var frontZ = new float[n];
+        if (p.Arrangement == Arrangement.Rows)
+        {
+            ArrangeRows(tree, p, pedW, pedD, centreX, frontZ);
+        }
+        else
+        {
+            ArrangeFishbone(tree, p, pedW, pedD, centreX, frontZ, result.Connectors);
+        }
+
+        // Pedestals and their leaf grids.
         for (var id = 0; id < n; id++)
         {
             var node = tree[id];
@@ -186,27 +180,11 @@ public static class TreeLayout
             }
 
             var cx = centreX[id];
-            var z = rowZ[node.Depth];
             var pedH = p.PedestalHeight(node.DirectFileBytes);
-            var pedestal = Box.FromBase(new Vector3(cx, 0, z), pedW[id], pedH, pedD[id]);
+            var pedestal = Box.FromBase(new Vector3(cx, 0, frontZ[id] - pedD[id] / 2), pedW[id], pedH, pedD[id]);
             result.NodeBoxes[id] = pedestal;
 
-            // Child directories, left to right, centred on the parent.
-            var total = 0f;
-            var dirChildren = 0;
-            foreach (var c in node.Children)
-            {
-                if (tree[c].IsDirectory)
-                {
-                    total += subtreeW[c];
-                    dirChildren++;
-                }
-            }
-
-            total += dirChildren > 1 ? p.SiblingGap * (dirChildren - 1) : 0;
-            var x = cx - total / 2;
-
-            // Leaves fill the grid row by row, starting at the front-left (+Z is the front, facing the default camera).
+            // Leaves fill the grid row by row, from the front-left (+Z is the front, facing the default camera).
             var gridCols = cols[id];
             var leafIndex = 0;
             var gridLeft = cx - gridCols * p.FileCell / 2;
@@ -216,8 +194,6 @@ public static class TreeLayout
                 var child = tree[c];
                 if (child.IsDirectory)
                 {
-                    centreX[c] = x + subtreeW[c] / 2;
-                    x += subtreeW[c] + p.SiblingGap;
                     continue;
                 }
 
@@ -233,7 +209,7 @@ public static class TreeLayout
             }
         }
 
-        // Pass 3 (post-order): subtree bounds and connectors.
+        // Subtree bounds (post-order).
         for (var id = n - 1; id >= 0; id--)
         {
             var node = tree[id];
@@ -251,22 +227,210 @@ public static class TreeLayout
             result.SubtreeBounds[id] = bounds;
         }
 
-        for (var id = 0; id < n; id++)
+        if (p.Arrangement == Arrangement.Rows)
         {
-            var node = tree[id];
-            if (!node.IsDirectory || node.IsRoot)
+            for (var id = 1; id < n; id++)
             {
-                continue;
+                var node = tree[id];
+                if (node.IsDirectory)
+                {
+                    result.Connectors.Add(new Connector(node.ParentId, id,
+                        RowConnector(result.NodeBoxes[node.ParentId], result.NodeBoxes[id], p)));
+                }
             }
-
-            result.Connectors.Add(new Connector(node.ParentId, id,
-                ConnectorPoints(result.NodeBoxes[node.ParentId], result.NodeBoxes[id], p)));
         }
 
         return result;
     }
 
-    private static Vector3[] ConnectorPoints(Box parent, Box child, LayoutParams p)
+    /// <summary>The historical FSN rows: one row per level, children spread along X and centred under the parent.</summary>
+    private static void ArrangeRows(FsTree tree, LayoutParams p, float[] pedW, float[] pedD, float[] centreX, float[] frontZ)
+    {
+        var n = tree.Count;
+        var subtreeW = new float[n];
+        var maxDepth = 0;
+        for (var id = n - 1; id >= 0; id--)
+        {
+            var node = tree[id];
+            if (!node.IsDirectory)
+            {
+                continue;
+            }
+
+            maxDepth = Math.Max(maxDepth, node.Depth);
+            var childWidth = 0f;
+            var k = 0;
+            foreach (var c in node.Children)
+            {
+                if (tree[c].IsDirectory)
+                {
+                    childWidth += subtreeW[c];
+                    k++;
+                }
+            }
+
+            childWidth += k > 1 ? p.SiblingGap * (k - 1) : 0;
+            subtreeW[id] = MathF.Max(pedW[id], childWidth);
+        }
+
+        var rowDepth = new float[maxDepth + 1];
+        for (var id = 0; id < n; id++)
+        {
+            if (tree[id].IsDirectory)
+            {
+                rowDepth[tree[id].Depth] = MathF.Max(rowDepth[tree[id].Depth], pedD[id]);
+            }
+        }
+
+        var rowZ = new float[maxDepth + 1];
+        for (var d = 1; d <= maxDepth; d++)
+        {
+            rowZ[d] = rowZ[d - 1] - (rowDepth[d - 1] / 2 + p.LevelGap + rowDepth[d] / 2);
+        }
+
+        for (var id = 0; id < n; id++)
+        {
+            var node = tree[id];
+            if (!node.IsDirectory)
+            {
+                continue;
+            }
+
+            frontZ[id] = rowZ[node.Depth] + pedD[id] / 2;
+            var total = 0f;
+            var k = 0;
+            foreach (var c in node.Children)
+            {
+                if (tree[c].IsDirectory)
+                {
+                    total += subtreeW[c];
+                    k++;
+                }
+            }
+
+            total += k > 1 ? p.SiblingGap * (k - 1) : 0;
+            var x = centreX[id] - total / 2;
+            foreach (var c in node.Children)
+            {
+                if (tree[c].IsDirectory)
+                {
+                    centreX[c] = x + subtreeW[c] / 2;
+                    x += subtreeW[c] + p.SiblingGap;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fishbone: a post-order pass computes each subtree's extents (left and right of its pedestal centre, and depth
+    /// behind its front edge), with each child at an offset relative to its parent. A pre-order pass then turns the
+    /// offsets into absolute positions and routes connectors down the spine and across the gap in front of each child.
+    /// </summary>
+    private static void ArrangeFishbone(FsTree tree, LayoutParams p, float[] pedW, float[] pedD, float[] centreX, float[] frontZ, List<Connector> connectors)
+    {
+        var n = tree.Count;
+        var extL = new float[n];
+        var extR = new float[n];
+        var depth = new float[n];
+        var relX = new float[n];
+        var relZ = new float[n];
+        var halfSpine = p.SpineWidth / 2;
+        var gap = p.SiblingGap;
+
+        for (var id = n - 1; id >= 0; id--)
+        {
+            var node = tree[id];
+            if (!node.IsDirectory)
+            {
+                continue;
+            }
+
+            extL[id] = extR[id] = pedW[id] / 2;
+            depth[id] = pedD[id];
+            if (node.DirectDirCount == 0)
+            {
+                continue;
+            }
+
+            var aisleStart = pedD[id] + p.LevelGap * 0.5f;
+            if (node.DirectDirCount == 1)
+            {
+                // A single child continues the spine, which keeps deep chains straight and readable.
+                var only = node.Children.First(c => tree[c].IsDirectory);
+                relX[only] = 0;
+                relZ[only] = -aisleStart;
+                extL[id] = MathF.Max(extL[id], extL[only]);
+                extR[id] = MathF.Max(extR[id], extR[only]);
+                depth[id] = aisleStart + depth[only];
+                continue;
+            }
+
+            float cursorL = 0, cursorR = 0, widestL = 0, widestR = 0;
+            foreach (var c in node.Children)
+            {
+                if (!tree[c].IsDirectory)
+                {
+                    continue;
+                }
+
+                // Place on the shorter side; ties go right, so the first child sits to the right of the spine.
+                var right = cursorR <= cursorL;
+                if (right)
+                {
+                    relX[c] = halfSpine + extL[c];
+                    relZ[c] = -(aisleStart + cursorR);
+                    cursorR += depth[c] + gap;
+                    widestR = MathF.Max(widestR, extL[c] + extR[c]);
+                }
+                else
+                {
+                    relX[c] = -(halfSpine + extR[c]);
+                    relZ[c] = -(aisleStart + cursorL);
+                    cursorL += depth[c] + gap;
+                    widestL = MathF.Max(widestL, extL[c] + extR[c]);
+                }
+            }
+
+            extL[id] = MathF.Max(extL[id], widestL > 0 ? halfSpine + widestL : 0);
+            extR[id] = MathF.Max(extR[id], halfSpine + widestR);
+            depth[id] = aisleStart + MathF.Max(cursorL, cursorR) - gap;
+        }
+
+        for (var id = 1; id < n; id++)
+        {
+            var node = tree[id];
+            if (!node.IsDirectory)
+            {
+                continue;
+            }
+
+            var parent = node.ParentId;
+            centreX[id] = centreX[parent] + relX[id];
+            frontZ[id] = frontZ[parent] + relZ[id];
+
+            var y = p.ConnectorHeight;
+            var start = new Vector3(centreX[parent], y, frontZ[parent] - pedD[parent]);
+            var end = new Vector3(centreX[id], y, frontZ[id]);
+            if (MathF.Abs(relX[id]) < 1e-4f)
+            {
+                connectors.Add(new Connector(parent, id, [start, end]));
+            }
+            else
+            {
+                // Down the spine, then across the clear gap just in front of the child.
+                var crossZ = frontZ[id] + gap * 0.5f;
+                connectors.Add(new Connector(parent, id,
+                [
+                    start,
+                    new Vector3(centreX[parent], y, crossZ),
+                    new Vector3(centreX[id], y, crossZ),
+                    end,
+                ]));
+            }
+        }
+    }
+
+    private static Vector3[] RowConnector(Box parent, Box child, LayoutParams p)
     {
         var from = new Vector3(parent.Center.X, parent.Max.Y * 0.5f, parent.Min.Z);
         var to = new Vector3(child.Center.X, child.Max.Y * 0.5f, child.Max.Z);
@@ -275,7 +439,6 @@ public static class TreeLayout
             return [from, to];
         }
 
-        // Streets run at ground level. The cross street sits halfway between the rows.
         const float y = 0.02f;
         var midZ = (from.Z + to.Z) / 2;
         return

@@ -4,5 +4,8 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>FileScape.Fixtures</RootNamespace>
+    <!-- No native launcher: MSBuild intermittently gets "access denied" copying apphost.exe onto the \\wsl.localhost
+         share (docs/windows-workflow.md). Run with: dotnet FileScape.Fixtures.dll -->
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 </Project>
