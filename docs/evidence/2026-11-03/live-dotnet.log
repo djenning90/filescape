@@ -1,0 +1,16 @@
+[18:12:05.468] automation=live out=C:/Users/David/AppData/Local/FileScape/evidence/live-dotnet adapter=AMD Radeon(TM) 890M Graphics api=1.4.325 window=(1600, 900) ui_scale=1
+[18:12:05.654] scan finished state=Completed nodes=6883 elapsed=64ms layout_ms=8.7 build_ms=17.9 instances=9189
+[18:12:05.654] PASS live source: C:\Program Files\dotnet
+[18:12:05.654] live scan state=Completed nodes=6883 dirs=835 files=6048 links=0 bytes=975327464 problems=0 elapsed=64ms
+[18:12:06.209] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-dotnet/live-01-classic-overview.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:12:07.274] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-dotnet/live-02-classic-dir.png (1600x900) vis=Classic FSN quality=High selected=C:\Program Files\dotnet\sdk\10.0.403\Sdks\Microsoft.NET.Sdk\analyzers\build\config
+[18:12:07.890] PASS live: selection preserved across visualization switch
+[18:12:08.110] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-dotnet/live-03-district-dir.png (1600x900) vis=District quality=High selected=C:\Program Files\dotnet\sdk\10.0.403\Sdks\Microsoft.NET.Sdk\analyzers\build\config
+[18:12:08.144] picking[live-classic]: 40/40 unoccluded on-screen targets resolved to the intended node (zero-byte: 0/0)
+[18:12:08.144] PASS picking[live-classic] had enough on-screen targets (40)
+[18:12:08.144] PASS picking[live-classic] accuracy 40/40
+[18:12:08.158] memory: managed_after_gc=3.7 MB private=1027.5 MB working_set=657.0 MB video=507.2 MB nodes=6883 instances=9189
+[18:12:08.223] cancel: Cancel() returned to the UI thread in 506 µs; source stopped  ms after the request; state=Completed nodes_at_stop=6883
+[18:12:08.223] PASS cancel ended in Completed (Completed means the scan finished before the cancel landed)
+[18:12:08.501] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-dotnet/live-05-after-cancel.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:12:08.501] done failures=0

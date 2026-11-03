@@ -1,0 +1,44 @@
+[18:31:38.263] automation=qualitystress out=C:/Users/David/AppData/Local/FileScape/evidence/stress-novsync-district adapter=AMD Radeon(TM) 890M Graphics api=1.4.325 window=(1920, 1080) ui_scale=1
+[18:31:38.583] scan finished state=Completed nodes=50000 elapsed=33ms layout_ms=10.9 build_ms=16.6 instances=65598
+[18:31:38.874] toggle 1: vis=District quality=Low msaa=Disabled
+[18:31:39.132] toggle 2: vis=District quality=High msaa=Msaa4X
+[18:31:39.253] toggle 3: vis=District quality=Low msaa=Disabled
+[18:31:39.524] toggle 4: vis=District quality=High msaa=Msaa4X
+[18:31:39.647] toggle 5: vis=District quality=Low msaa=Disabled
+[18:31:39.873] toggle 6: vis=District quality=High msaa=Msaa4X
+[18:31:39.993] toggle 7: vis=District quality=Low msaa=Disabled
+[18:31:40.261] toggle 8: vis=District quality=High msaa=Msaa4X
+[18:31:40.370] toggle 9: vis=District quality=Low msaa=Disabled
+[18:31:40.643] toggle 10: vis=District quality=High msaa=Msaa4X
+[18:31:40.762] toggle 11: vis=District quality=Low msaa=Disabled
+[18:31:41.021] toggle 12: vis=District quality=High msaa=Msaa4X
+[18:31:41.136] toggle 13: vis=District quality=Low msaa=Disabled
+[18:31:41.365] toggle 14: vis=District quality=High msaa=Msaa4X
+[18:31:41.475] toggle 15: vis=District quality=Low msaa=Disabled
+[18:31:41.706] toggle 16: vis=District quality=High msaa=Msaa4X
+[18:31:41.822] toggle 17: vis=District quality=Low msaa=Disabled
+[18:31:42.085] toggle 18: vis=District quality=High msaa=Msaa4X
+[18:31:42.191] toggle 19: vis=District quality=Low msaa=Disabled
+[18:31:42.418] toggle 20: vis=District quality=High msaa=Msaa4X
+[18:31:42.533] toggle 21: vis=District quality=Low msaa=Disabled
+[18:31:42.760] toggle 22: vis=District quality=High msaa=Msaa4X
+[18:31:42.870] toggle 23: vis=District quality=Low msaa=Disabled
+[18:31:43.126] toggle 24: vis=District quality=High msaa=Msaa4X
+[18:31:43.238] toggle 25: vis=District quality=Low msaa=Disabled
+[18:31:43.467] toggle 26: vis=District quality=High msaa=Msaa4X
+[18:31:43.581] toggle 27: vis=District quality=Low msaa=Disabled
+[18:31:43.840] toggle 28: vis=District quality=High msaa=Msaa4X
+[18:31:43.952] toggle 29: vis=District quality=Low msaa=Disabled
+[18:31:44.178] toggle 30: vis=District quality=High msaa=Msaa4X
+[18:31:44.286] toggle 31: vis=District quality=Low msaa=Disabled
+[18:31:44.522] toggle 32: vis=District quality=High msaa=Msaa4X
+[18:31:44.641] toggle 33: vis=District quality=Low msaa=Disabled
+[18:31:44.903] toggle 34: vis=District quality=High msaa=Msaa4X
+[18:31:45.013] toggle 35: vis=District quality=Low msaa=Disabled
+[18:31:45.241] toggle 36: vis=District quality=High msaa=Msaa4X
+[18:31:45.356] toggle 37: vis=District quality=Low msaa=Disabled
+[18:31:45.612] toggle 38: vis=District quality=High msaa=Msaa4X
+[18:31:45.719] toggle 39: vis=District quality=Low msaa=Disabled
+[18:31:45.988] toggle 40: vis=District quality=High msaa=Msaa4X
+[18:31:45.988] PASS survived 40 quality/visualization toggles
+[18:31:45.988] done failures=0

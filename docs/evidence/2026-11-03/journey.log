@@ -1,0 +1,34 @@
+[18:32:18.100] automation=journey out=C:/Users/David/AppData/Local/FileScape/evidence/final-journey adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[18:32:18.350] scan finished state=Completed nodes=12000 elapsed=9ms layout_ms=2.1 build_ms=10.5 instances=15077
+[18:32:18.919] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/01-classic-home.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:32:20.023] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/01b-classic-overview-birdseye.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:32:22.268] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/02-classic-selected.png (1600x900) vis=Classic FSN quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:22.268] PASS selected synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:22.918] PASS selection preserved after switching to District (same node id)
+[18:32:23.078] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/03-district-selected.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:24.036] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/04-district-overview.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:24.193] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/05-disoriented.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:25.521] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/06-after-reset.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:25.522] PASS reset view shows the root pedestal on screen and pickable (screen (798.68945, 856.4068), distance 634)
+[18:32:25.522] PASS after reset, nodes are on screen and pickable
+[18:32:26.483] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/06b-district-overview-birdseye.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:26.483] PASS parent navigation selects the containing directory
+[18:32:26.483] PASS back returns to the file
+[18:32:26.513] picking[district]: 40/40 unoccluded on-screen targets resolved to the intended node (zero-byte: 3/3)
+[18:32:26.513] PASS picking[district] had enough on-screen targets (40)
+[18:32:26.513] PASS picking[district] accuracy 40/40
+[18:32:27.728] PASS selection preserved after switching back to Classic
+[18:32:27.916] picking[classic]: 40/40 unoccluded on-screen targets resolved to the intended node (zero-byte: 35/35)
+[18:32:27.916] PASS picking[classic] had enough on-screen targets (40)
+[18:32:27.916] PASS picking[classic] accuracy 40/40
+[18:32:27.916] PASS synthetic edge case present: access-denied
+[18:32:28.705] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/07-edge-access-denied.png (1600x900) vis=Classic FSN quality=High selected=synthetic://seed-1965/edge-cases/access-denied
+[18:32:28.706] PASS synthetic edge case present: junction-to-root
+[18:32:29.410] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/07-edge-junction-to-root.png (1600x900) vis=Classic FSN quality=High selected=synthetic://seed-1965/edge-cases/junction-to-root
+[18:32:29.410] PASS synthetic edge case present: emoji-🚀-launch.log
+[18:32:30.182] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/07-edge-emoji----launch-log.png (1600x900) vis=Classic FSN quality=High selected=synthetic://seed-1965/unicode-名前-Ünïcödé/emoji-🚀-launch.log
+[18:32:31.334] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/08-deep-level-40.png (1600x900) vis=Classic FSN quality=High selected=synthetic://seed-1965/deep-40-levels/level-01/level-02/level-03/level-04/level-05/level-06/level-07/level-08/level-09/level-10/level-11/level-12/level-13/level-14/level-15/level-16/level-17/level-18/level-19/level-20/level-21/level-22/level-23/level-24/level-25/level-26/level-27/level-28/level-29/level-30/level-31/level-32/level-33/level-34/level-35/level-36/level-37/level-38/level-39/level-40
+[18:32:32.320] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/09-district-wide-2000.png (1600x900) vis=District quality=High selected=synthetic://seed-1965/wide-2000-files
+[18:32:32.330] PASS synthetic Open is reported as a mock: MOCK — synthetic data has no real file to open (synthetic://seed-1965/size-outliers/hundred-mib.iso).
+[18:32:33.393] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-journey/10-district-low-quality.png (1600x900) vis=District quality=Low selected=synthetic://seed-1965/size-outliers/hundred-mib.iso
+[18:32:33.393] done failures=0

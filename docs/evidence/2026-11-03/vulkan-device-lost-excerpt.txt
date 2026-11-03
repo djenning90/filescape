@@ -1,0 +1,21 @@
+KD-01 evidence. Transcribed from console/log output captured during the session (Godot's own log files rotated
+before they could be copied). Exit code of crashed runs: -1073741795 (0xC000001D, Godot crash handler).
+
+Run at 18:04 (editor binary, journey automation, Vulkan):
+  ERROR: Couldn't wait for Vulkan fence (VkResult error -4).
+  ERROR: Last known breadcrumb: BLIT_PASS / UI_PASS (repeated)
+  ERROR: vkGetDeviceFaultInfoEXT returned -4 when getting fault count, skipping VK_EXT_device_fault report...
+  ERROR: Vulkan device was lost. This could be due to a driver issue, a hardware issue, or the driver resetting itself
+  CrashHandlerException: Program crashed with signal 4
+
+Run at 18:19:31 (exported build, perf automation, Vulkan, VSync off, 1920x1080):
+  perf-classic-high: frames=2599 mean=7.70 p95=9.09 p99=10.46 max=15.06 gpu_mean=6.29
+  perf-classic-low:  frames=4398 mean=4.55 p95=5.68 p99=8.28 max=12.45 gpu_mean=3.40
+  perf-district-high: frames=1961 mean=10.20 p95=11.23 p99=12.17 max=14.53 gpu_mean=8.77
+  screenshot perf-district-high.png
+  ERROR: Couldn't wait for Vulkan fence (VkResult error -4).     <- during the switch to District/Low
+
+Stability series (exported build, perf automation, uncapped): see stability-vulkan-vs-d3d12.txt
+  vulkan: crash, ok, crash ; d3d12: ok, ok, ok   (plus the 18:19 vulkan crash and one earlier clean d3d12 run)
+Quality-toggle stress (Vulkan): 120 toggles VSync on at 1600x900 + 40 toggles VSync off at 1920x1080 District-only: no crash.
+No Windows System-log display-driver event (e.g. 4101) was found for the 18:04 crash.

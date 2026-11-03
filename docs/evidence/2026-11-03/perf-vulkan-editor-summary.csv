@@ -1,0 +1,5 @@
+visualization,quality,frames,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,gpu_mean_ms,gpu_p95_ms,nodes,instances
+classic,High,2908,6.88,6.45,11.04,13.12,21.23,5.28,6.07,50000,65510
+classic,Low,4755,4.21,3.77,8.04,12.12,13.48,2.83,3.24,50000,65510
+district,High,2109,9.48,9.17,12.74,13.79,15.33,7.85,8.53,50000,65510
+district,Low,4982,4.01,3.59,7.79,12.07,13.69,2.66,3.05,50000,65510

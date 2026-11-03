@@ -1,0 +1,8 @@
+18:24:30 vulkan run 1 exit=-1073741795
+18:25:57 d3d12 run 1 exit=0
+18:27:23 vulkan run 2 exit=0
+18:28:48 d3d12 run 2 exit=0
+18:29:55 vulkan run 3 exit=-1073741795
+18:31:21 d3d12 run 3 exit=0
+
+[exited with code 0]

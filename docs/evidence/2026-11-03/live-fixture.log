@@ -1,0 +1,19 @@
+[18:11:09.660] automation=live out=C:/Users/David/AppData/Local/FileScape/evidence/live-fixture adapter=AMD Radeon(TM) 890M Graphics api=1.4.325 window=(1600, 900) ui_scale=1
+[18:11:09.806] scan finished state=Completed nodes=743 elapsed=13ms layout_ms=2.2 build_ms=10.8 instances=801
+[18:11:09.806] PASS live source: C:\Users\David\AppData\Local\Temp\FileScape-fixtures\fixture-20261103-111039-dbbd9c
+[18:11:09.807] live scan state=Completed nodes=743 dirs=44 files=696 links=3 bytes=10738652657 problems=1 elapsed=13ms
+[18:11:10.345] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-fixture/live-01-classic-overview.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:11:11.170] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-fixture/live-02-classic-dir.png (1600x900) vis=Classic FSN quality=High selected=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\fixture-20261103-111039-dbbd9c\wide-600-files
+[18:11:11.762] PASS live: selection preserved across visualization switch
+[18:11:11.957] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-fixture/live-03-district-dir.png (1600x900) vis=District quality=High selected=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\fixture-20261103-111039-dbbd9c\wide-600-files
+[18:11:11.987] picking[live-classic]: 40/40 unoccluded on-screen targets resolved to the intended node (zero-byte: 4/4)
+[18:11:11.987] PASS picking[live-classic] had enough on-screen targets (40)
+[18:11:11.987] PASS picking[live-classic] accuracy 40/40
+[18:11:12.004] memory: managed_after_gc=1.5 MB private=1058.6 MB working_set=688.5 MB video=495.7 MB nodes=743 instances=801
+[18:11:12.004] PASS open-test file present: zero-byte
+[18:11:13.118] PASS ShellExecuteEx reported: Opened with Windows: C:\Users\David\AppData\Local\Temp\FileScape-fixtures\fixture-20261103-111039-dbbd9c\zero-byte
+[18:11:13.196] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-fixture/live-04-after-open.png (1600x900) vis=Classic FSN quality=High selected=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\fixture-20261103-111039-dbbd9c\zero-byte
+[18:11:13.257] cancel: Cancel() returned to the UI thread in 291 µs; source stopped  ms after the request; state=Completed nodes_at_stop=743
+[18:11:13.258] PASS cancel ended in Completed (Completed means the scan finished before the cancel landed)
+[18:11:13.510] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-fixture/live-05-after-cancel.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:11:13.510] done failures=0

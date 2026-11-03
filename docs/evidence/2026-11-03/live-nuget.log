@@ -1,0 +1,16 @@
+[18:14:18.881] automation=live out=C:/Users/David/AppData/Local/FileScape/evidence/live-nuget-2 adapter=AMD Radeon(TM) 890M Graphics api=1.4.325 window=(1600, 900) ui_scale=1
+[18:14:19.044] scan finished state=Completed nodes=8955 elapsed=98ms layout_ms=5.3 build_ms=7.1 instances=18931
+[18:14:19.045] PASS live source: C:\Users\David\.nuget\packages
+[18:14:19.045] live scan state=Completed nodes=8955 dirs=2803 files=6152 links=0 bytes=1841494269 problems=0 elapsed=98ms
+[18:14:19.609] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-nuget-2/live-01-classic-overview.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:14:20.686] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-nuget-2/live-02-classic-dir.png (1600x900) vis=Classic FSN quality=High selected=C:\Users\David\.nuget\packages\microsoft.codeanalysis.analyzers\3.11.0\buildTransitive\config
+[18:14:21.297] PASS live: selection preserved across visualization switch
+[18:14:21.523] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-nuget-2/live-03-district-dir.png (1600x900) vis=District quality=High selected=C:\Users\David\.nuget\packages\microsoft.codeanalysis.analyzers\3.11.0\buildTransitive\config
+[18:14:21.562] picking[live-classic]: 40/40 unoccluded on-screen targets resolved to the intended node (zero-byte: 0/0)
+[18:14:21.562] PASS picking[live-classic] had enough on-screen targets (40)
+[18:14:21.562] PASS picking[live-classic] accuracy 40/40
+[18:14:21.577] memory: managed_after_gc=4.6 MB private=1041.1 MB working_set=669.6 MB video=511.0 MB nodes=8955 instances=18931
+[18:14:21.582] cancel: Cancel() returned to the UI thread in 582 µs; source stopped 0.2 ms after the request; state=Cancelled nodes_at_stop=272
+[18:14:21.582] PASS cancel ended in Cancelled (Completed means the scan finished before the cancel landed)
+[18:14:21.818] screenshot C:/Users/David/AppData/Local/FileScape/evidence/live-nuget-2/live-05-after-cancel.png (1600x900) vis=Classic FSN quality=High selected=-
+[18:14:21.818] done failures=0

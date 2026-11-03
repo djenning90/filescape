@@ -2,6 +2,13 @@
 
 Prepared by Claude Code, 2026-11-03, in response to `CLAUDE_INVESTIGATION_01.md`. Inputs read in full: that brief and `FileScape_Project_Handoff.md` including Appendix A. No ancestor `AGENTS.md`/`CLAUDE.md` applies.
 
+> **Addendum, 2026-11-03 (prototype run): corrections and updates.** These supersede the statements they name.
+> 1. **890M feature support** was presented as "officially in class / plausible". It is **not verified** against Epic's or AMD's documentation for integrated GPUs. What *is* now demonstrated is narrower: Godot 4.7.2 Forward+ runs on the 890M under Vulkan 1.4.325 and D3D12 (feature level 12_0), and its volumetric fog, SSR, SSAO and glow render at the frame times in `docs/implementation-status.md`. Lumen/Nanite behaviour remains unknown.
+> 2. **Licensing:** the Unreal royalty and seat terms in §4 came from a search snippet and a blog post. The licence page itself returned HTTP 403. They are **not authoritative**, and no licensing conclusion should rest on them. Godot's MIT licence was not re-read from a primary page today. FluentAssertions licensing was checked from the package metadata (7.2.0 is Apache-2.0; 8.x is not), see AD-10.
+> 3. **Cloud placeholders:** §6.2 marked "metadata only, so no hydration" as an inference. That inference is too strong. Microsoft documents that enumerating a RECALL_ON_DATA_ACCESS *directory* can fetch from the remote store. The prototype therefore does not enumerate such directories. Even so, we do **not** claim metadata access is universally hydration-free (FS-13); it remains untested against a real provider.
+> 4. **Layout:** the brief assumed FSN's row layout for classic geometry. Real-shaped trees under that layout were about 20× wider than deep, and the overview was unusable. The prototype defaults to a fishbone arrangement and keeps rows as an option (AD-08).
+> 5. **Picking:** "Unreal per-instance hit index" is still unverified. FileScape picks in Core instead (AD-05), so the question no longer blocks anything.
+
 Evidence vocabulary used throughout: **read** (source/docs inspected), **built**, **tested** (automated checks ran), **launched**, **visually observed**, **measured**. Nothing in this report was visually observed or performance-measured. Labels: **[F]** fact from a cited primary source or observed command output; **[I]** inference; **[U]** unknown/unverified; **[P]** preference (DJ's or mine, stated as such).
 
 ---

@@ -1,0 +1,12 @@
+[18:32:34.611] automation=perf out=C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/perf adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1920, 1080) ui_scale=1
+[18:32:34.984] scan finished state=Completed nodes=50000 elapsed=39ms layout_ms=10.7 build_ms=13.4 instances=65598
+[18:32:55.934] perf-classic-high: frames=2113 mean=9.47 p95=10.37 p99=10.79 max=15.62 gpu_mean=8.45 gpu_p95=9.22
+[18:32:56.065] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/perf/perf-classic-high.png (1920x1080) vis=Classic FSN quality=High selected=-
+[18:33:16.663] perf-classic-low: frames=3859 mean=5.18 p95=6.09 p99=8.35 max=11.30 gpu_mean=4.23 gpu_p95=4.85
+[18:33:16.788] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/perf/perf-classic-low.png (1920x1080) vis=Classic FSN quality=Low selected=-
+[18:33:38.087] perf-district-high: frames=1607 mean=12.45 p95=13.53 p99=14.18 max=18.06 gpu_mean=11.46 gpu_p95=12.46
+[18:33:38.299] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/perf/perf-district-high.png (1920x1080) vis=District quality=High selected=-
+[18:33:58.806] perf-district-low: frames=4097 mean=4.88 p95=5.76 p99=8.04 max=10.73 gpu_mean=3.95 gpu_p95=4.53
+[18:33:58.970] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/perf/perf-district-low.png (1920x1080) vis=District quality=Low selected=-
+[18:33:58.989] memory: managed_after_gc=16.8 MB private=906.4 MB working_set=570.7 MB video=441.1 MB nodes=50000 instances=65598
+[18:33:58.990] done failures=0

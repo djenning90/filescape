@@ -22,5 +22,9 @@ project/assembly_name="FileScape.App"
 [rendering]
 
 renderer/rendering_method="forward_plus"
+; D3D12 by default on Windows: Vulkan lost the device in 3 of 4 sustained uncapped perf runs on the
+; Radeon 890M (driver 32.0.22024.19001), D3D12 in 0 of 4 (docs/decisions.md AD-11, KD-01).
+; Use --rendering-driver vulkan to compare.
+rendering_device/driver.windows="d3d12"
 anti_aliasing/quality/msaa_3d=2
 anti_aliasing/quality/screen_space_aa=1

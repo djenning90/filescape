@@ -1,0 +1,6 @@
+[18:34:06.914] automation=scanperf out=C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/scanperf-district adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1920, 1080) ui_scale=1
+[18:34:12.361] scanperf during-scan frames=398 mean=12.83 p95=14.95 p99=38.81 max=212.95; relayouts=20 relayout_mean=22.7ms max=38.2ms; after-scan frames=30
+[18:34:12.361] scan state=Completed nodes=50000 elapsed=5.02s
+[18:34:12.482] screenshot C:/Users/David/AppData/Local/FileScape/evidence/final-d3d12/scanperf-district/scanperf-final.png (1920x1080) vis=District quality=High selected=-
+[18:34:12.506] memory: managed_after_gc=16.7 MB private=937.0 MB working_set=551.9 MB video=527.0 MB nodes=50000 instances=65598
+[18:34:12.507] done failures=0
