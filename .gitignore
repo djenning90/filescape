@@ -1,0 +1,16 @@
+# IDE / OS
+.idea/
+.vs/
+*.user
+*:Zone.Identifier
+# .NET
+bin/
+obj/
+TestResults/
+# Godot
+app/.godot/
+app/.mono/
+*.translation
+# Local artifacts not meant for the repo
+artifacts/local/
+build/
