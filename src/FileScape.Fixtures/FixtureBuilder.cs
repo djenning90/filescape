@@ -190,16 +190,18 @@ public static class FixtureBuilder
 
         if (OperatingSystem.IsWindows())
         {
-            var denied = Path.Combine(root, "special", "access-denied");
-            if (Directory.Exists(denied))
+            foreach (var denied in new[] { Path.Combine(root, "special", "access-denied"), Path.Combine(root, PlacesFixture.RootName, "locked") })
             {
-                RunIcacls(denied, "/remove:d", "*" + CurrentUserSid());
+                if (Directory.Exists(denied))
+                {
+                    RunIcacls(denied, "/remove:d", "*" + CurrentUserSid());
+                }
             }
 
             // Remove links first, so a recursive delete can never reach their targets.
-            foreach (var link in new[] { "junction-loop-to-fixture-root", "dir-symlink-to-wide" })
+            foreach (var link in new[] { Path.Combine("special", "junction-loop-to-fixture-root"), Path.Combine("special", "dir-symlink-to-wide"), Path.Combine(PlacesFixture.RootName, "link-to-documents") })
             {
-                var p = Path.Combine(root, "special", link);
+                var p = Path.Combine(root, link);
                 if (Directory.Exists(p))
                 {
                     Directory.Delete(p, recursive: false);
@@ -225,7 +227,7 @@ public static class FixtureBuilder
         }
 
         var n = 0;
-        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*"))
+        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*").Concat(Directory.GetDirectories(DefaultParent, "places-*")))
         {
             if (File.Exists(Path.Combine(dir, MarkerName)))
             {
@@ -237,7 +239,7 @@ public static class FixtureBuilder
         return n;
     }
 
-    private static string MakeDir(FixtureManifest m, string parent, string name)
+    internal static string MakeDir(FixtureManifest m, string parent, string name)
     {
         var path = Path.Combine(parent, name);
         Directory.CreateDirectory(path);
@@ -245,14 +247,14 @@ public static class FixtureBuilder
         return path;
     }
 
-    private static void WriteFile(FixtureManifest m, string path, byte[] content)
+    internal static void WriteFile(FixtureManifest m, string path, byte[] content)
     {
         File.WriteAllBytes(path, content);
         m.ExpectedFiles++;
         m.ExpectedLogicalBytes += content.Length;
     }
 
-    private static void CreateJunction(FixtureManifest m, string link, string target)
+    internal static void CreateJunction(FixtureManifest m, string link, string target)
     {
         // mklink /J needs no elevation or Developer Mode.
         var psi = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -274,7 +276,7 @@ public static class FixtureBuilder
         }
     }
 
-    private static void CreateDenied(FixtureManifest m, string path)
+    internal static void CreateDenied(FixtureManifest m, string path)
     {
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, "secret.txt"), "not visible to the scan");
@@ -305,7 +307,7 @@ public static class FixtureBuilder
         return p.ExitCode == 0;
     }
 
-    private static void CreateSparse(FixtureManifest m, string path, long length)
+    internal static void CreateSparse(FixtureManifest m, string path, long length)
     {
         if (!OperatingSystem.IsWindows())
         {
