@@ -241,6 +241,24 @@ public partial class PlaceWorld : Node3D
             Sign("No subfolders here", new Vector3(0, 1.6f, -c.PlazaRadius * 0.6f), 0.014f, new Color(0.75f, 0.8f, 0.95f), 1e9f, 0);
         }
 
+        foreach (var t in c.Tiers.Where(t => c.IsWide && t.Rise > 0))
+        {
+            // A terrace ring under each raised tier, so its gates stand on something.
+            var steps = Math.Max(8, (int)((t.EndDeg - t.StartDeg + 8) * t.Radius / 160f));
+            for (var i = 0; i < steps; i++)
+            {
+                var a0 = t.StartDeg - 4 + (t.EndDeg - t.StartDeg + 8) * i / steps;
+                var a1 = t.StartDeg - 4 + (t.EndDeg - t.StartDeg + 8) * (i + 1) / steps;
+                var p0 = Gd(PlaceGeometry.Direction(a0) * t.Radius);
+                var p1 = Gd(PlaceGeometry.Direction(a1) * t.Radius);
+                var along = p1 - p0;
+                var len = along.Length() + 0.05f;
+                var dir = along.Normalized();
+                var side = dir.Cross(Vector3.Up).Normalized();
+                gates.Add(dir * len, Vector3.Up * t.Rise, side * 7f, (p0 + p1) / 2 + new Vector3(0, t.Rise / 2, 0), accent * 0.35f, new Color(len, t.Rise, 7f, 4));
+            }
+        }
+
         foreach (var t in c.Tiers.Where(_ => c.IsWide))
         {
             Arc(streets, t.Radius - 3f, t.StartDeg, t.EndDeg, 0.45f, accent with { A = 1 } * 0.8f);

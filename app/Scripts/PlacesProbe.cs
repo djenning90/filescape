@@ -340,7 +340,9 @@ public partial class PlacesProbe : Node
         _main.CancelScan();
         Log("[direct] cancelled the scan (set-up; the Cancel button raises the same call)");
         for (var i = 0; i < 300 && (_main.Session is { IsFinished: false } || _main.Session!.HasPendingBatches); i++) await Frames(1);
-        await Frames(30);
+        // Recomposition is throttled (≤ every 0.35 s), so wait in wall time for the place to reflect the cancellation;
+        // a frame count alone was too short on the faster exported build (instrument defect, 2026-11-04).
+        await WaitPlaceCurrent();
         // The root's own children are listed first (breadth first), so the cut-off is one level down: go to a folder
         // that has children the cancellation left unlisted.
         var cut = Tree.Nodes.FirstOrDefault(n => n.IsDirectory && n.Children.Any(c => Tree[c].IsDirectory && Tree[c].ScanState == DirScanState.Cancelled));
@@ -350,6 +352,7 @@ public partial class PlacesProbe : Node
             Log($"[direct] travelled to {Tree.FullPath(cut.Id)}, whose children were cut off by the cancellation (set-up)");
             await Frames(3);
             await WaitTransition();
+            await WaitPlaceCurrent();
         }
 
         var notScanned = Place.Gates.Count(g => g.State == ListingState.NotScanned);
@@ -536,6 +539,12 @@ public partial class PlacesProbe : Node
 
         Key1(key, false);
         return _main.InTransition;
+    }
+
+    private async Task WaitPlaceCurrent()
+    {
+        var t0 = Time.GetTicksMsec();
+        while (Time.GetTicksMsec() - t0 < 3000 && (_main.Place == null || _main.Place.TreeVersion != Tree.Version || Time.GetTicksMsec() - t0 < 600)) await Frames(1);
     }
 
     private async Task WaitTransition()

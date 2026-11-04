@@ -38,7 +38,8 @@ public sealed record PlaceParams
 
     public float FirstTierRadius { get; init; } = 40f;
     public float TierGap { get; init; } = 13f;
-    public float TierRise { get; init; } = 1.4f;
+    /// <summary>Each outer tier stands on a terrace this much higher, so it can be seen over the inner ones.</summary>
+    public float TierRise { get; init; } = 0.6f;
 
     /// <summary>The symbolic distance from a gate to the vista of the place behind it (AD-14: not true geography).</summary>
     public float VistaDistance { get; init; } = 70f;
