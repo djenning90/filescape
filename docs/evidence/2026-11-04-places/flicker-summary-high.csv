@@ -1,0 +1,14 @@
+config,moving,frames,mean_bright_px,max_bright_px,mean_flash_px,max_flash_px,frames_with_flash_ge_4,max_bright_jump,cell_spikes,frames_with_cell_spike,max_cell_deviation
+baseline,True,200,280.9,492,22.26,44,198,73,0,0,0.033
+stationary,False,200,246.9,283,0.02,1,0,7,0,0,0.015
+ssr-off,True,200,266.6,480,22.37,44,198,71,0,0,0.033
+sun-disc-off,True,200,271.7,488,22.39,45,198,71,0,0,0.033
+sun-specular-0,True,200,268.5,432,22.32,44,198,59,1,1,0.067
+sun-hidden,True,200,258.3,427,22.33,44,198,56,0,0,0.034
+volumetric-fog-off,True,200,383.9,650,29.89,60,198,72,0,0,0.040
+volfog-reprojection-off,True,200,279.7,485,22.28,44,198,69,0,0,0.058
+glow-off,True,200,240.8,434,22.25,44,198,55,0,0,0.035
+ssao-off,True,200,272.9,510,22.39,44,198,71,0,0,0.034
+msaa-off,True,200,277.1,491,22.67,45,198,63,0,0,0.038
+sun-shadows-off,True,200,269.0,496,22.35,44,198,72,0,0,0.031
+low-quality,True,200,354.0,625,20.40,45,198,70,0,0,0.036

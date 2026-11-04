@@ -30,7 +30,13 @@ tools/fs.sh export       # standalone build → %LOCALAPPDATA%\FileScape\build\F
 Input verification tools: `--automate=navigation --out=DIR` injects input events through Godot's input pipeline and writes `navigation.log`. `tools/os-input-probe.ps1` sends real Win32 SendInput keyboard and mouse events (and Alt-Tab) to a running FileScape started with `--state-file=PATH`; it moves the real mouse and takes focus, so run it only when that is acceptable.
 
 App arguments go after `--`:
-`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=classic|district`, `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress|navigation|args --out=DIR [--open-test=NAME]`, `--state-file=PATH`.
+`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=places|classic|district` (default places; the legacy evidence scripts default to classic), `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress|navigation|flicker|places|places-scan|places-tour|places-debug|args --out=DIR [--open-test=NAME]`, `--state-file=PATH`.
+
+Places evidence (2026-11-04):
+- `FileScape.Fixtures.dll create-places` creates the deterministic "Atlas Studio" tree and an empty root under `%TEMP%\FileScape-fixtures\places-*` (marker-guarded; `delete-all` removes it, including its deny ACE and junction).
+- `--automate=places --root=<Atlas Studio>`: the Places journey through the injected input path, screenshots and walking frame times. `--automate=places-scan --synthetic=50000 --synthetic-rate=10000`: responsiveness during a scan and cancellation states. `--automate=places-tour` with Godot's `--write-movie tour.avi --fixed-fps 30` (engine arguments, before `--`) records the guided tour.
+- `--automate=flicker --vis=district [--open-test=selection|beamtop|street]`: the VIS-11 instrument (per-frame bright/flash/cell-spike statistics with one effect toggled at a time).
+- `tools/os-places-probe.ps1 -Exe ... -Root ... -Out ... [-OpenTest]`: real SendInput journey judged from `--state-file`; it moves the real mouse, takes focus and (with `-OpenTest`) opens and then closes one Explorer window on the fixture's Documents folder.
 Engine arguments go before `--`, for example `--rendering-driver d3d12`.
 
 Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create|delete <dir>|delete-all`. It only creates under `%TEMP%\FileScape-fixtures` by default, and refuses to delete anything without its marker file.

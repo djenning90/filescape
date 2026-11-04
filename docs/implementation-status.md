@@ -1,8 +1,48 @@
 # Implementation status
 
-Last updated: 2026-11-03, after the first prototype run (commits `ee39c8f`…HEAD). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-04, after the Places pass (commits `2eabd73`…HEAD); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Places pass (2026-11-04)
+
+DJ's direction after the first prototype: feel *inside* a folder, know where you are, see the child folders and how to reach them, with what is next fading into the distance; atmosphere and distinct characteristics. ChatGPT had not played the prototype (its desktop control is broken), so DJ's hands-on feedback remains the primary experience evidence. **Nothing below claims DJ's aesthetic acceptance.**
+
+**What exists.** A third experience, **Places** (default), alongside the retained whole-tree maps **Classic FSN** and **District** (AD-14, AD-15; PLACE-01..15). One folder at a time is composed as a local plaza: landmark with a name plaque, file towers in type quarters along an avenue, a ring of named gate arches (or alphabetical tiers on terraces beyond 24 children), the ▲ Up gate behind the arrival terrace, and beyond each gate a vista of the next place (its landmark in its own colour, a skyline of its largest files, beacons for its children). Travel is deliberate: walk through a gate facing it, double-click it, Destinations, G, U, breadcrumb, Ctrl+Home. A glide-and-fade transition marks every threshold. The current folder (navigator) and the selection are separate. While in Places the whole-tree layout is not computed.
+
+**Evidence tiers** (raw runs in `%LOCALAPPDATA%\FileScape\evidence\2026-11-04-places\`; copies in `docs/evidence/2026-11-04-places/`):
+- *Core tests:* 25 Places tests (composition of every folder of a 6k synthetic tree, 0–300 children, no overlaps, no gate hidden behind the landmark, tiers in alphabetical order, chains, empty/unknown states, thresholds with hysteresis, facing and cooldown, navigator, picking, identity, locality of the signature). Full suite: **95/95 on Windows `dotnet.exe`; 84 + 11 Windows-only skipped on WSL**.
+- *Injected input through Godot's pipeline* (`--automate=places`, final exported build, fixture "Atlas Studio"): the journey below, **51 checks, 0 failures** (`places.log`); scan scenario 8 checks, 0 failures (`places-scan.log`). `[direct]` steps in the log are set-up only (placing the camera for the dithering test, selecting on a map, selecting a file).
+- *OS-level input* (`tools/os-places-probe.ps1`, real SendInput and a real Alt-Tab, judged from the state file): **14/14** (`os-places-results.txt`): Destinations click selects without moving; held W walks through the Code gate; held S backs away without travelling; U returns with Code selected; G enters; a real double-click on a row travels; Ctrl+Home; Alt-Tab while walking leaves nothing held; B; M and back; **Enter opened Explorer at the fixture's Documents folder** (then closed by the probe). Two instrument defects were fixed first (argument quoting; DPI-unaware clicks at 125 % scaling — the second one briefly opened Explorer on the fixture's `locked` folder; no window was left open).
+- *Reference views on the final build:* navigation probe 56/56 and the map journey, 0 failures (`navigation.log`, `maps-journey.log`).
+- *My visual observation:* screenshots at each step (critique below), and frames sampled from the recording `tour.avi` (Godot movie writer, 879 frames, 29 s at 30 fps, 1600×900, MJPEG, ≈ 170 MB; outside the repo in `…\2026-11-04-places\tour\`).
+
+**Journey (fixture "Atlas Studio", 1,713 entries; exported build, 1600×900, High):** starts in Places at the root; breadcrumb and landmark plaque name it; camera at the arrival pose; all 11 children have a gate with their name and a Destinations row; right-hold look works; Home returns to the arrival pose; clicking a tower selects it without changing the current folder; clicking a Destinations row walks up to that gate without travelling; holding W walks through it and starts the transition; arrival in the child (breadcrumb, plaque, ▲ gate behind, arrival pose, exactly one place change); dithering W/S on the threshold does not switch places; U returns in front of the gate you came from, facing in, with that child selected; double-click a destination travels; G ×5 descends the chain; Ctrl+Home returns to the root arrival; B ascends with the explanatory chip; M opens the map with "You are here · Atlas Studio"; Tab cycles to District; G on a folder in a map enters it in Places; wide-hall (240 gates on 8 tiers, ≤ 70 signs visible, 241 Destinations rows), many-files (800 towers), empty-room (explicit empty), locked (contents access denied), the junction (sealed gate; double-click does not travel); empty and denied gates carry different signs.
+
+**Measurements** (exported build, D3D12, Radeon 890M, VSync off while measuring, walking W/A/S/D plus mouse-look ≈ 6 s):
+
+| Case | Quality | Entries in tree | Instances | Mean ms | p95 | p99 | Compose / build ms |
+|---|---|---|---|---|---|---|---|
+| root (6 files, 11 gates) | High | 1,713 | 197 | 6.5 | 7.5 | 8.0 | 0.7 / 1.3 |
+| root | Low | 1,713 | 197 | 2.5 | 3.2 | 4.4 | 0.7 / 1.3 |
+| wide-hall (240 gates, 8 tiers on terraces) | High | 1,713 | 2,238 | 6.5 | 7.7 | 8.7 | 0.5 / 5.0 |
+| many-files (800 towers) | High | 1,713 | 906 | 6.3 | 7.2 | 7.7 | 0.9 / 1.6 |
+| Places during a 50k synthetic scan at 10k nodes/s | High | 50,000 | — | 6.9 | 8.3 | 12.6 | 1 recomposition, 1.7 ms |
+
+For comparison, the maps during the same kind of scan (2026-11-03): p99 34–39 ms because of whole-tree re-layout (KD-02). In Places the place appeared 232 ms after launch while the scan ran, and only one recomposition was needed (the root's neighbourhood stops changing once its children are listed). The largest frame in the scan run (177 ms) is the startup frame (KD-03). Walking runs show isolated ~30 ms frames when a right-drag starts (not investigated).
+
+**Visual assessment (mine, from screenshots; not DJ's acceptance).** What works: the arrival terrace view reads as a place (avenue of lit towers, landmark with name plaque, ring of named gates, vistas visible through the gates); entering many-files feels like arriving in a different district; the wide folder from above reads as an amphitheatre; empty/denied/not-scanned are unmistakable. What is weak: from the root terrace the near towers can crowd the frame edges; signs of far gates are small at the arrival distance; vistas are sparse clusters rather than convincing skylines; the plaza floor's reflections are subtle on Low; the Up-route strip is a plain line; there is no sound, weather or ambient motion. Several artefacts were found and fixed during the pass: oversized signs, a landmark hiding the central gate, gate lights scattering in volumetric fog, and **NaN pixels from `pow()` of a negative base** (beacon/landmark rim terms) that glow spread into white blobs.
+
+**Instrument defects found and fixed (not product defects):** probe keys sent without waiting for processing; Destinations rows clicked without the scroll offset; a breadcrumb count miscounted; an over-short wait for the throttled recomposition after cancel on the faster exported build; a Core test whose "above the lintel" path started below it. **Product defects found and fixed:** clicking an already-highlighted Destinations row did nothing (ItemList emits item_selected only on change); stepping back (S) from the arrival terrace walked through the ▲ gate (now gates require facing through them); the inspector kept a stale "You are here" after travel; the toolbar showed two maps pressed; M framed the old selection instead of "You are here"; the vista beacons' NaN blobs.
+
+## VIS-11 flicker investigation (2026-11-04)
+
+DJ: a sun-like bright source and/or its reflection flashing on and off, especially while moving in District. Instrument: `--automate=flicker` flies a fixed camera path and records per frame: bright pixels, single-frame flash pixels (bright now, dark in a 5×5 neighbourhood before and after) and blob-scale *cell spikes* (16×9 cells whose luminance departs from the mean of the neighbouring frames by > 0.06), with one effect toggled at a time and a stationary control. Synthetic 12k sample, 1280×720, High, D3D12.
+
+- **Instrument corrections:** the first path drove through a tower and measured the HUD; the pixel-level flash metric is dominated by sub-pixel window twinkle that no effect changes (it stays ≈ 22–31 per frame in every configuration), so the blob-scale metric was added; a street-level path proved unusable (near-object parallax swamps every metric).
+- **Root cause found (reproduced, fixed):** the selection beam's shader computed `pow(1.0 - height01, 1.6)`; at the top cap interpolation can push `height01` just above 1, and `pow()` of a negative base is NaN. Glow blurs NaN/Inf into a bright, sun-like blob at the top of the beam. In District the beam is 80 u tall and appears only beyond ≈ 28 u from the selection, so moving and zooming switch the "sun" on and off; the wet ground reflects it. With the beam top in view (`--open-test=beamtop`): **pre-fix ≈ 80 bright pixels per 320×180 frame at the beam top; with the clamp 0.1; with glow off 0.1**. Screenshots `flicker-beamtop/flicker-pre-fix-mid.png` vs `flicker-baseline-mid.png`. Fix: clamp before `pow()` (also applied to two Places shaders that had the same pattern).
+- **Second contributor (measured, mitigated):** on an orbit around a selection, blob-scale spikes halve when the directional light's specular is removed or puddles are roughened (peak cell deviation 0.142 → 0.078, spikes 10 → 6); SSR, the sky's sun disc, volumetric fog and its reprojection, SSAO, MSAA, shadows, the selection spotlight and the beam made no difference there. Mitigation: sun specular 0.1 and puddle roughness 0.12 (SSR reflections of lit towers unchanged) — measured equal to specular 0.
+- **Residual / unknown:** small spikes remain that only disabling glow reduces (emissive edges and windows amplified by bloom). I could not observe DJ's exact view; whether the beam blob is what DJ saw is a strong hypothesis, **not confirmed**. Reproduction for DJ: District, select a file, back away > 28 u so the beam appears with its top on screen, move or zoom across that distance.
 
 ## Navigation pass (2026-11-03, after DJ's first run)
 
@@ -94,12 +134,27 @@ Other measurements:
 - **KD-06 Spatial stability during scans is partial.** The selection stays fixed on screen, but other subtrees can shift sideways as siblings grow.
 - **KD-07 District overview is dark at bird's-eye distance.** It reads mainly through labels and streets. LOD/impostors are not implemented.
 - Allocated size, hard-link counts, owner/security info: not queried (labelled in the inspector).
+- **KD-10 Places has no ground following or collision.** Walking keeps the height you are at (the arrival terrace is at eye height 4.6, walking poses 2.6); you can pass through towers, gates and terraces. Q/E change height.
+- **KD-11 Places geography is local and partly symbolic (by design, AD-14).** Vista distances are symbolic; vistas are omitted beyond 24 children (tiers); grandchildren appear only as beacons (≤ 16, the rest counted). Whether this reads as honest is DJ's call.
+- **KD-12 Gates can shift while the current folder is still being listed** (alphabetical insertion during a scan). In practice a folder's entries arrive in one batch, so this is rare; the camera never moves.
+- **KD-13 Isolated ~30 ms frames when a right-drag starts** in the walking measurements (p99 stays ≈ 8 ms). Not investigated.
+- **KD-14 Places HUD at DPI scale > 1 not exercised** (automation forces `--ui-scale=1`; the OS probe's Destinations coordinates assume it).
+- **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
 
 ## Provisional decisions to confirm with DJ
 
 Godot (AD-01), the Fishbone default (AD-08), the log height scale (AD-07), click = select-only (FSN approached on click), and D3D12 as the default driver (KD-01, AD-11).
 
 ## Next useful iteration (recommended)
+
+1. **DJ plays Places** on the fixture and on a real project folder: is arrival comfortable, are gates and the way back obvious, does walking through a gate feel deliberate (or should entry need a confirm key), is the discontinuity (separate places, symbolic vistas) acceptable, does District's flicker still occur after the beam fix?
+2. **Grounded walking:** follow the plaza/terrace height and step down from the arrival terrace; gentle collision with towers and gate pillars (camera only).
+3. **Vistas as skylines:** more of the child's structure (quarters as massing, its gate ring as a glow), and a consistent "next-next" horizon; parent vista seen through the ▲ gate.
+4. **Atmosphere:** per-folder ambient variation within the vocabulary (accent, haze density, light pools), subtle motion (drifting particles), and the first content-aware file appearance (image thumbnails as tower facades) behind the extension point.
+5. Earlier items still open: KD-02 background layout for maps, KD-03 shader warm-up, KD-08 trackpad fly toggle.
+
+### Earlier recommendation (2026-11-03)
+
 
 1. DJ dogfoods the standalone build on a couple of real folders and reports friction: camera feel, label density, District readability.
 2. Keep watching KD-01 on D3D12 during dogfooding. Reproduce the Vulkan loss on a minimal Godot scene (sustained volumetric fog + SSR, then a readback) and, if it reproduces, report it upstream. Add a shader warm-up for KD-03.

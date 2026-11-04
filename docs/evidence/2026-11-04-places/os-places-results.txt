@@ -1,0 +1,17 @@
+﻿PASS OS the root arrived intact: 'Atlas Studio'
+start: experience=Places current=Atlas Studio gates=11 focused=True
+PASS OS starts in Places at the root with 11 gates
+PASS OS clicking the 'Code' row selects it without moving the current folder (selected=Code)
+PASS OS holding W walks through the Code gate (current=Code, transitions=1)
+PASS OS holding S backs away from the arrival point without travelling (current=Code)
+PASS OS U returns to Atlas Studio with Code selected (current=Atlas Studio, selected=Code)
+PASS OS G enters the selected folder (current=Code)
+after double-click on row 2: current=src
+PASS OS Ctrl+Home returns to the chosen root (current=Atlas Studio)
+PASS OS Alt-Tab while walking: focus lost, nothing held (focused=False)
+PASS OS after returning, the camera is still (no stuck key)
+PASS OS B ascends (height 121.081)
+PASS OS M opens the map ()
+PASS OS M again returns to Places at Atlas Studio
+PASS OS Enter opened Explorer at C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\Documents (app said: Opened with Windows: C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\Documents)
+done failures=0
