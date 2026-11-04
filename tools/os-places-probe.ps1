@@ -13,8 +13,12 @@ using System; using System.Runtime.InteropServices;
 public static class FsClient {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 }
 "@
+# Without this, a DPI-unaware PowerShell sees scaled coordinates (125 % here) and clicks land rows away from the
+# intended Destinations entry (instrument defect found on 2026-11-04).
+[void][FsClient]::SetProcessDPIAware()
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $state = Join-Path $Out 'state.json'
 $log = New-Object System.Collections.Generic.List[string]
@@ -32,12 +36,15 @@ function Destination-Row($h, [int]$row) { Client-Click $h 90 (239 + 23 * $row) }
 function Ctrl-Home { Key-Down 'Ctrl'; Key-Down 'Home'; Start-Sleep -Milliseconds 80; Key-Up 'Home'; Key-Up 'Ctrl' }
 $script:Vk['Ctrl'] = 0x11; $script:Vk['U'] = 0x55; $script:Vk['M'] = 0x4D; $script:Vk['G'] = 0x47; $script:Vk['Enter'] = 0x0D
 
-$p = Start-Process -FilePath $Exe -ArgumentList @('--', "--root=$Root", '--window=1600x900', '--ui-scale=1', "--state-file=$state") -PassThru
+# Start-Process joins ArgumentList with spaces and does not quote, so arguments containing spaces must carry their
+# own quotes (an earlier run passed "...\Atlas" for "...\Atlas Studio": instrument defect, 2026-11-04).
+$p = Start-Process -FilePath $Exe -ArgumentList @('--', "`"--root=$Root`"", '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"") -PassThru
 Start-Sleep -Seconds 6
 $w = Find-FileScapeWindow
 Focus-Window $w; Start-Sleep -Milliseconds 500
 $s = State
 $rootName = $s.currentName
+Check ($rootName -eq (Split-Path $Root -Leaf)) "the root arrived intact: '$rootName'"
 Log "start: experience=$($s.experience) current=$($s.currentName) gates=$($s.gates) focused=$($s.focused)"
 Check ($s.experience -eq 'Places' -and $s.gates -gt 0) "starts in Places at the root with $($s.gates) gates"
 
