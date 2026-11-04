@@ -20,6 +20,9 @@ public sealed record SizeScale(float Base, float PerDecade, float Multiplier, fl
     public static readonly SizeScale Classic = new(0.12f, 0.42f, 1f, 6f);
     public static readonly SizeScale District = new(0.25f, 0.42f, 2.4f, 14f);
 
+    /// <summary>Places (PLACE-03): towers taller than eye level (≈ 3 u for 1 KiB, 5.3 u for 1 MiB, 7.5 u for 1 GiB).</summary>
+    public static readonly SizeScale Place = new(0.4f, 0.42f, 1.8f, 12f);
+
     /// <summary>The height given to zero-byte files: a thin tile that is still visible and pickable.</summary>
     public float ZeroByteHeight => 0.05f * Multiplier;
 

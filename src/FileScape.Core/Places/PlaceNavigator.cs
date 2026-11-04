@@ -1,0 +1,306 @@
+using System.Numerics;
+using FileScape.Core.Layout;
+using FileScape.Core.Model;
+
+namespace FileScape.Core.Places;
+
+public enum PlaceMove
+{
+    /// <summary>Into a child of the current folder.</summary>
+    Enter,
+
+    /// <summary>To the parent of the current folder.</summary>
+    Up,
+
+    /// <summary>Directly to another folder (breadcrumb, map, destination by id).</summary>
+    Jump,
+
+    /// <summary>Back to the chosen root.</summary>
+    Root,
+
+    /// <summary>Back to the previously visited folder.</summary>
+    Back,
+}
+
+public sealed record PlaceChange(int From, int To, PlaceMove Move);
+
+/// <summary>
+/// Where the user *is* (PLACE-01): the current folder, the visit history and the chosen root. It is deliberately
+/// separate from <see cref="Interaction.SelectionState"/> (what the user inspects): selecting something never moves
+/// the user, and travelling does not have to change the selection.
+/// </summary>
+public sealed class PlaceNavigator
+{
+    private readonly List<int> _history = [];
+
+    public int Root { get; private set; }
+    public int Current { get; private set; }
+    public IReadOnlyList<int> History => _history;
+
+    public event Action<PlaceChange>? Changed;
+
+    public void Reset(int root = 0)
+    {
+        _history.Clear();
+        Root = root;
+        Current = root;
+    }
+
+    /// <summary>Enters a child folder of the current folder. Links and files cannot be entered.</summary>
+    public bool Enter(FsTree tree, int childId)
+    {
+        if (!tree.Contains(childId) || !tree[childId].IsDirectory || tree[childId].ParentId != Current)
+        {
+            return false;
+        }
+
+        return Move(childId, PlaceMove.Enter);
+    }
+
+    public bool Up(FsTree tree)
+    {
+        if (!tree.Contains(Current) || tree[Current].IsRoot || Current == Root)
+        {
+            return false;
+        }
+
+        return Move(tree[Current].ParentId, PlaceMove.Up);
+    }
+
+    /// <summary>Goes to any folder at or below the root. A file's id goes to its folder.</summary>
+    public bool GoTo(FsTree tree, int id, PlaceMove move = PlaceMove.Jump)
+    {
+        if (!tree.Contains(id))
+        {
+            return false;
+        }
+
+        if (!tree[id].IsDirectory)
+        {
+            id = tree[id].ParentId;
+        }
+
+        return id >= 0 && id != Current && Move(id, move);
+    }
+
+    public bool GoToRoot() => Current != Root && Move(Root, PlaceMove.Root);
+
+    public bool Back()
+    {
+        if (_history.Count == 0)
+        {
+            return false;
+        }
+
+        var previous = _history[^1];
+        _history.RemoveAt(_history.Count - 1);
+        var from = Current;
+        Current = previous;
+        Changed?.Invoke(new PlaceChange(from, previous, PlaceMove.Back));
+        return true;
+    }
+
+    private bool Move(int to, PlaceMove move)
+    {
+        if (to == Current)
+        {
+            return false;
+        }
+
+        var from = Current;
+        _history.Add(from);
+        if (_history.Count > 200)
+        {
+            _history.RemoveAt(0);
+        }
+
+        Current = to;
+        Changed?.Invoke(new PlaceChange(from, to, move));
+        return true;
+    }
+
+    /// <summary>Folder ids from the root to <paramref name="id"/>, inclusive (the breadcrumb, PLACE-02).</summary>
+    public static List<int> Breadcrumb(FsTree tree, int id)
+    {
+        var path = new List<int> { id };
+        path.AddRange(tree.Ancestors(id));
+        path.Reverse();
+        return path;
+    }
+
+    /// <summary>
+    /// The child of <paramref name="ancestor"/> on the path down to <paramref name="descendant"/>, or -1. Returning to
+    /// an ancestor arrives in front of that child's gate, so the user sees where they came from (PLACE-07).
+    /// </summary>
+    public static int ChildToward(FsTree tree, int ancestor, int descendant)
+    {
+        var cur = descendant;
+        while (cur >= 0 && tree[cur].ParentId != ancestor)
+        {
+            cur = tree[cur].ParentId;
+        }
+
+        return cur;
+    }
+}
+
+/// <summary>
+/// Detects deliberate travel through gates (PLACE-06). A gate counts only when the camera crosses its plane
+/// outward, inside its width and below its lintel, while facing through it (stepping or flying backwards never
+/// travels), after having been at least <see cref="ArmDepth"/> inside the plane. That hysteresis, plus a cooldown
+/// after every arrival, means hovering on a boundary cannot switch places back and forth.
+/// </summary>
+public sealed class ThresholdTracker
+{
+    public const float ArmDepth = 2f;
+    public const double CooldownSeconds = 1.0;
+
+    /// <summary>The minimum cosine between the view direction and the gate's outward direction (≈ 72°).</summary>
+    public const float MinFacing = 0.3f;
+
+    private readonly HashSet<Gate> _armed = [];
+    private PlaceComposition? _place;
+    private double _readyAt;
+    private Vector3? _last;
+
+    /// <summary>Starts watching a new place. Gates the camera is already well inside of are armed immediately.</summary>
+    public void Reset(PlaceComposition place, Vector3 camera, double now)
+    {
+        _place = place;
+        _armed.Clear();
+        _last = camera;
+        _readyAt = now + CooldownSeconds;
+        Arm(camera);
+    }
+
+    /// <summary>Keeps the arming state but follows a recomposed place (the same folder, re-laid out during a scan).</summary>
+    public void Follow(PlaceComposition place, Vector3 camera)
+    {
+        _place = place;
+        _armed.Clear();
+        _last = camera;
+        Arm(camera);
+    }
+
+    /// <summary>
+    /// Returns the gate crossed between the previous and this camera position, or null. <paramref name="facing"/> is
+    /// the horizontal view direction; when given, a crossing counts only if the camera faces through the gate.
+    /// </summary>
+    public Gate? Update(Vector3 camera, double now, Vector3? facing = null)
+    {
+        if (_place == null)
+        {
+            return null;
+        }
+
+        var last = _last ?? camera;
+        _last = camera;
+        Gate? crossed = null;
+        if (now >= _readyAt)
+        {
+            foreach (var g in Gates(_place))
+            {
+                if (_armed.Contains(g) && Crosses(g, last, camera) && (facing is not { } f || Vector3.Dot(f, g.Outward) >= MinFacing))
+                {
+                    crossed = g;
+                    break;
+                }
+            }
+        }
+
+        Arm(camera);
+        if (crossed != null)
+        {
+            _armed.Remove(crossed);
+        }
+
+        return crossed;
+    }
+
+    private void Arm(Vector3 camera)
+    {
+        foreach (var g in Gates(_place!))
+        {
+            if (Depth(g, camera) <= -ArmDepth)
+            {
+                _armed.Add(g);
+            }
+        }
+    }
+
+    private static IEnumerable<Gate> Gates(PlaceComposition place) =>
+        place.ParentGate is { } pg ? place.Gates.Append(pg) : place.Gates;
+
+    /// <summary>Signed distance of a point from the gate plane; negative inside the place.</summary>
+    public static float Depth(Gate g, Vector3 point) => Vector3.Dot(point - g.Position, g.Outward);
+
+    public static bool Crosses(Gate g, Vector3 from, Vector3 to)
+    {
+        if (!g.CanEnter)
+        {
+            return false;
+        }
+
+        var d0 = Depth(g, from);
+        var d1 = Depth(g, to);
+        if (!(d0 < 0 && d1 >= 0))
+        {
+            return false;
+        }
+
+        var t = d0 / (d0 - d1);
+        var x = Vector3.Lerp(from, to, t);
+        var lateral = MathF.Abs(Vector3.Dot(x - g.Position, g.Tangent));
+        return lateral <= g.Width / 2 && x.Y <= g.Position.Y + g.Height;
+    }
+}
+
+/// <summary>Ray picking against a place's structures (PLACE-01: picking selects, it never travels).</summary>
+public static class PlacePicker
+{
+    /// <summary>Returns the node id of the nearest structure hit, or -1. Landmark → the folder; gates and vistas → their folder.</summary>
+    public static int Pick(PlaceComposition place, Vector3 origin, Vector3 direction) => PickWithDistance(place, origin, direction).Id;
+
+    public static (int Id, float Distance) PickWithDistance(PlaceComposition place, Vector3 origin, Vector3 direction)
+    {
+        var best = -1;
+        var bestT = float.MaxValue;
+        void Test(int id, Box box)
+        {
+            if (box.Intersect(origin, direction) is { } t && t < bestT)
+            {
+                bestT = t;
+                best = id;
+            }
+        }
+
+        Test(place.FolderId, place.Landmark.Bounds);
+        foreach (var f in place.Files) Test(f.Id, f.Box);
+        foreach (var g in place.Gates) Test(g.TargetId, g.Bounds);
+        if (place.ParentGate is { } pg) Test(pg.TargetId, pg.Bounds);
+        foreach (var v in place.ParentVista is { } pv ? place.Vistas.Append(pv) : place.Vistas)
+        {
+            Test(v.FolderId, Box.FromBase(v.Center, 2.8f, v.LandmarkHeight, 2.8f));
+            foreach (var t in v.Towers) Test(t.Id, Box.FromBase(t.BaseCenter, t.Footprint, t.Height, t.Footprint));
+            foreach (var b in v.Beacons) Test(b.Id, Box.FromBase(b.Position, 1.2f, b.Height, 1.2f));
+        }
+
+        return (best, bestT);
+    }
+
+    /// <summary>The solid used to highlight a node in this place, if it is represented here.</summary>
+    public static Box? BoundsOf(PlaceComposition place, int id)
+    {
+        if (id == place.FolderId) return place.Landmark.Bounds;
+        foreach (var g in place.Gates) if (g.TargetId == id) return g.Bounds;
+        if (place.ParentGate is { } pg && pg.TargetId == id) return pg.Bounds;
+        foreach (var f in place.Files) if (f.Id == id) return f.Box;
+        foreach (var v in place.ParentVista is { } pv ? place.Vistas.Append(pv) : place.Vistas)
+        {
+            foreach (var t in v.Towers) if (t.Id == id) return Box.FromBase(t.BaseCenter, t.Footprint, t.Height, t.Footprint);
+            foreach (var b in v.Beacons) if (b.Id == id) return Box.FromBase(b.Position, 1.2f, b.Height, 1.2f);
+        }
+
+        return null;
+    }
+}
