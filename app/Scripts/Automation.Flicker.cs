@@ -25,7 +25,7 @@ public partial class Automation
         var district = _args.Visualization is null or 1;
         _main.SetVisualization(district ? 1 : 0);
         _main.SetQuality(Quality.High);
-        var withSelection = _args.OpenTest is "selection" or "street";
+        var withSelection = _args.OpenTest is "selection" or "street" or "beamtop";
         var configs = new List<(string Name, Action Apply, bool Moving)>
         {
             // "pre-fix" restores the settings DJ saw before VIS-11 (sun specular 1.0, puddle roughness 0.04).
@@ -44,7 +44,21 @@ public partial class Automation
             ("sun-shadows-off", () => _main.Sun.ShadowEnabled = false, true),
             ("low-quality", () => _main.SetQuality(Quality.Low), true),
         };
-        if (withSelection)
+        if (_args.OpenTest == "beamtop")
+        {
+            // The selection beam's top in view: the suspected NaN source (pow of a negative base at the top cap).
+            configs =
+            [
+                ("pre-fix", () => { PreFix(); Beam(clamp: false); }, true),
+                ("beam-unclamped-only", () => Beam(clamp: false), true),
+                ("baseline", () => { }, true),
+                ("stationary", () => { }, false),
+                ("pre-fix-stationary", () => { PreFix(); Beam(clamp: false); }, false),
+                ("glow-off-pre-fix", () => { PreFix(); Beam(clamp: false); Env().GlowEnabled = false; }, true),
+                ("beam-off", () => ((ShaderMaterial)_main.SelectionBeam.MaterialOverride).SetShaderParameter("color", new Color(0, 0, 0, 0)), true),
+            ];
+        }
+        else if (withSelection)
         {
             // Selection-specific suspects: the spotlight above the selection, its specular, the beam, puddle roughness.
             configs.Insert(2, ("spot-energy-0", () => _main.SelectionSpot.LightEnergy = 0, true));
@@ -71,6 +85,7 @@ public partial class Automation
             _main.SelectionSpot.LightEnergy = 9;
             _main.SelectionSpot.LightSpecular = 0.15f;
             ((ShaderMaterial)_main.SelectionBeam.MaterialOverride).SetShaderParameter("color", _main.ActiveVisualization.SelectionColor with { A = 0.35f });
+            Beam(clamp: true);
             if (withSelection && _main.Tree != null)
             {
                 _main.Select(PathSelection());
@@ -217,8 +232,25 @@ public partial class Automation
         _main.Rig.SetPose(pos, lookYaw, -elevation, 30f);
     }
 
+    private void PreFix()
+    {
+        _main.Sun.LightSpecular = 1f;
+        ((ShaderMaterial)_main.Ground.MaterialOverride).SetShaderParameter("puddle_roughness", 0.04f);
+    }
+
+    private void Beam(bool clamp) => ((ShaderMaterial)_main.SelectionBeam.MaterialOverride).SetShaderParameter("clamp_fade", clamp);
+
     private void Pose(int frame, bool orbitSelection)
     {
+        if (_args.OpenTest == "beamtop" && _main.Selection.Selected >= 0)
+        {
+            // Far enough and low enough that the whole 80 u beam, including its top, is in frame while orbiting.
+            var sb = _main.Layout!.NodeBoxes[_main.Selection.Selected];
+            _main.Rig.SetDesired(Visualization.Gd(sb.Center) with { Y = 30 }, 120f, frame * 0.9f, 8f);
+            _main.Rig.Snap();
+            return;
+        }
+
         if (_args.OpenTest == "street")
         {
             StreetPose(frame);
