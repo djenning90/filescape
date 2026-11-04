@@ -107,12 +107,19 @@ public sealed class DistrictVisualization : Visualization
             SsaoRadius = 1.2f,
             SsaoIntensity = 1.2f,
         };
+        // VIS-11: the sun's specular highlight on near-mirror puddles switched on and off as the camera moved
+        // (measured: blob-scale flashes halve with specular 0 or puddle roughness 0.25). Keep a faint sheen and
+        // slightly rougher puddles; reflections of the lit towers (SSR) are unaffected.
+        sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightAndSky;
+        sun.LightSpecular = 0.1f;
         sun.LightColor = new Color(0.55f, 0.6f, 1f);
         sun.LightEnergy = 0.25f;
         sun.RotationDegrees = new Vector3(-35, 140, 0);
         sun.ShadowEnabled = high;
         sun.DirectionalShadowMaxDistance = 220;
-        ground.MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/ground_wet.gdshader") };
+        var wet = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/ground_wet.gdshader") };
+        wet.SetShaderParameter("puddle_roughness", 0.12f);
+        ground.MaterialOverride = wet;
     }
 
     protected override int Build(FsTree tree, LayoutResult layout, List<int> order)

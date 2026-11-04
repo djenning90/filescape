@@ -5,6 +5,9 @@ render_mode diffuse_burley, specular_schlick_ggx;
 uniform vec3 base_color : source_color = vec3(0.016, 0.018, 0.026);
 uniform vec3 lot_line_color : source_color = vec3(0.12, 0.1, 0.3);
 uniform float puddle_scale = 0.11;
+// Roughness inside puddles. Near-mirror values make sub-pixel specular highlights that switch on and off as the
+// camera moves across puddle edges (VIS-11 investigation).
+uniform float puddle_roughness = 0.04;
 
 varying vec3 world_pos;
 
@@ -28,7 +31,7 @@ void fragment() {
 	float line = 1.0 - min(min(g.x, g.y), 1.0);
 	float dist = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
 	ALBEDO = base_color * (1.0 - 0.5 * puddle);
-	ROUGHNESS = mix(0.55, 0.04, puddle);
+	ROUGHNESS = mix(0.55, puddle_roughness, puddle);
 	METALLIC = 0.0;
 	SPECULAR = 0.6;
 	EMISSION = lot_line_color * line * (1.0 - smoothstep(80.0, 400.0, dist)) * 0.35;

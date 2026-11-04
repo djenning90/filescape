@@ -240,6 +240,34 @@ public partial class CameraRig : Node3D
 
     // ------------------------------------------------------------ shared
 
+    /// <summary>
+    /// Places the camera exactly at an eye position with a yaw and look pitch, pivoting <paramref name="pivotDistance"/>
+    /// ahead. It works in both modes and does not end flight, so a place transition can carry a flying user (PLACE-07).
+    /// </summary>
+    public void SetPose(Vector3 eye, float yaw, float lookPitch, float pivotDistance)
+    {
+        _yaw = yaw;
+        _lookPitch = CameraMath.ClampLookPitch(lookPitch);
+        _distance = Mathf.Clamp(pivotDistance, MinDistance, MaxDistance);
+        _target = Visualization.Gd(CameraMath.TargetFromPose(Visualization.Num(eye), _yaw, _lookPitch, _distance));
+        _flyVelocity = Vector3.Zero;
+        FreezeDesired();
+        Apply();
+    }
+
+    /// <summary>Eases (orbit mode) towards an eye pose; used for Home/approach in Places.</summary>
+    public void GlideToPose(Vector3 eye, float yaw, float lookPitch, float pivotDistance)
+    {
+        ExitFly();
+        _desiredYaw = NearestAngle(_yaw, yaw);
+        _desiredLookPitch = CameraMath.ClampLookPitch(lookPitch);
+        _desiredDistance = Mathf.Clamp(pivotDistance, MinDistance, MaxDistance);
+        _desiredTarget = Visualization.Gd(CameraMath.TargetFromPose(Visualization.Num(eye), _desiredYaw, _desiredLookPitch, _desiredDistance));
+    }
+
+    /// <summary>The equivalent of <paramref name="angle"/> closest to <paramref name="current"/>, so turns take the short way round.</summary>
+    public static float NearestAngle(float current, float angle) => current + Mathf.Wrap(angle - current, -180f, 180f);
+
     private void FreezeDesired()
     {
         _desiredTarget = _target;

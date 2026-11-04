@@ -100,6 +100,9 @@ public sealed class ClassicVisualization : Visualization
             SsrEnabled = false,
             VolumetricFogEnabled = false,
         };
+        // The sun is shared with Places, which changes these; restore the map defaults explicitly.
+        sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightAndSky;
+        sun.LightSpecular = 1f;
         sun.LightColor = new Color(0.86f, 0.9f, 1f);
         sun.LightEnergy = 1.1f;
         sun.RotationDegrees = new Vector3(-48, -32, 0);

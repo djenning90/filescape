@@ -44,6 +44,7 @@ public partial class Automation : Node
                 case "scanperf": await ScanPerf(); break;
                 case "live": await Live(); break;
                 case "qualitystress": await QualityStress(); break;
+                case "flicker": await Flicker(); break;
                 case "args":
                     // Records the exact arguments received, to verify tools/fs.sh keeps argument boundaries.
                     foreach (var a in OS.GetCmdlineUserArgs()) Log($"arg <{a}>");

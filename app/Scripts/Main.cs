@@ -71,6 +71,22 @@ public partial class Main : Node3D
     public string? LastShellMessage { get; private set; }
     public int LabelsShown => _labels.LastShown;
 
+    // Scene parts exposed for investigations (the flicker probe toggles them one at a time).
+    internal WorldEnvironment World => _world;
+    internal DirectionalLight3D Sun => _sun;
+    internal SpotLight3D SelectionSpot => _spot;
+    internal MeshInstance3D SelectionBeam => _beam;
+    internal MeshInstance3D Ground => _ground;
+
+    private bool _labelsVisible = true;
+
+    /// <summary>Hides the 2D name labels (instrument use: measuring the 3D scene only).</summary>
+    public void SetLabelsVisible(bool visible)
+    {
+        _labelsVisible = visible;
+        if (!visible) _labels.HideAll();
+    }
+
     public override void _Ready()
     {
         InputBindings.Register();
@@ -298,7 +314,7 @@ public partial class Main : Node3D
             }
 
             UpdateHighlights();
-            if (now - _lastLabelRefresh > 0.08)
+            if (_labelsVisible && now - _lastLabelRefresh > 0.08)
             {
                 _lastLabelRefresh = now;
                 _labels.Refresh(_rig.Camera, _tree, _layout, _selection, _hud.BlockingRects);
