@@ -54,7 +54,7 @@ public sealed record PlaceParams
     /// </summary>
     public float ArrivalSetback { get; init; } = 6f;
     public float ArrivalEyeHeight { get; init; } = 4.6f;
-    public float ArrivalLookPitch { get; init; } = -9f;
+    public float ArrivalLookPitch { get; init; } = -5f;
 
     /// <summary>Eye height when walking (return and approach poses).</summary>
     public float EyeHeight { get; init; } = 2.6f;
