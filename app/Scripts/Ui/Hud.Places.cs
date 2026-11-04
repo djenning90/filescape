@@ -87,7 +87,7 @@ public partial class Hud
         _ascentPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
         _ascentPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
         _ascentPanel.GrowHorizontal = Control.GrowDirection.Both;
-        _ascentPanel.OffsetTop = 190;
+        _ascentPanel.OffsetTop = 240;
         _ascentLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
         _ascentLabel.AddThemeFontSizeOverride("font_size", 14);
         _ascentLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.92f, 1f));

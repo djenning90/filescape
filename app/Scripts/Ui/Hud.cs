@@ -500,7 +500,7 @@ public partial class Hud : CanvasLayer
         _flyPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
         _flyPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
         _flyPanel.GrowHorizontal = Control.GrowDirection.Both;
-        _flyPanel.OffsetTop = 118;
+        _flyPanel.OffsetTop = 196; // below the Places breadcrumb panel
         _flyLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
         _flyLabel.AddThemeFontSizeOverride("font_size", 14);
         _flyPanel.AddChild(_flyLabel);
