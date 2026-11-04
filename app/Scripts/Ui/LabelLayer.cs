@@ -1,6 +1,7 @@
 using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
+using FileScape.Core.Places;
 using Godot;
 
 namespace FileScape.App.Ui;
@@ -54,88 +55,128 @@ public partial class LabelLayer : Control
 
     private enum Kind { Selected, Hovered, Related, Dir, File }
 
-    public void Refresh(Camera3D camera, FsTree tree, LayoutResult layout, SelectionState selection, IEnumerable<Rect2> blocked)
+    private int _used;
+    private readonly HashSet<int> _shown = [];
+
+    private void Begin(IEnumerable<Rect2> blocked)
     {
         _placed.Clear();
         _placed.AddRange(blocked);
-        var used = 0;
-        var shown = new HashSet<int>();
-        var viewport = GetViewportRect();
+        _used = 0;
+        _shown.Clear();
+    }
+
+    private void End()
+    {
+        for (var i = _used; i < _pool.Count; i++)
+        {
+            _pool[i].Visible = false;
+        }
+
+        LastShown = _used;
+    }
+
+    /// <summary>Places one label at a 3D anchor if it is on screen and does not collide with earlier labels or the UI.</summary>
+    private void TryPlace(Camera3D camera, FsTree tree, int id, Vector3 anchor, Kind kind, bool belowAnchor)
+    {
+        if (_used >= MaxLabels || !tree.Contains(id) || !_shown.Add(id) || camera.IsPositionBehind(anchor))
+        {
+            return;
+        }
+
+        var p = camera.UnprojectPosition(anchor);
+        if (!GetViewportRect().HasPoint(p))
+        {
+            return;
+        }
+
+        var node = tree[id];
+        var label = _pool[_used];
+        label.LabelSettings = kind switch
+        {
+            Kind.Selected => _selSettings,
+            Kind.Hovered => _hoverSettings,
+            Kind.File => _fileSettings,
+            _ => _dirSettings,
+        };
+        label.Text = Text(node, tree.DisplayName(id), kind);
+        var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + new Vector2(10, 6);
+        var rect = new Rect2(p - new Vector2(size.X / 2, size.Y + (belowAnchor ? 0 : 4)), size);
+        if (kind is not (Kind.Selected or Kind.Hovered))
+        {
+            foreach (var r in _placed)
+            {
+                if (r.Intersects(rect))
+                {
+                    return;
+                }
+            }
+        }
+
+        _placed.Add(rect);
+        label.Position = rect.Position + new Vector2(5, 3);
+        label.Size = size;
+        label.Visible = true;
+        _used++;
+    }
+
+    public void Refresh(Camera3D camera, FsTree tree, LayoutResult layout, SelectionState selection, IEnumerable<Rect2> blocked)
+    {
+        Begin(blocked);
         var camPos = camera.GlobalPosition;
 
-        void TryPlace(int id, Kind kind)
+        // Candidate choice lives in Core (LabelPlanner) and only yields ids the displayed layout contains, which
+        // matters while a scan grows the tree ahead of the throttled re-layout.
+        foreach (var (id, role) in LabelPlanner.Candidates(tree, layout, selection, Visual.Visualization.Num(camPos), MaxDirCandidates, MaxFileCandidates))
         {
-            if (used >= MaxLabels || !layout.Contains(id) || !tree.Contains(id) || !shown.Add(id))
-            {
-                return;
-            }
-
             var node = tree[id];
             var box = layout.NodeBoxes[id];
             // Directory labels sit at the pedestal's front edge. File labels sit above the block.
             var anchor = node.IsDirectory
                 ? new Vector3(box.Center.X, box.Max.Y + 0.15f, box.Max.Z)
                 : new Vector3(box.Center.X, box.Max.Y + 0.1f, box.Center.Z);
-            if (camera.IsPositionBehind(anchor))
-            {
-                return;
-            }
-
-            var p = camera.UnprojectPosition(anchor);
-            if (!viewport.HasPoint(p))
-            {
-                return;
-            }
-
-            var label = _pool[used];
-            label.LabelSettings = kind switch
-            {
-                Kind.Selected => _selSettings,
-                Kind.Hovered => _hoverSettings,
-                Kind.File => _fileSettings,
-                _ => _dirSettings,
-            };
-            label.Text = Text(node, tree.DisplayName(id), kind);
-            var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + new Vector2(10, 6);
-            var rect = new Rect2(p - new Vector2(size.X / 2, size.Y + (node.IsDirectory ? 0 : 4)), size);
-            if (kind is not (Kind.Selected or Kind.Hovered))
-            {
-                foreach (var r in _placed)
-                {
-                    if (r.Intersects(rect))
-                    {
-                        return;
-                    }
-                }
-            }
-
-            _placed.Add(rect);
-            label.Position = rect.Position + new Vector2(5, 3);
-            label.Size = size;
-            label.Visible = true;
-            used++;
-        }
-
-        // Candidate choice lives in Core (LabelPlanner) and only yields ids the displayed layout contains, which
-        // matters while a scan grows the tree ahead of the throttled re-layout.
-        foreach (var (id, role) in LabelPlanner.Candidates(tree, layout, selection, Visual.Visualization.Num(camPos), MaxDirCandidates, MaxFileCandidates))
-        {
-            TryPlace(id, role switch
+            TryPlace(camera, tree, id, anchor, role switch
             {
                 LabelRole.Selected => Kind.Selected,
                 LabelRole.Hovered => Kind.Hovered,
                 LabelRole.Related => Kind.Related,
                 LabelRole.Directory => Kind.Dir,
                 _ => Kind.File,
-            });
+            }, node.IsDirectory);
         }
 
-        for (var i = used; i < _pool.Count; i++)
+        End();
+    }
+
+    /// <summary>
+    /// Places: folder names are in-world signs (PlaceWorld), so the overlay labels only the selection, the hovered
+    /// structure and the nearest file towers, which keeps the arrival view uncluttered (PLACE-05).
+    /// </summary>
+    public void RefreshPlace(Camera3D camera, FsTree tree, PlaceComposition place, SelectionState selection, IEnumerable<Rect2> blocked, int maxFiles = 10, float fileRange = 24f)
+    {
+        Begin(blocked);
+        void Box(int id, Kind kind)
         {
-            _pool[i].Visible = false;
+            if (id >= 0 && PlacePicker.BoundsOf(place, id) is { } b)
+            {
+                TryPlace(camera, tree, id, new Vector3(b.Center.X, b.Max.Y + 0.25f, b.Center.Z), kind, false);
+            }
         }
 
-        LastShown = used;
+        if (selection.Selected != place.FolderId) Box(selection.Selected, Kind.Selected); // the landmark already names it
+        Box(selection.Hovered, Kind.Hovered);
+        var cam = Visual.Visualization.Num(camera.GlobalPosition);
+        foreach (var f in place.Files
+                     .Select(f => (f, D: System.Numerics.Vector3.Distance(f.Box.Center, cam)))
+                     .Where(x => x.D < fileRange)
+                     .OrderBy(x => x.D)
+                     .Take(maxFiles * 2))
+        {
+            if (_used >= maxFiles + 2) break;
+            Box(f.f.Id, Kind.File);
+        }
+
+        End();
     }
 
     public void HideAll()

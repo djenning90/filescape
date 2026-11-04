@@ -22,6 +22,10 @@ public static class InputBindings
     public const string Frame = "cmd_frame_selection", Help = "cmd_help", Quality = "cmd_quality", Stats = "cmd_stats";
     public const string OpenFolder = "cmd_open_folder";
 
+    // Places (PLACE-06..10, AD-15).
+    public const string EnterFolder = "cmd_enter_folder", UpPlace = "cmd_up_place", RootPlace = "cmd_root_place";
+    public const string MapToggle = "cmd_map_toggle";
+
     public static readonly string[] MovementActions = [Forward, Back, Left, Right, Up, Down, Fast];
 
     /// <summary>Human-readable bindings for Help.</summary>
@@ -56,6 +60,10 @@ public static class InputBindings
         Logical(Quality, Key.F2);
         Logical(Stats, Key.F3);
         AddEvent(OpenFolder, new InputEventKey { Keycode = Key.O, CtrlPressed = true });
+        Physical(EnterFolder, Key.G);
+        Physical(UpPlace, Key.U); Logical(UpPlace, Key.Pageup);
+        AddEvent(RootPlace, new InputEventKey { Keycode = Key.Home, CtrlPressed = true });
+        Physical(MapToggle, Key.M);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

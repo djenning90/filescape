@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FileScape.App.Places;
 using FileScape.App.Ui;
 using FileScape.App.Visual;
 using FileScape.Core.Interaction;
@@ -71,13 +72,6 @@ public partial class Main : Node3D
     public string? LastShellMessage { get; private set; }
     public int LabelsShown => _labels.LastShown;
 
-    // Scene parts exposed for investigations (the flicker probe toggles them one at a time).
-    internal WorldEnvironment World => _world;
-    internal DirectionalLight3D Sun => _sun;
-    internal SpotLight3D SelectionSpot => _spot;
-    internal MeshInstance3D SelectionBeam => _beam;
-    internal MeshInstance3D Ground => _ground;
-
     private bool _labelsVisible = true;
 
     /// <summary>Hides the 2D name labels (instrument use: measuring the 3D scene only).</summary>
@@ -86,6 +80,13 @@ public partial class Main : Node3D
         _labelsVisible = visible;
         if (!visible) _labels.HideAll();
     }
+
+    // Scene parts exposed for investigations (the flicker probe toggles them one at a time).
+    internal WorldEnvironment World => _world;
+    internal DirectionalLight3D Sun => _sun;
+    internal SpotLight3D SelectionSpot => _spot;
+    internal MeshInstance3D SelectionBeam => _beam;
+    internal MeshInstance3D Ground => _ground;
 
     public override void _Ready()
     {
@@ -102,8 +103,12 @@ public partial class Main : Node3D
         _stateFile = args.StateFile;
         BuildScene();
         _quality = args.Quality ?? Quality.High;
-        _visIndex = args.Visualization ?? 0;
-        ApplyVisualization(frameSelection: false);
+        _visIndex = args.Visualization is 1 ? 1 : 0;
+        // The reference-view evidence scripts predate Places and expect a map unless --vis says otherwise (AD-15).
+        var legacyScript = args.Automation is "journey" or "perf" or "scanperf" or "live" or "qualitystress" or "flicker" or "navigation";
+        _experience = args.Experience ?? (legacyScript ? Experience.Classic : Experience.Places);
+        if (_experience != Experience.Places) _visIndex = _experience == Experience.Classic ? 0 : 1;
+        ApplyExperience(frame: false);
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
 
         if (args.Root is { } root)
@@ -115,7 +120,11 @@ public partial class Main : Node3D
             StartScan(new SyntheticTreeSource { TargetNodes = args.SyntheticNodes ?? 12_000, NodesPerSecond = args.SyntheticRate ?? 0 });
         }
 
-        if (args.Automation == "navigation")
+        if (args.Automation is "places" or "places-scan" or "places-tour" or "places-debug")
+        {
+            AddChild(new PlacesProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), args.Automation));
+        }
+        else if (args.Automation == "navigation")
         {
             AddChild(new NavigationProbe(this, args.OutputDirectory ?? OS.GetUserDataDir()));
         }
@@ -178,7 +187,7 @@ public partial class Main : Node3D
         _hud.OpenFolderRequested += ShowFolderDialog;
         _hud.DemoRequested += () => StartScan(new SyntheticTreeSource());
         _hud.CancelRequested += CancelScan;
-        _hud.VisualizationRequested += SetVisualization;
+        _hud.ExperienceRequested += i => SetExperience((Experience)i);
         _hud.ResetRequested += () => ResetView();
         _hud.OverviewRequested += () => Overview();
         _hud.QualityToggled += ToggleQuality;
@@ -190,6 +199,7 @@ public partial class Main : Node3D
         _hud.HelpToggled += () => _hud.ToggleHelp();
         _selection.SelectionChanged += _ => UpdateInspector();
 
+        BuildPlaceScene();
         CallDeferred(MethodName.BuildDialogs);
     }
 
@@ -225,6 +235,11 @@ public partial class Main : Node3D
         _needsInitialFrame = true;
         _scanFinishedReported = false;
         _selection.Reset();
+        _nav.Reset(0);
+        _place = null;
+        _transition = null;
+        _hud.SetTransition(0, null);
+        _placeWorld.Clear();
         foreach (var v in _visualizations)
         {
             v.Clear();
@@ -301,11 +316,39 @@ public partial class Main : Node3D
     {
         Perf.BeginFrame(delta, _session is { IsFinished: false });
         var now = _clock.Elapsed.TotalSeconds;
+        _now = now;
         DrainBatches();
-        MaybeRelayout(now);
-        HandleKeyboardMovement((float)delta);
+        var places = _experience == Experience.Places;
+        if (places)
+        {
+            MaybeRecompose(now);
+            UpdateTransition(delta);
+        }
+        else
+        {
+            MaybeRelayout(now);
+        }
 
-        if (_layout != null && _tree != null)
+        HandleKeyboardMovement((float)delta);
+        if (places) CheckThresholds();
+
+        if (places && _place != null && _tree != null)
+        {
+            if (_hoverDirty)
+            {
+                _hoverDirty = false;
+                UpdateHover();
+            }
+
+            UpdatePlaceFrame();
+            if (_labelsVisible && now - _lastLabelRefresh > 0.08)
+            {
+                _lastLabelRefresh = now;
+                if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects);
+                else _labels.HideAll();
+            }
+        }
+        else if (!places && _layout != null && _tree != null)
         {
             if (_hoverDirty)
             {
@@ -314,6 +357,7 @@ public partial class Main : Node3D
             }
 
             UpdateHighlights();
+            UpdateHereMarker();
             if (_labelsVisible && now - _lastLabelRefresh > 0.08)
             {
                 _lastLabelRefresh = now;
@@ -395,7 +439,7 @@ public partial class Main : Node3D
         // Adaptive cadence: re-layout costs at most about 1/8 of the time during a scan.
         _layoutInterval = Math.Clamp((LastLayoutMs + LastBuildMs) * 8 / 1000.0, 0.25, 3.0);
 
-        if (_needsInitialFrame)
+        if (_needsInitialFrame && _experience != Experience.Places)
         {
             _needsInitialFrame = false;
             ResetView(snap: true);
@@ -410,48 +454,6 @@ public partial class Main : Node3D
 
     // ---------------------------------------------------------------- visualization
 
-    public void SetVisualization(int index)
-    {
-        if (index == _visIndex)
-        {
-            return;
-        }
-
-        _visIndex = index;
-        ApplyVisualization(frameSelection: true);
-    }
-
-    private void ApplyVisualization(bool frameSelection)
-    {
-        for (var i = 0; i < _visualizations.Length; i++)
-        {
-            _visualizations[i].Root.Visible = i == _visIndex;
-        }
-
-        var vis = ActiveVisualization;
-        vis.ConfigureEnvironment(_world, _sun, _ground, _quality);
-        ApplyQualityToViewport();
-        _hud.SetVisualization(_visIndex);
-        _hud.SetQuality(_quality.ToString());
-        var scale = vis.LayoutParams.Scale;
-        _hud.SetLegend(vis.ColorMeaning, vis.Legend,
-            $"Height = log10 of logical size: each ×10 in size adds {scale.PerDecade * scale.Multiplier:0.00} u; zero-byte files are thin tiles; capped at {scale.Cap:0} u. Exact bytes are in the inspector.");
-        ((ShaderMaterial)_selectionBox.MaterialOverride).SetShaderParameter("color", vis.SelectionColor);
-        ((ShaderMaterial)_hoverBox.MaterialOverride).SetShaderParameter("color", vis.HoverColor with { A = 0.7f });
-        ((ShaderMaterial)_beam.MaterialOverride).SetShaderParameter("color", vis.SelectionColor with { A = 0.35f });
-        _spot.LightColor = vis.SelectionColor;
-
-        if (_tree != null && _tree.Count > 0)
-        {
-            Relayout();
-            if (frameSelection)
-            {
-                if (_selection.Selected >= 0) FlyToSelection(snap: false);
-                else ResetView();
-            }
-        }
-    }
-
     public void ToggleQuality()
     {
         _quality = _quality == Quality.High ? Quality.Low : Quality.High;
@@ -461,7 +463,8 @@ public partial class Main : Node3D
     public void SetQuality(Quality q)
     {
         _quality = q;
-        ActiveVisualization.ConfigureEnvironment(_world, _sun, _ground, _quality);
+        if (_experience == Experience.Places) PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
+        else ActiveVisualization.ConfigureEnvironment(_world, _sun, _ground, _quality);
         ApplyQualityToViewport();
         _hud.SetQuality(_quality.ToString());
     }
@@ -482,6 +485,12 @@ public partial class Main : Node3D
     /// </summary>
     public void ResetView(bool snap = false)
     {
+        if (_experience == Experience.Places)
+        {
+            if (_place != null && _transition == null) ArriveAt(_place.Arrival, snap);
+            return;
+        }
+
         if (_layout == null || _tree == null || _layout.Count == 0)
         {
             return;
@@ -510,6 +519,13 @@ public partial class Main : Node3D
     /// <summary>A high bird's-eye view that fits the whole tree's width (NAV-05).</summary>
     public void Overview(bool snap = false)
     {
+        if (_experience == Experience.Places)
+        {
+            Ascend();
+            if (snap) _rig.Snap();
+            return;
+        }
+
         if (_layout == null || _layout.Count == 0)
         {
             return;
@@ -527,6 +543,13 @@ public partial class Main : Node3D
 
     public void FlyToSelection(bool snap)
     {
+        if (_experience == Experience.Places)
+        {
+            FrameInPlace();
+            if (snap) _rig.Snap();
+            return;
+        }
+
         if (_layout == null || _tree == null || _selection.Selected < 0)
         {
             return;
@@ -594,6 +617,11 @@ public partial class Main : Node3D
 
     public int PickAt(Vector2 screen)
     {
+        if (_experience == Experience.Places)
+        {
+            return PickPlace(screen);
+        }
+
         if (_tree == null || _layout == null)
         {
             return -1;
@@ -695,7 +723,7 @@ public partial class Main : Node3D
         switch (@event)
         {
             case InputEventMouseMotion motion:
-                _rig.Look(motion.Relative);
+                if (_transition == null) _rig.Look(motion.Relative);
                 GetViewport().SetInputAsHandled();
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
@@ -762,7 +790,19 @@ public partial class Main : Node3D
             if (mb.DoubleClick && mb.ButtonIndex == MouseButton.Left)
             {
                 var hit = PickAt(mb.Position);
-                if (hit >= 0) Select(hit, fly: true);
+                if (hit >= 0 && _experience == Experience.Places && _tree != null)
+                {
+                    // Places: double-clicking a gate, vista or beacon travels there; the landmark returns home.
+                    Select(hit);
+                    if (hit == _nav.Current) ResetView();
+                    else if (_tree[hit].IsDirectory || _tree[hit].Kind == NodeKind.Link) TravelInto(hit);
+                    else FlyToSelection();
+                }
+                else if (hit >= 0)
+                {
+                    Select(hit, fly: true);
+                }
+
                 _pressButton = MouseButton.None;
                 return;
             }
@@ -819,12 +859,18 @@ public partial class Main : Node3D
 
     private void HandleCommand(InputEventKey key)
     {
+        var places = _experience == Experience.Places;
+        if (_transition != null && !key.IsAction(InputBindings.Help)) return; // travel in progress: one place change at a time
         if (key.IsAction(InputBindings.Open)) RequestOpen();
-        else if (key.IsAction(InputBindings.HistoryBack)) { if (_selection.Back()) FlyToSelection(); }
+        else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); }
         else if (key.IsAction(InputBindings.Parent)) HandleEscape();
+        else if (key.IsAction(InputBindings.RootPlace)) { if (places) TravelRoot(); else ResetView(); }
         else if (key.IsAction(InputBindings.Home)) ResetView();
         else if (key.IsAction(InputBindings.Overview)) Overview();
-        else if (key.IsAction(InputBindings.SwitchVis)) SetVisualization((_visIndex + 1) % _visualizations.Length);
+        else if (key.IsAction(InputBindings.SwitchVis)) SetExperience((Experience)(((int)_experience + 1) % 3));
+        else if (key.IsAction(InputBindings.EnterFolder)) EnterSelection();
+        else if (key.IsAction(InputBindings.UpPlace)) { if (places) TravelUp(); }
+        else if (key.IsAction(InputBindings.MapToggle)) ToggleMap();
         else if (key.IsAction(InputBindings.Frame)) FlyToSelection();
         else if (key.IsAction(InputBindings.Help)) _hud.ToggleHelp();
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
@@ -838,6 +884,13 @@ public partial class Main : Node3D
         if (_hud.HelpVisible)
         {
             _hud.ToggleHelp();
+            return;
+        }
+
+        if (_experience == Experience.Places)
+        {
+            // In a place, Esc steps back from the selection to the place itself; it never moves you.
+            if (_selection.Selected >= 0 && _selection.Selected != _nav.Current) _selection.Select(_nav.Current);
             return;
         }
 
@@ -915,8 +968,11 @@ public partial class Main : Node3D
             System.FormattableString.Invariant($"{{\"mode\":\"{_rig.Mode}\",\"mouseMode\":\"{Input.MouseMode}\",\"focused\":{(_windowFocused ? "true" : "false")},\"modal\":{(ModalOpen ? "true" : "false")},\"dragging\":\"{_pressButton}\",") +
             System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw:0.###},\"lookPitch\":{_rig.LookPitch:0.###},\"up\":{up.Y:0.####},") +
             System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeed:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
-            System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes}}}");
+            System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
+            System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\"}}");
     }
+
+    private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     private void WriteState()
     {
@@ -942,7 +998,12 @@ public partial class Main : Node3D
     private void HandleKeyboardMovement(float dt)
     {
         // A focused UI control (or an open dialog) owns the keyboard; navigation resumes when it lets go.
-        var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null;
+        var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null || _transition != null;
+        if (_transition != null && _windowFocused && !ModalOpen)
+        {
+            return; // travel in progress: movement pauses, flight (if any) continues afterwards
+        }
+
         if (blocked)
         {
             if (_held.Any || _rig.IsFlying || _pressButton != MouseButton.None) ReleaseAllInput();
@@ -1051,8 +1112,20 @@ public partial class Main : Node3D
 
     private void UpdateInspector()
     {
+        if (_tree != null && _tree.Count > 0 && _selection.Selected < 0 && _experience == Experience.Places)
+        {
+            var here = _tree[_nav.Current];
+            _hud.SetInspector($"You are in {_tree.DisplayName(here.Id)}",
+                $"[color=#9fb0cc]{PlaceText.Summary(_tree, here)}\n\nClick a tower or gate to inspect it — that never moves you.\nWalk through a gate (or double-click it) to go in; the ▲ gate behind you goes back.\n\n[b]F1[/b] controls · [b]Home[/b] arrival point · [b]M[/b] map[/color]",
+                new Color(0, 0, 0, 0));
+            _hud.SetSelectionActions(false, false, false);
+            _hud.SetEnterAction(false, "Go inside (G)");
+            return;
+        }
+
         if (_tree == null || _tree.Count == 0 || _selection.Selected < 0)
         {
+            _hud.SetEnterAction(false, "Go inside (G)");
             _hud.SetInspector("Nothing selected",
                 "[color=#9fb0cc]Click a pedestal or block to inspect it. Double-click to fly to it.\n\nPress [b]F1[/b] for controls, [b]Home[/b] to reset the view.[/color]",
                 new Color(0, 0, 0, 0));
@@ -1063,6 +1136,11 @@ public partial class Main : Node3D
         var node = _tree[_selection.Selected];
         _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
         _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
+        var places = _experience == Experience.Places;
+        var enterable = node.IsDirectory && node.Id != _nav.Current;
+        _hud.SetEnterAction(enterable || (!places && !node.IsDirectory),
+            places ? (node.Id == _nav.Current ? "You are here" : node.IsDirectory ? "Go inside (G)" : "Go inside (G)") : "Go here in Places (G)");
+        if (places) _hud.HighlightDestination(node.Id);
     }
 
     private void UpdateStatus()

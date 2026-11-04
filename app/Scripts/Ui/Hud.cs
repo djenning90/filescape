@@ -12,7 +12,8 @@ public partial class Hud : CanvasLayer
     public event Action? OpenFolderRequested;
     public event Action? DemoRequested;
     public event Action? CancelRequested;
-    public event Action<int>? VisualizationRequested;
+    /// <summary>0 = Places, 1 = Classic FSN, 2 = District (AD-15).</summary>
+    public event Action<int>? ExperienceRequested;
     public event Action? ResetRequested;
     public event Action? OverviewRequested;
     public event Action? QualityToggled;
@@ -30,7 +31,8 @@ public partial class Hud : CanvasLayer
     private ProgressBar _progress = null!;
     private Button _cancel = null!;
     private Button _quality = null!;
-    private readonly Button[] _visButtons = new Button[2];
+    private readonly Button[] _visButtons = new Button[3];
+    private Button _homeButton = null!, _overviewButton = null!;
     private PanelContainer _inspector = null!;
     private RichTextLabel _inspectorBody = null!;
     private Label _inspectorTitle = null!;
@@ -50,7 +52,7 @@ public partial class Hud : CanvasLayer
     {
         get
         {
-            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help })
+            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _placePanel, _destPanel })
             {
                 if (c.Visible)
                 {
@@ -126,6 +128,7 @@ public partial class Hud : CanvasLayer
         BuildHelp();
         BuildStatsAndToast();
         BuildHintAndFlyChip();
+        BuildPlaces();
     }
 
     private void BuildTopBar()
@@ -150,24 +153,34 @@ public partial class Hud : CanvasLayer
         row.AddChild(_cancel);
         row.AddChild(new VSeparator());
         var group = new ButtonGroup();
-        for (var i = 0; i < 2; i++)
+        string[] names = ["Places", "Classic FSN", "District"];
+        string[] tips =
+        [
+            "Places: be inside a folder — files around you, child folders as gates you can walk through (Tab / M).",
+            "Classic FSN: whole-tree reference map, FSN-inspired (Tab). The selection is preserved.",
+            "District: whole-tree reference map, futuristic city (Tab). The selection is preserved.",
+        ];
+        for (var i = 0; i < 3; i++)
         {
             var index = i;
             _visButtons[i] = new Button
             {
-                Text = i == 0 ? "Classic FSN" : "District",
+                Text = names[i],
                 ToggleMode = true,
                 ButtonGroup = group,
-                TooltipText = "Switch visualization (Tab). The selection is preserved.",
+                TooltipText = tips[i],
                 FocusMode = Control.FocusModeEnum.None,
             };
-            _visButtons[i].Pressed += () => VisualizationRequested?.Invoke(index);
+            _visButtons[i].Pressed += () => ExperienceRequested?.Invoke(index);
             row.AddChild(_visButtons[i]);
+            if (i == 0) row.AddChild(new Label { Text = " maps:", VerticalAlignment = VerticalAlignment.Center });
         }
 
         row.AddChild(new VSeparator());
-        row.AddChild(MakeButton("Reset view", () => ResetRequested?.Invoke(), "Recover the home view: root and its first row of children (Home)."));
-        row.AddChild(MakeButton("Overview", () => OverviewRequested?.Invoke(), "Bird's-eye view of the whole tree (B)."));
+        _homeButton = MakeButton("Home", () => ResetRequested?.Invoke(), "Back to the arrival point (Home).");
+        row.AddChild(_homeButton);
+        _overviewButton = MakeButton("Overview", () => OverviewRequested?.Invoke(), "Bird's-eye view of the whole tree (B).");
+        row.AddChild(_overviewButton);
         _quality = MakeButton("Quality: High", () => QualityToggled?.Invoke(), "Toggle effects (F2). Low disables volumetric fog, SSR and SSAO.");
         row.AddChild(_quality);
         var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
@@ -271,6 +284,14 @@ public partial class Hud : CanvasLayer
             FitContent = true,
             CustomMinimumSize = new Vector2(560, 0),
             Text =
+                "[b]Places[/b] (the default view: you are [i]inside[/i] a folder)\n" +
+                "Files stand around you as glass towers, grouped by type. Each child folder is a [b]gate[/b] with its name;\n" +
+                "    beyond it you see a preview of that place. [b]Walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back.\n" +
+                "[b]G[/b]  go into the selected folder      [b]U[/b] / [b]PgUp[/b]  up      [b]Backspace[/b]  previous place\n" +
+                "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the chosen root\n" +
+                "[b]B[/b]  ascend above this place      [b]M[/b]  whole-filesystem map (and back)      [b]Tab[/b]  next view\n" +
+                "Places are separate spaces linked by gates; distances between them are symbolic. The maps show the real whole tree.\n" +
+                "Selecting something never moves you: [b]click[/b] inspects, travel is always deliberate.\n\n" +
                 "[b]Moving around[/b]\n" +
                 "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +
                 "[b]Hold right mouse[/b]  fly: look around with the mouse while W A S D / arrows move you\n" +
@@ -280,9 +301,9 @@ public partial class Hud : CanvasLayer
                 "[b]Home[/b]  back to the start view      [b]B[/b]  bird's-eye overview\n\n" +
                 "[b]Exploring[/b]\n" +
                 "[b]Click[/b]  select and inspect      [b]Double-click[/b] or [b]F[/b]  fly to the selection\n" +
-                "[b]Esc[/b]  parent directory      [b]Backspace[/b]  previous selection\n" +
+                "[b]Esc[/b]  parent directory (in Places: back to the folder itself)      [b]Backspace[/b]  previous selection (Places: previous place)\n" +
                 "[b]Enter[/b]  open with Windows (asks first for programs, links and cloud files)\n" +
-                "[b]Tab[/b]  switch Classic / District (the selection stays)\n" +
+                "[b]Tab[/b]  cycle Places / Classic FSN / District (the selection stays)\n" +
                 "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats\n\n" +
                 "Right-drag used to pan; pan is now on the middle button.\n" +
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
@@ -349,7 +370,19 @@ public partial class Hud : CanvasLayer
         _cancel.Disabled = !scanning;
     }
 
-    public void SetVisualization(int index) => _visButtons[index].SetPressedNoSignal(true);
+    /// <summary>Shows which experience is active and adapts the toolbar wording (AD-15).</summary>
+    public void SetExperience(int experience)
+    {
+        for (var i = 0; i < _visButtons.Length; i++) _visButtons[i].SetPressedNoSignal(i == experience);
+        var places = experience == 0;
+        _homeButton.TooltipText = places ? "Back to this folder's arrival point (Home). Ctrl+Home: back to the chosen root." : "Recover the home view: root and its first row of children (Home).";
+        _overviewButton.Text = places ? "Ascend (B)" : "Overview (B)";
+        _overviewButton.TooltipText = places ? "Rise above this place to see its neighbourhood. The whole filesystem is on the maps (M)." : "Bird's-eye view of the whole tree (B).";
+        _placePanel.Visible = places;
+        _destPanel.Visible = places;
+        if (!places) SetAscentChip(null);
+        _hintLabel.Text = places ? PlacesHintText : HintText;
+    }
 
     public void SetQuality(string text) => _quality.Text = "Quality: " + text;
 
@@ -367,7 +400,7 @@ public partial class Hud : CanvasLayer
         _parentButton.Disabled = !canParent;
     }
 
-    public void SetLegend(string colorMeaning, IReadOnlyList<(Color Color, string Label)> entries, string heightMeaning)
+    public void SetLegend(string colorMeaning, IReadOnlyList<(Color Color, string Label)> entries, string heightMeaning, bool markers = true)
     {
         foreach (var c in _legendBox.GetChildren())
         {
@@ -389,15 +422,20 @@ public partial class Hud : CanvasLayer
         h.AddThemeFontSizeOverride("font_size", 12);
         h.AddThemeColorOverride("font_color", new Color(0.7f, 0.76f, 0.88f));
         _legendBox.AddChild(h);
-        var markers = new GridContainer { Columns = 2 };
-        markers.AddThemeConstantOverride("h_separation", 14);
-        markers.AddChild(Swatch(Visual.Palette.Problem, "access denied / error"));
-        markers.AddChild(Swatch(Visual.Palette.Vanished, "vanished during scan"));
-        markers.AddChild(Swatch(Visual.Palette.LinkCyan, "link (not followed)"));
-        markers.AddChild(Swatch(Visual.Palette.Cloud, "cloud placeholder"));
-        markers.AddChild(Swatch(Visual.Palette.Incomplete, "not scanned / partial"));
-        markers.AddChild(Swatch(new Color(0.35f, 0.35f, 0.4f), "hidden / system (dimmed)"));
-        _legendBox.AddChild(markers);
+        if (!markers)
+        {
+            return; // Places states its gate colours in the entries themselves
+        }
+
+        var markerGrid = new GridContainer { Columns = 2 };
+        markerGrid.AddThemeConstantOverride("h_separation", 14);
+        markerGrid.AddChild(Swatch(Visual.Palette.Problem, "access denied / error"));
+        markerGrid.AddChild(Swatch(Visual.Palette.Vanished, "vanished during scan"));
+        markerGrid.AddChild(Swatch(Visual.Palette.LinkCyan, "link (not followed)"));
+        markerGrid.AddChild(Swatch(Visual.Palette.Cloud, "cloud placeholder"));
+        markerGrid.AddChild(Swatch(Visual.Palette.Incomplete, "not scanned / partial"));
+        markerGrid.AddChild(Swatch(new Color(0.35f, 0.35f, 0.4f), "hidden / system (dimmed)"));
+        _legendBox.AddChild(markerGrid);
     }
 
     private static Control Swatch(Color color, string label)
@@ -427,11 +465,14 @@ public partial class Hud : CanvasLayer
     public bool HelpVisible => _help.Visible;
 
     /// <summary>The on-screen rectangle of a visualization button (for input automation that clicks the real toolbar).</summary>
-    public Rect2 VisualizationButtonRect(int index) => _visButtons[index].GetGlobalRect();
+    public Rect2 VisualizationButtonRect(int mapIndex) => _visButtons[mapIndex + 1].GetGlobalRect();
+
+    public Rect2 ExperienceButtonRect(int experience) => _visButtons[experience].GetGlobalRect();
 
     // ------------------------------------------------------------ hint and flight status
 
     private PanelContainer _hintPanel = null!;
+    private Label _hintLabel = null!;
     private PanelContainer _flyPanel = null!;
     private Label _flyLabel = null!;
     private double _hintShownAt;
@@ -449,10 +490,10 @@ public partial class Hud : CanvasLayer
         _hintPanel.GrowVertical = Control.GrowDirection.Begin;
         _hintPanel.OffsetBottom = -14;
         _hintPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
-        var hint = new Label { Text = HintText, HorizontalAlignment = HorizontalAlignment.Center };
-        hint.AddThemeFontSizeOverride("font_size", 14);
-        hint.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
-        _hintPanel.AddChild(hint);
+        _hintLabel = new Label { Text = HintText, HorizontalAlignment = HorizontalAlignment.Center };
+        _hintLabel.AddThemeFontSizeOverride("font_size", 14);
+        _hintLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
+        _hintPanel.AddChild(_hintLabel);
         _root.AddChild(_hintPanel);
         _hintShownAt = Time.GetTicksMsec() / 1000.0;
 

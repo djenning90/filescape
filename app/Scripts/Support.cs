@@ -17,6 +17,9 @@ public sealed record CommandLine
     public int? SyntheticNodes { get; init; }
     public int? SyntheticRate { get; init; }
     public int? Visualization { get; init; }
+
+    /// <summary>--vis=places|classic|district (AD-15). Null means the default for the run.</summary>
+    public Experience? Experience { get; init; }
     public Quality? Quality { get; init; }
     public string? Automation { get; init; }
     public string? OutputDirectory { get; init; }
@@ -45,6 +48,7 @@ public sealed record CommandLine
             SyntheticNodes = Get("synthetic") is { } s ? int.Parse(s, CultureInfo.InvariantCulture) : null,
             SyntheticRate = Get("synthetic-rate") is { } r ? int.Parse(r, CultureInfo.InvariantCulture) : null,
             Visualization = Get("vis") switch { "district" => 1, "classic" => 0, _ => null },
+            Experience = Get("vis") switch { "places" => App.Experience.Places, "classic" => App.Experience.Classic, "district" => App.Experience.District, _ => null },
             Quality = Get("quality") switch { "low" => Visual.Quality.Low, "high" => Visual.Quality.High, _ => null },
             Automation = Get("automate"),
             OutputDirectory = Get("out"),
