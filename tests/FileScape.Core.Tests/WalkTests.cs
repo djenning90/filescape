@@ -196,16 +196,25 @@ public class WalkTests
     }
 
     [Fact]
-    public void A_jump_is_modest_keeps_momentum_and_is_forgiving()
+    public void A_jump_is_higher_when_held_short_when_tapped_keeps_momentum_and_is_forgiving()
     {
+        // 2026-11-06 (DJ: "jumping could be higher"): a held jump peaks at ≈ 1.2 m (was 0.75–0.85 m), a tap is a short hop.
         var t = PlaceTerrain.Flat;
         var w = new Walker();
         w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         var apex = 0f;
+        var air = 0;
         w.Update(t, new WalkInput(0, 0, 0, false, true), Frame60);
-        for (var i = 0; i < 120; i++) { w.Update(t, WalkInput.None, Frame60); apex = MathF.Max(apex, w.Feet.Y); }
-        apex.Should().BeInRange(0.75f, 0.85f);
+        for (var i = 0; i < 120; i++) { w.Update(t, WalkInput.None, Frame60); apex = MathF.Max(apex, w.Feet.Y); if (!w.Grounded) air++; }
+        apex.Should().BeInRange(1.15f, 1.3f);
+        (air / 60f).Should().BeInRange(0.65f, 0.9f, "a full jump lasts under a second");
         w.Grounded.Should().BeTrue();
+
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
+        var hop = 0f;
+        w.Update(t, new WalkInput(0, 0, 0, false, true), Frame60);
+        for (var i = 0; i < 120; i++) { w.Update(t, new WalkInput(0, 0, 0, false, false, JumpReleased: i >= 2), Frame60); hop = MathF.Max(hop, w.Feet.Y); }
+        hop.Should().BeInRange(0.3f, 0.75f, "releasing Space early gives a short hop");
 
         // A running jump carries forward.
         w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
@@ -339,5 +348,44 @@ public class WalkTests
         w.Teleport(t, new Vector3(0, -40, 0), Deg(0), Deg(0)); // below the ground: support is 0, so it stands at 0
         w.Feet.Y.Should().Be(0);
         w.IsLost.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_jump_under_an_overhang_stops_at_the_head_and_never_passes_through()
+    {
+        // A slab 3 m up (underside); body 1.85 m: the head meets it 1.15 m above the feet, below the 1.2 m apex.
+        var slab = new TerrainBox(new Vector2(0, 0), new Vector2(3, 3), 0, 3.0f, 3.4f, TerrainKind.Platform);
+        var t = new PlaceTerrain([slab], [], [], 60);
+        var w = new Walker();
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
+        var top = 0f;
+        w.Update(t, new WalkInput(0, 0, 0, false, true), Frame120);
+        for (var i = 0; i < 240; i++) { w.Update(t, WalkInput.None, Frame120); top = MathF.Max(top, w.Feet.Y); }
+        (top + W.BodyHeight.Value).Should().BeLessThanOrEqualTo(3.0f + 1e-3f, "the head never rises into the slab");
+        w.HeadBumps.Should().Be(1);
+        w.Grounded.Should().BeTrue();
+        w.Feet.Y.Should().Be(0, "and the walker lands back below it");
+    }
+
+    [Fact]
+    public void A_running_jump_at_full_speed_into_file_towers_never_lands_on_them()
+    {
+        // Higher jumps must not make file towers (2 m and up) into platforms: approach the shortest ones at 30 m/s.
+        var c = Sample();
+        var t = c.Terrain;
+        var w = new Walker(W with { WalkSpeed = MetersPerSecond.Of(30f), RunSpeed = MetersPerSecond.Of(30f) });
+        foreach (var tower in t.Boxes.Where(b => b.Kind == TerrainKind.Tower && b.Top >= 2f).OrderBy(b => b.Top).Take(6))
+        {
+            var dir = Vector2.Normalize(tower.Center);
+            var start = tower.Center - dir * 9f;
+            w.Teleport(t, new Vector3(start.X, 0, start.Y), Deg(-PlaceTerrain.PlaceAngle(dir)), Deg(0));
+            for (var i = 0; i < 240; i++)
+            {
+                var near = Vector2.Distance(Xz(w.Feet), tower.Center) < 3.5f;
+                w.Update(t, new WalkInput(1, 0, 0, true, near), Frame120);
+            }
+
+            w.Support.Value.Should().BeLessThan(tower.Top - 0.01f, $"no landing on the {tower.Top:0.0} m tower");
+        }
     }
 }

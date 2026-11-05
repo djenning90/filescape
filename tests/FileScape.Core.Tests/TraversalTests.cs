@@ -15,7 +15,15 @@ namespace FileScape.Core.Tests;
 public class TraversalTests(ITestOutputHelper output)
 {
     /// <summary>The walking parameters before DJ's movement feedback (KD-20), kept for comparison only.</summary>
-    internal static readonly WalkParams Before = WalkParams.Default with { WalkSpeed = MetersPerSecond.Of(4.2f), RunSpeed = MetersPerSecond.Of(8.4f) };
+    /// <remarks>
+    /// The jump is pinned too (2026-11-06: the default jump became higher, with an apex hang and short hops), so the golden
+    /// walk keeps the trajectory it was captured with; the new jump has its own tests in <c>JumpFeelTests</c>.
+    /// </remarks>
+    internal static readonly WalkParams Before = WalkParams.Default with
+    {
+        WalkSpeed = MetersPerSecond.Of(4.2f), RunSpeed = MetersPerSecond.Of(8.4f),
+        JumpSpeed = MetersPerSecond.Of(5.3f), ApexHangSpeed = MetersPerSecond.Of(0f), ShortHopGravityScale = 1f, FallGravityScale = 1f,
+    };
 
     /// <summary>Threshold transition time the app adds per place change (out + in), before and after this pass.</summary>
     private static readonly TimeSpan TransitionBefore = TimeSpan.FromSeconds(0.42 + 0.62), TransitionAfter = TimeSpan.FromSeconds(0.30 + 0.45);

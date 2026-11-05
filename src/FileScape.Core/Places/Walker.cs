@@ -53,8 +53,26 @@ public sealed record WalkParams
     /// <summary>Downward acceleration (a positive magnitude). With <see cref="JumpSpeed"/> it sets the jump's height and air time.</summary>
     public MetersPerSecondSquared Gravity { get; init; } = MetersPerSecondSquared.Of(17f);
 
-    /// <summary>Upward take-off speed: apex = v² / 2g ≈ 0.83 m, air time = 2v/g ≈ 0.62 s on the flat.</summary>
-    public MetersPerSecond JumpSpeed { get; init; } = MetersPerSecond.Of(5.3f);
+    /// <summary>
+    /// Upward take-off speed. 6.4 m/s (was 5.3, apex 0.83 m; DJ: "jumping could be higher", 2026-11-06): with the apex
+    /// hang below, a held jump peaks at ≈ 1.22 m and lasts ≈ 0.78 s on the flat — over a 0.8 m block with room to spare,
+    /// still below every lintel and tower roof that matters (a jump never lands on a file tower: see WalkTests).
+    /// </summary>
+    public MetersPerSecond JumpSpeed { get; init; } = MetersPerSecond.Of(6.4f);
+
+    /// <summary>
+    /// Near the top of a held jump (vertical speed below this), gravity is reduced by <see cref="ApexGravityScale"/>: a
+    /// brief hang that makes the arc feel floaty and easier to steer onto a ledge. Zero disables it.
+    /// </summary>
+    public MetersPerSecond ApexHangSpeed { get; init; } = MetersPerSecond.Of(1.2f);
+
+    public float ApexGravityScale { get; init; } = 0.65f;
+
+    /// <summary>Rising with Space already released: gravity × this, so a tap is a short hop and a hold a full jump.</summary>
+    public float ShortHopGravityScale { get; init; } = 2.2f;
+
+    /// <summary>Falling: gravity × this, so landings come a little sooner than the rise (snappier, less floaty on the way down).</summary>
+    public float FallGravityScale { get; init; } = 1.15f;
 
     /// <summary>A jump still works this long after walking off a ledge (forgiving timing).</summary>
     public TimeSpan CoyoteTime { get; init; } = TimeSpan.FromSeconds(0.12);
@@ -114,8 +132,11 @@ public sealed record WalkParams
     }
 }
 
-/// <summary>One frame of walking input. Axes are -1..1; <see cref="JumpPressed"/> is an edge (pressed this frame).</summary>
-public readonly record struct WalkInput(float Forward, float Strafe, float Turn, bool Run, bool JumpPressed)
+/// <summary>
+/// One frame of walking input. Axes are -1..1; <see cref="JumpPressed"/> is an edge (pressed this frame);
+/// <see cref="JumpReleased"/> says Space is up (a rising jump becomes a short hop). The default is a held jump.
+/// </summary>
+public readonly record struct WalkInput(float Forward, float Strafe, float Turn, bool Run, bool JumpPressed, bool JumpReleased = false)
 {
     public static readonly WalkInput None = default;
 }
@@ -159,6 +180,9 @@ public sealed class Walker
 
     /// <summary>Changes the walking and running speeds (the user's preference, CTRL-02); everything else is kept.</summary>
     public void SetSpeeds(MetersPerSecond walk, MetersPerSecond run) => _p = (_p with { WalkSpeed = walk, RunSpeed = run }).Validate();
+
+    /// <summary>Times the head met an overhang while rising (checks: head clearance).</summary>
+    public int HeadBumps { get; private set; }
 
     /// <summary>The feet position in world space, metres: (x, height of the support, z).</summary>
     public Vector3 Feet { get; private set; }
@@ -332,8 +356,31 @@ public sealed class Walker
 
         if (!Grounded)
         {
-            verticalMetersPerSecond -= _p.Gravity.Value * dtSeconds;
-            y += verticalMetersPerSecond * dtSeconds;
+            // The arc (JUMP-01): full gravity while rising with Space held, a hang near the apex, a short hop when Space
+            // is released early, and slightly stronger gravity on the way down.
+            var g = _p.Gravity.Value;
+            if (verticalMetersPerSecond > 0 && input.JumpReleased) g *= _p.ShortHopGravityScale;
+            else if (MathF.Abs(verticalMetersPerSecond) < _p.ApexHangSpeed.Value && !input.JumpReleased) g *= _p.ApexGravityScale;
+            else if (verticalMetersPerSecond < 0) g *= _p.FallGravityScale;
+            verticalMetersPerSecond -= g * dtSeconds;
+            var rise = verticalMetersPerSecond * dtSeconds;
+            if (rise > 0)
+            {
+                // Head clearance: a solid whose underside is above the head stops the rise (no passing up through it).
+                var head = y + _p.BodyHeight.Value;
+                foreach (var i in terrain.BoxesNear(pos, radius))
+                {
+                    var b = terrain.Boxes[i];
+                    if (b.Bottom >= head - 0.01f && b.Bottom < head + rise && b.Overlaps(pos, radius))
+                    {
+                        rise = MathF.Max(0, b.Bottom - head);
+                        verticalMetersPerSecond = 0;
+                        HeadBumps++;
+                    }
+                }
+            }
+
+            y += rise;
             if (y <= support && verticalMetersPerSecond <= 0)
             {
                 y = support;
