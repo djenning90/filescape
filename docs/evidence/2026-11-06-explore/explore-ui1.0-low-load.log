@@ -1,0 +1,40 @@
+[22:23:50.851] walk-explore probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:23:52.311] PASS default view: no key, no Destinations drawer, no inspector card
+[22:23:52.312] PASS at arrival 82 % of the window shows the world (HUD panels cover the rest)
+[22:23:52.545] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-ui1.0-rerun/01-explore-arrival-default-view.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer selected=-
+[22:23:52.639] PASS K shows the key on demand (world visible then: 72 %)
+[22:23:52.742] PASS K hides it again
+[22:23:52.810] PASS from the arrival point 10 of 10 gates in view are named at once
+[22:23:52.811] PASS no two signs overlap, and none is under a HUD panel
+[22:23:52.812] signs: also-photos, photos-shortcut, back-to-wayfarer, Photos, broken-link, locked, Café Notes – 東京, Journeys, Documents, empty-room
+[22:23:52.926] PASS J opens Destinations with its filter focused
+[22:23:53.026] PASS typing filters the list (Journeys)
+[22:23:53.142] PASS Esc closes it; typing never moved you
+[22:23:53.691] PASS filter 'shared', click the row, Esc: drawer closed, to-shared-library selected (focus after the click: none)
+[22:23:56.170] PASS Space held jumps 1.20 m, a tap 0.63 m (was 0.83 m)
+[22:23:58.517] PASS T rises to 18 m and looks down (-35°)
+[22:23:58.722] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-ui1.0-rerun/02-explore-take-off.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer selected=-
+[22:23:59.797] PASS in flight the view stays at -66° after letting go (on foot it would level)
+[22:24:03.742] PASS gaze -60°: E +5.4 m, Space +7.1, Q -7.5, C -5.5 (sideways 0.00/0.00 m); W 6.1 m level (-0.02 m)
+[22:24:07.669] PASS gaze +0°: E +5.5 m, Space +7.5, Q -7.9, C -5.9 (sideways 0.02/0.00 m); W 6.2 m level (-0.02 m)
+[22:24:11.613] PASS gaze +40°: E +5.4 m, Space +7.0, Q -7.5, C -5.7 (sideways 0.02/0.00 m); W 5.9 m level (-0.02 m)
+[22:24:13.344] PASS B: the aerial world shows 42 places, every known folder (41 not hidden) and the way here (layout 4.6 ms, build 1.6 ms)
+[22:24:13.344] PASS from above, 9 of 9 child places are named
+[22:24:13.344] PASS a chip says what the aerial view shows and how to land or go
+[22:24:13.503] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-ui1.0-rerun/03-explore-aerial-neighbourhood.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer selected=-
+[22:24:16.006] reveals requested so far: 0 (+0 in 2.5 s); unlisted inside the arrival folder now: 0
+[22:24:16.007] PASS places near you inside the arrival folder are listed from the air
+[22:24:16.007] PASS nothing outside the arrival folder was listed from the air (13 places there stay as they were)
+[22:24:16.007] PASS Journeys' island is in view, clear of the HUD
+[22:24:16.155] PASS clicking an island selects that folder; nothing moves
+[22:24:16.156] PASS the inspector card names it (Journeys: Folder · 4 folders · 1 file · 5.01 MiB in all)
+[22:24:17.504] PASS G flies you to Journeys and you arrive above it (140 m up, history 0 → 1)
+[22:24:17.652] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-ui1.0-rerun/04-explore-arrived-above-journeys.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Journeys selected=-
+[22:24:21.414] flew to Coast in about 3.8 s at 9.3× speed
+[22:24:24.775] PASS T over Coast lands you in it, on foot (-)
+[22:24:24.775] PASS on foot again the view is level (0.0°)
+[22:24:25.038] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-ui1.0-rerun/05-explore-landed.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Journeys\Coast selected=-
+[22:24:25.674] PASS Backspace returns to Journeys (history kept across aerial travel)
+[22:24:30.466] PASS T far from every place still lands you safely, in Nets (There is no walkable ground below here (that is a distant view, outside this place), so you are landing at the arrival point.)
+[22:24:38.356] perf aerial-flight High: frames=1178 mean=3.90 p95=4.60 p99=5.18 max=29.95 gpu=3.29 aerial instances=209
+[22:24:39.536] done failures=0

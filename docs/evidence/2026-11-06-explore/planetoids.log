@@ -1,0 +1,9 @@
+start: body 0, feet <0, 37.57491, 13.715912>
+PASS walking on the teal world keeps the feet on its surface (r = 40.00 m)
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-explore\final4\planetoids\01-walking-on-a-small-world.png
+PASS reached the launch pad on foot
+PASS Space on the pad launches you towards the other world
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-explore\final4\planetoids\02-flying-between-worlds.png
+PASS you land walking on the coral world (r = 32.00 m, transfers 1)
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-explore\final4\planetoids\03-walking-on-the-other-world.png
+done failures=0

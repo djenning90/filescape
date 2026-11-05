@@ -1,0 +1,7 @@
+build 4a7b9ce6fdf6 2026-11-05T15:07:33Z
+commit 4a7b9ce6fdf652362fff78abcc6d65a1e773e651
+uncommitted_paths 0
+files 189
+sha256 FileScape.exe 5fd808820b5497ac1f260a24615806bd4c8a19d7aa83b222def7d0e3d324e555
+sha256 FileScape.App.dll 8120c953422bf20d5c7ef6cbc08a59a214ddc065c67c9135b00f40f462454594
+sha256 FileScape.Core.dll a638f51df058b47db36f87132ec4fca49f2807ec9a474eeca63f60c2a3bb6bbd

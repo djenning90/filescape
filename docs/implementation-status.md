@@ -1,8 +1,81 @@
 # Implementation status
 
-Last updated: 2026-11-05 (evening), after view levelling (CTRL-04, commits `3efd3a3`…HEAD) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-06, after the exploration pass (commits `91df1c2`…HEAD); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Exploration pass: a readable world, an unobstructed view, flight that explores (2026-11-06)
+
+DJ liked the place concept and the ring of gates, but found:
+- a permanent legend hiding about a quarter of the view, and a large Destinations panel;
+- no familiar file-type cues;
+- most names hidden until aimed at;
+- stairs that looked like transparent boxes;
+- a jump that could be higher;
+- flight that showed only the current room;
+- levelling that fought looking down from the air;
+- vertical flight that "felt wrong".
+
+**Build.** **`4a7b9ce6fdf6`** (clean tree) is staged and verified at `C:\Users\David\AppData\Local\FileScape\staging-20261105-150710-406825\FileScape.exe`.
+- **Not promoted:** DJ's own FileScape was running from `build\` throughout, and the export never replaces a running build (AD-21).
+- **To install:** close FileScape, then run `tools/fs.sh export` (or run the staged exe directly).
+- **Installed (`build\`):** still `e03dd62adb62`. Previous builds `4b030e39b93a` and `2dc4ae8c3234` are kept.
+
+Requirements: VIEW-01..04, ICON-01, LABEL-01, WALK-11, JUMP-04, FLY-01..05, AERIAL-01..06, PLANET-01/02. Decisions: AD-24..27. Evidence: `docs/evidence/2026-11-06-explore/`.
+
+- **View (VIEW-01..04).**
+  - The key is off by default in Places (K or the Key button).
+  - Destinations is a drawer: J opens it with a filter focused (↑/↓ choose, Enter go, Esc close); the ☰ button opens it without taking the keyboard; a mouse pick hands the keyboard back.
+  - The inspector is a card shown only while something is selected, with Details ▸.
+  - The status strip shows only while scanning; the place bar is two lines; Quality moved into Settings.
+  - The world now fills 82 % of the window at 1.0 and 75 % at 1.25 (before: roughly half).
+- **Icons (ICON-01, AD-24).** Original SVG silhouettes, rasterized at start-up. They appear as badges on tower faces, above category signs, and in signs, Destinations and the card. `FileIcons.For(node)` is the extension point for previews.
+- **Names (LABEL-01, AD-25).** The screen-space `SignLayer` replaces the overhead 3D gate signs. It shortens names, stacks them with leader lines, and never overlaps a sign or a HUD panel. 10 of 10 gates are named at the arrival point (before: about 1–3); a 240-gate place shows 40 at once.
+- **Stairs (WALK-11).** Terrain uses a solid, lit shader. The cause was that walkable boxes were drawn with the gate frame shader: near-black metal with glowing edges.
+- **Jump (JUMP-04).** A held jump peaks at 1.2 m (was 0.83 m), with an apex hang; a tap gives a short hop. A head-clearance check was added (none existed before).
+- **Flight (FLY-01..05, AD-27).**
+  - Levelling on release happens on foot only.
+  - T rises 16 m and settles the gaze at −35° once.
+  - W/S/A/D fly level whatever the gaze; E/Space climb, Q/C descend; speed scales ×1–×30 with height.
+  - Landing levels the view.
+  - Settings can restore "W flies where you look".
+  - The vertical-flight cause is recorded as an observation, not a diagnosis.
+- **Aerial world (AERIAL-01..06, AD-26).** Above 14 m every known folder is an island, laid out by `WorldLayout` and drawn in the current place's frame.
+  - Each island shows roads to its child folders, cyan link arcs, a warm visited ring, and a gold "You are here" beacon.
+  - Vistas give way, the haze thins, and SSR/SSAO switch off high up.
+  - Click an island, then G, to fly there; T over a place lands in it; T over nothing lands in the nearest place.
+  - Places are revealed only inside the arrival folder or visited places.
+  - B frames the neighbourhood, clear of the HUD.
+  - The layout was revised once during the pass: the first version blew up exponentially on a chain of single folders (25 km).
+- **Planetoids (PLANET-01/02).** `docs/planetoid-feasibility.md` gives a system-by-system assessment. The isolated `--experiment=planetoids` shows the unchanged walker running in each body's chart, with travel between bodies.
+- **Defects found and fixed on the way:**
+  - The Settings panel was not drawn on top (fixed earlier the same evening).
+  - The aerial world was empty below a hidden ancestor (AppData).
+  - The filter kept the keyboard after a mouse pick.
+- **Instrument defects found and fixed:**
+  - The OS probe lacked J/K key codes and clicked fixed row positions.
+  - A probe teleport counted as walking through a gate.
+  - The explore probe clicked an island under the HUD at 1.25.
+  - Real Esc first closed a destination row's tooltip (the cursor rested on the row). The probe now returns the cursor to the scene; this explanation is supported by the passing rerun, not proven.
+
+**Verification on the staged build `4a7b9ce6fdf6`:**
+
+| Check | Result |
+|---|---|
+| Windows tests (live WSL test included) | 165 passed + 13 skipped |
+| WSL tests | 163 passed + 15 skipped |
+| Exploration journey, UI 1.0 and 1.25 | 29/0 each |
+| Walking journey, UI 1.0 and 1.25 (WSL included) | 103/0 each |
+| Real SendInput, UI 1.0 and 1.25 | 29/0 each |
+| Places journey, connected / bounded tree | 53/0 / 52/0 |
+| Scan scenario, navigation, map journey | 0 failures |
+| Planetoid experiment | 4/0 |
+
+Notes on the runs:
+- One walking run at 125 % under heavy load missed a 3 % speed tolerance (7.66 against 8.13 m/s); the rerun gave 8.01 against 8.01.
+- Performance with the machine quiet: walking at the plaza 6.79 ms mean (High, 1600×900); aerial flight 3.9 ms mean, p99 5.2 ms.
+- Under load (DJ's instance running): 15–20 ms. The previous build measured the same under that load.
+- DJ's `%APPDATA%\FileScape` was not created by any run.
 
 ## View levelling after a mouse look (2026-11-05, evening, follow-up)
 
@@ -221,13 +294,44 @@ Other measurements:
 - **KD-22 Upward arrival stand-off:** the verified straight route to the ▲ gate must cross the arrival terrace along its stairs, so Up arrives 14–31 m from the exited child's gate in the fixture (beside the landmark), and 63–76 m from gates on outer tiers of wide folders. The child's gate is behind you, the ▲ gate ahead. A side ramp on the terrace (or moving it off the axis) would let arrivals stay nearer the child; not done.
 - **KD-23 Not exercised in this pass:** UI scales other than 1.0/1.25; Up into the hub from a drive root by automation (the hub has no ▲ gate: Core-tested); gate plates for very long names beyond 24 characters on real data (shortened, full name in the chip and inspector); the top bar at 1.25: the source badge is cut at the window edge (full text in its tooltip), and while a scan runs Cancel appears and may push Help off; `os-places-probe.ps1` still assumes UI 1.0.
 - **KD-21 Cosmetic:** the identity-banner overlap was fixed (it now sits above the name's height); landing can still face you straight at the landmark from close by; frame-time spikes of 40–80 ms remain in walking runs today (machine state not separated).
+- **KD-24 Aerial world (2026-11-06):**
+  - Distances between places are symbolic, and child places of an 11-folder place sit about 600 m away, so B views the neighbourhood from about 1–1.5 km up and islands are small.
+  - A discovery can slide its ancestors' children along their arcs (AERIAL-02 states the guarantee).
+  - Islands are not to scale with the full place drawn at the current island.
+  - Revealing from the air was not exercised in the app, because in the fixture every nearby folder was already listed (Core-tested).
+  - The world is laid out up to 4,000 places.
+  - Not exercised: the hub with real drives from the air (privacy), a bounded tree of more than 4,000 folders in the app, touchpads.
+- **KD-25 Names:** at most 40 signs; far names are shortened to 12 characters, so similar prefixes can look alike from far away (full names in the chip, card and Destinations); detail lines are small (11–13 px).
+- **KD-26 Feel not judged:**
+  - the jump arc, take-off height and gaze;
+  - the ×30 height speed;
+  - level flight against "where you look";
+  - badge size and fade;
+  - the tread brightness of the stairs.
+
+  If vertical flight still "feels wrong", the next suspects are the vertical speed (0.8 × flight speed) and the take-off rise.
+- **KD-27 Not promoted:** build `4a7b9ce6fdf6` is staged, not installed (DJ's FileScape was running). Install by closing FileScape and running `tools/fs.sh export`.
 - **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
 
 ## Provisional decisions to confirm with DJ
 
 Godot (AD-01), the Fishbone default (AD-08), the log height scale (AD-07), click = select-only (FSN approached on click), and D3D12 as the default driver (KD-01, AD-11).
 
-## Next useful iteration (recommended, 2026-11-05)
+## Next useful iteration (recommended, 2026-11-06)
+
+0. DJ closes FileScape and installs `4a7b9ce6fdf6` (`tools/fs.sh export`), or runs the staged exe directly.
+1. DJ tries, then judges KD-26:
+   - the default view, J and K;
+   - names across the plaza and the stairs;
+   - the jump: hold and tap;
+   - T and looking down; E/Q/C;
+   - B and the aerial world: click and G, T over a place.
+2. Depending on the verdict:
+   - If flight is still wrong, try the vertical speed and the take-off rise.
+   - If the aerial distances feel too large, tighten the layout (several rows for non-empty children too).
+3. Planetoids: if DJ wants them, step 1 of `docs/planetoid-feasibility.md`: one place as a planetoid style.
+
+## Earlier recommendation (2026-11-05)
 
 0. (After the usability pass) DJ tries build `4b030e39b93a`: the look direction (Settings, F4), walking/running speed, plates and the chip near gates, U then W held up a chain, the new summaries; then decide speeds, the default direction and KD-22. (Earlier: DJ tries the installed build `2dc4ae8c3234`; the half-day WSL symlink investigation (KD-17) if Linux links matter to DJ; type `PlaceParams`/terrain lengths if they become a source of mistakes (docs/units.md lists them as deliberate primitives).)
 

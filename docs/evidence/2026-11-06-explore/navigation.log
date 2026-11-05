@@ -1,0 +1,63 @@
+[22:16:25.804] start: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[0,191.101,131.838],"target":[0,0.582,-198.15],"yaw":0,"lookPitch":-30,"up":0.866,"distance":381.038,"flySpeed":10,"held":[],"selected":-1,"vis":0,"hint":true,"flyChip":false,"consumedEscapes":0,"experience":"Classic","current":0,"currentName":"synthetic-demo","transition":false,"transitions":0,"gates":-1,"selectedName":"","lastShell":"","locomotion":"Walking","grounded":false,"support":0,"feetY":0,"lookCaptured":false,"jumps":0,"relocations":0,"landing":false,"guided":false,"showHidden":false,"locationsOpen":false,"via":-1,"currentPath":"synthetic://seed-1965","reverseH":true,"reverseV":true,"levelView":true,"walkSpeed":8,"runSpeed":16,"settingsOpen":false,"settingsH":[736,457],"settingsV":[724,457],"settingsLevel":[814,457],"uiScale":1,"gateChip":"","prefsFile":"","destinationsOpen":false,"legendVisible":true,"aerialShown":false,"altitude":0,"signsNamed":0,"islands":0,"destRow0":[0,0]}
+[22:16:25.814] PASS first-run hint is visible: W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help
+[22:16:30.092] ground speeds u/s: W=343.61 Up=350.31 W+Up=342.57 W+D=341.77 Right=341.11 D=333.94 Shift+W=1037.73
+[22:16:30.092] PASS W moves the view in orbit mode
+[22:16:30.092] PASS Up arrow = W speed (ratio 1.020)
+[22:16:30.092] PASS W+Up together does not double speed (ratio 0.997)
+[22:16:30.092] PASS diagonal W+D is not faster (ratio 0.995)
+[22:16:30.093] PASS W moves along the horizontal heading
+[22:16:30.093] PASS W+D moves at 45° (dot 0.707)
+[22:16:30.093] PASS Right arrow = D
+[22:16:30.093] PASS Shift accelerates ×3 (ratio 3.02)
+[22:16:30.908] PASS E raises the view (Δy 142.69)
+[22:16:30.908] PASS Q lowers the view (Δy -68.59)
+[22:16:31.975] PASS wheel zooms in orbit mode (381.0 → 288.5)
+[22:16:32.534] PASS holding right mouse enters fly mode and captures the mouse
+[22:16:32.535] PASS fly status shows speed: FLYING  ·  speed 228.6 u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop
+[22:16:32.535] PASS entering flight does not move or rotate the camera (Δpos 0.0000)
+[22:16:32.557] PASS mouse-look yaw: 100 px → -12.00°
+[22:16:32.588] PASS look up stops at 85.0° without flipping (camera up.y 0.087)
+[22:16:32.619] PASS look down stops at -85.0° without flipping
+[22:16:32.619] PASS no roll: camera right vector stays horizontal
+[22:16:35.991] look pitch set to -30.0°°, altitude 2169 u
+[22:16:44.289] PASS instrument: the speed series stayed above ground (altitude 1421 u)
+[22:16:44.289] fly speeds u/s (speed setting 228.6): W=229.80 Up=230.43 W+Up=229.02 W+A=228.52 Left=227.72 Shift+W=691.85
+[22:16:44.289] PASS W flies along the view direction, descending when looking down (dot 1.000)
+[22:16:44.289] PASS Up arrow = W in flight (ratio 1.003)
+[22:16:44.289] PASS W+Up does not double flight speed (ratio 0.997)
+[22:16:44.289] PASS diagonal flight is not faster (ratio 0.994)
+[22:16:44.289] PASS strafe stays level
+[22:16:44.289] PASS Shift ×3 in flight (ratio 3.01)
+[22:16:46.450] PASS E ascends in world space while flying
+[22:16:46.450] PASS Q descends while flying
+[22:16:46.549] PASS wheel up ×3 raises flight speed 228.6 → 446.5 u/s
+[22:16:46.550] PASS flight speed shown while it changes
+[22:16:46.650] PASS wheel down restores the speed
+[22:16:46.650] PASS wheel in flight does not zoom
+[22:16:46.700] PASS releasing right mouse ends flight and restores the cursor
+[22:16:46.700] PASS leaving flight does not move the camera (Δpos 0.0007)
+[22:16:48.202] PASS no snap back to the old orbit target afterwards
+[22:16:49.229] PASS left-drag orbits around the post-flight pivot
+[22:16:50.914] PASS Escape ends flight and releases capture
+[22:16:50.915] PASS that Escape did not also navigate to the parent
+[22:16:51.042] PASS the next Escape navigates to the parent directory
+[22:16:53.371] PASS after flying 4.2 u, Tab switches to District and keeps the selection
+[22:16:53.548] PASS F frames the selection again
+[22:16:53.705] PASS clicking the Classic FSN toolbar button switches visualization
+[22:16:54.135] PASS arrow keys still move the view right after a toolbar click
+[22:16:54.589] PASS while a text field has focus, W and Up do not move the camera
+[22:16:54.589] PASS the text field received the typed key instead (text 'w')
+[22:16:55.078] PASS clicking the scene returns the keys to navigation
+[22:16:55.959] PASS with a dialog open, arrows and W do not move the camera
+[22:16:56.083] PASS Escape closes the dialog without navigating to the parent
+[22:16:56.498] PASS movement works again once the dialog is closed
+[22:16:56.773] PASS focus loss ends flight, releases capture, and forgets held keys
+[22:16:57.266] PASS nothing moves after focus returns until a key is pressed again
+[22:16:57.358] PASS instrument: the drag is active before focus is lost
+[22:16:58.681] PASS a drag interrupted by focus loss does not keep orbiting with no button held (dragging=False, Δpos 0.0083, Δyaw-basis 0.00038, settled=True)
+[22:17:01.850] PASS Home recovers the start view after flying away
+[22:17:05.899] stale-layout interval: 202 frames with tree ahead of layout; labels drawn in 202 of them
+[22:17:05.899] PASS the scan really exercised the stale-layout interval
+[22:17:05.899] PASS labels kept rendering during the interval
+[22:17:05.899] end: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[-67.52,1177.51,23.123],"target":[-67.52,3.234,-601.25],"yaw":0,"lookPitch":-62,"up":0.4695,"distance":1329.95,"flySpeed":13.134,"held":[],"selected":59290,"vis":0,"hint":false,"flyChip":false,"consumedEscapes":1,"experience":"Classic","current":0,"currentName":"synthetic-demo","transition":false,"transitions":0,"gates":-1,"selectedName":"harbor-360.exe","lastShell":"","locomotion":"Walking","grounded":false,"support":0,"feetY":0,"lookCaptured":false,"jumps":0,"relocations":0,"landing":false,"guided":false,"showHidden":false,"locationsOpen":false,"via":-1,"currentPath":"synthetic://seed-1965","reverseH":true,"reverseV":true,"levelView":true,"walkSpeed":8,"runSpeed":16,"settingsOpen":false,"settingsH":[736,457],"settingsV":[724,457],"settingsLevel":[814,457],"uiScale":1,"gateChip":"","prefsFile":"","destinationsOpen":false,"legendVisible":true,"aerialShown":false,"altitude":0,"signsNamed":0,"islands":0,"destRow0":[0,0]}
+[22:17:05.900] done failures=0

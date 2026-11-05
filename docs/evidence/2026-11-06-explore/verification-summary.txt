@@ -1,0 +1,19 @@
+tests-windows: Passed!  - Failed:     0, Passed:   165, Skipped:    13, Total:   178, Duration: 8 s - FileScape.Core.Tests.dll (net10.0)
+tests-wsl: Passed!  - Failed:     0, Passed:   163, Skipped:    15, Total:   178, Duration: 3 s - FileScape.Core.Tests.dll (net10.0)
+walk ui1.0: 103 PASS 0 FAIL
+explore ui1.0: 29 PASS 0 FAIL
+walk ui1.25: 102 PASS 1 FAIL
+[22:11:23.856] FAIL walking while looking down is as fast and stays on the ground (7.66 m/s vs 8.13 m/s level)
+explore ui1.25: 29 PASS 0 FAIL
+places connected: 53 PASS 0 FAIL
+places bounded tree: 52 PASS 0 FAIL
+places scan: 8 PASS 0 FAIL
+navigation: 56 PASS 0 FAIL
+map journey: 15 PASS 0 FAIL
+walk-perf: [22:17:46.337] perf eye-1.75-no-ssao High: mean=6.45 p95=7.14 gpu=5.70 ms [22:17:49.440] perf eye-1.75-no-place-geometry High: mean=5.93 p95=8.26 gpu=5.06 ms [22:17:52.552] perf eye-1.75-low Low: mean=2.42 p95=2.93 gpu=1.88 ms 
+planetoids: 4 PASS 0 FAIL
+os real input ui1: 29 PASS 0 FAIL
+os real input ui1.25: 29 PASS 0 FAIL
+appdata-prefs: ls: cannot access '/mnt/c/Users/David/AppData/Roaming/FileScape': No such file or directory
+recording: -rwxrwxrwx 1 david david 201490500 Nov  5 22:21 /mnt/c/Users/David/AppData/Local/FileScape/evidence/2026-11-06-explore/final4/explore-recording.avi
+DONE
