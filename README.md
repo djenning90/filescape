@@ -11,7 +11,9 @@ Explore a real Windows filesystem as a place. A Godot 4.7 .NET app over a shared
 
 Prerequisites (already set up on DJ's laptop; details in `docs/windows-workflow.md`): Windows .NET SDK 8+ and the portable Godot 4.7.2 .NET editor under `C:\Users\David\tools\godot\`.
 
-**Standalone build:** `%LOCALAPPDATA%\FileScape\build\FileScape.exe`. If a FileScape was running when the build was made, the new build waits in `%LOCALAPPDATA%\FileScape\build-staging\FileScape.exe`; close FileScape and run `tools/fs.sh export` to install it (the export refuses to replace a running build).
+**Standalone build:** `C:\Users\David\AppData\Local\FileScape\build\FileScape.exe` (`%LOCALAPPDATA%\FileScape\build`). Its identity (commit, hashes) is in `build-info.txt` next to it and at the end of Help (F1). `tools/fs.sh export` builds, verifies and smoke-launches a new build in a fresh `staging-*` folder, then installs it, keeping the previous one as `previous-*`; if FileScape is running it installs nothing and names the verified staged exe instead. `tools/fs.sh builds` shows what is where.
+
+**Two modes** (AD-22): **Connected world** (default: start anywhere, everything listed when you visit it, links followed, drives and WSL in Locations) and **Bounded tree scan** (the original whole-tree reference: one folder scanned completely, links not followed, the Classic FSN and District maps show its whole tree). In Locations (L) use **Go** for the first, **Scan as tree** / **Scan this folder as a tree** for the second; from the command line `--scan=tree --root=…`.
 
 It starts in **Places** on synthetic sample data (amber badge). Click **Open folder…**, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
 
