@@ -49,7 +49,7 @@ tools/fs.sh test                                        # tests with Windows dot
 | To… | Do this (Places) |
 |---|---|
 | Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run (walk 8 m/s, run 16 m/s; adjustable in Settings) |
-| Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag**. Direction: **⚙ Settings / F4** reverses left/right and up/down separately (default: both reversed — moving the mouse right turns you left, down looks up) |
+| Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag**. Direction: **⚙ Settings / F4** reverses left/right and up/down separately (default: both reversed — moving the mouse right turns you left, down looks up). Letting go eases the view back to level (heading kept; Settings can turn it off) |
 | Jump | **Space** (never opens or runs anything) |
 | Fly | **T** or the ✈ button: rise and fly — W A S D along the view, **E / Space** up, **Q** down, **wheel** speed, **Shift** ×3 · **T** again lands on foot (safely; if there is nowhere to stand below, at the arrival point, with a note) · **B** rises above the place |
 | Go into a folder or link | walk **through its gate** facing it · **double-click** it or its Destinations row · select it and press **G** |
