@@ -58,12 +58,29 @@ public partial class LabelLayer : Control
     private int _used;
     private readonly HashSet<int> _shown = [];
 
+    private readonly List<Rect2> _labelRects = [];
+
+    /// <summary>Screen rectangles of the labels shown in the last refresh (VISI-01 checks).</summary>
+    public IReadOnlyList<Rect2> ShownRects => _labelRects;
+
     private void Begin(IEnumerable<Rect2> blocked)
     {
         _placed.Clear();
         _placed.AddRange(blocked);
+        _labelRects.Clear();
         _used = 0;
         _shown.Clear();
+    }
+
+    private bool Free(Rect2 r)
+    {
+        if (!GetViewportRect().Encloses(r)) return false;
+        foreach (var p in _placed)
+        {
+            if (p.Intersects(r)) return false;
+        }
+
+        return true;
     }
 
     private void End()
@@ -102,18 +119,44 @@ public partial class LabelLayer : Control
         label.Text = Text(node, tree.DisplayName(id), kind);
         var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + new Vector2(10, 6);
         var rect = new Rect2(p - new Vector2(size.X / 2, size.Y + (belowAnchor ? 0 : 4)), size);
-        if (kind is not (Kind.Selected or Kind.Hovered))
+        // Keep labels fully on screen (VISI-01): slide a label at the edge inwards rather than clipping it.
+        var vp = GetViewportRect();
+        rect.Position = new Vector2(Mathf.Clamp(rect.Position.X, vp.Position.X + 2, vp.End.X - size.X - 2), Mathf.Clamp(rect.Position.Y, vp.Position.Y + 2, vp.End.Y - size.Y - 2));
+        if (!Free(rect))
         {
-            foreach (var r in _placed)
+            if (kind is not (Kind.Selected or Kind.Hovered))
             {
-                if (r.Intersects(rect))
+                _shown.Remove(id);
+                return;
+            }
+
+            // The selection and the hovered item get the nearest free spot above or below the anchor, never over the HUD
+            // or another label (VISI-01).
+            var found = false;
+            foreach (var dy in new[] { -1.1f, 1.1f, -2.2f, 2.2f, -3.3f, 3.3f })
+            {
+                foreach (var dx in new[] { 0f, -0.6f, 0.6f })
                 {
-                    return;
+                    var r2 = rect with { Position = rect.Position + new Vector2(dx * size.X, dy * size.Y) };
+                    if (!Free(r2)) continue;
+                    rect = r2;
+                    found = true;
+                    break;
                 }
+
+                if (found) break;
+            }
+
+            if (!found)
+            {
+                // No free spot: no overlay label (the inspector and the in-world sign still name it) rather than overlap.
+                _shown.Remove(id);
+                return;
             }
         }
 
         _placed.Add(rect);
+        _labelRects.Add(rect);
         label.Position = rect.Position + new Vector2(5, 3);
         label.Size = size;
         label.Visible = true;
@@ -152,9 +195,11 @@ public partial class LabelLayer : Control
     /// Places: folder names are in-world signs (PlaceWorld), so the overlay labels only the selection, the hovered
     /// structure and the nearest file towers, which keeps the arrival view uncluttered (PLACE-05).
     /// </summary>
-    public void RefreshPlace(Camera3D camera, FsTree tree, PlaceComposition place, SelectionState selection, IEnumerable<Rect2> blocked, int maxFiles = 10, float fileRange = 24f)
+    public void RefreshPlace(Camera3D camera, FsTree tree, PlaceComposition place, SelectionState selection, IEnumerable<Rect2> blocked, int maxFiles = 10, float fileRange = 24f, IEnumerable<Rect2>? worldSigns = null)
     {
         Begin(blocked);
+        // In-world signs (gate names, the landmark) are not covered by file labels either.
+        if (worldSigns != null) _placed.AddRange(worldSigns);
         void Box(int id, Kind kind)
         {
             if (id >= 0 && PlacePicker.BoundsOf(place, id) is { } b)
@@ -192,9 +237,10 @@ public partial class LabelLayer : Control
     private static string Text(FsNode n, string name, Kind kind)
     {
         var suffix = "";
-        if ((n.Flags & NodeFlags.AccessDenied) != 0) suffix = "  ⚠ access denied";
+        // Short markers only (VISI-02); the inspector has the explanation.
+        if ((n.Flags & NodeFlags.AccessDenied) != 0) suffix = "  ⚠ denied";
         else if ((n.Flags & NodeFlags.Vanished) != 0) suffix = "  ⚠ vanished";
-        else if (n.Kind == NodeKind.Link) suffix = "  ↪ link";
+        else if (n.Kind == NodeKind.Link) suffix = "  ⇢";
         else if (n.IsDirectory && n.ScanState == DirScanState.Pending) suffix = "  …";
         else if (n.IsDirectory && n.ScanState is DirScanState.Cancelled or DirScanState.NotTraversed) suffix = "  (not scanned)";
 

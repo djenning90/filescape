@@ -71,6 +71,7 @@ public partial class Main : Node3D
     public Quality Quality => _quality;
     public string? LastShellMessage { get; private set; }
     public int LabelsShown => _labels.LastShown;
+    public IReadOnlyList<Rect2> LabelRects => _labels.ShownRects;
 
     private bool _labelsVisible = true;
 
@@ -334,7 +335,7 @@ public partial class Main : Node3D
             if (_labelsVisible && now - _lastLabelRefresh > 0.08)
             {
                 _lastLabelRefresh = now;
-                if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects);
+                if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects, worldSigns: _placeWorld.VisibleSignRects(_rig.Camera));
                 else _labels.HideAll();
             }
         }

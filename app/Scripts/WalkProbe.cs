@@ -108,6 +108,24 @@ public partial class WalkProbe : ProbeBase
         return App.CompletedTransitions > before;
     }
 
+    /// <summary>Horizontal speed after the start-up ramp, from two timed samples (independent of key-event latency).</summary>
+    private async Task<float> SteadySpeed(float yaw, float pitch, params Godot.Key[] keys)
+    {
+        // [direct] the same clear start in the south corridor each time: ~10 m of free plaza ahead (north).
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 12f), yaw, pitch));
+        await Frames(3);
+        foreach (var k in keys) Key1(k, true);
+        await Seconds(0.45);
+        var p0 = FeetXz;
+        var t0 = Time.GetTicksUsec();
+        await Seconds(1.0); // a longer window keeps one frame of sampling jitter below 2 %
+        var p1 = FeetXz;
+        var t1 = Time.GetTicksUsec();
+        foreach (var k in keys) Key1(k, false);
+        await Seconds(0.3);
+        return NVector2.Distance(p0, p1) / ((t1 - t0) / 1e6f);
+    }
+
     private async Task Look(Vector2 total, int steps = 20)
     {
         var centre = App.GetViewport().GetVisibleRect().Size / 2;
@@ -116,6 +134,24 @@ public partial class WalkProbe : ProbeBase
         for (var i = 0; i < steps; i++) { Motion(total / steps); await Frames(1); }
         Mouse(MouseButton.Right, false, centre);
         await Frames(3);
+    }
+
+    /// <summary>VISI-01: overlay labels are on screen, never over each other or a HUD panel.</summary>
+    private async Task LabelsClear(string where)
+    {
+        await Seconds(0.35); // labels refresh every 80 ms; hover follows the mouse
+        var rects = App.LabelRects.ToList();
+        var hud = App.Hud.BlockingRects.ToList();
+        var vp = App.GetViewport().GetVisibleRect();
+        var overlaps = 0;
+        for (var i = 0; i < rects.Count; i++)
+        {
+            for (var j = i + 1; j < rects.Count; j++) if (rects[i].Intersects(rects[j])) overlaps++;
+        }
+
+        var onHud = rects.Count(r => hud.Any(h => h.Intersects(r)));
+        var off = rects.Count(r => !vp.Encloses(r));
+        Check(overlaps == 0 && onHud == 0 && off == 0, $"labels at {where}: {rects.Count} shown, {overlaps} overlapping, {onHud} on the HUD, {off} off screen");
     }
 
     private async Task Journey()
@@ -131,6 +167,7 @@ public partial class WalkProbe : ProbeBase
         Check(App.Hud.BreadcrumbNames.LastOrDefault() == rootName && App.Hud.BreadcrumbNames.FirstOrDefault() == "This computer", $"breadcrumb runs from This computer to {rootName} ({string.Join(" › ", App.Hud.BreadcrumbNames)})");
         Check(App.PlaceWorld.LandmarkSign == rootName, "the landmark plaque names the place");
         await Shot("arrival-on-foot");
+        await LabelsClear("arrival");
 
         // ---- 2. Look and steer with the right mouse (WALK-03)
         var yaw0 = W.Yaw;
@@ -152,25 +189,18 @@ public partial class WalkProbe : ProbeBase
         App.ProbeSetGaze(W.Yaw, 0); // [direct]
         await Look(new Vector2(0, 700));
         Check(W.LookPitch < -70f, F($"looking sharply down ({W.LookPitch:0} deg)"));
-        var a = FeetXz;
-        await Hold(1.0, Godot.Key.W);
-        var downDist = NVector2.Distance(a, FeetXz);
-        App.ProbeSetGaze(W.Yaw, 0); // [direct]
-        a = FeetXz;
-        await Hold(1.0, Godot.Key.W);
-        var levelDist = NVector2.Distance(a, FeetXz);
-        Check(MathF.Abs(downDist / levelDist - 1) < 0.08f && W.Support < 0.01f, F($"walking while looking down covers the same ground ({downDist:0.00} m vs {levelDist:0.00} m level)"));
+        var downSpeed = await SteadySpeed(0, W.LookPitch, Godot.Key.W);
+        var levelSpeed = await SteadySpeed(0, 0, Godot.Key.W);
+        Check(MathF.Abs(downSpeed / levelSpeed - 1) < 0.03f && W.Support < 0.01f, F($"walking while looking down is as fast and stays on the ground ({downSpeed:0.00} m/s vs {levelSpeed:0.00} m/s level)"));
         await Shot("looking-down-while-walking");
 
         // ---- 5. Turning with the arrows while walking curves (WALK-03), diagonal not faster (WALK-04)
         yaw0 = W.Yaw;
-        a = FeetXz;
+        var a = FeetXz;
         await Hold(1.0, Godot.Key.Up, Godot.Key.Left);
         Check(W.Yaw - yaw0 > 90f && NVector2.Distance(a, FeetXz) > 2.5f, F($"Up + Left walks a curve (turned {W.Yaw - yaw0:0}°, moved {NVector2.Distance(a, FeetXz):0.0} m)"));
-        a = FeetXz;
-        await Hold(1.0, Godot.Key.W, Godot.Key.D);
-        var diag = NVector2.Distance(a, FeetXz);
-        Check(MathF.Abs(diag / levelDist - 1) < 0.08f, F($"W+D is not faster than W ({diag:0.00} vs {levelDist:0.00} m)"));
+        var diag = await SteadySpeed(45, 0, Godot.Key.W, Godot.Key.D); // heading north-west, so W+D runs due north
+        Check(MathF.Abs(diag / levelSpeed - 1) < 0.03f, F($"W+D is not faster than W ({diag:0.00} vs {levelSpeed:0.00} m/s)"));
 
         // ---- 6. Jump (JUMP-01), on flat plaza ground
         App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 5.2f), 0, -5)); // [direct] a clear flat spot south of the landmark
@@ -250,6 +280,7 @@ public partial class WalkProbe : ProbeBase
         Check(App.Hud.ConnectionText.Contains("to-shared-library", StringComparison.Ordinal), $"the HUD names the connection used: {App.Hud.ConnectionText}");
         Check(!App.Hud.BreadcrumbNames.Contains("Wayfarer") && App.Hud.BreadcrumbNames.LastOrDefault() == "Shared Library", $"the breadcrumb is the physical location ({string.Join(" › ", App.Hud.BreadcrumbNames)})");
         await Shot("arrived-through-a-link");
+        await LabelsClear("the link's destination with the link selected");
         await Key(Godot.Key.Backspace);
         await WaitPlace();
         Check(App.Navigator.Current == root && App.Selection.Selected == shared, "Backspace returns through the link, in front of its gate, with the link selected");
@@ -314,6 +345,7 @@ public partial class WalkProbe : ProbeBase
         Check(Place.Kind.Kind == PlaceKind.Project && Place.Kind.Evidence.Any(e => e.Contains("Lighthouse.csproj", StringComparison.Ordinal)), $"lighthouse is recognised as a software project ({string.Join(", ", Place.Kind.Evidence)})");
         Check(Place.Files.Count(f => f.Core) >= 2 && Place.Files.Any(f => f.Core && Tree[f.Id].Name == "README.md"), "its README and manifests form the project core");
         await Shot("project-place");
+        await LabelsClear("the project place");
         await Key(Godot.Key.U);
         await WaitPlace();
         var notesOnly = Find(projects, "notes-only");
@@ -355,6 +387,7 @@ public partial class WalkProbe : ProbeBase
             var lx = Tree[wid].Children.Select(c => Tree[c]).FirstOrDefault(n => n.Name == "to-real");
             Check(lx?.Link is { Kind: LinkKind.LinuxSymlink, Status: LinkStatus.Unsupported }, "a Linux symlink is identified and marked as not followable through Windows");
             await Shot("wsl-arrival");
+            await LabelsClear("the WSL folder");
         }
         else
         {
@@ -371,6 +404,7 @@ public partial class WalkProbe : ProbeBase
         Check(App.Navigator.Current == 0 && Place.Kind.Kind == PlaceKind.Hub && Place.Gates.Count >= 2, $"the hub is a place with a gate per location ({Place.Gates.Count})");
         Check(Place.Gates.Any(g => Tree[g.TargetId].Location == LocationKind.Wsl) && Place.Gates.Any(g => Tree[g.TargetId].Location == LocationKind.Drive), "drives and WSL distributions are both there");
         await Shot("locations-hub");
+        await LabelsClear("the hub");
         await KeyCombo(Godot.Key.Home, ctrl: true);
         await WaitPlace();
 

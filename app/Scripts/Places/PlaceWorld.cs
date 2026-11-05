@@ -439,6 +439,26 @@ public partial class PlaceWorld : Node3D
 
     private float _ringRadius;
 
+    /// <summary>Approximate screen rectangles of the visible in-world signs (so overlay labels avoid them, VISI-01).</summary>
+    public IEnumerable<Rect2> VisibleSignRects(Camera3D camera)
+    {
+        foreach (var (label, _, _) in _managed)
+        {
+            if (!label.Visible || label.Modulate.A < 0.3f) continue;
+            var aabb = label.GetAabb();
+            var xf = label.GlobalTransform;
+            if (camera.IsPositionBehind(xf.Origin)) continue;
+            // Billboarded signs face the camera: project the centre and the box's half-extent at that depth.
+            var centre = xf * aabb.GetCenter();
+            var right = camera.GlobalTransform.Basis.X * aabb.Size.X * 0.5f;
+            var up = Vector3.Up * aabb.Size.Y * 0.5f;
+            var c = camera.UnprojectPosition(centre);
+            var dx = (camera.UnprojectPosition(centre + right) - c).Length();
+            var dy = (camera.UnprojectPosition(centre + up) - c).Length();
+            yield return new Rect2(c.X - dx, c.Y - dy, dx * 2, dy * 2);
+        }
+    }
+
     /// <summary>Signs that hide when the camera is closer than this (horizontally): they would fill the view.</summary>
     private readonly Dictionary<Label3D, float> _nearHide = [];
 
