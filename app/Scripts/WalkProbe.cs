@@ -406,6 +406,32 @@ public partial class WalkProbe : ProbeBase
         Check(Place.Gates.Any(g => Tree[g.TargetId].Location == LocationKind.Wsl) && Place.Gates.Any(g => Tree[g.TargetId].Location == LocationKind.Drive), "drives and WSL distributions are both there");
         await Shot("locations-hub");
         await LabelsClear("the hub");
+
+        // An unavailable location (LOC-04): a removable drive with no media. Only entered when Windows reports it is
+        // not ready, so nothing private can be listed.
+        var notReady = Place.Gates.Select(g => Tree[g.TargetId]).FirstOrDefault(n => n.Location == LocationKind.Drive && n.Name != @"C:" && !new System.IO.DriveInfo(n.Name).IsReady);
+        if (notReady != null)
+        {
+            App.Selection.Select(notReady.Id); // [direct]
+            App.Perf.StartRecording();
+            await Key(Godot.Key.G);
+            await WaitPlace();
+            await Until(() => Tree[notReady.Id].ScanState is DirScanState.Failed or DirScanState.Complete, 10);
+            await Frames(10);
+            var frames = App.Perf.StopRecording();
+            var worst = frames.Count > 0 ? frames.Max(x => x.FrameMs) : 0;
+            Check(App.Navigator.Current == notReady.Id && Place.State is ListingState.Unavailable or ListingState.Failed,
+                F($"entering {notReady.Name} (no media) shows it as {Listing.Describe(Place.State)}: {Tree[notReady.Id].Error}"));
+            Check(worst < 250, F($"the UI did not freeze while Windows answered (worst frame {worst:0} ms)"));
+            await Shot("unavailable-drive");
+            App.Hud.Toast(""); // [direct] clear the toast before the next shot
+            await KeyCombo(Godot.Key.Home, ctrl: true);
+            await WaitPlace();
+        }
+        else
+        {
+            Log("SKIP unavailable-location step: every removable drive has media (not listing it)");
+        }
         await KeyCombo(Godot.Key.Home, ctrl: true);
         await WaitPlace();
 
@@ -417,9 +443,22 @@ public partial class WalkProbe : ProbeBase
         Key1(Godot.Key.T, true);
         await Frames(2);
         Key1(Godot.Key.T, false);
-        for (var i = 0; i < 60; i++) { await Frames(1); var y = App.Rig.CameraPosition.Y; maxStep = MathF.Max(maxStep, MathF.Abs(y - last)); last = y; }
-        Check(App.Locomotion == Locomotion.Flying && last - y0 > 3f && maxStep < 0.5f && App.Hud.FlyChipVisible && App.Hud.FlightButtonPressed,
-            F($"T takes off: a continuous rise of {last - y0:0.0} m (largest step {maxStep:0.00} m), chip and pressed button"));
+        // Continuous, not a cut: the rise takes visible time and no single frame carries much of it (a per-frame speed
+        // measured from the probe's own timestamps proved too noisy against the frames' time steps).
+        var riseStart = Time.GetTicksMsec();
+        var riseEnd = riseStart;
+        for (var i = 0; i < 150; i++)
+        {
+            await Frames(1);
+            var y = App.Rig.CameraPosition.Y;
+            maxStep = MathF.Max(maxStep, MathF.Abs(y - last));
+            if (y - last > 0.002f) riseEnd = Time.GetTicksMsec();
+            last = y;
+        }
+
+        var rise = last - y0;
+        Check(App.Locomotion == Locomotion.Flying && rise > 3.3f && maxStep < 0.25f * rise && riseEnd - riseStart > 300 && App.Hud.FlyChipVisible && App.Hud.FlightButtonPressed,
+            F($"T takes off: a continuous rise of {rise:0.0} m over {riseEnd - riseStart} ms (largest frame step {maxStep:0.00} m), chip and pressed button"));
         await Hold(1.5, Godot.Key.E);
         await Hold(1.0, Godot.Key.W);
         await Shot("flying");
