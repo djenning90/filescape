@@ -166,8 +166,22 @@ public partial class PlacesProbe : Node
         Check(_main.Selection.Selected == target.TargetId, F($"the child you came from ({targetName}) is selected after returning"));
         var gateBack = Place.GateFor(target.TargetId)!;
         var depth = ThresholdTracker.Depth(gateBack, _main.Rig.CameraPosition.ToNumerics());
-        var facing = ToGd(CameraMath.HorizontalForward(_main.Rig.Yaw)).Dot(-ToGd(gateBack.Outward));
-        Check(depth < -ThresholdTracker.ArmDepth.Value && facing > 0.95f, F($"returned in front of the '{targetName}' gate ({-depth:0.0} u inside), facing into the parent (dot {facing:0.00})"));
+        if (Place.ParentGate is { } upGate)
+        {
+            // PLACE-16 (2026-11-05 evening, a deliberate change from PLACE-07's pose): Up arrives on a verified straight
+            // route, facing the next ▲ gate, on the side of the gate you came out of.
+            var toUp = upGate.Position - _main.Rig.CameraPosition.ToNumerics();
+            var aim = System.Numerics.Vector2.Normalize(new System.Numerics.Vector2(toUp.X, toUp.Z));
+            var fwd = CameraMath.HorizontalForward(_main.Rig.Yaw);
+            var facingUp = aim.X * fwd.X + aim.Y * fwd.Z;
+            Check(_main.LastUpwardRoute is { Verified: true } && depth < -ThresholdTracker.ArmDepth.Value && facingUp > 0.95f,
+                F($"returned inside the parent ({-depth:0.0} m from the '{targetName}' gate), facing its ▲ gate along a verified route (dot {facingUp:0.00})"));
+        }
+        else
+        {
+            var facing = ToGd(CameraMath.HorizontalForward(_main.Rig.Yaw)).Dot(-ToGd(gateBack.Outward));
+            Check(depth < -ThresholdTracker.ArmDepth.Value && facing > 0.95f, F($"returned in front of the '{targetName}' gate ({-depth:0.0} u inside), facing into the parent (dot {facing:0.00})"));
+        }
         await Settle();
         await Shot("returned-to-parent");
 
@@ -529,11 +543,19 @@ public partial class PlacesProbe : Node
         var vp = _main.GetViewport().GetVisibleRect();
         foreach (var f in Place.Files.OrderBy(f => System.Numerics.Vector3.Distance(f.Box.Center, cam.GlobalPosition.ToNumerics())))
         {
-            var top = ToGd(f.Box.Center) with { Y = f.Box.Max.Y - 0.3f };
-            if (cam.IsPositionBehind(top)) continue;
-            var screen = cam.UnprojectPosition(top);
-            if (!vp.HasPoint(screen) || _main.Hud.BlockingRects.Any(r => r.HasPoint(screen))) continue;
-            if (_main.PickAt(screen) != f.Id) continue;
+            // Any visible part of the tower, top first (2026-11-05 evening: with compact quarters the nearest tops can
+            // sit under the HUD panels while the towers' faces are in clear view). The pick must still hit this tower.
+            Vector2? hit = null;
+            foreach (var k in new[] { 0.9f, 0.7f, 0.5f, 0.3f })
+            {
+                var point = ToGd(f.Box.Center) with { Y = f.Box.Min.Y + (f.Box.Max.Y - f.Box.Min.Y) * k };
+                if (cam.IsPositionBehind(point)) continue;
+                var at = cam.UnprojectPosition(point);
+                if (!vp.HasPoint(at) || _main.Hud.BlockingRects.Any(r => r.HasPoint(at))) continue;
+                if (_main.PickAt(at) == f.Id) { hit = at; break; }
+            }
+
+            if (hit is not { } screen) continue;
             Mouse(MouseButton.Left, true, screen);
             await Frames(2);
             Mouse(MouseButton.Left, false, screen);
