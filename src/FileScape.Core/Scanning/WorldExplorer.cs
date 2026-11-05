@@ -1,0 +1,906 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.IO.Enumeration;
+using FileScape.Core.Model;
+
+namespace FileScape.Core.Scanning;
+
+/// <summary>
+/// The connected namespace for live data (AD-17, AD-18, LOC-01..05, LINK-01..08). One tree rooted at a
+/// "This computer" hub whose children are location roots (drives, WSL distributions, other roots reached on demand).
+/// The chosen folder is ensured as a path (its ancestors become <see cref="DirScanState.Unlisted"/> stubs that know
+/// only the child on the way) and is traversed in the background; everything else is listed when visited.
+/// </summary>
+/// <remarks>
+/// Threading: a coordinator thread (<see cref="Run"/>) owns all bookkeeping and assigns node ids, so batches stay in
+/// id order (AD-04: the consumer remains the only writer of <see cref="FsTree"/>). Listings, path probes and link
+/// resolutions run as worker tasks, several at a time, so one slow distribution or share blocks nothing else
+/// (LOC-04). Requests from the UI thread are queued and never block. Links are never followed by background
+/// traversal (FS-03); following is a deliberate request.
+/// </remarks>
+public sealed class WorldExplorer : IScanSource, IDisposable
+{
+    public const int ArrivalTicket = 0;
+    public const string HubName = "This computer";
+
+    public sealed record Options
+    {
+        /// <summary>Location roots for the hub; null discovers drives and WSL distributions.</summary>
+        public IReadOnlyList<LocationSeed>? Locations { get; init; }
+
+        /// <summary>Traverse the arrival folder's subtree in the background (off for broad places, LOC-02).</summary>
+        public bool? Background { get; init; }
+
+        public int MaxConcurrent { get; init; } = 4;
+
+        /// <summary>At most this many child folders of a visited place are listed ahead (gate states, vistas).</summary>
+        public int PrefetchLimit { get; init; } = 200;
+
+        public string? DefaultDistribution { get; init; }
+
+        /// <summary>Test hook, called on a worker just before a directory is enumerated.</summary>
+        public Action<string>? BeforeEnumerate { get; init; }
+    }
+
+    private enum DirState { Unlisted, Queued, Listing, Listed, Failed }
+
+    private enum Priority { Urgent, Prefetch, Background }
+
+    private sealed class Dir
+    {
+        public required int Id;
+        public required string Path;
+        public required bool CaseSensitive;
+        public Dictionary<string, int> Children = null!;
+        public DirState State;
+        public bool Background;
+        public bool Visited;
+        public bool Prefetched;
+        public bool Retry;
+        public int Depth;
+    }
+
+    private sealed class LinkEntry
+    {
+        public required int Id;
+        public required int ParentId;
+        public required string Path;
+        public required bool IsDirectory;
+        public required LinkInfo Info;
+        public bool Resolving;
+        public readonly List<int> Waiting = [];
+    }
+
+    private sealed record Entry(string Name, NodeKind Kind, NodeFlags Flags, FileAttributes Attributes, long Size,
+        DateTime? Created, DateTime? Modified, DateTime? Accessed, LinkInfo? Link);
+
+    private sealed record ListResult(int DirId, List<Entry> Entries, NodeFlags Failure, string? Error);
+
+    private sealed record ProbeResult(Entry? Entry, string? Error, NodeFlags Failure);
+
+    private sealed record ResolveResult(string? TargetPath, LinkStatus Status, string? Message);
+
+    private sealed class PathJob
+    {
+        public required int Ticket;
+        public required string Path;
+        public string Root = "";
+        public List<string> Remaining = [];
+        public int Current = -1;
+        public int Hops;
+        public int ViaLink = -1;
+        public bool Background;
+        public bool Visit = true;
+        public Task<ProbeResult>? Probe;
+        public bool WaitingForLink;
+
+        /// <summary>For link resolution jobs: the link whose target this ensures.</summary>
+        public int ForLink = -1;
+    }
+
+    private abstract record Request;
+    private sealed record GoToRequest(int Ticket, string Path) : Request;
+    private sealed record VisitRequest(int Id) : Request;
+    private sealed record FollowRequest(int Ticket, int LinkId) : Request;
+    private sealed record RetryRequest(int Id) : Request;
+    private sealed record CancelBackgroundRequest : Request;
+
+    private sealed class Inflight
+    {
+        public required Task<ListResult> Task;
+        public required Dir Dir;
+        public required long Start;
+    }
+
+    private readonly string? _arrival;
+    private readonly Options _o;
+    private readonly ConcurrentQueue<Request> _requests = new();
+    private readonly SemaphoreSlim _wake = new(0);
+    private int _nextTicket = ArrivalTicket + 1;
+
+    // ---- coordinator-only state
+    private readonly Dictionary<int, Dir> _dirs = [];
+    private readonly Dictionary<int, LinkEntry> _links = [];
+    private readonly Dictionary<string, int> _roots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<Dir> _urgent = new(), _prefetch = new(), _background = new();
+    private readonly List<Inflight> _inflight = [];
+    private readonly List<PathJob> _jobs = [];
+    private readonly List<(Task<ResolveResult> Task, LinkEntry Link)> _resolving = [];
+    private ScanContext _ctx = null!;
+    private ScanBatch _batch = new();
+    private int _nextId;
+    private bool _backgroundCancelled;
+
+    public WorldExplorer(string? arrivalPath, Options? options = null)
+    {
+        _o = options ?? new Options();
+        _arrival = arrivalPath == null ? null : Locations.Normalize(arrivalPath, _o.DefaultDistribution, OperatingSystem.IsWindows()) ?? arrivalPath;
+    }
+
+    public string? ArrivalPath => _arrival;
+
+    public void Dispose() => _wake.Dispose();
+
+    public DataSourceInfo Describe() =>
+        new(DataOrigin.LiveFilesystem, _arrival ?? HubName, "Live filesystem (metadata only), explored on demand");
+
+    // ------------------------------------------------------------------ requests (any thread)
+
+    /// <summary>Reaches a typed or pasted path (LOC-01). The reply carries the node id, or why not.</summary>
+    public int GoTo(string path)
+    {
+        var ticket = Interlocked.Increment(ref _nextTicket);
+        Post(new GoToRequest(ticket, path));
+        return ticket;
+    }
+
+    /// <summary>The user is in this folder: list it now, then its child folders (gate states, vistas).</summary>
+    public void Visit(int dirId) => Post(new VisitRequest(dirId));
+
+    /// <summary>Follows a link deliberately (LINK-02). The reply carries the destination id, or why not.</summary>
+    public int FollowLink(int linkId)
+    {
+        var ticket = Interlocked.Increment(ref _nextTicket);
+        Post(new FollowRequest(ticket, linkId));
+        return ticket;
+    }
+
+    /// <summary>Lists a folder again (after a failure) or re-resolves a link.</summary>
+    public void Retry(int id) => Post(new RetryRequest(id));
+
+    /// <summary>Stops background traversal; on-demand listing continues (FS-09 for the arrival subtree).</summary>
+    public void CancelBackground() => Post(new CancelBackgroundRequest());
+
+    private void Post(Request r)
+    {
+        _requests.Enqueue(r);
+        _wake.Release();
+    }
+
+    // ------------------------------------------------------------------ coordinator
+
+    public void Run(ScanContext context, CancellationToken ct)
+    {
+        _ctx = context;
+        var seeds = _o.Locations ?? Locations.Discover();
+        var hub = NewNode(-1, HubName, NodeKind.Directory, 0, 0, null, null, null, 0, DirScanState.Complete, null, "", LocationKind.Hub);
+        _dirs[hub] = new Dir { Id = hub, Path = "", CaseSensitive = false, State = DirState.Listed, Children = new(StringComparer.OrdinalIgnoreCase) };
+        foreach (var seed in seeds)
+        {
+            AddLocation(seed.Path, seed.Name, seed.Kind, seed.CaseSensitive);
+        }
+
+        context.Directories = _dirs.Count;
+        if (_arrival != null)
+        {
+            var background = _o.Background ?? !Locations.IsBroad(_arrival);
+            StartJob(new PathJob { Ticket = ArrivalTicket, Path = _arrival, Background = background });
+        }
+
+        Flush();
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                while (_requests.TryDequeue(out var r)) Handle(r);
+                AdvanceJobs();
+                CompleteResolutions();
+                CompleteListings();
+                StartListings();
+                Flush();
+                ReportProgress();
+                _wake.Wait(_inflight.Count + _jobs.Count + _resolving.Count > 0 ? 15 : 250, ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        context.Idle = true;
+        context.BackgroundActive = false;
+        context.SetOperation(null, 0);
+    }
+
+    private void Flush()
+    {
+        if (_batch.IsEmpty) return;
+        _ctx.Emit(_batch);
+        _batch = new ScanBatch();
+    }
+
+    private void ReportProgress()
+    {
+        _ctx.Pending = _urgent.Count + _prefetch.Count + _background.Count + _inflight.Count;
+        _ctx.BackgroundActive = !_backgroundCancelled && (_background.Count > 0 || _inflight.Any(i => i.Dir.Background));
+        _ctx.Idle = _ctx.Pending == 0 && _jobs.Count == 0 && _resolving.Count == 0;
+        if (_inflight.Count == 0)
+        {
+            _ctx.SetOperation(null, 0);
+        }
+        else
+        {
+            var oldest = _inflight.MinBy(i => i.Start)!;
+            _ctx.SetOperation(oldest.Dir.Path, oldest.Start);
+        }
+    }
+
+    private int NewNode(int parent, string name, NodeKind kind, NodeFlags flags, long size, DateTime? created, DateTime? modified, DateTime? accessed,
+        FileAttributes attributes, DirScanState state, LinkInfo? link, string? locationPath = null, LocationKind location = LocationKind.None)
+    {
+        var id = _nextId++;
+        var depth = parent < 0 ? 0 : _dirs.TryGetValue(parent, out var pdir) ? pdir.Depth + 1 : 1;
+        _batch.NewNodes.Add(new NodeRecord(id, parent, name, kind, flags, attributes, size, created, modified, accessed, depth, state, link, locationPath, location));
+        _ctx.Nodes++;
+        switch (kind)
+        {
+            case NodeKind.File: _ctx.Files++; _ctx.LogicalBytes += size; break;
+            case NodeKind.Link: _ctx.Links++; break;
+            case NodeKind.Directory: _ctx.Directories++; break;
+        }
+
+        if (parent >= 0 && _dirs.TryGetValue(parent, out var pd)) pd.Children[name] = id;
+        return id;
+    }
+
+    private int AddLocation(string root, string name, LocationKind kind, bool caseSensitive)
+    {
+        var id = NewNode(0, name, NodeKind.Directory, 0, 0, null, null, null, 0, DirScanState.Unlisted, null, root, kind);
+        _dirs[id] = new Dir { Id = id, Path = root, CaseSensitive = caseSensitive, Children = new(caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase), Depth = 1 };
+        _roots[root] = id;
+        return id;
+    }
+
+    private void Handle(Request r)
+    {
+        switch (r)
+        {
+            case GoToRequest g:
+                StartJob(new PathJob { Ticket = g.Ticket, Path = g.Path });
+                break;
+            case VisitRequest v when _dirs.TryGetValue(v.Id, out var d):
+                d.Visited = true;
+                if (d.State is DirState.Unlisted or DirState.Queued || (d.State == DirState.Failed && d.Retry)) Enqueue(d, Priority.Urgent);
+                else if (d.State == DirState.Listed) Prefetch(d);
+                break;
+            case VisitRequest:
+                break;
+            case FollowRequest f:
+                Follow(f.Ticket, f.LinkId);
+                break;
+            case RetryRequest rr when _dirs.TryGetValue(rr.Id, out var d):
+                if (d.State is DirState.Listed or DirState.Failed)
+                {
+                    d.State = DirState.Unlisted;
+                    d.Retry = true;
+                }
+
+                Enqueue(d, Priority.Urgent);
+                break;
+            case RetryRequest rr when _links.TryGetValue(rr.Id, out var l):
+                l.Info = l.Info with { Status = LinkStatus.Unresolved, Message = null, TargetId = -1 };
+                Follow(-1, l.Id);
+                break;
+            case CancelBackgroundRequest:
+                _backgroundCancelled = true;
+                while (_background.TryDequeue(out var bd))
+                {
+                    if (bd.State != DirState.Queued) continue;
+                    bd.State = DirState.Unlisted;
+                    _batch.DirectoryUpdates.Add(new DirectoryUpdate(bd.Id, DirScanState.Cancelled, NodeFlags.Incomplete));
+                }
+
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------ listing
+
+    private void Enqueue(Dir d, Priority p)
+    {
+        if (d.State is DirState.Listing or DirState.Listed) return;
+        if (d.State == DirState.Queued && p != Priority.Urgent) return;
+        if (d.State != DirState.Queued && p != Priority.Background)
+        {
+            _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, DirScanState.Pending));
+        }
+
+        d.State = DirState.Queued;
+        (p switch { Priority.Urgent => _urgent, Priority.Prefetch => _prefetch, _ => _background }).Enqueue(d);
+    }
+
+    private void Prefetch(Dir d)
+    {
+        if (d.Prefetched || d.Id == 0) return; // the hub's locations are listed only when entered (no waking distributions)
+        d.Prefetched = true;
+        var n = 0;
+        foreach (var id in d.Children.Values.OrderBy(i => i))
+        {
+            if (n >= _o.PrefetchLimit) break;
+            if (_dirs.TryGetValue(id, out var c) && c.State == DirState.Unlisted && !c.Retry)
+            {
+                Enqueue(c, Priority.Prefetch);
+                n++;
+            }
+        }
+    }
+
+    private void StartListings()
+    {
+        while (_inflight.Count < _o.MaxConcurrent && Next() is { } d)
+        {
+            d.State = DirState.Listing;
+            var path = d.Path;
+            var hook = _o.BeforeEnumerate;
+            var id = d.Id;
+            var task = Task.Run(() => List(id, path, hook));
+            task.ContinueWith(_ => _wake.Release(), TaskScheduler.Default);
+            _inflight.Add(new Inflight { Task = task, Dir = d, Start = Stopwatch.GetTimestamp() });
+        }
+    }
+
+    private Dir? Next()
+    {
+        foreach (var q in new[] { _urgent, _prefetch, _background })
+        {
+            while (q.TryDequeue(out var d))
+            {
+                if (d.State == DirState.Queued) return d;
+            }
+        }
+
+        return null;
+    }
+
+    private void CompleteListings()
+    {
+        for (var i = _inflight.Count - 1; i >= 0; i--)
+        {
+            var f = _inflight[i];
+            if (!f.Task.IsCompleted) continue;
+            _inflight.RemoveAt(i);
+            var r = f.Task.IsFaulted
+                ? new ListResult(f.Dir.Id, [], NodeFlags.EnumerationError, f.Task.Exception?.InnerException?.Message)
+                : f.Task.Result;
+            Apply(f.Dir, r);
+        }
+    }
+
+    private void Apply(Dir d, ListResult r)
+    {
+        var hadChildren = d.Children.Count > 0;
+        var created = 0;
+        foreach (var e in r.Entries)
+        {
+            if (_ctx.Nodes >= _ctx.MaxNodes)
+            {
+                _ctx.LimitReached = true;
+                break;
+            }
+
+            if (d.Children.ContainsKey(e.Name)) continue; // already known (an ancestor stub's child): merge
+            AddEntry(d, e);
+            created++;
+        }
+
+        var state = DirScanState.Complete;
+        var add = NodeFlags.None;
+        if (r.Failure != NodeFlags.None)
+        {
+            state = r.Entries.Count == 0 ? DirScanState.Failed : DirScanState.Complete;
+            add = r.Failure | (r.Entries.Count == 0 ? 0 : NodeFlags.Incomplete);
+            _ctx.Problems++;
+        }
+
+        d.State = r.Failure != NodeFlags.None && r.Entries.Count == 0 ? DirState.Failed : DirState.Listed;
+        var clear = d.Retry ? NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable | NodeFlags.Incomplete : 0;
+        d.Retry = false;
+        _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, state, add, r.Error, clear, SortChildren: hadChildren && created > 0));
+        if (d.Visited) Prefetch(d);
+    }
+
+    private void AddEntry(Dir parent, Entry e)
+    {
+        var state = DirScanState.NotApplicable;
+        var queueBackground = false;
+        if (e.Kind == NodeKind.Directory)
+        {
+            state = (e.Flags & NodeFlags.CloudNotTraversed) != 0 ? DirScanState.NotTraversed : DirScanState.Unlisted;
+            if (state == DirScanState.Unlisted && parent.Background && !_backgroundCancelled)
+            {
+                state = DirScanState.Pending;
+                queueBackground = true;
+            }
+        }
+
+        var id = NewNode(parent.Id, e.Name, e.Kind, e.Flags, e.Size, e.Created, e.Modified, e.Accessed, e.Attributes, state, e.Link);
+        var path = Path.Join(parent.Path, e.Name);
+        if (e.Kind == NodeKind.Directory)
+        {
+            var d = new Dir
+            {
+                Id = id,
+                Path = path,
+                CaseSensitive = parent.CaseSensitive,
+                Children = new(parent.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase),
+                Background = queueBackground,
+                State = state == DirScanState.NotTraversed ? DirState.Listed : DirState.Unlisted,
+                Depth = parent.Depth + 1,
+            };
+            _dirs[id] = d;
+            if (queueBackground)
+            {
+                d.State = DirState.Queued;
+                _background.Enqueue(d);
+            }
+        }
+        else if (e.Kind == NodeKind.Link && e.Link != null)
+        {
+            _links[id] = new LinkEntry { Id = id, ParentId = parent.Id, Path = path, IsDirectory = (e.Flags & NodeFlags.DirectoryLink) != 0, Info = e.Link };
+        }
+    }
+
+    private static readonly EnumerationOptions ListOptions = new()
+    {
+        RecurseSubdirectories = false,
+        AttributesToSkip = 0,
+        IgnoreInaccessible = false,
+        ReturnSpecialDirectories = false,
+        BufferSize = 64 * 1024,
+    };
+
+    /// <summary>Worker: one directory listing, metadata only; reparse entries classified by tag.</summary>
+    private static ListResult List(int id, string path, Action<string>? hook)
+    {
+        var entries = new List<Entry>();
+        try
+        {
+            hook?.Invoke(path);
+            foreach (var e in new FileSystemEnumerable<Entry>(path, ToEntry, ListOptions)) entries.Add(Classify(path, e));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return new ListResult(id, entries, NodeFlags.AccessDenied, ex.Message);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new ListResult(id, entries, RootReachable(path) ? NodeFlags.Vanished : NodeFlags.Unavailable, ex.Message);
+        }
+        catch (IOException ex)
+        {
+            return new ListResult(id, entries, RootReachable(path) ? NodeFlags.EnumerationError : NodeFlags.Unavailable, ex.Message);
+        }
+
+        entries.Sort(static (a, b) =>
+        {
+            var k = Order(a.Kind).CompareTo(Order(b.Kind));
+            if (k != 0) return k;
+            k = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+            return k != 0 ? k : StringComparer.Ordinal.Compare(a.Name, b.Name);
+        });
+        return new ListResult(id, entries, NodeFlags.None, null);
+    }
+
+    private static int Order(NodeKind k) => k switch { NodeKind.Directory => 0, NodeKind.Link => 1, _ => 2 };
+
+    private static bool RootReachable(string path)
+    {
+        try
+        {
+            var (root, _) = Locations.Split(path);
+            return Directory.Exists(root.EndsWith('\\') || root == "/" ? root : root + "\\");
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static Entry ToEntry(ref FileSystemEntry e)
+    {
+        var attrs = e.Attributes;
+        var flags = DirectoryScanner.FlagsFor(attrs);
+        var kind = e.IsDirectory ? NodeKind.Directory : NodeKind.File;
+        if (kind == NodeKind.Directory && !DirectoryScanner.ShouldEnumerateDirectory(attrs)) flags |= NodeFlags.CloudNotTraversed;
+        return new Entry(e.FileName.ToString(), kind, flags, attrs, kind == NodeKind.File ? e.Length : 0,
+            Time(e.CreationTimeUtc), Time(e.LastWriteTimeUtc), Time(e.LastAccessTimeUtc), null);
+    }
+
+    private static DateTime? Time(DateTimeOffset t) => t.UtcDateTime.Year <= 1601 ? null : t.UtcDateTime;
+
+    /// <summary>Reparse entries become what their tag says (LINK-01); others are unchanged.</summary>
+    private static Entry Classify(string dir, Entry e)
+    {
+        if ((e.Attributes & FileAttributes.ReparsePoint) == 0) return e;
+        var full = Path.Join(dir, e.Name);
+        var isDir = e.Kind == NodeKind.Directory;
+        var c = Reparse.Classify(isDir, Reparse.ReadTag(full), () => Reparse.ReadTarget(full, isDir));
+        var flags = (e.Flags & ~NodeFlags.CloudNotTraversed) | c.ExtraFlags;
+        if (c.Kind == NodeKind.Directory && !DirectoryScanner.ShouldEnumerateDirectory(e.Attributes)) flags |= NodeFlags.CloudNotTraversed;
+        return e with { Kind = c.Kind, Flags = flags, Size = c.Kind == NodeKind.File ? e.Size : 0, Link = c.Link };
+    }
+
+    // ------------------------------------------------------------------ paths (LOC-01, AD-17)
+
+    private void StartJob(PathJob job)
+    {
+        var normalized = Locations.Normalize(job.Path, _o.DefaultDistribution, OperatingSystem.IsWindows());
+        if (normalized == null || !(normalized.StartsWith('/') || normalized.StartsWith(@"\\", StringComparison.Ordinal) || (normalized.Length >= 2 && normalized[1] == ':')))
+        {
+            Reply(job, -1, $"“{job.Path}” is not a full path FileScape understands (try C:\\folder, \\\\wsl.localhost\\Distro\\path or /home/you).");
+            return;
+        }
+
+        var (root, parts) = Locations.Split(normalized);
+        job.Root = root;
+        job.Remaining = parts;
+        if (!_roots.TryGetValue(root, out var rootId))
+        {
+            rootId = AddLocation(root, Locations.NameOf(root), Locations.KindOf(root), Locations.IsCaseSensitive(root));
+        }
+
+        job.Current = rootId;
+        _jobs.Add(job);
+    }
+
+    private void AdvanceJobs()
+    {
+        for (var i = _jobs.Count - 1; i >= 0; i--)
+        {
+            var job = _jobs[i];
+            if (job.WaitingForLink) continue;
+            if (job.Probe is { } probe)
+            {
+                if (!probe.IsCompleted) continue;
+                job.Probe = null;
+                var r = probe.IsFaulted ? new ProbeResult(null, probe.Exception?.InnerException?.Message, NodeFlags.EnumerationError) : probe.Result;
+                if (r.Entry == null)
+                {
+                    _jobs.RemoveAt(i);
+                    Reply(job, -1, r.Failure == NodeFlags.Unavailable
+                        ? $"“{_dirs[job.Current].Path}” is not reachable right now ({r.Error})."
+                        : $"“{Path.Join(_dirs[job.Current].Path, job.Remaining[0])}” {(r.Failure == NodeFlags.AccessDenied ? "cannot be reached: access denied" : "does not exist")}.");
+                    continue;
+                }
+
+                AddEntry(_dirs[job.Current], r.Entry);
+            }
+
+            if (Step(job)) _jobs.RemoveAt(i);
+        }
+    }
+
+    /// <summary>Walks a job as far as known nodes allow. Returns true when the job is finished.</summary>
+    private bool Step(PathJob job)
+    {
+        while (true)
+        {
+            if (job.Remaining.Count == 0)
+            {
+                Arrived(job, job.Current);
+                return true;
+            }
+
+            var dir = _dirs[job.Current];
+            var name = job.Remaining[0];
+            if (dir.Children.TryGetValue(name, out var childId))
+            {
+                if (_dirs.ContainsKey(childId))
+                {
+                    job.Current = childId;
+                    job.Remaining.RemoveAt(0);
+                    continue;
+                }
+
+                if (_links.TryGetValue(childId, out var link))
+                {
+                    // A path through a link continues from the link's target (LINK-03: entry path ≠ resolved path).
+                    if (++job.Hops > 40)
+                    {
+                        Reply(job, -1, "Too many links in a row (a loop).");
+                        return true;
+                    }
+
+                    job.Remaining.RemoveAt(0);
+                    if (link.Info.Status == LinkStatus.Resolved && link.Info.TargetPath != null)
+                    {
+                        Restart(job, link.Info.TargetPath);
+                        continue;
+                    }
+
+                    if (!link.Info.CanFollow)
+                    {
+                        Reply(job, -1, link.Info.Message ?? $"“{name}” cannot be followed.");
+                        return true;
+                    }
+
+                    job.WaitingForLink = true;
+                    StartResolve(link);
+                    _pendingThroughLink.Add((job, link.Id));
+                    return false;
+                }
+
+                // A file: only valid as the last component.
+                if (job.Remaining.Count == 1)
+                {
+                    Arrived(job, childId);
+                    return true;
+                }
+
+                Reply(job, -1, $"“{name}” is a file, not a folder.");
+                return true;
+            }
+
+            // Unknown child: probe for it (a stub is created without listing the parent).
+            var parentPath = dir.Path;
+            var caseSensitive = dir.CaseSensitive;
+            job.Probe = Task.Run(() => ProbeChild(parentPath, name, caseSensitive));
+            job.Probe.ContinueWith(_ => _wake.Release(), TaskScheduler.Default);
+            return false;
+        }
+    }
+
+    /// <summary>Path jobs paused at a link in the middle of their path, until the link's target is known.</summary>
+    private readonly List<(PathJob Job, int LinkId)> _pendingThroughLink = [];
+
+    private void Restart(PathJob job, string newPath)
+    {
+        var (root, parts) = Locations.Split(newPath);
+        parts.AddRange(job.Remaining);
+        job.Remaining = parts;
+        job.Root = root;
+        if (!_roots.TryGetValue(root, out var rootId))
+        {
+            rootId = AddLocation(root, Locations.NameOf(root), Locations.KindOf(root), Locations.IsCaseSensitive(root));
+        }
+
+        job.Current = rootId;
+    }
+
+    private void Arrived(PathJob job, int nodeId)
+    {
+        if (job.ForLink >= 0)
+        {
+            var link = _links[job.ForLink];
+            link.Info = link.Info with { Status = LinkStatus.Resolved, TargetId = nodeId };
+            _batch.LinkUpdates.Add(new LinkUpdate(link.Id, link.Info));
+            FinishLinkWaiters(link, nodeId, null);
+            return;
+        }
+
+        if (_dirs.TryGetValue(nodeId, out var d))
+        {
+            if (job.Background && !_backgroundCancelled)
+            {
+                d.Background = true;
+            }
+
+            if (job.Visit) d.Visited = true;
+            if (d.State is DirState.Unlisted) Enqueue(d, Priority.Urgent);
+            else if (d.State == DirState.Listed && d.Visited) Prefetch(d);
+        }
+
+        Reply(job, nodeId, null);
+    }
+
+    private void Reply(PathJob job, int nodeId, string? error)
+    {
+        if (job.Ticket < 0) return;
+        _batch.Replies.Add(new ExplorerReply(job.Ticket, nodeId, error, job.ViaLink));
+    }
+
+    /// <summary>Worker: finds one entry in a folder without emitting the rest (real name casing, attributes, kind).</summary>
+    private static ProbeResult ProbeChild(string parent, string name, bool caseSensitive)
+    {
+        var cmp = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        try
+        {
+            var en = new FileSystemEnumerable<Entry>(parent, ToEntry, ListOptions)
+            {
+                ShouldIncludePredicate = (ref FileSystemEntry e) => e.FileName.Equals(name, cmp),
+            };
+            foreach (var e in en) return new ProbeResult(Classify(parent, e), null, 0);
+            return new ProbeResult(null, "not found", NodeFlags.Vanished);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The folder cannot be listed but may still be traversable: fall back to the name as given.
+            return StatFallback(parent, name);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new ProbeResult(null, ex.Message, RootReachable(parent) ? NodeFlags.Vanished : NodeFlags.Unavailable);
+        }
+        catch (IOException ex)
+        {
+            return new ProbeResult(null, ex.Message, RootReachable(parent) ? NodeFlags.EnumerationError : NodeFlags.Unavailable);
+        }
+    }
+
+    private static ProbeResult StatFallback(string parent, string name)
+    {
+        var full = Path.Join(parent, name);
+        try
+        {
+            var info = new DirectoryInfo(full);
+            if (!info.Exists)
+            {
+                var file = new FileInfo(full);
+                if (!file.Exists) return new ProbeResult(null, "access denied", NodeFlags.AccessDenied);
+                var fe = new Entry(name, NodeKind.File, DirectoryScanner.FlagsFor(file.Attributes), file.Attributes, file.Length, file.CreationTimeUtc, file.LastWriteTimeUtc, file.LastAccessTimeUtc, null);
+                return new ProbeResult(Classify(parent, fe), null, 0);
+            }
+
+            var de = new Entry(name, NodeKind.Directory, DirectoryScanner.FlagsFor(info.Attributes), info.Attributes, 0, info.CreationTimeUtc, info.LastWriteTimeUtc, info.LastAccessTimeUtc, null);
+            return new ProbeResult(Classify(parent, de), null, 0);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new ProbeResult(null, ex.Message, NodeFlags.AccessDenied);
+        }
+    }
+
+    // ------------------------------------------------------------------ links (AD-18)
+
+    private void Follow(int ticket, int linkId)
+    {
+        if (!_links.TryGetValue(linkId, out var link))
+        {
+            if (ticket >= 0) _batch.Replies.Add(new ExplorerReply(ticket, -1, "That is not a link FileScape can follow.", linkId));
+            return;
+        }
+
+        if (link.Info.Status == LinkStatus.Resolved && link.Info.TargetId >= 0)
+        {
+            if (_dirs.TryGetValue(link.Info.TargetId, out var d))
+            {
+                d.Visited = true;
+                if (d.State == DirState.Unlisted) Enqueue(d, Priority.Urgent);
+            }
+
+            if (ticket >= 0) _batch.Replies.Add(new ExplorerReply(ticket, link.Info.TargetId, null, linkId));
+            return;
+        }
+
+        if (!link.Info.CanFollow)
+        {
+            if (ticket >= 0) _batch.Replies.Add(new ExplorerReply(ticket, -1, Explain(link.Info), linkId));
+            return;
+        }
+
+        if (ticket >= 0) link.Waiting.Add(ticket);
+        StartResolve(link);
+    }
+
+    private void StartResolve(LinkEntry link)
+    {
+        if (link.Resolving) return;
+        link.Resolving = true;
+        var path = link.Path;
+        var info = link.Info;
+        var isDir = link.IsDirectory;
+        var task = Task.Run(() => Resolve(path, isDir, info));
+        task.ContinueWith(_ => _wake.Release(), TaskScheduler.Default);
+        _resolving.Add((task, link));
+    }
+
+    private void CompleteResolutions()
+    {
+        for (var i = _resolving.Count - 1; i >= 0; i--)
+        {
+            var (task, link) = _resolving[i];
+            if (!task.IsCompleted) continue;
+            _resolving.RemoveAt(i);
+            link.Resolving = false;
+            var r = task.IsFaulted ? new ResolveResult(null, LinkStatus.Unavailable, task.Exception?.InnerException?.Message) : task.Result;
+            if (r.TargetPath == null)
+            {
+                link.Info = link.Info with { Status = r.Status, Message = r.Message };
+                _batch.LinkUpdates.Add(new LinkUpdate(link.Id, link.Info));
+                FinishLinkWaiters(link, -1, Explain(link.Info));
+                continue;
+            }
+
+            link.Info = link.Info with { TargetPath = r.TargetPath };
+            // Ensure the target as a path in the same tree: an ancestor or a known folder is reused (LINK-05).
+            var job = new PathJob { Ticket = -1, Path = r.TargetPath, ForLink = link.Id, Visit = true };
+            StartJob(job);
+        }
+
+        // Paths that were waiting for a link in their middle continue from its target, or fail with its reason.
+        for (var i = _pendingThroughLink.Count - 1; i >= 0; i--)
+        {
+            var (job, linkId) = _pendingThroughLink[i];
+            var link = _links[linkId];
+            if (link.Resolving) continue;
+            _pendingThroughLink.RemoveAt(i);
+            if (link.Info.TargetPath != null)
+            {
+                job.WaitingForLink = false;
+                Restart(job, link.Info.TargetPath);
+            }
+            else
+            {
+                _jobs.Remove(job);
+                Reply(job, -1, Explain(link.Info));
+            }
+        }
+    }
+
+    private void FinishLinkWaiters(LinkEntry link, int targetId, string? error)
+    {
+        foreach (var t in link.Waiting)
+        {
+            _batch.Replies.Add(new ExplorerReply(t, targetId, error, link.Id));
+        }
+
+        link.Waiting.Clear();
+    }
+
+    public static string Explain(LinkInfo info) => info.Message ?? info.Status switch
+    {
+        LinkStatus.Broken => $"This {info.KindName} is broken: its target {Quote(info.TargetPath ?? info.TargetText)}does not exist.",
+        LinkStatus.Denied => $"This {info.KindName} could not be read (access denied).",
+        LinkStatus.Unavailable => $"The target of this {info.KindName} {Quote(info.TargetPath ?? info.TargetText)}is not reachable right now (a drive, share or distribution that is not available).",
+        LinkStatus.Unsupported => $"FileScape cannot follow this {info.KindName}.",
+        _ => $"A {info.KindName}.",
+    };
+
+    private static string Quote(string? s) => s == null ? "" : $"“{s}” ";
+
+    /// <summary>Worker: works out where a link points and whether that exists (LINK-06).</summary>
+    private static ResolveResult Resolve(string linkPath, bool isDir, LinkInfo info)
+    {
+        var text = info.TargetText ?? Reparse.ReadTarget(linkPath, isDir);
+        if (string.IsNullOrEmpty(text))
+        {
+            return new ResolveResult(null, LinkStatus.Denied, $"The target of this {info.KindName} could not be read.");
+        }
+
+        string target;
+        try
+        {
+            var parent = Path.GetDirectoryName(linkPath) ?? linkPath;
+            target = Path.IsPathFullyQualified(text) ? text : Path.GetFullPath(Path.Combine(parent, text));
+            if (target.StartsWith(@"\??\", StringComparison.Ordinal)) target = target[4..];
+            if (target.StartsWith(@"\\?\", StringComparison.Ordinal) && target.Length > 6 && target[5] == ':') target = target[4..];
+            target = Path.TrimEndingDirectorySeparator(target);
+            if (target.Length == 2 && target[1] == ':') target += "\\";
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return new ResolveResult(null, LinkStatus.Broken, $"The target “{text}” is not a valid path.");
+        }
+
+        try
+        {
+            if (Directory.Exists(target) || File.Exists(target)) return new ResolveResult(target, LinkStatus.Resolved, null);
+            return RootReachable(target)
+                ? new ResolveResult(null, LinkStatus.Broken, $"This {info.KindName} is broken: its target “{target}” does not exist.")
+                : new ResolveResult(null, LinkStatus.Unavailable, $"The target “{target}” is on a drive, share or distribution that is not available right now.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new ResolveResult(null, LinkStatus.Denied, ex.Message);
+        }
+    }
+}

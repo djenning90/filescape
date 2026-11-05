@@ -55,6 +55,85 @@ public enum NodeFlags : uint
 
     /// <summary>The data came from a synthetic generator, not the filesystem.</summary>
     Synthetic = 1 << 14,
+
+    /// <summary>A Linux FIFO, socket or device seen through WSL: shown as a file, never opened.</summary>
+    LinuxSpecial = 1 << 15,
+
+    /// <summary>An app execution alias (a WindowsApps launcher): a file that runs a program.</summary>
+    AppAlias = 1 << 16,
+
+    /// <summary>The volume, share or distribution holding this location could not be reached.</summary>
+    Unavailable = 1 << 17,
+}
+
+/// <summary>What kind of location root a node is (AD-17). Most nodes are <see cref="None"/>.</summary>
+public enum LocationKind : byte
+{
+    None,
+
+    /// <summary>"This computer": the top of the connected namespace; its children are location roots.</summary>
+    Hub,
+
+    /// <summary>A Windows drive (C:\).</summary>
+    Drive,
+
+    /// <summary>A WSL distribution through the supported UNC route (\\wsl.localhost\name).</summary>
+    Wsl,
+
+    /// <summary>A network share or another UNC root.</summary>
+    Network,
+
+    /// <summary>A volume without a drive letter (\\?\Volume{…}\) or another root.</summary>
+    Volume,
+}
+
+/// <summary>The actual kind of a reparse point (LINK-01), from its reparse tag rather than assumed.</summary>
+public enum LinkKind : byte
+{
+    Junction,
+    SymbolicLink,
+    MountedVolume,
+
+    /// <summary>A Linux symbolic link seen through \\wsl.localhost (tag 0xA000001D): identified, not followable via Windows.</summary>
+    LinuxSymlink,
+
+    /// <summary>A reparse point with another, provider-specific tag.</summary>
+    Other,
+}
+
+/// <summary>Where a link stands (LINK-06). Unresolved links are connections, not errors.</summary>
+public enum LinkStatus : byte
+{
+    Unresolved,
+    Resolved,
+
+    /// <summary>The target does not exist (its volume does).</summary>
+    Broken,
+
+    /// <summary>The link or its target could not be read (access denied).</summary>
+    Denied,
+
+    /// <summary>The target's volume, share or distribution is not reachable.</summary>
+    Unavailable,
+
+    /// <summary>FileScape cannot follow this kind (Linux links through Windows, unknown providers).</summary>
+    Unsupported,
+}
+
+/// <summary>A link's identity and, once resolved, its destination in the same tree (AD-18).</summary>
+public sealed record LinkInfo(LinkKind Kind, uint Tag, string? TargetText, LinkStatus Status = LinkStatus.Unresolved,
+    string? TargetPath = null, int TargetId = -1, string? Message = null)
+{
+    public bool CanFollow => Status is LinkStatus.Unresolved or LinkStatus.Resolved && Kind is not (LinkKind.LinuxSymlink or LinkKind.Other);
+
+    public string KindName => Kind switch
+    {
+        LinkKind.Junction => "junction",
+        LinkKind.SymbolicLink => "symbolic link",
+        LinkKind.MountedVolume => "mounted volume",
+        LinkKind.LinuxSymlink => "Linux symbolic link",
+        _ => $"reparse point (tag 0x{Tag:X8})",
+    };
 }
 
 /// <summary>Where a directory stands in the scan.</summary>
@@ -75,6 +154,9 @@ public enum DirScanState : byte
 
     /// <summary>The scan was cancelled before this directory was enumerated.</summary>
     Cancelled,
+
+    /// <summary>Known to exist but not listed yet: it is listed when visited (on-demand exploration, AD-17).</summary>
+    Unlisted,
 }
 
 /// <summary>
@@ -106,6 +188,14 @@ public sealed class FsNode
     public int Depth { get; init; }
     public DirScanState ScanState { get; internal set; }
 
+    /// <summary>For links: kind, target and resolution (AD-18). Also set for app aliases (files) to explain them.</summary>
+    public LinkInfo? Link { get; internal set; }
+
+    /// <summary>For location roots (and the hub, ""): the absolute path this node stands for. Paths of descendants build on it.</summary>
+    public string? LocationPath { get; init; }
+
+    public LocationKind Location { get; init; }
+
     /// <summary>A human-readable OS error for failed or partial enumeration.</summary>
     public string? Error { get; internal set; }
 
@@ -122,6 +212,7 @@ public sealed class FsNode
     public int SubtreeDirCount { get; internal set; }
 
     public bool IsDirectory => Kind == NodeKind.Directory;
+    public bool IsHub => Location == LocationKind.Hub;
     public bool IsRoot => ParentId < 0;
 
     /// <summary>True for directories whose listing cannot be trusted to be complete.</summary>

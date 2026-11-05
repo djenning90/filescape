@@ -81,12 +81,37 @@ public sealed class FsTree
             var dir = _nodes[update.Id];
             var wasProblem = IsProblem(dir.Flags);
             dir.ScanState = update.State;
-            dir.Flags |= update.AddFlags;
+            dir.Flags = (dir.Flags & ~update.ClearFlags) | update.AddFlags;
+            if ((update.ClearFlags & (NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable)) != 0) dir.Error = null;
             dir.Error = update.Error ?? dir.Error;
             if (!wasProblem && IsProblem(dir.Flags))
             {
                 FlaggedProblemCount++;
             }
+            else if (wasProblem && !IsProblem(dir.Flags))
+            {
+                FlaggedProblemCount--;
+            }
+
+            if (update.SortChildren)
+            {
+                // Children that were known before the listing (an ancestor stub's one child) are merged; restore the
+                // deterministic order: directories, links, files; case-insensitive, then ordinal (Linux case pairs).
+                dir.Children.Sort((a, b) =>
+                {
+                    var na = _nodes[a];
+                    var nb = _nodes[b];
+                    var k = KindOrder(na.Kind).CompareTo(KindOrder(nb.Kind));
+                    if (k != 0) return k;
+                    k = StringComparer.OrdinalIgnoreCase.Compare(na.Name, nb.Name);
+                    return k != 0 ? k : StringComparer.Ordinal.Compare(na.Name, nb.Name);
+                });
+            }
+        }
+
+        foreach (var lu in batch.LinkUpdates)
+        {
+            _nodes[lu.Id].Link = lu.Link;
         }
 
         Version++;
@@ -127,9 +152,11 @@ public sealed class FsTree
         }
     }
 
+    private static int KindOrder(NodeKind k) => k switch { NodeKind.Directory => 0, NodeKind.Link => 1, _ => 2 };
+
     /// <summary>Flags that indicate missing or unreliable information. Hidden/system/link are facts, not problems.</summary>
     public static bool IsProblem(NodeFlags flags) =>
-        (flags & (NodeFlags.AccessDenied | NodeFlags.Vanished | NodeFlags.EnumerationError)) != 0;
+        (flags & (NodeFlags.AccessDenied | NodeFlags.Vanished | NodeFlags.EnumerationError | NodeFlags.Unavailable)) != 0;
 
     /// <summary>
     /// Returns the node's full path. For live data this is a real Windows path built from the root path and the
@@ -138,19 +165,27 @@ public sealed class FsTree
     public string FullPath(int id)
     {
         var node = _nodes[id];
+        if (node.LocationPath != null)
+        {
+            return node.LocationPath;
+        }
+
         if (node.IsRoot)
         {
             return Source.RootDisplayPath;
         }
 
         var parts = new List<string>();
-        for (var current = node; !current.IsRoot; current = _nodes[current.ParentId])
+        var current = node;
+        for (; !current.IsRoot && current.LocationPath == null; current = _nodes[current.ParentId])
         {
             parts.Add(current.Name);
         }
 
-        var sb = new StringBuilder(Source.RootDisplayPath);
-        var separator = Source.IsLive ? '\\' : '/';
+        var basePath = current.LocationPath ?? Source.RootDisplayPath;
+        var sb = new StringBuilder(basePath);
+        // POSIX locations use '/', Windows (drives, UNC, \\wsl.localhost) use '\\'; synthetic data uses '/'.
+        var separator = basePath.StartsWith('/') || !Source.IsLive ? '/' : '\\';
         for (var i = parts.Count - 1; i >= 0; i--)
         {
             if (sb.Length > 0 && sb[^1] != separator)
@@ -171,7 +206,7 @@ public sealed class FsTree
     public string DisplayName(int id)
     {
         var node = _nodes[id];
-        if (!node.IsRoot)
+        if (!node.IsRoot || node.IsHub)
         {
             return node.Name;
         }

@@ -15,7 +15,10 @@ public sealed record NodeRecord(
     DateTime? ModifiedUtc,
     DateTime? AccessedUtc,
     int Depth,
-    DirScanState InitialState)
+    DirScanState InitialState,
+    LinkInfo? Link = null,
+    string? LocationPath = null,
+    LocationKind Location = LocationKind.None)
 {
     internal FsNode ToNode() => new()
     {
@@ -31,11 +34,21 @@ public sealed record NodeRecord(
         AccessedUtc = AccessedUtc,
         Depth = Depth,
         ScanState = InitialState,
+        Link = Link,
+        LocationPath = LocationPath,
+        Location = Location,
     };
 }
 
 /// <summary>A change to a directory that has already been emitted: its scan finished, failed, or was skipped.</summary>
-public sealed record DirectoryUpdate(int Id, DirScanState State, NodeFlags AddFlags = NodeFlags.None, string? Error = null);
+public sealed record DirectoryUpdate(int Id, DirScanState State, NodeFlags AddFlags = NodeFlags.None, string? Error = null,
+    NodeFlags ClearFlags = NodeFlags.None, bool SortChildren = false);
+
+/// <summary>A link's resolution changed (AD-18).</summary>
+public sealed record LinkUpdate(int Id, LinkInfo Link);
+
+/// <summary>The answer to a request (a path to reach, a link to follow): the node reached, or why not.</summary>
+public sealed record ExplorerReply(int Ticket, int NodeId, string? Error, int ViaLink = -1);
 
 /// <summary>
 /// The unit of transfer from the scan thread to the consumer. New nodes must be in increasing id order across
@@ -45,5 +58,7 @@ public sealed class ScanBatch
 {
     public List<NodeRecord> NewNodes { get; } = [];
     public List<DirectoryUpdate> DirectoryUpdates { get; } = [];
-    public bool IsEmpty => NewNodes.Count == 0 && DirectoryUpdates.Count == 0;
+    public List<LinkUpdate> LinkUpdates { get; } = [];
+    public List<ExplorerReply> Replies { get; } = [];
+    public bool IsEmpty => NewNodes.Count == 0 && DirectoryUpdates.Count == 0 && LinkUpdates.Count == 0 && Replies.Count == 0;
 }

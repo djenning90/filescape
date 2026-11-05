@@ -34,7 +34,9 @@ public sealed record ScanProgress(
     string? CurrentPath,
     TimeSpan CurrentOperationDuration,
     TimeSpan? CancelAcknowledgedAfter,
-    string? FailureMessage);
+    string? FailureMessage,
+    bool Idle = false,
+    bool BackgroundActive = false);
 
 /// <summary>Something that can produce a tree as a stream of batches. Implementations run on a background thread.</summary>
 public interface IScanSource
@@ -71,6 +73,12 @@ public sealed class ScanContext
     public int Nodes;
     public bool LimitReached;
 
+    /// <summary>On-demand sources (AD-17): nothing is queued or in flight; the source waits for requests.</summary>
+    public volatile bool Idle;
+
+    /// <summary>On-demand sources: background traversal of the arrival subtree is still running.</summary>
+    public volatile bool BackgroundActive;
+
     public void Emit(ScanBatch batch)
     {
         if (!batch.IsEmpty)
@@ -81,6 +89,9 @@ public sealed class ScanContext
 
     public void BeginOperation(string path) => _session.BeginOperation(path);
     public void EndOperation() => _session.EndOperation();
+
+    /// <summary>Reports the oldest of several concurrent OS operations (null: none), with its start timestamp.</summary>
+    public void SetOperation(string? path, long startTimestamp) => _session.SetOperation(path, startTimestamp);
 }
 
 /// <summary>
@@ -183,7 +194,9 @@ public sealed class ScanSession : IDisposable
             path,
             opDuration,
             ack,
-            _failure);
+            _failure,
+            ctx.Idle,
+            ctx.BackgroundActive);
     }
 
     internal void Enqueue(ScanBatch batch) => _batches.Enqueue(batch);
@@ -195,6 +208,12 @@ public sealed class ScanSession : IDisposable
     }
 
     internal void EndOperation() => _currentPath = null;
+
+    internal void SetOperation(string? path, long startTimestamp)
+    {
+        if (path != null) Interlocked.Exchange(ref _operationStartTicks, startTimestamp);
+        _currentPath = path;
+    }
 
     private void RunSource()
     {

@@ -18,6 +18,37 @@ public sealed class WindowsFactAttribute : FactAttribute
     }
 }
 
+/// <summary>
+/// Marks a test that needs POSIX symbolic links without privileges (Linux/WSL). Skipped with a reason on Windows; the
+/// Windows link cases (junctions) are covered by Windows-only tests.
+/// </summary>
+public sealed class PosixFactAttribute : FactAttribute
+{
+    public PosixFactAttribute()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Skip = "POSIX-only (unprivileged symlinks): run with tools/fs.sh test-wsl. Windows link cases: WindowsWorldTests.";
+        }
+    }
+}
+
+/// <summary>A Windows test against a prepared WSL fixture (tools/make-wsl-fixture.sh, FILESCAPE_WSL_FIXTURE); skipped with a reason otherwise.</summary>
+public sealed class WslFixtureFactAttribute : FactAttribute
+{
+    public WslFixtureFactAttribute()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip = "Windows-only: reads WSL through \\\\wsl.localhost.";
+        }
+        else if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("FILESCAPE_WSL_FIXTURE")))
+        {
+            Skip = "Set FILESCAPE_WSL_FIXTURE to the \\\\wsl.localhost path printed by tools/make-wsl-fixture.sh.";
+        }
+    }
+}
+
 public static class ScanRunner
 {
     /// <summary>Runs a source to completion synchronously and applies every batch, as the app does on its main thread.</summary>
