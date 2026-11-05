@@ -1,0 +1,19 @@
+[14:44:42.752] places probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[14:44:43.072] PASS the root place appears 308 ms after launch while the scan runs
+[14:44:43.072] PASS the scan is still running when the place is first shown
+[14:44:43.072] PASS no whole-tree layout is computed while in Places (PLACE-12)
+[14:44:43.324] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-scan/01-scan-in-progress.png current=synthetic://seed-1965 selected=-
+[14:44:47.807] scan finished state=Completed nodes=50000 elapsed=5.0s
+[14:44:47.807] perf places-during-scan: frames=678 mean=6.78 p50=6.43 p95=7.80 p99=12.61 max=157.63; recompositions=0 mean=0.0ms max=0.0ms; layout_computed=False
+[14:44:47.809] PASS p99 frame time during the scan 12.6 ms < 50 ms (H3)
+[14:44:47.906] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-scan/02-scan-finished.png current=synthetic://seed-1965 selected=-
+[14:44:47.906] the first place appeared after its neighbourhood was complete (pending seen=False, recompositions=0); re-checking on a 300 nodes/s stream
+[14:44:47.908] [direct] started a slow synthetic scan (set-up)
+[14:44:48.584] PASS gates of folders not yet listed showed as pending ('scanning…') during the scan
+[14:44:48.584] PASS the place recomposed 2 times as its neighbourhood filled in
+[14:44:48.586] [direct] started a second synthetic scan at 2,000 nodes/s (set-up)
+[14:44:48.867] [direct] cancelled the scan (set-up; the Cancel button raises the same call)
+[14:44:49.480] PASS after cancelling, 25 gates read 'not scanned' (0 genuinely empty)
+[14:44:49.481] PASS their signs say 'not scanned'
+[14:44:49.696] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-scan/03-after-cancel.png current=synthetic://seed-1965 selected=-
+[14:44:49.696] done failures=0

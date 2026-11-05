@@ -1,0 +1,23 @@
+child-0000 → wide (tier 1): arrive 38.1 m from the child's gate; W alone → ▲ in 3.5 s walking (27 m); before: W alone never got there, steering round the landmark took 13.6 s
+child-0035 → wide (tier 3): arrive 63.4 m from the child's gate; W alone → ▲ in 3.5 s walking (27 m); before: W alone never got there, steering round the landmark took 19.8 s
+child-0069 → wide (tier 4): arrive 76.0 m from the child's gate; W alone → ▲ in 3.5 s walking (27 m); before: W alone never got there, steering round the landmark took 22.8 s
+level-2 → level-1: arrive 20.6 m from the child's gate; W alone → ▲ in 4.2 s walking (33 m); before: W alone never got there, steering round the landmark took 11.2 s
+level-3 → level-2: arrive 20.6 m from the child's gate; W alone → ▲ in 4.2 s walking (33 m); before: W alone never got there, steering round the landmark took 11.2 s
+level-4 → level-3: arrive 20.6 m from the child's gate; W alone → ▲ in 4.2 s walking (33 m); before: W alone never got there, steering round the landmark took 11.2 s
+level-5 → level-4: arrive 20.6 m from the child's gate; W alone → ▲ in 4.2 s walking (33 m); before: W alone never got there, steering round the landmark took 11.2 s
+typical (8 gates), farthest gate (47 m): walk 11.4 s → 6.0 s, run 5.7 s → 3.1 s
+typical (8 gates), nearest gate (48 m): walk 11.4 s → 6.1 s, run 5.8 s → 3.1 s
+wide (70 gates, tiers), farthest gate (97 m): walk 23.3 s → 12.3 s, run 11.7 s → 6.2 s
+wide (70 gates, tiers), nearest gate (58 m): walk 13.9 s → 7.4 s, run 7.0 s → 3.8 s
+4 successive Ups on foot (walking, W held): before ≈ 54.8 s (with turning round), after 19.7 s
+
+Notes (TraversalTests, the real Core walker on composed places, 60 Hz frames; walking-time only, no transitions unless stated):
+- "before → after" above: before = the old speeds (4.2 / 8.4 m/s) on the NEW file layout; after = 8 / 16 m/s.
+- On the OLD file layout (build 2dc4ae8c3234), the first run of this test measured the typical place's nearest gate at a
+  67 m route: 16.0 s walking / 8.1 s running (the file quarters reached 44 m; the arrival point was 43 m from the landmark).
+  Old layout + old speeds -> new layout + new speeds: 16.0 s -> 6.1 s walking, 8.1 s -> 3.1 s running.
+- Up: "arrive N m from the child's gate" is the stand-off of the verified straight route; "before" steers round the
+  landmark from the old return pose (W alone never reached the up gate from it).
+- The 4-Up total adds 0.75 s (after) / 1.04 s (before) of threshold transition per place change and 1.5 s per turn-round before.
+- App, injected input (walk.log): Harbour -> Coast -> Journeys -> Wayfarer with W held: 3.4 + 3.6 + 3.5 s (12.0 s incl. transitions).
+- App, real SendInput (os-walk-results): the same chain, 12.2 s (Coast at 3.6 s, Journeys at 8.0 s, Wayfarer at 12.2 s).

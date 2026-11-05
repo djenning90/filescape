@@ -1,0 +1,63 @@
+[14:44:51.022] start: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[0,13.572,10.648],"target":[0,0.582,-11.85],"yaw":0,"lookPitch":-30,"up":0.866,"distance":25.979,"flySpeed":10,"held":[],"selected":-1,"vis":0,"hint":true,"flyChip":false,"consumedEscapes":0,"experience":"Classic","current":0,"currentName":"synthetic-demo","transition":false,"transitions":0,"gates":-1,"selectedName":"","lastShell":"","locomotion":"Walking","grounded":false,"support":0,"feetY":0,"lookCaptured":false,"jumps":0,"relocations":0,"landing":false,"guided":false,"showHidden":false,"locationsOpen":false,"via":-1,"currentPath":"synthetic://seed-1965","reverseH":true,"reverseV":true,"walkSpeed":8,"runSpeed":16,"settingsOpen":false,"settingsH":[736,457],"settingsV":[724,457],"uiScale":1,"gateChip":"","prefsFile":""}
+[14:44:51.027] PASS first-run hint is visible: W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help
+[14:44:55.327] ground speeds u/s: W=23.06 Up=23.39 W+Up=23.41 W+D=23.41 Right=23.39 D=23.37 Shift+W=70.24
+[14:44:55.327] PASS W moves the view in orbit mode
+[14:44:55.327] PASS Up arrow = W speed (ratio 1.014)
+[14:44:55.327] PASS W+Up together does not double speed (ratio 1.015)
+[14:44:55.327] PASS diagonal W+D is not faster (ratio 1.015)
+[14:44:55.327] PASS W moves along the horizontal heading
+[14:44:55.327] PASS W+D moves at 45° (dot 0.707)
+[14:44:55.327] PASS Right arrow = D
+[14:44:55.327] PASS Shift accelerates ×3 (ratio 3.05)
+[14:44:56.142] PASS E raises the view (Δy 9.74)
+[14:44:56.142] PASS Q lowers the view (Δy -4.68)
+[14:44:57.207] PASS wheel zooms in orbit mode (26.0 → 19.7)
+[14:44:57.757] PASS holding right mouse enters fly mode and captures the mouse
+[14:44:57.757] PASS fly status shows speed: FLYING  ·  speed 228.6 u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop
+[14:44:57.758] PASS entering flight does not move or rotate the camera (Δpos 0.0000)
+[14:44:57.790] PASS mouse-look yaw: 100 px → -12.00°
+[14:44:57.822] PASS look up stops at 85.0° without flipping (camera up.y 0.087)
+[14:44:57.856] PASS look down stops at -85.0° without flipping
+[14:44:57.856] PASS no roll: camera right vector stays horizontal
+[14:45:01.219] look pitch set to -30.0°°, altitude 2169 u
+[14:45:09.554] PASS instrument: the speed series stayed above ground (altitude 1422 u)
+[14:45:09.554] fly speeds u/s (speed setting 228.6): W=228.94 Up=228.88 W+Up=228.85 W+A=228.60 Left=228.15 Shift+W=686.70
+[14:45:09.554] PASS W flies along the view direction, descending when looking down (dot 1.000)
+[14:45:09.554] PASS Up arrow = W in flight (ratio 1.000)
+[14:45:09.554] PASS W+Up does not double flight speed (ratio 1.000)
+[14:45:09.554] PASS diagonal flight is not faster (ratio 0.998)
+[14:45:09.554] PASS strafe stays level
+[14:45:09.554] PASS Shift ×3 in flight (ratio 3.00)
+[14:45:11.751] PASS E ascends in world space while flying
+[14:45:11.751] PASS Q descends while flying
+[14:45:11.851] PASS wheel up ×3 raises flight speed 228.6 → 446.5 u/s
+[14:45:11.851] PASS flight speed shown while it changes
+[14:45:11.951] PASS wheel down restores the speed
+[14:45:11.951] PASS wheel in flight does not zoom
+[14:45:12.001] PASS releasing right mouse ends flight and restores the cursor
+[14:45:12.001] PASS leaving flight does not move the camera (Δpos 0.0007)
+[14:45:13.498] PASS no snap back to the old orbit target afterwards
+[14:45:14.529] PASS left-drag orbits around the post-flight pivot
+[14:45:16.144] PASS Escape ends flight and releases capture
+[14:45:16.144] PASS that Escape did not also navigate to the parent
+[14:45:16.243] PASS the next Escape navigates to the parent directory
+[14:45:18.475] PASS after flying 4.3 u, Tab switches to District and keeps the selection
+[14:45:18.590] PASS F frames the selection again
+[14:45:18.707] PASS clicking the Classic FSN toolbar button switches visualization
+[14:45:19.123] PASS arrow keys still move the view right after a toolbar click
+[14:45:19.605] PASS while a text field has focus, W and Up do not move the camera
+[14:45:19.606] PASS the text field received the typed key instead (text 'w')
+[14:45:20.088] PASS clicking the scene returns the keys to navigation
+[14:45:21.003] PASS with a dialog open, arrows and W do not move the camera
+[14:45:21.103] PASS Escape closes the dialog without navigating to the parent
+[14:45:21.518] PASS movement works again once the dialog is closed
+[14:45:21.768] PASS focus loss ends flight, releases capture, and forgets held keys
+[14:45:22.267] PASS nothing moves after focus returns until a key is pressed again
+[14:45:22.351] PASS instrument: the drag is active before focus is lost
+[14:45:23.632] PASS a drag interrupted by focus loss does not keep orbiting with no button held (dragging=False, Δpos 0.0085, Δyaw-basis 0.00038, settled=True)
+[14:45:26.727] PASS Home recovers the start view after flying away
+[14:45:30.754] stale-layout interval: 223 frames with tree ahead of layout; labels drawn in 223 of them
+[14:45:30.754] PASS the scan really exercised the stale-layout interval
+[14:45:30.754] PASS labels kept rendering during the interval
+[14:45:30.755] end: {"mode":"Orbit","mouseMode":"Visible","focused":true,"modal":false,"dragging":"None","pos":[-55.289,1199.515,23.297],"target":[-55.289,3.234,-612.777],"yaw":0,"lookPitch":-62,"up":0.4695,"distance":1354.872,"flySpeed":13.302,"held":[],"selected":59327,"vis":0,"hint":false,"flyChip":false,"consumedEscapes":1,"experience":"Classic","current":0,"currentName":"synthetic-demo","transition":false,"transitions":0,"gates":-1,"selectedName":"sierra-352.txt","lastShell":"","locomotion":"Walking","grounded":false,"support":0,"feetY":0,"lookCaptured":false,"jumps":0,"relocations":0,"landing":false,"guided":false,"showHidden":false,"locationsOpen":false,"via":-1,"currentPath":"synthetic://seed-1965","reverseH":true,"reverseV":true,"walkSpeed":8,"runSpeed":16,"settingsOpen":false,"settingsH":[736,457],"settingsV":[724,457],"uiScale":1,"gateChip":"","prefsFile":""}
+[14:45:30.755] done failures=0

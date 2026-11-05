@@ -1,0 +1,81 @@
+[14:42:27.276] places probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[14:42:28.028] scan state=Running nodes=1726 dirs=301 files=1424 links=1 problems=1 elapsed=756ms source=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio
+[14:42:28.028] PASS the app starts in Places
+[14:42:28.028] PASS arrival: the current folder is the chosen root
+[14:42:28.029] PASS breadcrumb ends with the root name: This computer › C:\ › Users › David › AppData › Local › Temp › FileScape-fixtures › places-20261104-111359-0a3db4 › Atlas Studio
+[14:42:28.029] PASS the landmark sign names the folder: 'Atlas Studio'
+[14:42:28.029] PASS camera is at the arrival point <-1.57361E-06, 3.35, 18>
+[14:42:28.029] PASS the Places hint is visible
+[14:42:28.206] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/01-arrival.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=-
+[14:42:28.208] PASS root: all 11 child folders have a gate and a Destinations entry
+[14:42:28.208] PASS root: every gate carries its folder's name (11/11)
+[14:42:28.214] PASS right-hold captures the mouse to look around (WALK-03)
+[14:42:28.725] PASS turned 180° with the mouse; still in the root place
+[14:42:28.871] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/02-looking-back-toward-the-way-in.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=-
+[14:42:30.022] PASS Home (injected) returns to the arrival point
+[14:42:30.106] PASS clicking a tower selects logo.png; the current folder stays Atlas Studio
+[14:42:30.106] PASS breadcrumb unchanged after selecting a file
+[14:42:30.288] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/03-file-selected.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=logo.png
+[14:42:31.370] PASS clicking 'many-files' in Destinations selects it and walks up to its gate without travelling
+[14:42:31.548] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/04-approaching-a-gate.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=many-files
+[14:42:32.651] PASS holding W walks through the 'many-files' gate and starts the threshold transition
+[14:42:32.953] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/05-threshold-transition.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\many-files selected=many-files
+[14:42:33.483] PASS arrived in many-files
+[14:42:33.485] PASS breadcrumb: This computer › C:\ › Users › David › AppData › Local › Temp › FileScape-fixtures › places-20261104-111359-0a3db4 › Atlas Studio › many-files
+[14:42:33.485] PASS the new landmark names the child
+[14:42:33.485] PASS the way back up (parent gate) is behind the arrival point
+[14:42:33.485] PASS the camera is at the child's arrival point
+[14:42:33.485] PASS exactly one place change (1)
+[14:42:33.727] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/06-arrived-in-child.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\many-files selected=many-files
+[14:42:33.727] PASS many-files: all 2 child folders have a gate and a Destinations entry
+[14:42:33.727] PASS many-files: every gate carries its folder's name (2/2)
+[14:42:33.727] [direct] placed the camera 1.2 u inside the parent gate, facing it (set-up for the dithering test)
+[14:42:35.913] PASS dithering W/S across the threshold without first stepping 2 u back does not switch places
+[14:42:36.029] PASS U starts the way back
+[14:42:36.745] PASS U returns to the parent
+[14:42:36.745] PASS the child you came from (many-files) is selected after returning
+[14:42:36.746] PASS returned inside the parent (26.0 m from the 'many-files' gate), facing its ▲ gate along a verified route (dot 1.00)
+[14:42:37.022] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/07-returned-to-parent.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=many-files
+[14:42:37.910] PASS double-clicking a destination travels into it
+[14:42:43.003] PASS G five times descends the chain: Atlas Studio › deep-chain › level-01 › level-02 › level-03 › level-04 › level-05
+[14:42:43.253] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/08-deep-chain.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\deep-chain\level-01\level-02\level-03\level-04\level-05 selected=level-05
+[14:42:44.133] PASS Ctrl+Home (injected) returns to the chosen root's arrival point
+[14:42:45.250] PASS B ascends above the place (height 174) and the chip explains it shows the neighbourhood only
+[14:42:45.332] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/09-ascended.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=level-05
+[14:42:46.030] PASS M switches to the whole-filesystem map
+[14:42:46.031] PASS the map marks the current folder: 'You are here · Atlas Studio'
+[14:42:46.142] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/10-map-you-are-here.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=level-05
+[14:42:46.912] PASS Tab cycles to District
+[14:42:47.017] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/11-district-you-are-here.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=level-05
+[14:42:47.018] [direct] selected Documents on the map (set-up)
+[14:42:48.261] PASS G on a folder in a map enters it in Places
+[14:42:48.557] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/12-documents-from-map.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\Documents selected=Documents
+[14:42:48.557] PASS Documents has open gates
+[14:42:52.587] PASS wide: arrived in wide-hall on foot
+[14:42:52.589] PASS wide-hall: 240 gates on 8 tiers
+[14:42:52.589] PASS at most 70 managed signs visible at arrival (18 of 505)
+[14:42:52.589] PASS Destinations lists all 240 folders plus the way up (241)
+[14:42:52.773] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/13-wide-arrival.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\wide-hall selected=wide-hall
+[14:42:53.858] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/14-wide-ascended.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\wide-hall selected=wide-hall
+[14:42:58.560] perf wide-hall High: frames=674 mean=6.88 p95=7.61 p99=8.07 max=21.90 gpu=6.16 instances=2252 compose=1.6ms build=8.2ms
+[14:43:04.201] PASS many files: arrived in many-files on foot
+[14:43:04.203] PASS many-files: 800 towers in 6 quarters, 2 gates
+[14:43:04.346] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/15-many-files-arrival.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\many-files selected=many-files
+[14:43:05.365] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/16-many-files-ascended.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\many-files selected=many-files
+[14:43:10.000] perf many-files High: frames=714 mean=6.45 p95=7.19 p99=7.59 max=31.60 gpu=5.71 instances=913 compose=1.5ms build=1.4ms
+[14:43:15.634] PASS empty: arrived in empty-room on foot
+[14:43:15.635] PASS empty-room composes as an explicitly empty place
+[14:43:15.786] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/17-empty-room.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\empty-room selected=empty-room
+[14:43:19.993] PASS denied: arrived in locked on foot
+[14:43:19.995] PASS locked: the place says its contents are access denied
+[14:43:20.144] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/18-locked.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio\locked selected=locked
+[14:43:20.926] PASS the junction is a link gate that can be entered
+[14:43:21.857] PASS double-clicking the junction follows it to Documents
+[14:43:22.806] PASS Backspace returns through the junction to its gate
+[14:43:22.807] PASS empty and access-denied gates carry different signs
+[14:43:22.856] [direct] selected readme.txt (set-up)
+[14:43:22.856] PASS selecting does not move you
+[14:43:27.602] perf root High: frames=694 mean=6.71 p95=7.50 p99=8.17 max=30.74 gpu=5.93 instances=236 compose=0.7ms build=1.6ms
+[14:43:32.882] perf root Low: frames=1696 mean=2.50 p95=3.11 p99=3.93 max=29.64 gpu=1.91 instances=236 compose=0.7ms build=1.6ms
+[14:43:34.329] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-usability/final/places-connected/19-final-root.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261104-111359-0a3db4\Atlas Studio selected=readme.txt
+[14:43:34.329] done failures=0

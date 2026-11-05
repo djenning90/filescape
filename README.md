@@ -36,31 +36,34 @@ tools/fs.sh test                                        # tests with Windows dot
 
 1. **Arrive on foot.** You stand on a terrace at the folder's entrance; its name is on the landmark ahead and in "You are in". **↑** walks you down the stairs; **← / →** turn; hold the **right mouse button** to look around.
 2. **Climb the overlook** (to the left of the landmark, west): walk up its ramp, or hop the two low blocks with **Space**. The panel up there sums up the place.
-3. **Enter a child.** Click **Photos** in Destinations (you walk up to its gate), then keep walking through the gate. **U** brings you back in front of it.
-4. **Follow a link.** Walk through **to-shared-library** (a teal junction gate). You arrive in *Shared Library*, outside Wayfarer: the breadcrumb shows where it really is, a line says which link you came through. **Backspace** returns through the link; **U** would go to its real parent instead.
-5. **Try the odd ones.** *back-to-wayfarer* says it loops back here; *photos-shortcut* and *also-photos* reach the same Photos place; *broken-link* is hatched and explains itself; "⚠ … need attention" lists the problems. **H** shows the two hidden/system folders.
-6. **A project.** Projects › lighthouse is recognised as a software project: its README and manifests stand on lit plinths by the avenue; the inspector says why.
-7. **Elsewhere on the computer.** **L** opens Locations (drives, WSL distributions, the hub); **Ctrl+L** takes a pasted path such as `\\wsl.localhost\Ubuntu-24.04\home\you` or `/home/you`. Linux names keep their case (*Notes* and *notes* are two gates).
-8. **Fly and land.** **T** takes off (E/Space up, Q down, wheel speed); **T** again lands you safely on foot. **Home** is this folder's arrival point, **Ctrl+Home** the folder you started in; **M** the map.
+3. **Enter a child.** Click **Photos** in Destinations (you walk up to its gate; its name is on a plate across the opening and in the chip at the bottom), then keep walking through the gate. **U** brings you back, facing the ▲ gate.
+4. **Keep going up.** Go into Journeys › Coast › Harbour › Pier (select, **G**), press **U** once, then just hold **W**: each ▲ gate leads to the next, up to Wayfarer.
+5. **Follow a link.** Walk through **to-shared-library** (a teal junction gate). You arrive in *Shared Library*, outside Wayfarer: the breadcrumb shows where it really is, a line says which link you came through. **Backspace** returns through the link; **U** would go to its real parent instead.
+6. **Try the odd ones.** *back-to-wayfarer* says it loops back here; *photos-shortcut* and *also-photos* reach the same Photos place; *broken-link* is hatched and explains itself; "⚠ … need attention" lists the problems. **H** shows the two hidden/system folders.
+7. **A project.** Projects › lighthouse is recognised as a software project: its README and manifests stand on lit plinths by the avenue; the inspector says why.
+8. **Elsewhere on the computer.** **L** opens Locations (drives, WSL distributions, the hub); **Ctrl+L** takes a pasted path such as `\\wsl.localhost\Ubuntu-24.04\home\you` or `/home/you`. Linux names keep their case (*Notes* and *notes* are two gates).
+9. **Fly and land.** **T** takes off (E/Space up, Q down, wheel speed); **T** again lands you safely on foot. **Home** is this folder's arrival point, **Ctrl+Home** the folder you started in; **M** the map.
 
 ### Controls (also in Help, F1)
 
 | To… | Do this (Places) |
 |---|---|
-| Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run |
-| Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag** |
+| Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run (walk 8 m/s, run 16 m/s; adjustable in Settings) |
+| Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag**. Direction: **⚙ Settings / F4** reverses left/right and up/down separately (default: both reversed — moving the mouse right turns you left, down looks up) |
 | Jump | **Space** (never opens or runs anything) |
 | Fly | **T** or the ✈ button: rise and fly — W A S D along the view, **E / Space** up, **Q** down, **wheel** speed, **Shift** ×3 · **T** again lands on foot (safely; if there is nowhere to stand below, at the arrival point, with a note) · **B** rises above the place |
 | Go into a folder or link | walk **through its gate** facing it · **double-click** it or its Destinations row · select it and press **G** |
-| Go back | **Backspace** where you came from (also back through a link) · **U / PgUp** physical parent (also above the folder you started in) · the ▲ gate · breadcrumb · **Ctrl+Home** arrival root |
+| Go back | **Backspace** where you came from (also back through a link) · **U / PgUp** physical parent (also above the folder you started in) · the ▲ gate · breadcrumb · **Ctrl+Home** arrival root. Going up arrives facing the next ▲ gate: keep walking forward to keep going up |
 | Elsewhere | **L** Locations · **Ctrl+L** go to a typed or pasted Windows / WSL / Linux path · **Open folder…** |
 | Show | **H** hidden and system items (off by default; dot-files always shown) |
 | Inspect | **click** to select (never moves you) · **F** turns to look at it · **Esc** closes popups, then back to the folder itself |
 | Maps | **M** Places ↔ map · **Tab** cycles Places → Classic FSN → District · **G** on a folder in a map enters it in Places. In the maps the arrows still move sideways and the right mouse flies while held |
 | Open | **Enter** opens with Windows (asks first for programs, links, cloud files); MOCK on sample data |
-| Other | **F1** help · **F2** quality · **F3** stats |
+| Other | **F1** help · **F2** quality · **F3** stats · **F4** settings (saved to `%APPDATA%\FileScape\preferences.json`) |
 
 Walking backwards through a gate never travels; flying above a gate's lintel leaves the place without travelling.
+
+**Summaries.** "Here" counts what is directly in a folder (folders, files, links); "in all" is the whole subtree when every folder below is listed, otherwise "≥ … so far" with how many folders are not fully listed. Counts include hidden items; links never add what they lead to. Gates and Destinations are in name order with numbers by value (*Leg 2* before *Leg 10*), west → east as you arrive.
 
 ## Layout of the repository
 

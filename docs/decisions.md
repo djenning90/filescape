@@ -142,3 +142,16 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Problem:** the connected world (AD-17) made the maps show only the explored world; DJ asked to keep the previous whole-tree visualization as a working reference.
 - **Decision:** two explicitly named modes: **Connected world (explore on demand)** — the default (WorldExplorer) — and **Bounded tree scan (whole-tree reference)** — one chosen folder scanned completely with the original policy (DirectoryScanner: links shown, never followed; broad places confirmed first), so Classic FSN and District show that whole tree and Places works over it. Both are started from Locations (Go / Scan as tree / Scan this folder as a tree) or the command line (`--scan=tree`). No code is duplicated: the modes differ only in the scan source.
 - **Revisit when:** the explored-world maps become good enough to replace the reference, or a cached whole-tree index exists.
+
+## AD-23 Movement, upward routes, gate identification and summaries after DJ's feedback (2026-11-05, evening)
+
+- **Problem:** DJ's first hands-on session: mouse look felt reversed on both axes; walking and running were too slow and travel between folders long; portal names vanished up close; going up repeatedly meant turning round the landmark; summaries lacked folder counts and did not say what totals meant.
+- **Decisions:**
+  - *Look direction* is a per-axis user preference (Core `Preferences.LookDelta`), applied only at the Places mouse-look input; the camera conventions (docs/units.md) and arrow keys are untouched. Default both reversed for this iteration (DJ's stated feel), revisable in one place.
+  - *Speed and distance together:* 8 / 16 m/s (2× minus a little, because the layout change also shortened routes) and the file quarters split either side of the avenue (the avenue had pushed a middle wedge's files outward row by row). Transition 0.75 s; held keys survive place changes. Rejected: rescaling the world (would change every size and the eye-height feel); only raising speed (the 43 m arrival distance was the larger cause).
+  - *Upward routes are verified by simulation*, not geometry: `PlaceRoutes.ContinueUp` tries spots from the exited child's gate towards the landmark and keeps the first from which the real walker, walking and running straight ahead, crosses the ▲ gate touching nothing. Cost ≈ 8–14 ms once per Up, during the fade. Rejected: a geometric line test (would miss stairs and step-up rules).
+  - *Gate identity up close:* a fixed eye-level plate per gate plus a screen chip for the approached/hovered gate, rather than more or larger overhead signs.
+  - *Summaries* from incremental aggregates (`SubtreeUnsettledDirs`, link and hidden counts) with explicit completeness; never a scan to fill a label.
+  - *Natural name order* in Places only; the maps keep the tree's order.
+- **Found and fixed on the way:** a walker touching a tall solid counted it as support and was snapped onto its top (seen at 30 m/s against a pillar, and in a running jump into a tower).
+- **Revisit when:** DJ has played this build (KD-20/KD-22): speeds, the default look direction, the stand-off of upward arrivals, and whether plates or the chip carry identification better.

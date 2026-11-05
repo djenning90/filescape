@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "reverseLookHorizontal": false,
+  "reverseLookVertical": true,
+  "walkSpeedMetersPerSecond": 8,
+  "runSpeedMetersPerSecond": 16
+}

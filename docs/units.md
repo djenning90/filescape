@@ -43,7 +43,7 @@ All angles are **degrees** (`Degrees`); radians appear only at a trigonometry or
 
 | Quantity | Type | Example |
 |---|---|---|
-| speed / signed velocity component | `MetersPerSecond` | walk 4.2, run 8.4, jump take-off 5.3 (up is positive) |
+| speed / signed velocity component | `MetersPerSecond` | walk 8, run 16 (user-adjustable 2–30), jump take-off 5.3 (up is positive) |
 | acceleration | `MetersPerSecondSquared` | gravity 17 (a positive magnitude acting downwards) |
 | angular speed | `DegreesPerSecond` | arrow-key turn 120°/s |
 | **smoothing rate** (inverse seconds) | `PerSecond` | ground response 14/s, camera easing 7/s |
@@ -58,6 +58,7 @@ All angles are **degrees** (`Degrees`); radians appear only at a trigonometry or
 - **Viewport units:** Godot UI positions and sizes (`Control.GetGlobalRect()`, `GetViewport().GetVisibleRect()`, `Camera3D.UnprojectPosition`) are in viewport units. Their scale depends on the window's **content scale factor**: the UI scale, by default the display's DPI ÷ 96, or `--ui-scale=`. At 125% Windows scaling, one viewport unit is 1.25 physical pixels.
 - **Physical pixels:** window events, `InputEventMouseMotion.ScreenRelative` and mouse warps are in physical pixels.
   - **Mouse look and orbit** use `ScreenRelative`, so their speed is independent of the UI scale.
+  - **Look direction** in Places is a user preference applied at the input (`Preferences.LookDelta`): x right / y down in pixels map to yaw and pitch in the camera convention, each axis optionally reversed. Never flip the camera math to change how the mouse feels.
   - **Map panning** uses `Relative` (viewport units), so content follows the cursor.
   - **Probes** convert UI rectangles to window pixels before injecting clicks (`ProbeBase.ToWindow`).
 - **Label3D:** `PixelSize` is world units per texture pixel. A 64 px font at 0.0115 is 0.74 m tall in Places.
@@ -66,7 +67,7 @@ All angles are **degrees** (`Degrees`); radians appear only at a trigonometry or
 
 ```csharp
 var eye = Meters.Of(1.75f);                         // construction: X.Of(value)
-var walk = MetersPerSecond.Of(4.2f);
+var walk = MetersPerSecond.Of(8f);
 var covered = walk * TimeSpan.FromSeconds(2);       // m/s × s → m
 var pace = Meters.Of(100) / TimeSpan.FromSeconds(25);   // m ÷ s → m/s
 var time = Meters.Of(10) / walk;                    // m ÷ m/s → TimeSpan

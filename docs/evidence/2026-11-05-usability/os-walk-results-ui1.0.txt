@@ -1,0 +1,26 @@
+﻿PASS OS arrives on foot in Wayfarer (locomotion=Walking, feetY=1.6)
+PASS OS Up arrow walks off the terrace and down the stairs (11.3 m, feetY 0)
+PASS OS Left arrow turns in place (turned 72 deg)
+PASS OS Up+Right walks a curve (turned 110 deg, moved 6.2 m)
+PASS OS Space jumps and lands (jumps 0 -> 1)
+PASS OS A steps sideways without turning
+PASS OS right-hold captures the mouse to look; release frees it
+PASS OS default (both reversed), real mouse right+down at UI 1: turns left and looks up (yaw -38 -> -2, pitch -6 -> 8.4)
+PASS OS F4 opens Settings
+PASS OS after clicking the checkbox: right turns right, down still looks up (yaw -2 -> -38, pitch 8.4 -> 41.0)
+PASS OS the change is saved to the probe's own preferences file (C:\Users\David\AppData\Local\FileScape\evidence\2026-11-05-usability\final\os-ui1\preferences.json)
+PASS OS T takes off (3.5 m up)
+PASS OS T again lands on foot (feetY 0)
+PASS OS Alt-Tab while walking: focus lost, nothing held or captured
+PASS OS after returning, you stand still (no stuck key)
+PASS OS H shows hidden and system items
+PASS OS L opens Locations; the arrow keys do not walk while it is open
+PASS OS Esc closes Locations
+PASS OS clicked the to-shared-library row (selected=to-shared-library)
+PASS OS G follows the junction to Shared Library (via link 29)
+PASS OS Backspace returns through it, with the link selected
+PASS OS after a relaunch the saved look direction is in effect (H usual, V reversed)
+PASS OS U from Pier arrives in Harbour (Harbour)
+real W held from Harbour: Coast@3.6s, Journeys@8s, Wayfarer@12.2s
+PASS OS holding the real W key went up Coast, Journeys, Wayfarer without turning (13.3 s)
+done failures=0
