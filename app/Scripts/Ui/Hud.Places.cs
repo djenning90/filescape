@@ -96,7 +96,13 @@ public partial class Hud
         _destList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None, SelectMode = ItemList.SelectModeEnum.Single };
         _destList.AddThemeFontSizeOverride("font_size", 13);
         // ItemClicked fires on every click; ItemSelected would not fire for an item that is already highlighted.
-        _destList.ItemClicked += (i, _, button) => { if (button == (long)MouseButton.Left) DestinationSelected?.Invoke((int)_destList.GetItemMetadata((int)i)); };
+        // Picking a row with the mouse hands the keyboard back to walking (the filter lets go; Esc then closes the drawer).
+        _destList.ItemClicked += (i, _, button) =>
+        {
+            if (button != (long)MouseButton.Left) return;
+            _destFilter.ReleaseFocus();
+            DestinationSelected?.Invoke((int)_destList.GetItemMetadata((int)i));
+        };
         _destList.ItemActivated += i => DestinationActivated?.Invoke((int)_destList.GetItemMetadata((int)i));
         dv.AddChild(_destList);
         var help = new Label { Text = "Click: look at it · double-click: go", HorizontalAlignment = HorizontalAlignment.Center };

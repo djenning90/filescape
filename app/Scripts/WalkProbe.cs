@@ -536,7 +536,10 @@ public partial class WalkProbe : ProbeBase
             var reloc = App.Relocations;
             App.ProbeFlyAt(new Vector3(vista.Center.X, 12, vista.Center.Z)); // [direct] above a vista, outside the walkable place
             await Frames(3);
+            Log(F($"before T: locomotion={App.Locomotion} landing={App.LandingInProgress} guided={App.GuidedGlide} transition={App.InTransition} aerial={App.AerialShown} altitude={App.CameraAltitude:0.0}"));
             await Key(Godot.Key.T);
+            await Frames(2);
+            Log(F($"after T: locomotion={App.Locomotion} landing={App.LandingInProgress} guided={App.GuidedGlide} transition={App.InTransition} note={App.LastLandingNote ?? "-"}"));
             await WaitGuide();
             await Seconds(0.3);
             // Since the aerial world (AERIAL-03/FLY-05): over open space you may instead land in the nearest place (it says so).

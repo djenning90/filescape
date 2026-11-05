@@ -511,6 +511,8 @@ public partial class Main
         _flyEye = eye;
         _flightVelocity = GVector3.Zero;
         _rig.SetPose(eye, _walker.Yaw, _walker.LookPitch, PivotAhead);
+        // A set-up teleport is not a walk: it must not count as crossing a gate on the way (probe instrument fix).
+        if (_place != null) _threshold.Reset(_place, eye.ToNumerics(), _now);
     }
 
     /// <summary>[direct] Points the gaze (heading, look pitch) without moving.</summary>
