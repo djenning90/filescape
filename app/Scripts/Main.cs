@@ -5,6 +5,7 @@ using FileScape.App.Visual;
 using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
+using FileScape.Core.Places;
 using FileScape.Core.Scanning;
 using FileScape.Core.Shell;
 using FileScape.Core.Units;
@@ -38,6 +39,11 @@ public partial class Main : Node3D
     private MeshInstance3D _ground = null!;
     private Hud _hud = null!;
     private LabelLayer _labels = null!;
+
+    /// <summary>Screen-space destination names (LABEL-01): gates while walking, places from the air.</summary>
+    private SignLayer _signs = null!;
+
+    public SignLayer Signs => _signs;
     private MeshInstance3D _selectionBox = null!, _hoverBox = null!, _beam = null!;
     private SpotLight3D _spot = null!;
     private ConfirmationDialog _confirm = null!;
@@ -205,6 +211,8 @@ public partial class Main : Node3D
         var labelCanvas = new CanvasLayer { Layer = 0 };
         _labels = new LabelLayer();
         labelCanvas.AddChild(_labels);
+        _signs = new SignLayer();
+        labelCanvas.AddChild(_signs);
         AddChild(labelCanvas);
         _hud = new Hud { Layer = 1 };
         AddChild(_hud);
@@ -222,6 +230,7 @@ public partial class Main : Node3D
         _hud.FlyToRequested += FlyToSelection;
         _hud.CopyPathRequested += CopyPath;
         _hud.HelpToggled += () => _hud.ToggleHelp();
+        _hud.InspectorClosed += () => _selection.Select(-1);
         _hud.FlightToggled += ToggleFlight;
         _selection.SelectionChanged += _ => UpdateInspector();
 
@@ -355,7 +364,7 @@ public partial class Main : Node3D
             if (_labelsVisible && now - _lastLabelRefresh > LabelRefreshInterval)
             {
                 _lastLabelRefresh = now;
-                if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects, worldSigns: _placeWorld.VisibleSignRects(_rig.Camera));
+                if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects, worldSigns: _placeWorld.VisibleSignRects(_rig.Camera).Concat(_signs.ShownRects));
                 else _labels.HideAll();
             }
         }
@@ -931,6 +940,8 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.MapToggle)) ToggleMap();
         else if (key.IsAction(InputBindings.Frame)) FlyToSelection();
         else if (key.IsAction(InputBindings.Help)) _hud.ToggleHelp();
+        else if (key.IsAction(InputBindings.Legend)) _hud.ToggleLegend();
+        else if (key.IsAction(InputBindings.Destinations)) { if (places) _hud.ToggleDestinations(focusFilter: true); }
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
         else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
         else if (key.IsAction(InputBindings.Settings)) _hud.ToggleSettings();
@@ -957,8 +968,9 @@ public partial class Main : Node3D
 
         if (_experience == Experience.Places)
         {
-            // In a place, Esc steps back from the selection to the place itself; it never moves you.
-            if (_selection.Selected >= 0 && _selection.Selected != _nav.Current) _selection.Select(_nav.Current);
+            // In a place, Esc closes the inspector card (clears the selection); it never moves you.
+            if (_hud.DestinationsOpen) _hud.ToggleDestinations(focusFilter: false);
+            else if (_selection.Selected >= 0) _selection.Select(-1);
             return;
         }
 
@@ -1205,22 +1217,29 @@ public partial class Main : Node3D
 
     // ---------------------------------------------------------------- HUD content
 
+    /// <summary>The inspector card's one-line brief in Places (VIEW-02): what it is, how big, and its state; details on demand.</summary>
+    private string Brief(FsNode node)
+    {
+        var tree = _tree!;
+        if (node.Kind == NodeKind.Link) return $"Link · {PlaceText.LinkShort(tree, node)}";
+        if (node.IsDirectory)
+        {
+            var state = Listing.Of(node);
+            return Listing.IsUnknown(state) && state != ListingState.Partial ? $"Folder · {Listing.Describe(state)}" : "Folder · " + FolderSummary.Gate(node, state);
+        }
+
+        var modified = node.ModifiedUtc is { } m ? $" · modified {m.ToLocalTime():yyyy-MM-dd}" : "";
+        return $"{PlaceText.CategoryName(FileCategories.Of(node.Name)).TrimEnd('s')} file · {SizeFormat.Short(node.Size)}{modified}";
+    }
+
     private void UpdateInspector()
     {
-        if (_tree != null && _tree.Count > 0 && _selection.Selected < 0 && _experience == Experience.Places)
+        if (_experience == Experience.Places && (_tree == null || _tree.Count == 0 || _selection.Selected < 0))
         {
-            var here = _tree[_nav.Current];
-            var kind = KindOf(here.Id);
-            var identity = kind.Kind == FileScape.Core.Places.PlaceKind.Ordinary && !kind.Overridden
-                ? ""
-                : $"[b]{kind.Label}[/b] — because: {string.Join(", ", kind.Evidence)}\n" +
-                  (kind.Kind == FileScape.Core.Places.PlaceKind.Project ? "Its README and manifests stand by the avenue as the project core. Nothing is built or run.\n" : "") + "\n";
-            _hud.SetInspector($"You are in {_tree.DisplayName(here.Id)}",
-                $"[color=#9fb0cc]{identity}{PlaceText.Summary(_tree, here)}\n[font_size=12]Totals: what has been listed so far, hidden items included, link destinations not included.[/font_size]\n\nClick a tower or gate to inspect it — that never moves you.\nWalk through a gate (or double-click it) to go in; the ▲ gate behind you goes up.\n\n[b]F1[/b] controls · [b]Home[/b] arrival point · [b]L[/b] locations · [b]M[/b] map[/color]",
-                new Color(0, 0, 0, 0));
+            // Places: nothing selected → no card; the place bar and the plaque say where you are (VIEW-02).
+            _hud.SetInspectorCard(compact: true, visible: false, "", null);
             _hud.SetSelectionActions(false, false, false);
             _hud.SetEnterAction(false, "Go inside (G)");
-            _hud.SetWorldActions(_explorer != null && NeedsRetry(here), kind.Kind == FileScape.Core.Places.PlaceKind.Project ? "Not a project" : kind.Overridden ? "Show as project" : null);
             return;
         }
 
@@ -1236,6 +1255,16 @@ public partial class Main : Node3D
 
         var node = _tree[_selection.Selected];
         _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
+        if (_experience == Experience.Places)
+        {
+            var current = node.Id == _nav.Current ? _place != null && KindOf(node.Id) is { } k && (k.Kind != FileScape.Core.Places.PlaceKind.Ordinary || k.Overridden) ? $"You are here · {k.Label}: {string.Join(", ", k.Evidence)}\n" : "You are here\n" : "";
+            _hud.SetInspectorCard(compact: true, visible: true, current + Brief(node), FileIcons.Get(FileIcons.For(node)));
+        }
+        else
+        {
+            _hud.SetInspectorCard(compact: false, visible: true, "", null);
+        }
+
         _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
         var places = _experience == Experience.Places;
         _hud.SetWorldActions(_explorer != null && NeedsRetry(node), null);

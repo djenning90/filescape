@@ -9,7 +9,7 @@ namespace FileScape.App.Ui;
 /// </summary>
 public partial class Hud
 {
-    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T flight · walk through a gate to enter · F4 settings · F1 help";
+    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T fly · J destinations · K key · F1 help";
 
     public event Action<int>? BreadcrumbRequested;
     public event Action? UpRequested;
@@ -63,20 +63,35 @@ public partial class Hud
         _rootButton = MakeButton("⌂ Root", () => RootRequested?.Invoke(), "Back to the folder you chose to explore (Ctrl+Home).");
         row.AddChild(_upButton);
         row.AddChild(_rootButton);
-        _placeSummary = new Label();
+        _destButton = MakeButton("☰ Destinations (J)", () => ToggleDestinations(focusFilter: false), "Every folder here, in gate order (A→Z, west → east), with filtering. Opens and closes on demand (J).");
+        _destButton.ToggleMode = true;
+        row.AddChild(_destButton);
+        // One line: what is here · what is in the whole subtree (SUM-01/02); the full wording is in the tooltip and on the plaque.
+        _placeSummary = new Label { ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis, MouseFilter = Control.MouseFilterEnum.Pass };
         _placeSummary.AddThemeFontSizeOverride("font_size", 13);
         _placeSummary.AddThemeColorOverride("font_color", new Color(0.72f, 0.8f, 0.94f));
         v.AddChild(_placeSummary);
 
-        _destPanel = new PanelContainer { CustomMinimumSize = new Vector2(300, 0) };
+        _destPanel = new PanelContainer { CustomMinimumSize = new Vector2(330, 0), Visible = false };
         _destPanel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
-        _destPanel.OffsetLeft = 10; _destPanel.OffsetTop = 190; _destPanel.OffsetRight = 320; _destPanel.OffsetBottom = 470;
+        _destPanel.OffsetLeft = 10; _destPanel.OffsetTop = 190; _destPanel.OffsetRight = 350; _destPanel.OffsetBottom = 470;
         _root.AddChild(_destPanel);
         var dv = new VBoxContainer();
         _destPanel.AddChild(dv);
-        _destTitle = new Label { Text = "Destinations" };
+        var titleRow = new HBoxContainer();
+        _destTitle = new Label { Text = "Destinations", AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _destTitle.AddThemeFontSizeOverride("font_size", 14);
-        dv.AddChild(_destTitle);
+        titleRow.AddChild(_destTitle);
+        var close = MakeButton("×", () => ToggleDestinations(focusFilter: false), "Close (J or Esc). Your place in the list is kept.");
+        close.Flat = true;
+        titleRow.AddChild(close);
+        dv.AddChild(titleRow);
+        // Keyboard access (VIEW-03): J opens the drawer with this field focused; type to filter, ↑/↓ to choose, Enter to go.
+        _destFilter = new LineEdit { PlaceholderText = "Filter by name · ↑↓ choose · Enter go · Esc close", ClearButtonEnabled = true };
+        _destFilter.AddThemeFontSizeOverride("font_size", 13);
+        _destFilter.TextChanged += _ => ApplyDestinationFilter();
+        _destFilter.GuiInput += OnDestinationFilterKey;
+        dv.AddChild(_destFilter);
         // FocusMode None: the list must never take the arrow keys away from walking (NAV-08).
         _destList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None, SelectMode = ItemList.SelectModeEnum.Single };
         _destList.AddThemeFontSizeOverride("font_size", 13);
@@ -146,23 +161,83 @@ public partial class Hud
             _crumbs.AddChild(b);
         }
 
-        _placeSummary.Text = summary;
+        _placeSummary.Text = summary.Replace("\n", "  ·  ");
+        _placeSummary.TooltipText = summary;
         _upButton.Disabled = !canUp;
         _rootButton.Disabled = atRoot;
     }
 
-    public void SetDestinations(IReadOnlyList<(int Id, string Text, Color Color, string Tooltip)> items, string title)
+    private Button _destButton = null!;
+    private LineEdit _destFilter = null!;
+    private bool _destOpen;
+    private IReadOnlyList<(int Id, string Text, Color Color, string Tooltip, Texture2D? Icon)> _destItems = [];
+
+    public bool DestinationsOpen => _destOpen;
+    public Rect2 DestinationsButtonRect => _destButton.GetGlobalRect();
+    public LineEdit DestinationFilter => _destFilter;
+
+    /// <summary>Opens or closes the Destinations drawer (J, the ☰ button). Contents, filter and scroll are kept while closed.</summary>
+    public void ToggleDestinations(bool focusFilter)
     {
-        _destList.Clear();
-        foreach (var (id, text, color, tip) in items)
+        _destOpen = !_destOpen;
+        _destPanel.Visible = _placesMode && _destOpen;
+        _destButton.SetPressedNoSignal(_destOpen);
+        if (_destOpen && focusFilter) _destFilter.GrabFocus();
+        if (!_destOpen) _destFilter.ReleaseFocus();
+        if (_destOpen) DismissHint();
+    }
+
+    private void OnDestinationFilterKey(InputEvent e)
+    {
+        if (e is not InputEventKey { Pressed: true } k) return;
+        var count = _destList.ItemCount;
+        var cur = _destList.GetSelectedItems() is { Length: > 0 } sel ? sel[0] : -1;
+        switch (k.Keycode)
         {
-            var i = _destList.AddItem(text);
+            case Key.Down when count > 0:
+                _destList.Select(Math.Min(count - 1, cur + 1));
+                _destList.EnsureCurrentIsVisible();
+                _destFilter.AcceptEvent();
+                break;
+            case Key.Up when count > 0:
+                _destList.Select(Math.Max(0, cur - 1));
+                _destList.EnsureCurrentIsVisible();
+                _destFilter.AcceptEvent();
+                break;
+            case Key.Enter or Key.KpEnter when count > 0:
+                var pick = cur >= 0 ? cur : 0;
+                var id = (int)_destList.GetItemMetadata(pick);
+                if (id >= 0) DestinationActivated?.Invoke(id);
+                ToggleDestinations(focusFilter: false);
+                _destFilter.AcceptEvent();
+                break;
+            case Key.Escape:
+                ToggleDestinations(focusFilter: false);
+                _destFilter.AcceptEvent();
+                break;
+        }
+    }
+
+    public void SetDestinations(IReadOnlyList<(int Id, string Text, Color Color, string Tooltip, Texture2D? Icon)> items, string title)
+    {
+        _destItems = items;
+        _destTitle.Text = title;
+        _destButton.Text = "☰ Destinations (J)";
+        ApplyDestinationFilter();
+    }
+
+    private void ApplyDestinationFilter()
+    {
+        var filter = _destFilter.Text.Trim();
+        _destList.Clear();
+        foreach (var (id, text, color, tip, icon) in _destItems)
+        {
+            if (filter.Length > 0 && id >= 0 && !text.Contains(filter, StringComparison.CurrentCultureIgnoreCase)) continue;
+            var i = icon != null ? _destList.AddItem(text, icon) : _destList.AddItem(text);
             _destList.SetItemMetadata(i, id);
             _destList.SetItemCustomFgColor(i, color);
             _destList.SetItemTooltip(i, tip);
         }
-
-        _destTitle.Text = title;
     }
 
     public string HintLabelText => _hintLabel.Text;

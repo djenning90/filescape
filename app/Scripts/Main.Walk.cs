@@ -120,7 +120,7 @@ public partial class Main
 
         if (_locomotion == Locomotion.Walking)
         {
-            _walker.Update(Terrain, new WalkInput(fwd, strafe, turn, run, jump), dt);
+            _walker.Update(Terrain, new WalkInput(fwd, strafe, turn, run, jump, JumpReleased: blocked || !_held.IsHeld(InputBindings.Jump)), dt);
             if (_walker.IsLost)
             {
                 Relocate("You fell out of this place, so you were brought back to its arrival point.");

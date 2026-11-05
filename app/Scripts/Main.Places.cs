@@ -1,4 +1,5 @@
 using FileScape.App.Places;
+using FileScape.App.Ui;
 using FileScape.App.Visual;
 using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
@@ -165,6 +166,7 @@ public partial class Main
         _beam.Visible = false;
         _spot.Visible = false;
         _labels.HideAll();
+        _signs.Clear();
         EndFly();
         _transition = null;
         _hud.SetTransition(0, null);
@@ -612,10 +614,10 @@ public partial class Main
         if (_place == null) return;
         _hud.SetHiddenCount(_place.HiddenCount, _showHidden);
         _hud.SetProblems(PlaceProblems());
-        var items = new List<(int, string, Color, string)>();
+        var items = new List<(int, string, Color, string, Texture2D?)>();
         if (_place.ParentGate is { } pg)
         {
-            items.Add((pg.TargetId, $"▲  Up to {_tree.DisplayName(pg.TargetId)}", PlacePalette.Up, "The way back: the gate behind the arrival point."));
+            items.Add((pg.TargetId, $"Up to {_tree.DisplayName(pg.TargetId)}", PlacePalette.Up, "The way back: the gate behind the arrival point.", FileIcons.Get(IconKind.Up)));
         }
 
         foreach (var g in _place.Gates.OrderBy(g => _tree[g.TargetId].Name, NaturalNameOrder.Instance).ThenBy(g => g.TargetId)) // the gates' own order (ORD-01)
@@ -623,15 +625,15 @@ public partial class Main
             var n = _tree[g.TargetId];
             var state = Listing.Describe(g.State);
             var text = g.IsLink
-                ? $"⇢ {n.Name}   ·  {PlaceText.LinkShort(_tree, n)}"
+                ? $"{n.Name}   ·  {PlaceText.LinkShort(_tree, n)}"
                 : $"{n.Name}   ·  {PlaceText.GateSubtitle(_tree, n, g).Replace("\n", " · ")}";
             var where = _place.IsWide ? $"Tier {g.Tier + 1}" : "On the gate ring";
-            items.Add((g.TargetId, text, PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}"));
+            items.Add((g.TargetId, text, PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}", FileIcons.Get(FileIcons.For(n))));
         }
 
         if (_place.HiddenCount > 0 && !_showHidden)
         {
-            items.Add((-1, $"({_place.HiddenCount:N0} hidden or system item{(_place.HiddenCount == 1 ? "" : "s")} not shown · H shows them)", new Color(0.6f, 0.66f, 0.78f), "Entries with the Windows hidden or system attribute. Names starting with a dot are always shown."));
+            items.Add((-1, $"({_place.HiddenCount:N0} hidden or system item{(_place.HiddenCount == 1 ? "" : "s")} not shown · H shows them)", new Color(0.6f, 0.66f, 0.78f), "Entries with the Windows hidden or system attribute. Names starting with a dot are always shown.", null));
         }
 
         var title = _place.Gates.Count == 0
@@ -655,12 +657,49 @@ public partial class Main
             _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
         }
 
+        UpdateGateSigns();
         PlaceBox(_selectionBox, _selection.Selected, 1f);
         PlaceBox(_hoverBox, _selection.Hovered != _selection.Selected ? _selection.Hovered : -1, 0.6f);
         var height = _rig.CameraPosition.Y;
         _hud.SetAscentChip(height > 40
             ? $"Above {_tree.DisplayName(_nav.Current)}: this is its neighbourhood only (places are separate spaces linked by gates). M: whole-filesystem map · Home: land"
             : null);
+    }
+
+    private readonly List<SignCandidate> _signCandidates = [];
+
+    /// <summary>
+    /// Names the gates in view (LABEL-01): every gate and the ▲ gate is a candidate each frame; the sign layer shortens,
+    /// stacks and drops them so several are readable at once. A gate whose eye-level plate is in clear view close by
+    /// is skipped (the plate names it). Hidden in transitions and while the aerial world names places instead.
+    /// </summary>
+    private void UpdateGateSigns()
+    {
+        if (_place == null || _tree == null || _transition != null || AerialSignsActive)
+        {
+            if (_transition != null || _place == null) _signs.Clear();
+            return;
+        }
+
+        _signCandidates.Clear();
+        foreach (var g in _place.ParentGate is { } pg ? _place.Gates.Append(pg) : _place.Gates)
+        {
+            var n = _tree[g.TargetId];
+            var focus = g.TargetId == GateChipTarget || g.TargetId == _selection.Selected || g.TargetId == _selection.Hovered;
+            var anchor = Gd(g.Position) + new GVector3(0, g.Height + 0.4f, 0);
+            if (g.IsParent)
+            {
+                _signCandidates.Add(new SignCandidate(g.TargetId, anchor, $"Up to {_tree.DisplayName(g.TargetId)}", "the way up", PlacePalette.Up, IconKind.Up, focus));
+                continue;
+            }
+
+            var color = PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.45f);
+            var detail = PlaceText.GateSubtitle(_tree, n, g).Replace("\n", " · ");
+            _signCandidates.Add(new SignCandidate(g.TargetId, anchor, n.Name, detail, color, FileIcons.For(n), focus));
+        }
+
+        _signs.Layout(_rig.Camera, _signCandidates, _hud.BlockingRects, (c, d) =>
+            !c.Focus && d < 16f && _placeWorld.GatePlates.TryGetValue(c.Id, out var plate) && plate.Visible);
     }
 
     /// <summary>Within this distance of a gate, walking towards it, the gate chip names it (PLACE-17).</summary>

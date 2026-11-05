@@ -32,6 +32,9 @@ public static class InputBindings
     // Walking world (WALK-06, VISI-04, LOC-01).
     public const string FlightToggle = "cmd_flight", HiddenToggle = "cmd_hidden", Locations = "cmd_locations", GoToPath = "cmd_go_to_path";
 
+    // On-demand panels (VIEW-01/03): the key (legend) and the Destinations drawer.
+    public const string Legend = "cmd_legend", Destinations = "cmd_destinations";
+
     public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
 
     /// <summary>Human-readable bindings for Help.</summary>
@@ -79,6 +82,8 @@ public static class InputBindings
         Physical(HiddenToggle, Key.H);
         AddEvent(GoToPath, new InputEventKey { Keycode = Key.L, CtrlPressed = true });
         Physical(Locations, Key.L);
+        Physical(Legend, Key.K);
+        Physical(Destinations, Key.J);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

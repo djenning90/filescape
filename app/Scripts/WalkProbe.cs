@@ -57,6 +57,24 @@ public partial class WalkProbe : ProbeBase
         App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(-new NVector2(ov.Top.X, ov.Top.Z))), Degrees.Of(-8)); // [direct] face the plaza
         await Frames(3);
         await Shot("overlook-view");
+        if (Place.Files.Count > 0)
+        {
+            // [direct] Close to a file tower, facing its badge side (ICON-01 readability at 7 m).
+            var f = Place.Files.OrderBy(x => MathF.Abs(x.Box.Center.Length() - 14f)).First();
+            var c = new NVector2(f.Box.Center.X, f.Box.Center.Z);
+            var toward = NVector2.Normalize(c);
+            var at = c - toward * 7f; // between the landmark (r ≈ 2.4 m) and the tower, on the plaza
+            App.ProbePlaceUser(new PlacePose(new NVector3(at.X, 1.75f, at.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(toward)), Degrees.Of(-4)));
+            await Frames(4);
+            await Shot("file-badges-7m");
+        }
+
+        // [direct] The arrival terrace and its stairs seen from the plaza (WALK-11: solid, lit steps).
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, Place.Arrival.Eye.Z - 9f), PlaceGeometry.YawFor(180f) + Degrees.Of(20), Degrees.Of(-12)));
+        await Frames(4);
+        await Shot("terrace-stairs");
+        App.ProbePlaceUser(Place.Arrival);
+        await Frames(3);
         App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(new NVector2(ov.Top.X, ov.Top.Z))), Degrees.Zero);
         await Key(Godot.Key.T);
         await Seconds(1.5);
@@ -92,11 +110,21 @@ public partial class WalkProbe : ProbeBase
         var ids = App.Hud.DestinationIds().ToList();
         var index = ids.IndexOf(id);
         if (index < 0) return false;
+        await SetDestinationsOpen(true); // Destinations is an on-demand drawer (VIEW-03): open it with its button
         App.Hud.EnsureDestinationVisible(index);
         await Frames(3);
         await Click(App.Hud.DestinationItemRect(index).GetCenter());
         await WaitGuide();
+        await SetDestinationsOpen(false);
         return true;
+    }
+
+    /// <summary>Opens or closes the Destinations drawer by clicking its real button (no keyboard focus is taken).</summary>
+    private async Task SetDestinationsOpen(bool open)
+    {
+        if (App.Hud.DestinationsOpen == open) return;
+        await Click(App.Hud.DestinationsButtonRect.GetCenter());
+        await Frames(3);
     }
 
     private async Task<bool> WalkThrough(Godot.Key key, double maxSeconds)

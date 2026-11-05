@@ -303,7 +303,7 @@ public partial class PlacesProbe : Node
         linkDone:;
         }
 
-        var unknownVsEmpty = Place.Gates.Where(g => g.State is ListingState.Empty or ListingState.Denied).Select(g => _main.PlaceWorld.GateSigns[g.TargetId].Text.Split('\n').Last()).Distinct().Count();
+        var unknownVsEmpty = Place.Gates.Where(g => g.State is ListingState.Empty or ListingState.Denied).Select(g => _main.PlaceWorld.GateSigns[g.TargetId].Split('\n').Last()).Distinct().Count();
         Check(unknownVsEmpty == 2, "empty and access-denied gates carry different signs");
 
         // ---------------------------------------------------- inspector and real metadata (PLACE-13)
@@ -418,7 +418,7 @@ public partial class PlacesProbe : Node
         var notScanned = Place.Gates.Count(g => g.State == ListingState.NotScanned);
         var empty = Place.Gates.Count(g => g.State == ListingState.Empty);
         Check(notScanned > 0, F($"after cancelling, {notScanned} gates read 'not scanned' ({empty} genuinely empty)"));
-        Check(Place.Gates.Where(g => g.State == ListingState.NotScanned).All(g => _main.PlaceWorld.GateSigns[g.TargetId].Text.Contains("not scanned", StringComparison.Ordinal)), "their signs say 'not scanned'");
+        Check(Place.Gates.Where(g => g.State == ListingState.NotScanned).All(g => _main.PlaceWorld.GateSigns[g.TargetId].Contains("not scanned", StringComparison.Ordinal)), "their signs say 'not scanned'");
         await Settle();
         await Shot("after-cancel");
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
@@ -504,7 +504,7 @@ public partial class PlacesProbe : Node
         var gates = Place.Gates.Select(g => g.TargetId).OrderBy(x => x).ToList();
         var listed = _main.Hud.DestinationIds().Where(id => id != folder.ParentId).OrderBy(x => x).ToList();
         Check(gates.SequenceEqual(expected) && listed.SequenceEqual(expected), F($"{label}: all {expected.Count} child folders have a gate and a Destinations entry"));
-        var signs = Place.Gates.Count(g => _main.PlaceWorld.GateSigns.TryGetValue(g.TargetId, out var s) && s.Text.StartsWith(Tree[g.TargetId].Name, StringComparison.Ordinal));
+        var signs = Place.Gates.Count(g => _main.PlaceWorld.GateSigns.TryGetValue(g.TargetId, out var s) && s.StartsWith(Tree[g.TargetId].Name, StringComparison.Ordinal));
         Check(signs == expected.Count, F($"{label}: every gate carries its folder's name ({signs}/{expected.Count})"));
         await Task.CompletedTask;
     }
@@ -566,7 +566,25 @@ public partial class PlacesProbe : Node
         return -1;
     }
 
-    private async Task ClickDestination(int id)
+    /// <summary>Opens or closes the Destinations drawer by clicking its real button (VIEW-03: it is on demand).</summary>
+    private async Task SetDestinationsOpen(bool open)
+    {
+        if (_main.Hud.DestinationsOpen == open) return;
+        var at = _main.Hud.DestinationsButtonRect.GetCenter();
+        Mouse(MouseButton.Left, true, at);
+        await Frames(2);
+        Mouse(MouseButton.Left, false, at);
+        await Frames(3);
+    }
+
+    private async Task ClickDestination(int id, bool close = true)
+    {
+        await SetDestinationsOpen(true);
+        await ClickDestinationRow(id);
+        if (close) await SetDestinationsOpen(false);
+    }
+
+    private async Task ClickDestinationRow(int id)
     {
         var index = _main.Hud.DestinationIds().ToList().IndexOf(id);
         if (index < 0)
@@ -587,13 +605,14 @@ public partial class PlacesProbe : Node
 
     private async Task DoubleClickDestination(int id)
     {
-        await ClickDestination(id);
+        await ClickDestination(id, close: false);
         var index = _main.Hud.DestinationIds().ToList().IndexOf(id);
         var at = _main.Hud.DestinationItemRect(index).GetCenter();
         Inject(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, DoubleClick = true, Position = at, GlobalPosition = at, ButtonMask = MouseButtonMask.Left });
         await Frames(2);
         Mouse(MouseButton.Left, false, at);
         await Frames(3);
+        await SetDestinationsOpen(false);
     }
 
     private async Task<bool> WalkUntilTransition(Godot.Key key, double maxSeconds)

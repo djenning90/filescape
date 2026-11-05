@@ -63,7 +63,8 @@ public partial class PlaceWorld : Node3D
     private readonly BoxMesh _box = new() { Size = Vector3.One };
     private readonly CylinderMesh _column = new() { TopRadius = 0.5f, BottomRadius = 0.5f, Height = 1, RadialSegments = 16, Rings = 1 };
     private readonly CylinderMesh _spire = new() { TopRadius = 0.08f, BottomRadius = 0.5f, Height = 1, RadialSegments = 12, Rings = 1 };
-    private readonly ShaderMaterial _tower, _gate, _portal, _beacon, _street, _landmark, _vistaSpire, _plaza;
+    private readonly ShaderMaterial _tower, _gate, _portal, _beacon, _street, _landmark, _vistaSpire, _plaza, _terrain, _badge;
+    private readonly QuadMesh _quad = new() { Size = Vector2.One };
     private readonly StandardMaterial3D _halo;
     private readonly Dictionary<string, List<MultiMeshInstance3D>> _pools = [];
     private readonly List<Label3D> _signs = [];
@@ -79,8 +80,11 @@ public partial class PlaceWorld : Node3D
     /// <summary>The landmark's name sign text (checked by automation: PLACE-02).</summary>
     public string LandmarkSign { get; private set; } = "";
 
-    /// <summary>Gate id → its sign, for checks and highlighting.</summary>
-    public Dictionary<int, Label3D> GateSigns { get; } = [];
+    /// <summary>
+    /// Gate id → the text a gate is named by (name and summary). Gates are named by the screen-space sign layer
+    /// (LABEL-01) and their eye-level plates; this keeps the text for checks and for the layer.
+    /// </summary>
+    public Dictionary<int, string> GateSigns { get; } = [];
 
     /// <summary>
     /// Gate id → its name plate: the name at eye level across the opening, facing into the place (PLACE-17). It is
@@ -106,6 +110,9 @@ public partial class PlaceWorld : Node3D
         Name = "PlaceWorld";
         _tower = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/tower.gdshader") };
         _gate = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/gate.gdshader") };
+        _terrain = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/terrain.gdshader") };
+        _badge = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/badge.gdshader") };
+        _badge.SetShaderParameter("atlas", FileIcons.Atlas);
         _portal = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/portal.gdshader") };
         _beacon = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/beacon.gdshader") };
         _street = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/street.gdshader") };
@@ -175,6 +182,8 @@ public partial class PlaceWorld : Node3D
         var portals = new InstanceBatch();
         var beacons = new InstanceBatch();
         var streets = new InstanceBatch();
+        var terrain = new InstanceBatch(); // solid, lit walkable surfaces (WALK-11); gates keep their glowing frames
+        var badges = new InstanceBatch();  // file-type icons on tower faces and category signs (ICON-01)
         var spires = new InstanceBatch();
         var signIndex = 0;
 
@@ -260,6 +269,7 @@ public partial class PlaceWorld : Node3D
         {
             var n = tree[f.Id];
             towers.AddBox(Gd(f.Box.Center), Gd(f.Box.Size), Palette.Category[f.Category], StyleBits.For(n));
+            AddTowerBadge(badges, f, Palette.Category[f.Category]);
         }
 
         foreach (var q in c.Quarters.Where(q => q.Count >= 5))
@@ -267,6 +277,10 @@ public partial class PlaceWorld : Node3D
             var col = Palette.Category[q.Category];
             Arc(streets, q.SignPosition.Length() + 0.6f, q.StartDeg + 1, q.EndDeg - 1, 0.35f, col);
             Sign($"{PlaceText.CategoryName(q.Category)} · {q.Count:N0}", Gd(q.SignPosition) + new Vector3(0, 0.5f, 0), 0.0075f, col.Lightened(0.35f), 60, 2);
+            // The category's icon above its sign, facing the landmark (where you look from).
+            var at = Gd(q.SignPosition) + new Vector3(0, 2.1f, 0);
+            var facing = new Vector3(-at.X, 0, -at.Z).Normalized();
+            AddBadge(badges, at, facing, 1.1f, FileIcons.For(q.Category), col.Lightened(0.2f), 30f, 70f);
         }
 
         // ---- gates (PLACE-04/05/06/11)
@@ -278,11 +292,9 @@ public partial class PlaceWorld : Node3D
             var id = PlaceIdentity.For(child.Name);
             var (col, gateStyle) = PlacePalette.ForGate(g, id);
             AddGate(gates, portals, g, col, gateStyle);
-            var signScale = singleRing ? Mathf.Clamp(g.Position.Length() / 30f, 1f, 1.8f) : 1f;
-            // Alternate sign heights so neighbouring names never print over each other.
-            var stagger = (c.Gates.Count > 6 && (gateIndex++ & 1) == 1) ? 1.7f : 0f;
-            var label = Sign(PlaceText.Fit(child.Name, 26) + "\n" + PlaceText.GateSubtitle(tree, child, g), Gd(g.Position) + new Vector3(0, g.Height + 0.5f + stagger + g.Tier * 0.25f, 0), 0.014f * signScale, col.Lightened(0.45f), singleRing ? 200 : 55, 1);
-            GateSigns[g.TargetId] = label;
+            // Named by the sign layer (screen space, LABEL-01): no overhead Label3D that would hide behind collisions.
+            GateSigns[g.TargetId] = child.Name + "\n" + PlaceText.GateSubtitle(tree, child, g);
+            gateIndex++;
             AddPlate(g, PlaceText.Fit(child.Name, 24), col.Lightened(0.55f));
             if (singleRing)
             {
@@ -311,7 +323,7 @@ public partial class PlaceWorld : Node3D
                 var len = along.Length() + 0.05f;
                 var dir = along.Normalized();
                 var side = dir.Cross(Vector3.Up).Normalized();
-                gates.Add(dir * len, Vector3.Up * t.Rise, side * 7f, (p0 + p1) / 2 + new Vector3(0, t.Rise / 2, 0), accent * 0.35f, new Color(len, t.Rise, 7f, 4));
+                terrain.Add(dir * len, Vector3.Up * t.Rise, side * 7f, (p0 + p1) / 2 + new Vector3(0, t.Rise / 2, 0), accent * 0.7f, new Color(len, t.Rise, 7f, 0));
             }
         }
 
@@ -335,19 +347,20 @@ public partial class PlaceWorld : Node3D
         {
             var tint = b.Kind switch
             {
-                TerrainKind.Platform => accent * 0.6f,
-                TerrainKind.Step => accent * 0.5f,
-                TerrainKind.JumpBlock => accent.Lightened(0.35f) * 0.75f,
+                TerrainKind.Platform => accent * 0.8f,
+                TerrainKind.Step => accent * 0.8f,
+                TerrainKind.JumpBlock => accent.Lightened(0.35f),
                 TerrainKind.Rail => accent * 0.9f,
                 _ => default,
             };
             if (tint == default) continue;
-            AddTerrainBox(gates, b, tint);
+            // Rails stay glowing frames (a barrier, not a surface); everything you stand on is solid.
+            AddTerrainBox(b.Kind == TerrainKind.Rail ? gates : terrain, b, tint);
         }
 
         foreach (var r in c.Terrain.Ramps)
         {
-            AddRamp(gates, r, accent * 0.55f);
+            AddRamp(terrain, r, accent * 0.8f);
         }
 
         // The overlook's panel: the place's summary, facing the plaza (JUMP-02).
@@ -369,7 +382,7 @@ public partial class PlaceWorld : Node3D
         if (c.ParentGate is { } pg)
         {
             AddGate(gates, portals, pg, PlacePalette.Up, 0);
-            Sign($"▲ Up to {tree.DisplayName(pg.TargetId)}", Gd(pg.Position) + new Vector3(0, pg.Height + 0.5f, 0), 0.013f, PlacePalette.Up, 1e9f, 0);
+            GateSigns[pg.TargetId] = $"Up to {tree.DisplayName(pg.TargetId)}";
             AddPlate(pg, "▲ " + PlaceText.Fit(tree.DisplayName(pg.TargetId), 22), PlacePalette.Up.Lightened(0.3f));
         }
 
@@ -399,8 +412,10 @@ public partial class PlaceWorld : Node3D
         Emit("portals", portals, _box, _portal, false);
         Emit("beacons", beacons, _column, _beacon, false);
         Emit("streets", streets, _box, _street, false);
+        Emit("terrain", terrain, _box, _terrain, true);
+        Emit("badges", badges, _quad, _badge, false);
         Emit("spires", spires, _spire, _vistaSpire, false);
-        InstanceCount = towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count;
+        InstanceCount = towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count + terrain.Count;
         for (var i = signIndex; i < _signs.Count; i++) _signs[i].Visible = false;
     }
 
@@ -452,6 +467,30 @@ public partial class PlaceWorld : Node3D
                 sign(text, plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
                 break;
         }
+    }
+
+    /// <summary>
+    /// A file's type badge (ICON-01): on the tower face that looks towards the landmark (the plaza, where you walk), at
+    /// about eye height, 0.9 m square; visible from 0 to 32 m and gone by 46 m, so distant towers stay uncluttered.
+    /// </summary>
+    private static void AddTowerBadge(InstanceBatch badges, PlacedFile f, Color color)
+    {
+        var b = f.Box;
+        var centre = new Vector3(b.Center.X, 0, b.Center.Z);
+        var inward = centre.LengthSquared() > 1e-4f ? -centre.Normalized() : Vector3.Back;
+        // Face the nearest box side towards the plaza (towers are axis-aligned boxes).
+        var face = Mathf.Abs(inward.X) > Mathf.Abs(inward.Z) ? new Vector3(Mathf.Sign(inward.X), 0, 0) : new Vector3(0, 0, Mathf.Sign(inward.Z));
+        var half = Mathf.Abs(face.X) > 0 ? b.Size.X / 2 : b.Size.Z / 2;
+        var height = Mathf.Clamp(b.Size.Y - 0.6f, 0.5f, 2.2f);
+        if (b.Size.Y < 1.0f) return; // thin tiles (empty files) have no face to carry a badge
+        var size = Mathf.Min(0.9f, Mathf.Min(b.Size.X, b.Size.Z) * 0.75f);
+        AddBadge(badges, new Vector3(b.Center.X, b.Min.Y + height, b.Center.Z) + face * (half + 0.03f), face, size, FileIcons.For(f.Category), color.Lightened(0.25f), 32f, 46f);
+    }
+
+    private static void AddBadge(InstanceBatch badges, Vector3 at, Vector3 facing, float size, IconKind icon, Color color, float fadeStart, float fadeEnd)
+    {
+        var right = Vector3.Up.Cross(facing).Normalized();
+        badges.Add(right * size, Vector3.Up * size, facing, at, color, new Color((int)icon, FileIcons.Count, fadeStart, fadeEnd));
     }
 
     /// <summary>A terrain box (oriented like gates: width along the tangent, depth along the outward direction).</summary>

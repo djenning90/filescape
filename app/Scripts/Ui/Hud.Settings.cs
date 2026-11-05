@@ -35,7 +35,7 @@ public partial class Hud
     {
         _settingsButton = MakeButton("⚙ Settings", () => SettingsToggled?.Invoke(), "Mouse-look direction and walking speed (F4). Saved for next time.");
         topRow.AddChild(_settingsButton);
-        topRow.MoveChild(_settingsButton, _quality.GetIndex() + 1);
+        topRow.MoveChild(_settingsButton, _keyButton.GetIndex() + 1);
 
         _settingsPanel = new PanelContainer { Visible = false, CustomMinimumSize = new Vector2(560, 0) };
         _settingsPanel.SetAnchorsPreset(Control.LayoutPreset.Center);
@@ -103,6 +103,16 @@ public partial class Hud
 
         (_walkSlider, _walkValue) = SpeedRow("Walk (W)", "Walking speed. Default 8 m/s (before 2026-11-05 evening: 4.2 m/s).");
         (_runSlider, _runValue) = SpeedRow("Run (hold Shift)", "Running speed, never below walking. Default 16 m/s (before: 8.4 m/s).");
+
+        Section("Display");
+        var qrow = new HBoxContainer();
+        qrow.AddThemeConstantOverride("separation", 10);
+        qrow.AddChild(_quality);
+        var qnote = new Label { Text = "F2 toggles it anywhere. Low turns off volumetric fog, reflections and ambient occlusion.", AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        qnote.AddThemeFontSizeOverride("font_size", 12);
+        qnote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        qrow.AddChild(qnote);
+        v.AddChild(qrow);
 
         _settingsNote = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _settingsNote.AddThemeFontSizeOverride("font_size", 12);

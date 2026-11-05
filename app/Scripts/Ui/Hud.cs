@@ -25,6 +25,9 @@ public partial class Hud : CanvasLayer
     public event Action? HelpToggled;
     public event Action? FlightToggled;
 
+    /// <summary>The × on the inspector: the user is done with the selection (Places hides the card).</summary>
+    public event Action? InspectorClosed;
+
     private Control _root = null!;
     private Label _sourceBadge = null!;
     private PanelContainer _sourcePanel = null!;
@@ -64,6 +67,28 @@ public partial class Hud : CanvasLayer
     }
 
     private PanelContainer _topBar = null!;
+    private Button _keyButton = null!;
+
+    /// <summary>The key (legend) is an on-demand panel in Places (DJ: it hid a quarter of the view); the maps show it by default.</summary>
+    private bool _legendInPlaces, _legendInMaps = true;
+
+    private bool _placesMode = true;
+    private bool _scanning;
+    public bool LegendVisible => _legendPanel.Visible;
+    public Rect2 KeyButtonRect => _keyButton.GetGlobalRect();
+
+    /// <summary>Shows or hides the key for the current experience (K, the Key button). Remembered per experience for this session.</summary>
+    public void ToggleLegend()
+    {
+        if (_placesMode) _legendInPlaces = !_legendInPlaces; else _legendInMaps = !_legendInMaps;
+        ApplyLegendVisibility();
+    }
+
+    private void ApplyLegendVisibility()
+    {
+        _legendPanel.Visible = _placesMode ? _legendInPlaces : _legendInMaps;
+        _keyButton.SetPressedNoSignal(_legendPanel.Visible);
+    }
     private PanelContainer _legendPanel = null!;
     private PanelContainer _statusPanel = null!;
 
@@ -188,8 +213,11 @@ public partial class Hud : CanvasLayer
         _flightButton = MakeButton("✈ Flight (T)", () => FlightToggled?.Invoke(), "Equip flight: rise out of the place and fly freely (T). Press again to land safely on foot.");
         _flightButton.ToggleMode = true;
         row.AddChild(_flightButton);
+        // Quality lives in Settings (F2 still toggles it): the top bar must fit at 125 % UI scale with the Key button.
         _quality = MakeButton("Quality: High", () => QualityToggled?.Invoke(), "Toggle effects (F2). Low disables volumetric fog, SSR and SSAO.");
-        row.AddChild(_quality);
+        _keyButton = MakeButton("Key (K)", () => ToggleLegend(), "What colours, heights and gate looks mean. Hidden by default in Places so the world stays in view.");
+        _keyButton.ToggleMode = true;
+        row.AddChild(_keyButton);
         BuildSettings(row);
         var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
         help.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f));
@@ -230,12 +258,29 @@ public partial class Hud : CanvasLayer
         _inspector.AddChild(v);
 
         var head = new HBoxContainer();
+        _inspectorIcon = new TextureRect { CustomMinimumSize = new Vector2(26, 26), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter, Visible = false };
+        head.AddChild(_inspectorIcon);
         _inspectorSwatch = new ColorRect { CustomMinimumSize = new Vector2(14, 14), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         head.AddChild(_inspectorSwatch);
         _inspectorTitle = new Label { Text = "Nothing selected", AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _inspectorTitle.AddThemeFontSizeOverride("font_size", 19);
         head.AddChild(_inspectorTitle);
+        _inspectorClose = MakeButton("×", () => InspectorClosed?.Invoke(), "Close (Esc). Nothing moves; click something to inspect it again.");
+        _inspectorClose.Flat = true;
+        _inspectorClose.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
+        head.AddChild(_inspectorClose);
         v.AddChild(head);
+
+        // Places: a compact card (a one-line brief and the actions); the full details open on demand (DJ: panels on demand).
+        _inspectorBrief = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, Visible = false };
+        _inspectorBrief.AddThemeFontSizeOverride("font_size", 14);
+        _inspectorBrief.AddThemeColorOverride("font_color", new Color(0.78f, 0.85f, 0.97f));
+        v.AddChild(_inspectorBrief);
+        _inspectorDetails = MakeButton("Details ▸", () => { _inspectorExpanded = !_inspectorExpanded; ApplyInspectorMode(); }, "Show or hide the full details: sizes, dates, flags, link target, why a folder could not be listed.");
+        _inspectorDetails.Flat = true;
+        _inspectorDetails.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+        _inspectorDetails.Visible = false;
+        v.AddChild(_inspectorDetails);
 
         _inspectorBody = new RichTextLabel
         {
@@ -266,6 +311,50 @@ public partial class Hud : CanvasLayer
 
         v.AddChild(buttons);
         SetSelectionActions(false, false, false);
+    }
+
+    private TextureRect _inspectorIcon = null!;
+    private Label _inspectorBrief = null!;
+    private Button _inspectorDetails = null!, _inspectorClose = null!;
+    private bool _inspectorCompact, _inspectorExpanded, _inspectorWanted = true;
+
+    public bool InspectorVisible => _inspector.Visible;
+    public Rect2 InspectorRect => _inspector.GetGlobalRect();
+    public Rect2 InspectorDetailsRect => _inspectorDetails.GetGlobalRect();
+    public bool InspectorExpanded => _inspectorExpanded;
+    public string InspectorTitle => _inspectorTitle.Text;
+    public string InspectorBrief => _inspectorBrief.Text;
+
+    /// <summary>
+    /// Places: the inspector is a card shown only while something is selected, sized to its content, with the full
+    /// details behind "Details ▸" (VIEW-02). The maps keep the full-height panel.
+    /// </summary>
+    public void SetInspectorCard(bool compact, bool visible, string brief, Texture2D? icon)
+    {
+        _inspectorCompact = compact;
+        _inspectorWanted = visible;
+        _inspectorBrief.Text = brief;
+        _inspectorIcon.Texture = icon;
+        _inspectorIcon.Visible = icon != null;
+        _inspectorSwatch.Visible = icon == null;
+        ApplyInspectorMode();
+    }
+
+    private void ApplyInspectorMode()
+    {
+        _inspector.Visible = _inspectorWanted;
+        _inspectorClose.Visible = _inspectorCompact;
+        _inspectorBrief.Visible = _inspectorCompact && _inspectorBrief.Text.Length > 0;
+        _inspectorDetails.Visible = _inspectorCompact;
+        _inspectorDetails.Text = _inspectorExpanded ? "Details ▾" : "Details ▸";
+        _inspectorBody.Visible = !_inspectorCompact || _inspectorExpanded;
+        _inspectorBody.FitContent = _inspectorCompact;
+        _inspectorBody.SizeFlagsVertical = _inspectorCompact ? Control.SizeFlags.Fill : Control.SizeFlags.ExpandFill;
+        _inspector.SetAnchorsPreset(_inspectorCompact ? Control.LayoutPreset.TopRight : Control.LayoutPreset.RightWide, keepOffsets: false);
+        _inspector.GrowHorizontal = Control.GrowDirection.Begin;
+        _inspector.OffsetLeft = -380; _inspector.OffsetRight = -10; _inspector.OffsetTop = 70;
+        if (!_inspectorCompact) _inspector.OffsetBottom = -10;
+        else _inspector.Size = _inspector.Size with { Y = 0 }; // shrink to content (recomputed in _Process)
     }
 
     private void BuildLegend()
@@ -374,13 +463,30 @@ public partial class Hud : CanvasLayer
         // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it, and
         // Destinations stops above the legend; the hint sits between the legend and the inspector (VISI-01). All in
         // viewport units, so it holds at any UI scale (checked at 1.0 and 1.25).
+        // Places: the status strip shows only while something is being scanned; its text is the place bar's tooltip.
+        _statusPanel.Visible = !_placesMode || _scanning;
+        _placePanel.OffsetTop = _statusPanel.Visible ? 112 : 70;
+        if (_inspector.Visible && _inspectorCompact)
+        {
+            // The card is as tall as its content, never taller than the window allows (it scrolls then).
+            var vpH = GetViewport().GetVisibleRect().Size.Y;
+            var body = _inspectorBody.Visible ? _inspectorBody.GetContentHeight() : 0;
+            _inspectorBody.CustomMinimumSize = new Vector2(0, Mathf.Min(body, vpH * 0.55f));
+            _inspectorBody.ScrollActive = body > vpH * 0.55f;
+            _inspector.Size = _inspector.Size with { Y = 0 };
+        }
+
         if (_placePanel.Visible)
         {
             _crumbScroll.ScrollHorizontal = 1 << 30; // clamped to the end: the current folder stays visible
             var bottom = _placePanel.Position.Y + _placePanel.Size.Y;
             _destPanel.OffsetTop = bottom + 8;
-            var legendTop = _legendPanel.Visible ? _legendPanel.Position.Y : GetViewport().GetVisibleRect().Size.Y;
-            _destPanel.OffsetBottom = Mathf.Max(_destPanel.OffsetTop + 120, Mathf.Min(_destPanel.OffsetTop + 280, legendTop - 8));
+            var legendTop = _legendPanel.Visible ? _legendPanel.Position.Y : GetViewport().GetVisibleRect().Size.Y - 10;
+            // The drawer is on demand, so when open it may use most of the column (wide folders have hundreds of entries).
+            _destPanel.OffsetBottom = Mathf.Max(_destPanel.OffsetTop + 160, Mathf.Min(_destPanel.OffsetTop + 520, legendTop - 8));
+            // The place bar is only as wide as it needs, up to the inspector's column.
+            var vpW = GetViewport().GetVisibleRect().Size.X;
+            _placePanel.OffsetRight = -Mathf.Max(390, vpW - 10 - 1000);
             _flyPanel.OffsetTop = bottom + 8;
             _ascentPanel.OffsetTop = bottom + 52;
             _notePanel.OffsetTop = bottom + 96;
@@ -419,6 +525,8 @@ public partial class Hud : CanvasLayer
         _progress.Visible = scanning;
         _cancel.Disabled = !scanning;
         _cancel.Visible = scanning;
+        _scanning = scanning;
+        _placePanel.TooltipText = text;
     }
 
     /// <summary>Shows which experience is active and adapts the toolbar wording (AD-15).</summary>
@@ -430,7 +538,10 @@ public partial class Hud : CanvasLayer
         _overviewButton.Text = places ? "Ascend (B)" : "Overview (B)";
         _overviewButton.TooltipText = places ? "Rise above this place to see its neighbourhood. The whole filesystem is on the maps (M)." : "Bird's-eye view of the whole tree (B).";
         _placePanel.Visible = places;
-        _destPanel.Visible = places;
+        _placesMode = places;
+        _destPanel.Visible = places && _destOpen;
+        ApplyLegendVisibility();
+        if (!places) SetInspectorCard(false, true, "", null);
         if (!places) SetAscentChip(null);
         _hintLabel.Text = places ? PlacesHintText : HintText;
     }
