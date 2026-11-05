@@ -111,16 +111,19 @@ public partial class WalkProbe : ProbeBase
     }
 
     /// <summary>Horizontal speed after the start-up ramp, from two timed samples (independent of key-event latency).</summary>
-    private async Task<float> SteadySpeed(Degrees yaw, Degrees pitch, params Godot.Key[] keys)
+    private async Task<float> SteadySpeed(Degrees yaw, Degrees pitch, params Godot.Key[] keys) => await SteadySpeed(yaw, pitch, 1.0, keys);
+
+    private async Task<float> SteadySpeed(Degrees yaw, Degrees pitch, double window, params Godot.Key[] keys)
     {
-        // [direct] the same clear start in the south corridor each time: ~10 m of free plaza ahead (north).
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 12f), yaw, pitch));
+        // [direct] the same clear start just north of the landmark each time: ≈ 20 m of free plaza ahead (north, the
+        // gap between the gates). At 8 m/s the old start in the south corridor ran into the landmark.
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, -3f), yaw, pitch));
         await Frames(3);
         foreach (var k in keys) Key1(k, true);
         await Seconds(0.45);
         var p0 = FeetXz;
         var t0 = Time.GetTicksUsec();
-        await Seconds(1.0); // a longer window keeps one frame of sampling jitter below 2 %
+        await Seconds(window); // a longer window keeps one frame of sampling jitter below 2 %
         var p1 = FeetXz;
         var t1 = Time.GetTicksUsec();
         foreach (var k in keys) Key1(k, false);
@@ -183,12 +186,9 @@ public partial class WalkProbe : ProbeBase
         await Shot("arrival-on-foot");
         await LabelsClear("arrival");
 
-        // ---- 2. Look and steer with the right mouse (WALK-03)
+        // ---- 2. Look and steer with the mouse (WALK-03), in the direction the user chose (CTRL-01/02)
+        await MouseDirection();
         var yaw0 = W.Yaw.Value;
-        await Look(new Vector2(-300, 120));
-        Check(MathF.Abs(W.Yaw.Value - yaw0 - 36f) < 2f, F($"right-drag right/left turns the heading ({W.Yaw.Value - yaw0:0.0}°)"));
-        Check(W.LookPitch.Value < -15f, F($"right-drag down lowers the gaze ({W.LookPitch.Value:0.0}°)"));
-        Check(!App.PlaceLookCaptured && Input.MouseMode == Input.MouseModeEnum.Visible, "releasing the right button releases the cursor");
         App.ProbeSetGaze(Degrees.Zero, Degrees.Of(-6)); // [direct] face north again
 
         // ---- 3. Walk down the stairs (WALK-05)
@@ -201,11 +201,14 @@ public partial class WalkProbe : ProbeBase
 
         // ---- 4. Looking sharply down does not push into the ground (WALK-02)
         App.ProbeSetGaze(W.Yaw, Degrees.Zero); // [direct]
-        await Look(new Vector2(0, 700));
+        await Look(new Vector2(0, App.Preferences.ReverseLookVertical ? -700 : 700)); // down, in the chosen direction
         Check(W.LookPitch.Value < -70f, F($"looking sharply down ({W.LookPitch.Value:0} deg)"));
         var downSpeed = await SteadySpeed(Degrees.Zero, W.LookPitch, Godot.Key.W);
         var levelSpeed = await SteadySpeed(Degrees.Zero, Degrees.Zero, Godot.Key.W);
         Check(MathF.Abs(downSpeed / levelSpeed - 1) < 0.03f && W.Support.Value < 0.01f, F($"walking while looking down is as fast and stays on the ground ({downSpeed:0.00} m/s vs {levelSpeed:0.00} m/s level)"));
+        var runSpeed = await SteadySpeed(Degrees.Zero, Degrees.Zero, 0.6, Godot.Key.W, Godot.Key.Shift);
+        Check(MathF.Abs(levelSpeed - W.Params.WalkSpeed.Value) < 0.35f && MathF.Abs(runSpeed - W.Params.RunSpeed.Value) < 0.7f,
+            F($"W walks at {levelSpeed:0.0} m/s and Shift+W runs at {runSpeed:0.0} m/s (settings: {W.Params.WalkSpeed.Value:0.0} / {W.Params.RunSpeed.Value:0.0})"));
         await Shot("looking-down-while-walking");
 
         // ---- 5. Turning with the arrows while walking curves (WALK-03), diagonal not faster (WALK-04)
@@ -276,12 +279,15 @@ public partial class WalkProbe : ProbeBase
         // ---- 8. Enter a child and come back (PLACE-06/07)
         var photos = Find(root, "Photos");
         Check(await ClickDestination(photos) && App.Locomotion == Locomotion.Walking && W.Grounded, "clicking Photos in Destinations walks you up to its gate");
-        Check(await WalkThrough(Godot.Key.W, 6) && App.Navigator.Current == photos, "walking through the Photos gate enters Photos");
+        await ApproachAndEnter(photos, "Photos");
         Check(MathF.Abs(EyeAboveSupport - 1.75f) < 0.03f, "arrival in the child is on foot");
         await Shot("child-entered");
         await Key(Godot.Key.U);
         await WaitPlace();
-        Check(App.Navigator.Current == root && App.Selection.Selected == photos, "U returns in front of the Photos gate with Photos selected");
+        Check(App.Navigator.Current == root && App.Selection.Selected == photos, "U returns beside the Photos gate with Photos selected");
+
+        // ---- 8b. Continuous upward travel (PLACE-16): Pier → Harbour → Coast → Journeys → Wayfarer with W held
+        await UpwardChain(root);
 
         // ---- 9. Follow a junction outside the root, and return (LINK-02..04)
         var shared = Find(root, "to-shared-library");
@@ -295,6 +301,15 @@ public partial class WalkProbe : ProbeBase
         Check(!App.Hud.BreadcrumbNames.Contains("Wayfarer") && App.Hud.BreadcrumbNames.LastOrDefault() == "Shared Library", $"the breadcrumb is the physical location ({string.Join(" › ", App.Hud.BreadcrumbNames)})");
         await Shot("arrived-through-a-link");
         await LabelsClear("the link's destination with the link selected");
+        // Up from a link's destination is its physical parent (not history), arriving facing that place's ▲ gate.
+        var libraryId = here;
+        await Key(Godot.Key.U);
+        await WaitPlace();
+        Check(App.Navigator.Current == Tree[libraryId].ParentId && App.LastUpwardRoute is { Verified: true } && App.Selection.Selected == libraryId,
+            F($"U from the link's destination goes to its physical parent ({Tree.DisplayName(App.Navigator.Current)}), facing its ▲ gate (verified route, {App.LastUpwardRoute?.StandOff:0.0} m from the Shared Library gate)"));
+        await Key(Godot.Key.Backspace);
+        await WaitPlace();
+        Check(App.Navigator.Current == libraryId, "Backspace is history: back to the Shared Library");
         await Key(Godot.Key.Backspace);
         await WaitPlace();
         Check(App.Navigator.Current == root && App.Selection.Selected == shared, "Backspace returns through the link, in front of its gate, with the link selected");
@@ -509,6 +524,219 @@ public partial class WalkProbe : ProbeBase
 
         // ---- 19. Performance while walking (no scan running)
         await PerfWalk("wayfarer-walk");
+    }
+
+    /// <summary>
+    /// CTRL-01/02: mouse-look direction with real injected input. The default reverses both axes relative to the
+    /// previous Places behaviour; the Settings checkboxes (clicked, not set directly) switch each axis independently,
+    /// for the right-mouse look and the left-drag look alike; the arrow keys keep turning the way they point.
+    /// </summary>
+    private async Task MouseDirection()
+    {
+        Log(F($"preferences at start: {App.Preferences.Describe()}; file: {App.PreferencesPath ?? "none (probe run: never read or saved)"}; UI scale {App.GetWindow().ContentScaleFactor:0.00}"));
+        Check(App.PreferencesPath == null, "a probe run neither reads nor saves the user's preferences");
+        Check(App.Preferences.ReverseLookHorizontal && App.Preferences.ReverseLookVertical, "default: both look axes reversed (DJ's request)");
+        var k = CameraRig.LookDegreesPerPixel;
+
+        async Task<(float Yaw, float Pitch)> Delta(Func<Task> act)
+        {
+            App.ProbeSetGaze(Degrees.Zero, Degrees.Zero); // [direct] a level start
+            await Frames(2);
+            var y = W.Yaw.Value;
+            var p = W.LookPitch.Value;
+            await act();
+            return (W.Yaw.Value - y, W.LookPitch.Value - p);
+        }
+
+        var right = await Delta(() => Look(new Vector2(300, 0)));
+        var down = await Delta(() => Look(new Vector2(0, 120)));
+        Check(MathF.Abs(right.Yaw - 300 * k) < 1f && MathF.Abs(right.Pitch) < 0.01f, F($"reversed (default), right mouse held: moving right turns left (yaw {right.Yaw:+0.0;-0.0}°, positive = left)"));
+        Check(MathF.Abs(down.Pitch - 120 * k) < 1f && MathF.Abs(down.Yaw) < 0.01f, F($"reversed (default): moving down looks up (pitch {down.Pitch:+0.0;-0.0}°)"));
+        Check(!App.PlaceLookCaptured && Input.MouseMode == Input.MouseModeEnum.Visible, "releasing the right button releases the cursor");
+        var drag = await Delta(() => DragLeft(new Vector2(200, 100)));
+        Check(drag.Yaw > 0 && drag.Pitch > 0, F($"reversed (default), left-drag: right turns left, down looks up (yaw {drag.Yaw:+0.0;-0.0}°, pitch {drag.Pitch:+0.0;-0.0}°)"));
+
+        // Settings: F4, then click each checkbox (real clicks on the panel).
+        await Key(Godot.Key.F4);
+        await Frames(3);
+        Check(App.Hud.SettingsVisible, "F4 opens Settings");
+        await Shot("settings-panel");
+        await Click(App.Hud.ReverseHorizontalRect.GetCenter());
+        await Frames(2);
+        Check(!App.Preferences.ReverseLookHorizontal && App.Preferences.ReverseLookVertical, "clicking “Reverse left / right” turns only that off");
+        await Key(Godot.Key.Escape);
+        await Frames(2);
+        Check(!App.Hud.SettingsVisible, "Esc closes Settings");
+        right = await Delta(() => Look(new Vector2(300, 0)));
+        down = await Delta(() => Look(new Vector2(0, 120)));
+        Check(right.Yaw < -300 * k + 1f && down.Pitch > 0, F($"horizontal usual, vertical still reversed: right turns right ({right.Yaw:+0.0;-0.0}°), down looks up ({down.Pitch:+0.0;-0.0}°)"));
+        await Key(Godot.Key.F4);
+        await Frames(3);
+        await Click(App.Hud.ReverseVerticalRect.GetCenter());
+        await Frames(2);
+        await Key(Godot.Key.Escape);
+        await Frames(2);
+        down = await Delta(() => Look(new Vector2(0, 120)));
+        drag = await Delta(() => DragLeft(new Vector2(200, 100)));
+        Check(!App.Preferences.ReverseLookVertical && down.Pitch < -120 * k + 1f && drag.Yaw < 0 && drag.Pitch < 0, F($"both usual: down looks down ({down.Pitch:+0.0;-0.0}°); left-drag follows too (yaw {drag.Yaw:+0.0;-0.0}°, pitch {drag.Pitch:+0.0;-0.0}°)"));
+
+        // The arrow keys are not affected (they turn the way they point), whatever the mouse setting.
+        var arrow = await Delta(() => Hold(0.5, Godot.Key.Right));
+        Check(arrow.Yaw < -30f, F($"→ turns right with the mouse usual ({arrow.Yaw:+0;-0}°)"));
+
+        // Back to the defaults by clicking both again.
+        await Key(Godot.Key.F4);
+        await Frames(3);
+        await Click(App.Hud.ReverseHorizontalRect.GetCenter());
+        await Frames(2);
+        await Click(App.Hud.ReverseVerticalRect.GetCenter());
+        await Frames(2);
+        await Key(Godot.Key.Escape);
+        await Frames(2);
+        arrow = await Delta(() => Hold(0.5, Godot.Key.Right));
+        Check(App.Preferences.ReverseLookHorizontal && App.Preferences.ReverseLookVertical && App.Hud.ReverseHorizontalChecked && arrow.Yaw < -30f, F($"both reversed again; → still turns right ({arrow.Yaw:+0;-0}°)"));
+        Check(App.PreferencesPath == null, "…and nothing was written");
+    }
+
+    /// <summary>A left-button drag in the scene by <paramref name="total"/> physical pixels (positions included, so it counts as a drag).</summary>
+    private async Task DragLeft(Vector2 total, int steps = 20)
+    {
+        var centre = App.GetViewport().GetVisibleRect().Size / 2;
+        var at = ToWindow(centre);
+        Mouse(MouseButton.Left, true, at);
+        await Frames(2);
+        for (var i = 0; i < steps; i++)
+        {
+            var d = total / steps;
+            at += d;
+            Inject(new InputEventMouseMotion { Relative = d, ScreenRelative = d, Position = at, GlobalPosition = at, ButtonMask = MouseButtonMask.Left });
+            await Frames(1);
+        }
+
+        Mouse(MouseButton.Left, false, at);
+        await Frames(3);
+    }
+
+    /// <summary>
+    /// PLACE-17: from the approach pose (≈ 9 m in front of a gate) walking through it, the gate is named on screen every
+    /// frame — by its eye-level plate or the gate chip — and the plate is not under the HUD.
+    /// </summary>
+    private async Task ApproachAndEnter(int gateId, string name)
+    {
+        await Seconds(0.35); // signs and the chip refresh every 0.2 s
+        var plate = App.PlaceWorld.GatePlates[gateId];
+        var rect = Places.PlaceWorld.VisibleRectOf(plate, App.Rig.Camera);
+        var vp = App.GetViewport().GetVisibleRect();
+        var hud = App.Hud.BlockingRects.ToList();
+        var gate = Place.GateFor(gateId)!;
+        var dist0 = new NVector2(gate.Position.X - App.Rig.CameraPosition.X, gate.Position.Z - App.Rig.CameraPosition.Z).Length();
+        Check(rect is { } r && vp.Encloses(r) && !hud.Any(h => h.Intersects(r)), F($"at {dist0:0.0} m the {name} gate's name plate is in view at eye level, clear of the HUD ({rect})"));
+        Check(App.Hud.GateChipText.StartsWith($"Ahead: {name}", StringComparison.Ordinal), $"the gate chip names it: {App.Hud.GateChipText}");
+        await Shot($"approaching-portal-{name}");
+        var before = App.CompletedTransitions;
+        var samples = 0;
+        var named = 0;
+        var byPlate = 0;
+        var closeShot = false;
+        var start = Time.GetTicksMsec();
+        Key1(Godot.Key.W, true);
+        while (!App.InTransition && (Time.GetTicksMsec() - start) < 6000)
+        {
+            await Frames(1);
+            if (App.InTransition) break;
+            samples++;
+            var plateOk = Places.PlaceWorld.VisibleRectOf(plate, App.Rig.Camera) is { } pr && vp.Encloses(pr);
+            var chipOk = App.Hud.GateChipText.Contains(name, StringComparison.Ordinal);
+            if (plateOk) byPlate++;
+            if (plateOk || chipOk) named++;
+            var d = new NVector2(gate.Position.X - App.Rig.CameraPosition.X, gate.Position.Z - App.Rig.CameraPosition.Z).Length();
+            if (!closeShot && d < 3.5f)
+            {
+                closeShot = true;
+                Key1(Godot.Key.W, false); // pause for the close-up, then walk on
+                await Frames(8);
+                await Shot($"portal-close-{name}");
+                Log(F($"at {d:0.0} m: plate {(plateOk ? "in view" : "out of view")}, chip “{App.Hud.GateChipText}”"));
+                Key1(Godot.Key.W, true);
+            }
+        }
+
+        Key1(Godot.Key.W, false);
+        await WaitPlace();
+        Check(App.CompletedTransitions > before && App.Navigator.Current == gateId, $"walking through the {name} gate enters {name}");
+        Check(samples > 10 && named == samples, F($"walking from {dist0:0} m through the gate, {name} was named on screen in {named}/{samples} frames (plate in view in {byPlate})"));
+    }
+
+    /// <summary>
+    /// PLACE-16: down to Pier by G, then U, then only W held: each Up arrives facing the next ▲ gate, so walking on goes
+    /// up again without turning. W is released as soon as the arrival root is reached (never above it: nothing beyond
+    /// the fixture is listed). Back (history) then returns to Journeys.
+    /// </summary>
+    private async Task UpwardChain(int root)
+    {
+        var journeys = Find(root, "Journeys");
+        var coast = Find(journeys, "Coast");
+        var harbour = Find(coast, "Harbour");
+        Check(journeys >= 0 && coast >= 0 && harbour >= 0, "the fixture has the Journeys › Coast › Harbour › Pier chain");
+        foreach (var name in new[] { "Journeys", "Coast", "Harbour", "Pier" })
+        {
+            var id = Find(App.Navigator.Current, name);
+            App.Selection.Select(id); // [direct] select; G is the control
+            await Key(Godot.Key.G);
+            await WaitPlace();
+            if (name == "Journeys")
+            {
+                // ORD-01: natural order, the same in the gate ring (west → east) and in Destinations.
+                var ring = string.Join(", ", Place.Gates.OrderBy(g => g.AngleDeg).Select(g => Tree[g.TargetId].Name));
+                var listed = string.Join(", ", App.Hud.DestinationIds().Where(d => d >= 0 && d != Place.ParentGate?.TargetId).Select(d => Tree[d].Name));
+                Check(ring == "Coast, Leg 1, Leg 2, Leg 10" && listed == ring, $"natural order west → east and in Destinations: ring “{ring}”, list “{listed}”");
+                await Shot("natural-order-journeys");
+            }
+        }
+
+        var pier = App.Navigator.Current;
+        Check(Tree.DisplayName(pier) == "Pier", $"arrived in Pier ({Tree.FullPath(pier)})");
+        await Key(Godot.Key.U);
+        await WaitPlace();
+        var route = App.LastUpwardRoute;
+        Check(App.Navigator.Current == harbour && route is { Verified: true }, F($"U arrives in Harbour facing its ▲ gate ({route?.StandOff:0.0} m from the Pier gate, a verified straight route)"));
+        await Shot("upward-arrival-harbour");
+        var arrivals = new List<(string Name, double Seconds)>();
+        var relocations = App.Relocations;
+        Key1(Godot.Key.W, true);
+        var segmentStart = Time.GetTicksMsec();
+        var t0 = segmentStart;
+        var last = App.Navigator.Current;
+        while (App.Navigator.Current != root && (Time.GetTicksMsec() - t0) < 40_000)
+        {
+            await Frames(1);
+            if (App.Navigator.Current != last)
+            {
+                // A transition began: the time from arrival to the next crossing, with W held throughout.
+                arrivals.Add((Tree.DisplayName(App.Navigator.Current), (Time.GetTicksMsec() - segmentStart) / 1000.0));
+                last = App.Navigator.Current;
+                if (last == root) break;
+                await Until(() => !App.InTransition, 3);
+                segmentStart = Time.GetTicksMsec();
+                if (App.LastUpwardRoute is not { Verified: true }) Log($"arrival in {Tree.DisplayName(last)}: route not verified");
+                await Frames(2);
+                await Shot($"upward-arrival-{Tree.DisplayName(last).ToLowerInvariant()}");
+            }
+        }
+
+        Key1(Godot.Key.W, false); // released at once on reaching the arrival root: never above it
+        var total = (Time.GetTicksMsec() - t0) / 1000.0;
+        await WaitPlace();
+        Log("upward chain with W held: " + string.Join(", ", arrivals.Select(a => F($"→ {a.Name} after {a.Seconds:0.0} s"))) + F($"; total {total:0.0} s"));
+        Check(App.Navigator.Current == root && arrivals.Count == 3 && arrivals.Select(a => a.Name).SequenceEqual(new[] { "Coast", "Journeys", Tree.DisplayName(root) }),
+            F($"holding only W from Harbour went up Coast → Journeys → {Tree.DisplayName(root)} ({arrivals.Count} Ups in {total:0.0} s)"));
+        Check(App.Relocations == relocations, "only W was held (no turning, no mouse) and no relocation was needed");
+        await Shot("upward-chain-end");
+        await Key(Godot.Key.Backspace);
+        await WaitPlace();
+        Check(App.Navigator.Current == journeys, "Backspace (history) returns to Journeys, where the last Up started");
+        await KeyCombo(Godot.Key.Home, ctrl: true);
+        await WaitPlace();
     }
 
     /// <summary>Holds keys for a number of frames (the movie writer runs at a fixed frame rate, so time is frames).</summary>

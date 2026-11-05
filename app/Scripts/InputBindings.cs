@@ -23,7 +23,7 @@ public static class InputBindings
     public const string Open = "cmd_open", HistoryBack = "cmd_history_back", Parent = "cmd_parent_or_release";
     public const string Home = "cmd_home", Overview = "cmd_overview", SwitchVis = "cmd_switch_visualization";
     public const string Frame = "cmd_frame_selection", Help = "cmd_help", Quality = "cmd_quality", Stats = "cmd_stats";
-    public const string OpenFolder = "cmd_open_folder";
+    public const string OpenFolder = "cmd_open_folder", Settings = "cmd_settings";
 
     // Places (PLACE-06..10, AD-15).
     public const string EnterFolder = "cmd_enter_folder", UpPlace = "cmd_up_place", RootPlace = "cmd_root_place";
@@ -69,6 +69,7 @@ public static class InputBindings
         Logical(Help, Key.F1);
         Logical(Quality, Key.F2);
         Logical(Stats, Key.F3);
+        Logical(Settings, Key.F4);
         AddEvent(OpenFolder, new InputEventKey { Keycode = Key.O, CtrlPressed = true });
         Physical(EnterFolder, Key.G);
         Physical(UpPlace, Key.U); Logical(UpPlace, Key.Pageup);

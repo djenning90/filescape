@@ -75,6 +75,20 @@ public static class WalkFixture
         var system = Dir(m, root, "system-stuff");
         File(m, system, "desktop.ini", 200);
 
+        // A chain of ordinary folders for continuous upward travel (PLACE-16, 2026-11-05 evening): Pier → Harbour →
+        // Coast → Journeys → Wayfarer, each with files and side folders, and numbered legs for natural order (ORD-01).
+        var journeys = Dir(m, root, "Journeys");
+        foreach (var leg in new[] { "Leg 1", "Leg 2", "Leg 10" }) File(m, Dir(m, journeys, leg), "log.txt", 1_500);
+        File(m, journeys, "routes.gpx", 64_000);
+        var coast = Dir(m, journeys, "Coast");
+        foreach (var side in new[] { "North", "South" }) File(m, Dir(m, coast, side), "survey.csv", 9_000);
+        for (var i = 1; i <= 6; i++) File(m, coast, $"coast-{i:D2}.jpg", 700_000 + i * 40_000);
+        var harbour = Dir(m, coast, "Harbour");
+        foreach (var side in new[] { "Boats", "Nets" }) File(m, Dir(m, harbour, side), "list.txt", 800);
+        File(m, harbour, "tides.pdf", 120_000);
+        var pier = Dir(m, harbour, "Pier");
+        File(m, pier, "plank-count.txt", 300);
+
         var manuals = Dir(m, outside, "Manuals");
         foreach (var n in new[] { "boat.pdf", "radio.pdf", "engine.pdf" }) File(m, manuals, n, 400_000);
         File(m, outside, "catalogue.xlsx", 88_000);

@@ -370,12 +370,17 @@ public partial class Main
         }
     }
 
-    /// <summary>Look from a mouse delta in physical screen pixels (x right, y down) at <paramref name="degreesPerPixel"/>.</summary>
+    /// <summary>
+    /// Look from a mouse delta in physical screen pixels (x right, y down) at <paramref name="degreesPerPixel"/>, in the
+    /// direction the user chose (Settings: reverse left/right, reverse up/down).
+    /// </summary>
     private void PlaceLook(Vector2 screenPixels, float degreesPerPixel = CameraRig.LookDegreesPerPixel)
     {
         if (_transition != null) return;
         if (_guided) EndGuide();
-        _walker.Look(Degrees.Of(-screenPixels.X * degreesPerPixel), Degrees.Of(-screenPixels.Y * degreesPerPixel));
+        // The user's direction preference applies here only: arrow-key turning and the camera conventions are unchanged (CTRL-01).
+        var (yaw, pitch) = _prefs.LookDelta(screenPixels.ToNumerics2(), degreesPerPixel);
+        _walker.Look(yaw, pitch);
     }
 
     private void StepPlaceFlightSpeed(float notches)

@@ -9,7 +9,7 @@ namespace FileScape.App.Ui;
 /// </summary>
 public partial class Hud
 {
-    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T flight · walk through a gate to enter · F1 help";
+    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T flight · walk through a gate to enter · F4 settings · F1 help";
 
     public event Action<int>? BreadcrumbRequested;
     public event Action? UpRequested;
@@ -224,5 +224,68 @@ public partial class Hud
     {
         _enterButton.Disabled = !enabled;
         _enterButton.Text = text;
+    }
+}
+
+/// <summary>
+/// The gate chip (PLACE-17): a compact screen-space name for the gate you are walking up to, or the gate under the
+/// cursor or selected, so a nearby entrance is identifiable even when its signs are out of view or hidden.
+/// </summary>
+public partial class Hud
+{
+    private PanelContainer _gateChip = null!;
+    private Label _gateChipTitle = null!, _gateChipDetail = null!;
+
+    public bool GateChipVisible => _gateChip.Visible;
+    public string GateChipText => _gateChip.Visible ? _gateChipTitle.Text + " | " + _gateChipDetail.Text : "";
+    public Rect2 GateChipRect => _gateChip.GetGlobalRect();
+
+    private void BuildGateChip()
+    {
+        _gateChip = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _root.AddChild(_gateChip);
+        var v = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        v.AddThemeConstantOverride("separation", 0);
+        _gateChip.AddChild(v);
+        _gateChipTitle = new Label { HorizontalAlignment = HorizontalAlignment.Center, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
+        _gateChipTitle.AddThemeFontSizeOverride("font_size", 17);
+        v.AddChild(_gateChipTitle);
+        _gateChipDetail = new Label { HorizontalAlignment = HorizontalAlignment.Center, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
+        _gateChipDetail.AddThemeFontSizeOverride("font_size", 13);
+        _gateChipDetail.AddThemeColorOverride("font_color", new Color(0.78f, 0.85f, 0.97f));
+        v.AddChild(_gateChipDetail);
+    }
+
+    /// <summary>Shows the chip (null hides it). <paramref name="title"/> is the full name with a short lead (“Ahead:”).</summary>
+    public void SetGateChip(string? title, string detail, Color color)
+    {
+        if (title == null)
+        {
+            _gateChip.Visible = false;
+            return;
+        }
+
+        _gateChipTitle.Text = title;
+        _gateChipTitle.AddThemeColorOverride("font_color", color);
+        _gateChipDetail.Text = detail;
+        _gateChip.Visible = true;
+        PlaceGateChip();
+    }
+
+    /// <summary>Centred between the legend and the inspector, in the lower third of the scene (viewport units).</summary>
+    private void PlaceGateChip()
+    {
+        var vp = GetViewport().GetVisibleRect().Size;
+        var left = _legendPanel.Visible ? _legendPanel.Position.X + _legendPanel.Size.X + 10 : 10;
+        if (_destPanel.Visible) left = Mathf.Max(left, _destPanel.Position.X + _destPanel.Size.X + 10);
+        var right = _inspector.Visible ? _inspector.Position.X - 10 : vp.X - 10;
+        var room = Mathf.Max(220, right - left);
+        var width = Mathf.Min(room, 560);
+        _gateChipTitle.CustomMinimumSize = new Vector2(width - 24, 0);
+        _gateChip.Size = new Vector2(width, 0);
+        _gateChip.Size = _gateChip.GetCombinedMinimumSize() with { X = width };
+        var bottom = _hintPanel.Visible ? _hintPanel.Position.Y - 8 : vp.Y - 70;
+        if (_toastPanel.Visible) bottom = Mathf.Min(bottom, _toastPanel.Position.Y - 8);
+        _gateChip.Position = new Vector2(left + (room - width) / 2, Mathf.Min(vp.Y * 0.72f, bottom - _gateChip.Size.Y));
     }
 }

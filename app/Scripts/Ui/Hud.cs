@@ -53,7 +53,7 @@ public partial class Hud : CanvasLayer
     {
         get
         {
-            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _placePanel, _destPanel, _locPanel, _problemPanel, _notePanel, _flyPanel, _ascentPanel, _hintPanel })
+            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _settingsPanel, _placePanel, _destPanel, _locPanel, _problemPanel, _notePanel, _flyPanel, _ascentPanel, _hintPanel, _gateChip })
             {
                 if (c.Visible)
                 {
@@ -131,6 +131,7 @@ public partial class Hud : CanvasLayer
         BuildStatsAndToast();
         BuildHintAndFlyChip();
         BuildPlaces();
+        BuildGateChip();
     }
 
     private void BuildTopBar()
@@ -152,6 +153,7 @@ public partial class Hud : CanvasLayer
         row.AddChild(MakeButton("Sample data", () => DemoRequested?.Invoke(), "Load the deterministic synthetic tree (not your files)."));
         _cancel = MakeButton("Cancel scan", () => CancelRequested?.Invoke(), "Stop scanning. The part scanned so far stays explorable.");
         _cancel.Disabled = true;
+        _cancel.Visible = false; // shown only while a scan runs: the top bar must fit at 125 % UI scale
         row.AddChild(_cancel);
         row.AddChild(new VSeparator());
         var group = new ButtonGroup();
@@ -188,6 +190,7 @@ public partial class Hud : CanvasLayer
         row.AddChild(_flightButton);
         _quality = MakeButton("Quality: High", () => QualityToggled?.Invoke(), "Toggle effects (F2). Low disables volumetric fog, SSR and SSAO.");
         row.AddChild(_quality);
+        BuildSettings(row);
         var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
         help.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f));
         row.AddChild(help);
@@ -294,7 +297,9 @@ public partial class Hud : CanvasLayer
                 "Files stand around you as glass towers, grouped by type. Each child folder is a [b]gate[/b] with its name;\n" +
                 "    beyond it you see a preview of that place. [b]Walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back.\n" +
                 "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways\n" +
-                "    hold [b]right mouse[/b] to look and steer    [b]Space[/b] jump    hold [b]Shift[/b] run    (the arrow keys used to step sideways; A / D still do)\n" +
+                "    hold [b]right mouse[/b] to look and steer    [b]Space[/b] jump    hold [b]Shift[/b] run (walk 8 m/s, run 16 m/s by default)\n" +
+                "    [b]F4[/b] or [b]⚙ Settings[/b]: mouse-look direction (left/right and up/down separately) and walking speeds, saved for next time.\n" +
+                "    Going [b]up[/b] (the ▲ gate or U) arrives facing the next ▲ gate: keep walking forward to keep going up.\n" +
                 "    Stairs and ramps are walked; the [b]overlook[/b] (ramp, or jump the blocks) shows this folder's summary.\n" +
                 "[b]Flight[/b]   [b]T[/b] or the ✈ button: rise and fly (look with right mouse, W A S D along the view, [b]E[/b]/[b]Space[/b] up, [b]Q[/b] down,\n" +
                 "    wheel = speed); [b]T[/b] again lands you safely on foot.   [b]B[/b] rises above the place in flight.\n" +
@@ -315,7 +320,7 @@ public partial class Hud : CanvasLayer
                 "[b]Esc[/b]  parent directory (in Places: back to the folder itself)      [b]Backspace[/b]  previous selection (Places: previous place)\n" +
                 "[b]Enter[/b]  open with Windows (asks first for programs, links and cloud files)\n" +
                 "[b]Tab[/b]  cycle Places / Classic FSN / District (the selection stays)\n" +
-                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats\n\n" +
+                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats      [b]F4[/b]  settings\n\n" +
                 "Right-drag used to pan; pan is now on the middle button.\n" +
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
         };
@@ -412,6 +417,7 @@ public partial class Hud : CanvasLayer
         _progress.Value = progress01;
         _progress.Visible = scanning;
         _cancel.Disabled = !scanning;
+        _cancel.Visible = scanning;
     }
 
     /// <summary>Shows which experience is active and adapts the toolbar wording (AD-15).</summary>
@@ -524,7 +530,7 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string HintText = "WASD / arrows move  ·  Hold right mouse to look  ·  Q/E elevation  ·  Shift faster  ·  Home reset  ·  F1 help";
+    public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
 
     private void BuildHintAndFlyChip()
     {

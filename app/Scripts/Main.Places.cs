@@ -33,8 +33,12 @@ public partial class Main
     /// <summary>World signs are re-ranked this often (sorting every sign each frame would be wasteful in wide folders).</summary>
     private static readonly TimeSpan SignRefreshInterval = TimeSpan.FromSeconds(0.2);
     private const float PivotAhead = 12f;
-    /// <summary>The threshold transition: glide out and fade (old place), then glide in (new place) (PLACE-07).</summary>
-    private static readonly TimeSpan TransitionOut = TimeSpan.FromSeconds(0.42), TransitionIn = TimeSpan.FromSeconds(0.62);
+    /// <summary>
+    /// The threshold transition: glide out and fade (old place), then glide in (new place) (PLACE-07). 0.30 + 0.45 s
+    /// (was 0.42 + 0.62 s before 2026-11-05 evening): long enough to read as a passage, short enough not to stall
+    /// repeated travel. Movement keys held through it keep working on arrival.
+    /// </summary>
+    private static readonly TimeSpan TransitionOut = TimeSpan.FromSeconds(0.30), TransitionIn = TimeSpan.FromSeconds(0.45);
 
     private readonly PlaceNavigator _nav = new();
     private readonly ThresholdTracker _threshold = new();
@@ -49,6 +53,7 @@ public partial class Main
     /// <summary>The app clock (time since start) for this frame.</summary>
     private TimeSpan _now, _lastSignUpdate;
     private int _transitions;
+    private int _lastHudKey;
     private bool _mapNoteShown;
 
     public PlaceNavigator Navigator => _nav;
@@ -61,6 +66,9 @@ public partial class Main
     public string HereMarkerText => _hereLabel.Text;
     public double LastComposeMs { get; private set; }
     public double LastPlaceBuildMs { get; private set; }
+
+    /// <summary>The route chosen on the last arrival by going up (probes report it).</summary>
+    public UpwardRoute? LastUpwardRoute { get; private set; }
 
     private sealed class PlaceTransition
     {
@@ -291,6 +299,7 @@ public partial class Main
         if (PlaceComposer.Signature(_tree, _nav.Current) != _place.Signature)
         {
             Recompose(rebuildOnly: true);
+            SettleUpwardArrival();
         }
     }
 
@@ -438,7 +447,9 @@ public partial class Main
             FromPitch = _rig.LookPitch,
             Caption = $"{verb}  {_tree.DisplayName(change.To)}",
         };
-        _held.Clear();
+        // Held movement keys are kept (their releases are still seen during the transition), so holding W through a ▲
+        // gate keeps walking on arrival, towards the next one (PLACE-16). They used to be cleared, which forced a
+        // release and re-press after every gate.
     }
 
     /// <summary>Advances the threshold transition: glide out and fade (old place), recompose, glide in (new place).</summary>
@@ -461,6 +472,14 @@ public partial class Main
             return;
         }
 
+        // A place entered before it was listed is recomposed as its listing arrives; going up, the arrival pose is
+        // worked out again on the real layout, and the glide in simply bends towards it (PLACE-16).
+        if (_place != null && _tree != null && _place.TreeVersion != _tree.Version && PlaceComposer.Signature(_tree, _nav.Current) != _place.Signature)
+        {
+            Recompose(rebuildOnly: true);
+            if (tr.Change.Move == PlaceMove.Up) tr.Arrival = UpwardArrival(tr.Change);
+        }
+
         var t = Mathf.Clamp((float)((tr.Elapsed - TransitionOut) / TransitionIn), 0, 1);
         var s = t * t * (3 - 2 * t);
         var eye = tr.ApproachEye.Lerp(Gd(tr.Arrival.Eye), s);
@@ -472,6 +491,7 @@ public partial class Main
             _hud.SetTransition(0, null);
             ArriveAt(tr.Arrival, snap: true);
             _transitions++;
+            _upwardSettle = tr.Change.Move == PlaceMove.Up ? (tr.Change, _now) : null;
         }
     }
 
@@ -487,6 +507,14 @@ public partial class Main
             // Back through a link: stand in front of the link's gate, facing in, with the link selected (LINK-03).
             pose = place.ReturnPose(change.ViaLink, _placeParams);
             _selection.Select(change.ViaLink);
+        }
+        else if (change.Move == PlaceMove.Up)
+        {
+            // Up (the ▲ gate or U): beside the gate you came out of where a straight route allows, facing the next ▲
+            // gate, so walking on goes up again (PLACE-16). At the top there is no ▲ gate: face into the place.
+            pose = UpwardArrival(change);
+            var child = PlaceNavigator.ChildToward(_tree!, change.To, from);
+            if (child >= 0) _selection.Select(child);
         }
         else if (change.Move != PlaceMove.Link && (_tree![from].ParentId == change.To || (change.Move != PlaceMove.Root && IsAncestor(change.To, from))))
         {
@@ -507,6 +535,48 @@ public partial class Main
         tr.ApproachEye = Gd(pose.Eye) - fwd * 9f + new GVector3(0, 2.5f, 0);
         _rig.SetPose(tr.ApproachEye, pose.Yaw, pose.LookPitch, PivotAhead);
         GD.Print($"[place] {change.Move} {_tree!.FullPath(change.From)} -> {_tree.FullPath(change.To)} gates={place.Gates.Count} files={place.Files.Count} compose_ms={LastComposeMs:0.0} build_ms={LastPlaceBuildMs:0.0}");
+    }
+
+    /// <summary>The arrival pose after going up (<see cref="PlaceRoutes.ContinueUp"/>) on the current composition.</summary>
+    private PlacePose UpwardArrival(PlaceChange change)
+    {
+        var child = PlaceNavigator.ChildToward(_tree!, change.To, change.From);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var route = PlaceRoutes.ContinueUp(_place!, child, _placeParams, _walker.Params);
+        LastUpwardRoute = route;
+        GD.Print(System.FormattableString.Invariant($"[route] up into {_tree!.DisplayName(change.To)}: verified={route.Verified} standoff={route.StandOff:0.0} m walk={route.Walk.Time.TotalSeconds:0.0} s route_ms={sw.Elapsed.TotalMilliseconds:0.0}"));
+        return route.Pose;
+    }
+
+    /// <summary>How often a late listing moved the walker onto a re-worked upward route (probes report it).</summary>
+    public int UpwardResettles { get; private set; }
+
+    /// <summary>The last Up arrival, for 2 s: if the place is recomposed then, the walker is placed on the new route.</summary>
+    private (PlaceChange Change, TimeSpan At)? _upwardSettle;
+
+    /// <summary>
+    /// A listing that lands just after an Up arrival changes the layout under the walker: within 2 s, and while the
+    /// walker has gone less than 3 m, it is put on the route worked out again (PLACE-16).
+    /// </summary>
+    private void SettleUpwardArrival()
+    {
+        if (_upwardSettle is not { } u || _place == null) return;
+        if (_now - u.At > TimeSpan.FromSeconds(2) || LastUpwardRoute is not { } before)
+        {
+            _upwardSettle = null;
+            return;
+        }
+
+        var moved = _walker.Eye - before.Pose.Eye;
+        if (new System.Numerics.Vector2(moved.X, moved.Z).Length() > 3f) return;
+        var pose = UpwardArrival(u.Change);
+        if (System.Numerics.Vector3.Distance(pose.Eye, before.Pose.Eye) > 0.3f)
+        {
+            PlaceUserAt(pose);
+            _threshold.Reset(_place, pose.Eye, _now);
+            UpwardResettles++;
+            GD.Print("[route] the listing changed the layout just after arrival: placed on the new route");
+        }
     }
 
     private bool IsAncestor(int ancestor, int id)
@@ -548,15 +618,13 @@ public partial class Main
             items.Add((pg.TargetId, $"▲  Up to {_tree.DisplayName(pg.TargetId)}", PlacePalette.Up, "The way back: the gate behind the arrival point."));
         }
 
-        foreach (var g in _place.Gates.OrderBy(g => _tree[g.TargetId].Name, StringComparer.OrdinalIgnoreCase).ThenBy(g => _tree[g.TargetId].Name, StringComparer.Ordinal))
+        foreach (var g in _place.Gates.OrderBy(g => _tree[g.TargetId].Name, NaturalNameOrder.Instance).ThenBy(g => g.TargetId)) // the gates' own order (ORD-01)
         {
             var n = _tree[g.TargetId];
             var state = Listing.Describe(g.State);
             var text = g.IsLink
                 ? $"⇢ {n.Name}   ·  {PlaceText.LinkShort(_tree, n)}"
-                : g.State is ListingState.Open or ListingState.Partial
-                ? $"{n.Name}   ·  {n.DirectFileCount:N0} files, {n.DirectDirCount:N0} folders{(g.State == ListingState.Partial ? " · partly listed" : "")}"
-                : $"{n.Name}   ·  {state}";
+                : $"{n.Name}   ·  {PlaceText.GateSubtitle(_tree, n, g).Replace("\n", " · ")}";
             var where = _place.IsWide ? $"Tier {g.Tier + 1}" : "On the gate ring";
             items.Add((g.TargetId, text, PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}"));
         }
@@ -568,7 +636,7 @@ public partial class Main
 
         var title = _place.Gates.Count == 0
             ? (Listing.IsUnknown(_place.State) ? $"Destinations · contents {Listing.Describe(_place.State)}" : "Destinations · no subfolders here")
-            : $"Destinations · {_place.Gates.Count:N0} folder{(_place.Gates.Count == 1 ? "" : "s")}" + (_place.IsWide ? $" on {_place.Tiers.Count} tiers" : "");
+            : $"Destinations · {_place.Gates.Count:N0} folder{(_place.Gates.Count == 1 ? "" : "s")}" + (_place.IsWide ? $" on {_place.Tiers.Count} tiers" : "") + " · A→Z, gates west → east";
         _hud.SetDestinations(items, title);
         _hud.HighlightDestination(_selection.Selected);
     }
@@ -576,9 +644,14 @@ public partial class Main
     private void UpdatePlaceFrame()
     {
         if (_place == null || _tree == null) return;
-        if (_now - _lastSignUpdate > SignRefreshInterval)
+        // Signs also refresh at once when the HUD's layout changes (a panel opens or closes), so no sign shows through it.
+        var hudKey = 17;
+        foreach (var r in _hud.BlockingRects) hudKey = HashCode.Combine(hudKey, r);
+        if (_now - _lastSignUpdate > SignRefreshInterval || hudKey != _lastHudKey)
         {
+            _lastHudKey = hudKey;
             _lastSignUpdate = _now; // sorting every sign by distance each frame would be wasteful in wide folders
+            UpdateGateChip();
             _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
         }
 
@@ -588,6 +661,75 @@ public partial class Main
         _hud.SetAscentChip(height > 40
             ? $"Above {_tree.DisplayName(_nav.Current)}: this is its neighbourhood only (places are separate spaces linked by gates). M: whole-filesystem map · Home: land"
             : null);
+    }
+
+    /// <summary>Within this distance of a gate, walking towards it, the gate chip names it (PLACE-17).</summary>
+    private const float ApproachChipRange = 20f;
+
+    /// <summary>The gate the chip names: the one you are walking up to, else the one under the cursor.</summary>
+    public int GateChipTarget { get; private set; } = -1;
+
+    /// <summary>
+    /// The gate chip (PLACE-17): names the gate ahead (within 20 m, within 40° of the heading, on this side of it), or
+    /// else the gate or ▲ gate under the cursor. Its signs may be above the view or hidden by the HUD; the chip is not.
+    /// </summary>
+    private void UpdateGateChip()
+    {
+        if (_place == null || _tree == null || _transition != null || _experience != Experience.Places)
+        {
+            GateChipTarget = -1;
+            _hud.SetGateChip(null, "", default);
+            return;
+        }
+
+        var cam = _rig.CameraPosition.ToNumerics();
+        var fwd = CameraMath.HorizontalForward(_rig.Yaw);
+        Gate? best = null;
+        var bestDistance = float.MaxValue;
+        if (cam.Y < 14f)
+        {
+            foreach (var g in _place.ParentGate is { } pg ? _place.Gates.Append(pg) : _place.Gates)
+            {
+                var depth = ThresholdTracker.Depth(g, cam);
+                if (depth > 0.5f || depth < -ApproachChipRange) continue;
+                var to = new System.Numerics.Vector2(g.Position.X - cam.X, g.Position.Z - cam.Z);
+                var d = to.Length();
+                if (d > ApproachChipRange || d < 1e-3f) continue;
+                var cos = (to.X * fwd.X + to.Y * fwd.Z) / d;
+                if (cos < 0.766f && d > 3f) continue; // 40°; right at the gate, any heading through it counts
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = g;
+                }
+            }
+        }
+
+        var lead = "Ahead:";
+        if (best == null && _selection.Hovered >= 0)
+        {
+            best = _place.ParentGate?.TargetId == _selection.Hovered ? _place.ParentGate : _place.GateFor(_selection.Hovered);
+            lead = "Pointing at:";
+        }
+
+        if (best == null)
+        {
+            GateChipTarget = -1;
+            _hud.SetGateChip(null, "", default);
+            return;
+        }
+
+        GateChipTarget = best.TargetId;
+        var n = _tree[best.TargetId];
+        if (best.IsParent)
+        {
+            _hud.SetGateChip($"{lead} ▲ Up to {_tree.DisplayName(best.TargetId)}", "the way up · walk through to go up · U does the same", PlacePalette.Up.Lightened(0.3f));
+            return;
+        }
+
+        var detail = PlaceText.GateSubtitle(_tree, n, best).Replace("\n", " · ");
+        detail += best.CanEnter ? " · walk through to enter" : " · can't be followed from here";
+        _hud.SetGateChip($"{lead} {(best.IsLink ? "⇢ " : "")}{n.Name}", detail, PlacePalette.ForGate(best, PlaceIdentity.For(n.Name)).Color.Lightened(0.45f));
     }
 
     private void PlaceBox(MeshInstance3D mesh, int id, float grow)
@@ -668,4 +810,6 @@ public partial class Main
 internal static class VectorInterop
 {
     public static NVector3 ToNumerics(this Vector3 v) => new(v.X, v.Y, v.Z);
+
+    public static System.Numerics.Vector2 ToNumerics2(this Vector2 v) => new(v.X, v.Y);
 }

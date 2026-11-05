@@ -115,6 +115,7 @@ public partial class Main : Node3D
 
         _stateFile = args.StateFile;
         BuildScene();
+        LoadPreferences(args);
         _quality = args.Quality ?? Quality.High;
         _visIndex = args.Visualization is 1 ? 1 : 0;
         // The reference-view evidence scripts predate Places and expect a map unless --vis says otherwise (AD-15).
@@ -696,7 +697,7 @@ public partial class Main : Node3D
     private int _consumedEscapes;
 
     /// <summary>True while a modal dialog is open; scene navigation is paused and held keys are cleared.</summary>
-    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false);
+    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
 
     public bool WindowFocused => _windowFocused;
     public bool IsDragging => _pressButton != MouseButton.None;
@@ -930,6 +931,7 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.Help)) _hud.ToggleHelp();
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
         else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
+        else if (key.IsAction(InputBindings.Settings)) _hud.ToggleSettings();
         else if (key.IsAction(InputBindings.OpenFolder)) ShowFolderDialog();
         else if (key.IsAction(InputBindings.FlightToggle)) ToggleFlight();
         else if (key.IsAction(InputBindings.HiddenToggle)) ToggleHiddenVisibility();
@@ -1034,7 +1036,8 @@ public partial class Main : Node3D
             System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeedWorldUnitsPerSecond:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
             System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
             System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
-            System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\"}}");
+            System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\",") +
+            StateJsonSettings() + "}";
     }
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");

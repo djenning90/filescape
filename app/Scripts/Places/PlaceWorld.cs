@@ -82,6 +82,25 @@ public partial class PlaceWorld : Node3D
     /// <summary>Gate id → its sign, for checks and highlighting.</summary>
     public Dictionary<int, Label3D> GateSigns { get; } = [];
 
+    /// <summary>
+    /// Gate id → its name plate: the name at eye level across the opening, facing into the place (PLACE-17). It is
+    /// what identifies a gate up close, when its overhead sign is above the view or hidden by the HUD.
+    /// </summary>
+    public Dictionary<int, Label3D> GatePlates { get; } = [];
+
+    private readonly Dictionary<Label3D, Core.Places.Gate> _plateGates = [];
+
+    /// <summary>Plates show within this distance (metres): beyond it the overhead signs identify gates.</summary>
+    public const float PlateRange = 32f;
+
+    /// <summary>
+    /// The plate's height above the gate's floor: above any head (body 1.85 m) and 0.7 m above the eye, so it stays in
+    /// view, below the HUD's top panels, until ≈ 2 m away (at 3.0 m it went under the panels at 3.4 m, found by the probe).
+    /// </summary>
+    public const float PlateHeight = 2.45f;
+
+    private const int PlatePriority = 4;
+
     public PlaceWorld()
     {
         Name = "PlaceWorld";
@@ -132,6 +151,8 @@ public partial class PlaceWorld : Node3D
         foreach (var s in _signs) s.Visible = false;
         _managed.Clear();
         GateSigns.Clear();
+        GatePlates.Clear();
+        _plateGates.Clear();
         InstanceCount = 0;
         if (_plazaMesh != null) _plazaMesh.Visible = false;
     }
@@ -186,8 +207,23 @@ public partial class PlaceWorld : Node3D
             l.Billboard = billboard && facingYaw == null ? BaseMaterial3D.BillboardModeEnum.FixedY : BaseMaterial3D.BillboardModeEnum.Disabled;
             l.Rotation = new Vector3(0, facingYaw ?? 0, 0);
             l.Visible = true;
+            l.DoubleSided = true; // pooled labels: undo what a plate set
+            l.AlphaCut = Label3D.AlphaCutMode.Disabled;
+            l.VerticalAlignment = VerticalAlignment.Bottom;
             _managed.Add((l, range, priority));
             return l;
+        }
+
+        void AddPlate(Core.Places.Gate g, string text, Color color)
+        {
+            // Fixed (not billboarded), facing into the place, just in front of the membrane: read while walking up to it.
+            var inward = -Gd(g.Outward);
+            var plate = Sign(text, Gd(g.Position) + inward * 0.6f + new Vector3(0, PlateHeight, 0), 0.0068f, color, PlateRange, PlatePriority, facingYaw: Mathf.Atan2(inward.X, inward.Z));
+            plate.DoubleSided = false;
+            plate.AlphaCut = Label3D.AlphaCutMode.OpaquePrepass; // crisp in front of the translucent membrane
+            plate.VerticalAlignment = VerticalAlignment.Center;
+            GatePlates[g.TargetId] = plate;
+            _plateGates[plate] = g;
         }
 
         // ---- landmark: the folder's identity (PLACE-02)
@@ -198,7 +234,7 @@ public partial class PlaceWorld : Node3D
         var plaque = new Vector3(0, 0, c.Landmark.Radius * 2.9f);
         // Sized for a walker (eye 1.75 m): readable from the arrival terrace, hidden when you stand next to it.
         var nameSign = Sign(PlaceText.Fit(LandmarkSign, 34), plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
-        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.15f, 0), 0.0042f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
+        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 1.95f, 0), 0.0042f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
         _nearHide[nameSign] = 6.5f;
         _nearHide[summarySign] = 6.5f;
         _plaqueName = nameSign;
@@ -247,6 +283,7 @@ public partial class PlaceWorld : Node3D
             var stagger = (c.Gates.Count > 6 && (gateIndex++ & 1) == 1) ? 1.7f : 0f;
             var label = Sign(PlaceText.Fit(child.Name, 26) + "\n" + PlaceText.GateSubtitle(tree, child, g), Gd(g.Position) + new Vector3(0, g.Height + 0.5f + stagger + g.Tier * 0.25f, 0), 0.014f * signScale, col.Lightened(0.45f), singleRing ? 200 : 55, 1);
             GateSigns[g.TargetId] = label;
+            AddPlate(g, PlaceText.Fit(child.Name, 24), col.Lightened(0.55f));
             if (singleRing)
             {
                 var gl = new OmniLight3D { LightColor = col, LightEnergy = 1.1f, OmniRange = 9, Position = Gd(g.Position - g.Outward * 1.5f) + new Vector3(0, 2.5f, 0), ShadowEnabled = false, LightSpecular = 0.2f, LightVolumetricFogEnergy = 0f };
@@ -288,7 +325,7 @@ public partial class PlaceWorld : Node3D
 
         if (c.IsWide)
         {
-            Sign($"{c.Gates.Count} folders on {c.Tiers.Count} tiers · A→Z from west to east, tier by tier outward\nNo vistas for this many folders · every folder is listed in Destinations",
+            Sign($"{c.Gates.Count} folders on {c.Tiers.Count} tiers · A→Z (numbers by value) from west to east, tier by tier outward\nNo vistas for this many folders · every folder is listed in Destinations",
                 plaque + new Vector3(0, 1.3f, 1.5f), 0.0055f, new Color(0.8f, 0.86f, 1f), 1e9f, 0);
         }
 
@@ -333,6 +370,7 @@ public partial class PlaceWorld : Node3D
         {
             AddGate(gates, portals, pg, PlacePalette.Up, 0);
             Sign($"▲ Up to {tree.DisplayName(pg.TargetId)}", Gd(pg.Position) + new Vector3(0, pg.Height + 0.5f, 0), 0.013f, PlacePalette.Up, 1e9f, 0);
+            AddPlate(pg, "▲ " + PlaceText.Fit(tree.DisplayName(pg.TargetId), 22), PlacePalette.Up.Lightened(0.3f));
         }
 
         // ---- routes and vistas (PLACE-09, AD-14: symbolic distance)
@@ -458,6 +496,9 @@ public partial class PlaceWorld : Node3D
         }
     }
 
+    /// <summary>A visible sign's screen rectangle (viewport units), or null when hidden or behind the camera (probes).</summary>
+    public static Rect2? VisibleRectOf(Label3D label, Camera3D camera) => label.Visible ? SignRect(label, camera) : null;
+
     /// <summary>A sign's approximate screen rectangle in viewport pixels, or null when it is behind the camera.</summary>
     private static Rect2? SignRect(Label3D label, Camera3D camera)
     {
@@ -492,10 +533,16 @@ public partial class PlaceWorld : Node3D
         var overview = camera.Y > 14f || new Vector2(camera.X, camera.Z).Length() > _ringRadius + 4f;
         foreach (var (label, range, priority) in _managed
                      .Select(m => (m.Label, m.Range, m.Priority, D: m.Label.GlobalPosition.DistanceTo(camera)))
-                     .OrderBy(m => m.Priority == 0 ? 0 : 1).ThenBy(m => m.D)
+                     .OrderBy(m => m.Priority == 0 ? 0 : m.Priority == PlatePriority ? 1 : 2).ThenBy(m => m.D)
                      .Select(m => (m.Label, m.Range, m.Priority)))
         {
             var visible = priority == VistaPriority ? overview : label.GlobalPosition.DistanceTo(camera) <= range && (priority == 0 || shown < maxVisible);
+            // A plate reads from inside the place only (it faces in), and never from above (flight, overview).
+            if (visible && _plateGates.TryGetValue(label, out var plateGate))
+            {
+                visible = !overview && Core.Places.ThresholdTracker.Depth(plateGate, camera.ToNumerics()) < -0.3f;
+            }
+
             if (visible && _nearHide.TryGetValue(label, out var near))
             {
                 var flat = new Vector2(label.GlobalPosition.X - camera.X, label.GlobalPosition.Z - camera.Z).Length();
@@ -653,12 +700,12 @@ public partial class PlaceWorld : Node3D
 /// <summary>Texts used on signs and in the HUD for Places.</summary>
 public static class PlaceText
 {
+    /// <summary>The place's summary, two lines: what is here, and what is in the subtree (SUM-01, <see cref="FolderSummary"/>).</summary>
     public static string Summary(FsTree tree, FsNode folder)
     {
         var state = Listing.Of(folder);
-        var parts = $"{folder.DirectFileCount:N0} files · {folder.DirectDirCount:N0} folders · {SizeFormat.Short(folder.SubtreeBytes)} in all";
-        if (folder.ScanState == DirScanState.Pending || Listing.IsUnknown(state)) parts += " so far";
-        return state is ListingState.Open or ListingState.Empty ? parts : parts + " · " + Listing.Describe(state);
+        var text = FolderSummary.Place(folder, state);
+        return state is ListingState.Partial ? text + " · partly listed" : text;
     }
 
     /// <summary>A link's status in a few words (VISI-02): a connection, not an error, unless it is broken or unsupported.</summary>
@@ -688,10 +735,9 @@ public static class PlaceText
 
         if (state == ListingState.Link) return LinkShort(tree, child);
         if (Listing.IsUnknown(state) && state != ListingState.Partial) return Listing.Describe(state);
-        if (state == ListingState.Empty) return "empty";
-        var text = $"{child.SubtreeFileCount:N0} files · {SizeFormat.Short(child.SubtreeBytes)}";
+        // Immediate folders and files, then the subtree size with its completeness (SUM-01/02).
+        var text = FolderSummary.Gate(child, state);
         if (g.ChainLength >= 3) text += $"\nchain of {g.ChainLength} single folders";
-        if (state == ListingState.Partial) text += " · partly listed";
         return text;
     }
 
@@ -701,7 +747,7 @@ public static class PlaceText
         var lines = new List<string> { Summary(tree, folder) };
         var top = c.Quarters.OrderByDescending(q => q.Count).Take(3).Select(q => $"{CategoryName(q.Category)} {q.Count:N0}");
         if (c.Quarters.Count > 0) lines.Add("Files by type: " + string.Join(" · ", top) + (c.Quarters.Count > 3 ? " · …" : ""));
-        lines.Add(c.Gates.Count == 0 ? "No folders lead on from here" : $"{c.Gates.Count:N0} gate{(c.Gates.Count == 1 ? "" : "s")} ahead, to the north" + (c.IsWide ? $", on {c.Tiers.Count} tiers A→Z" : ""));
+        lines.Add(c.Gates.Count == 0 ? "No folders lead on from here" : $"{c.Gates.Count:N0} gate{(c.Gates.Count == 1 ? "" : "s")} ahead, to the north, A→Z from west (left) to east" + (c.IsWide ? $", on {c.Tiers.Count} tiers" : ""));
         if (c.ParentGate != null) lines.Add($"▲ {tree.DisplayName(c.ParentGate.TargetId)} is behind the arrival terrace");
         return string.Join("\n", lines);
     }

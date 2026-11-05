@@ -35,6 +35,9 @@ public sealed record CommandLine
     public string? StateFile { get; init; }
     public bool StressDistrictOnly { get; init; }
 
+    /// <summary>--prefs=path: the preferences file. Default: %APPDATA%\FileScape\preferences.json, except under --automate, where nothing is read or saved unless --prefs is given (probes never touch DJ's settings).</summary>
+    public string? PreferencesFile { get; init; }
+
     public static CommandLine Parse(string[] args)
     {
         var map = args.Select(a => a.TrimStart('-').Split('=', 2)).ToDictionary(p => p[0], p => p.Length > 1 ? p[1] : "", StringComparer.OrdinalIgnoreCase);
@@ -62,6 +65,7 @@ public sealed record CommandLine
             NoVsync = Get("no-vsync") != null,
             StateFile = Get("state-file"),
             StressDistrictOnly = Get("district-only") != null,
+            PreferencesFile = Get("prefs"),
         };
     }
 }
@@ -184,10 +188,13 @@ public static class Inspector
         }
         else if (n.Kind == NodeKind.Directory)
         {
-            Row(sb, "Direct contents", $"{n.DirectFileCount:N0} files ({SizeFormat.Exact(n.DirectFileBytes)}), {n.DirectDirCount:N0} directories, {n.Children.Count - n.DirectFileCount - n.DirectDirCount:N0} links");
-            var partial = n.SubtreeDirCount > 0 && tree.Nodes.Count > 0 && (n.IsListingIncomplete || HasIncompleteDescendant(tree, n));
-            Row(sb, partial ? "Subtree (so far)" : "Subtree total", $"{n.SubtreeFileCount:N0} files, {n.SubtreeDirCount:N0} directories, {SizeFormat.Exact(n.SubtreeBytes)} ({SizeFormat.Short(n.SubtreeBytes)})");
-            sb.Append("[color=#7f8fab][font_size=12]Totals cover what has been listed so far: logical sizes, hidden items included, link destinations never included (no double counting through links); hard-linked files count once per name.[/font_size][/color]\n");
+            // What is here and what is in the subtree, with completeness, from the incremental aggregates (SUM-01..04).
+            foreach (var (label, value) in FileScape.Core.Places.FolderSummary.Inspector(n))
+            {
+                Row(sb, label, label == "Found so far" ? $"[color=#ffd36b]{Escape(value)}[/color]" : Escape(value));
+            }
+
+            sb.Append($"[color=#7f8fab][font_size=12]{FileScape.Core.Places.FolderSummary.Conventions}[/font_size][/color]\n");
             Row(sb, "Scan state", n.ScanState switch
             {
                 DirScanState.Complete => (n.Flags & NodeFlags.Incomplete) != 0 ? "[color=#ffd36b]listed partially[/color]" : "listed",
@@ -226,20 +233,6 @@ public static class Inspector
         }
 
         return sb.ToString();
-    }
-
-    private static bool HasIncompleteDescendant(FsTree tree, FsNode dir)
-    {
-        var stack = new Stack<int>(dir.Children);
-        var visited = 0;
-        while (stack.Count > 0 && visited++ < 200_000)
-        {
-            var c = tree[stack.Pop()];
-            if (c.IsListingIncomplete || (c.Flags & NodeFlags.Incomplete) != 0) return true;
-            foreach (var cc in c.Children) stack.Push(cc);
-        }
-
-        return false;
     }
 
     private static string DescribeFlags(FsNode n)
