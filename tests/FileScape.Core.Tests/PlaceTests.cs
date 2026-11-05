@@ -253,7 +253,7 @@ public class PlaceTests
         c.Gates.Should().BeEmpty();
         c.Files.Should().BeEmpty();
         c.ParentGate.Should().BeNull("the root has no way up");
-        c.Arrival.Eye.Y.Should().BeApproximately(P.ArrivalEyeHeight, 1e-4f);
+        c.Arrival.Eye.Y.Should().BeApproximately(P.TerraceTop + P.EyeHeight, 1e-4f);
 
         var filesOnly = Spec.WithFiles("files-only", 12).Build();
         var f = PlaceComposer.Compose(filesOnly, 0);

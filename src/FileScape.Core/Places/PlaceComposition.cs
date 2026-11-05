@@ -137,6 +137,12 @@ public sealed record Landmark(Vector3 Base, float Height, float Radius, PlaceIde
     public Box Bounds => Box.FromBase(Base, Radius * 2, Height, Radius * 2);
 }
 
+/// <summary>
+/// The overlook (JUMP-02): a platform at <see cref="Top"/> (its centre, at floor height) facing the place centre, with a
+/// walking ramp starting at <see cref="RampFoot"/> and jump blocks as an optional shortcut.
+/// </summary>
+public sealed record Overlook(Vector3 Top, float AngleDeg, float HalfSize, Vector2 RampFoot, IReadOnlyList<Vector2> JumpBlocks);
+
 /// <summary>A camera pose: eye position, yaw (0 looks north, -Z) and look pitch (negative looks down), in degrees.</summary>
 public readonly record struct PlacePose(Vector3 Eye, float Yaw, float LookPitch);
 
@@ -167,6 +173,12 @@ public sealed class PlaceComposition
 
     public required Box Bounds { get; init; }
 
+    /// <summary>The walkable ground (AD-16): supports, solids and the boundary.</summary>
+    public required PlaceTerrain Terrain { get; init; }
+
+    /// <summary>The overlook platform with the place's summary (JUMP-02).</summary>
+    public required Overlook Overlook { get; init; }
+
     /// <summary>The tree version this composition was made from.</summary>
     public required int TreeVersion { get; init; }
 
@@ -181,17 +193,22 @@ public sealed class PlaceComposition
     public PlacePose ReturnPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : PlaceGeometry.FacingPose(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, p.EyeHeight + Rise(gate), -4);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, -4, p);
     }
 
     /// <summary>Where to stand to look at a gate before going through it (destination list, PLACE-06).</summary>
     public PlacePose ApproachPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : PlaceGeometry.FacingPose(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, p.EyeHeight + Rise(gate), -3);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, -3, p);
     }
 
-    private float Rise(Gate g) => g.Tier >= 0 && g.Tier < Tiers.Count ? Tiers[g.Tier].Rise : 0;
+    /// <summary>A pose standing on the ground at a point (eye 1.75 m above the support there, WALK-01).</summary>
+    public PlacePose Standing(Vector3 at, float angleDeg, float lookPitch, PlaceParams p)
+    {
+        var ground = Terrain.SupportHeight(new Vector2(at.X, at.Z), 0.3f, 0, 0.45f);
+        return PlaceGeometry.FacingPose(at with { Y = ground }, angleDeg, p.EyeHeight, lookPitch);
+    }
 }
 
 /// <summary>A folder's deterministic identity: accent hue and landmark form, derived from its name (PLACE-14).</summary>

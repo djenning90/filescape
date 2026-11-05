@@ -8,12 +8,13 @@ namespace FileScape.Core.Places;
 /// <summary>Spatial parameters of the futuristic plaza composition (AD-14). Units are roughly metres.</summary>
 public sealed record PlaceParams
 {
-    public float FileCell { get; init; } = 2.0f;
+    /// <summary>Centre spacing of file towers; with the footprint this leaves ≈ 1.15 m alleys a walker fits through (WALK-05).</summary>
+    public float FileCell { get; init; } = 2.4f;
     public float FileFootprint { get; init; } = 1.25f;
     public float FileInnerRadius { get; init; } = 8f;
 
     /// <summary>File quarters fill south ± this angle (the near half, around the arrival point).</summary>
-    public float FileHalfSpanDeg { get; init; } = 65f;
+    public float FileHalfSpanDeg { get; init; } = 60f;
 
     /// <summary>Half-width of the clear corridor from the landmark south to the parent gate.</summary>
     public float CorridorHalfWidth { get; init; } = 2.4f;
@@ -39,7 +40,7 @@ public sealed record PlaceParams
     public float FirstTierRadius { get; init; } = 40f;
     public float TierGap { get; init; } = 13f;
     /// <summary>Each outer tier stands on a terrace this much higher, so it can be seen over the inner ones.</summary>
-    public float TierRise { get; init; } = 0.6f;
+    public float TierRise { get; init; } = 0.42f; // below the step height, so tiers are walked up without jumping
 
     /// <summary>The symbolic distance from a gate to the vista of the place behind it (AD-14: not true geography).</summary>
     public float VistaDistance { get; init; } = 70f;
@@ -54,11 +55,25 @@ public sealed record PlaceParams
     /// gate is), looking north down the avenue of file towers to the landmark and the child gates beyond.
     /// </summary>
     public float ArrivalSetback { get; init; } = 6f;
-    public float ArrivalEyeHeight { get; init; } = 4.6f;
-    public float ArrivalLookPitch { get; init; } = -5f;
 
-    /// <summary>Eye height when walking (return and approach poses).</summary>
-    public float EyeHeight { get; init; } = 2.6f;
+    /// <summary>The arrival terrace's floor height; the eye is <see cref="EyeHeight"/> above it.</summary>
+    public float TerraceTop { get; init; } = 1.6f;
+
+    /// <summary>Half-width of the terrace; it must stay inside the clear corridor south of the landmark.</summary>
+    public float TerraceHalfWidth { get; init; } = 2.3f;
+
+    public float TerraceHalfDepth { get; init; } = 2.5f;
+    public float ArrivalLookPitch { get; init; } = -6f;
+
+    /// <summary>Eye height above the supporting surface (WALK-01).</summary>
+    public float EyeHeight { get; init; } = 1.75f;
+
+    /// <summary>The overlook (JUMP-02): in the free sector between the file quarters and the gates.</summary>
+    public float OverlookAngleDeg { get; init; } = 261f;
+
+    public float OverlookRadius { get; init; } = 16f;
+    public float OverlookTop { get; init; } = 2.4f;
+    public float OverlookHalfSize { get; init; } = 2.5f;
     public float ReturnStandOff { get; init; } = 7f;
     public float ApproachStandOff { get; init; } = 9f;
     public SizeScale Scale { get; init; } = SizeScale.Place;
@@ -146,12 +161,17 @@ public static class PlaceComposer
             bounds = bounds.Union(new Box(v.Center - new Vector3(v.Radius, 0, v.Radius), v.Center + new Vector3(v.Radius, v.LandmarkHeight, v.Radius)));
         }
 
+        var arrivalGround = PlaceGeometry.Direction(180) * (southReach - p.ArrivalSetback);
+        var (terrain, overlook) = ComposeTerrain(files, gates, tiers, parentGate, landmark, arrivalGround, p);
+
         return new PlaceComposition
         {
             FolderId = folderId,
             State = Listing.Of(folder),
             Landmark = landmark,
-            Arrival = PlaceGeometry.FacingPose(PlaceGeometry.Direction(180) * (southReach - p.ArrivalSetback), 0, p.ArrivalEyeHeight, p.ArrivalLookPitch),
+            Arrival = PlaceGeometry.FacingPose(arrivalGround with { Y = p.TerraceTop }, 0, p.EyeHeight, p.ArrivalLookPitch),
+            Terrain = terrain,
+            Overlook = overlook,
             Files = files,
             Quarters = quarters,
             Gates = gates,
@@ -361,6 +381,88 @@ public static class PlaceComposer
         var chain = child.IsDirectory ? ChainLength(tree, childId) : 0;
         return new Gate(childId, pos, angleDeg, p.GateWidth, p.GateHeight, tier, state, chain,
             PlaceGeometry.RotatedBounds(pos, angleDeg, p.GateWidth, p.GateDepth, p.GateHeight));
+    }
+
+    // ------------------------------------------------------------------ terrain (AD-16, WALK-05, JUMP-02)
+
+    /// <summary>
+    /// The walkable ground: structures that block (towers, landmark, gate pillars), the arrival terrace with stairs
+    /// front and back, the overlook with its walking ramp and jump-block shortcut, tier rings, and the boundary.
+    /// </summary>
+    private static (PlaceTerrain Terrain, Overlook Overlook) ComposeTerrain(
+        List<PlacedFile> files, List<Gate> gates, List<GateTier> tiers, Gate? parentGate, Landmark landmark, Vector3 arrivalGround, PlaceParams p)
+    {
+        var boxes = new List<TerrainBox>(files.Count + gates.Count * 2 + 32);
+        var ramps = new List<TerrainRamp>();
+        var rings = new List<TerrainRing>();
+        static Vector2 Xz(Vector3 v) => new(v.X, v.Z);
+
+        foreach (var f in files)
+        {
+            var c = f.Box.Center;
+            boxes.Add(new TerrainBox(new Vector2(c.X, c.Z), new Vector2(f.Box.Size.X / 2, f.Box.Size.Z / 2), 0, f.Box.Min.Y, f.Box.Max.Y, TerrainKind.Tower, f.Id));
+        }
+
+        boxes.Add(new TerrainBox(Xz(landmark.Base), new Vector2(landmark.Radius, landmark.Radius), 0, 0, landmark.Height, TerrainKind.Landmark));
+
+        // Gate pillars: the opening between them is walkable; the lintel is above any head.
+        const float pillar = 0.55f;
+        foreach (var g in parentGate is null ? gates : gates.Append(parentGate))
+        {
+            foreach (var side in new[] { -1f, 1f })
+            {
+                var c = g.Position + g.Tangent * (side * (g.Width / 2 - pillar / 2));
+                boxes.Add(new TerrainBox(Xz(c), new Vector2(pillar / 2, p.GateDepth / 2), g.AngleDeg, g.Position.Y, g.Position.Y + g.Height, TerrainKind.Pillar, g.TargetId));
+            }
+        }
+
+        // Arrival terrace (north is -Z): stairs down to the plaza in front and down to the ▲ gate behind.
+        var t = p.TerraceTop;
+        var tc = Xz(arrivalGround);
+        boxes.Add(new TerrainBox(tc, new Vector2(p.TerraceHalfWidth, p.TerraceHalfDepth), 0, 0, t, TerrainKind.Platform));
+        const int stepsCount = 4;
+        const float stepDepth = 0.62f, stairHalf = 1.6f;
+        for (var i = 0; i < stepsCount; i++)
+        {
+            var top = t * (stepsCount - i) / (stepsCount + 1);
+            var front = tc.Y - p.TerraceHalfDepth - stepDepth * (i + 0.5f);
+            var back = tc.Y + p.TerraceHalfDepth + stepDepth * (i + 0.5f);
+            boxes.Add(new TerrainBox(new Vector2(tc.X, front), new Vector2(stairHalf, stepDepth / 2), 0, 0, top, TerrainKind.Step));
+            if (parentGate != null)
+            {
+                boxes.Add(new TerrainBox(new Vector2(tc.X, back), new Vector2(stairHalf, stepDepth / 2), 0, 0, top, TerrainKind.Step));
+            }
+        }
+
+        // The overlook: a platform with rails on its outer and north sides, a ramp from the plaza (walking route) and two
+        // jump blocks along its south side (the optional shortcut).
+        var oDir = PlaceGeometry.Direction(p.OverlookAngleDeg);
+        var oTan = new Vector3(-oDir.Z, 0, oDir.X);
+        var oc = oDir * p.OverlookRadius;
+        var h = p.OverlookHalfSize;
+        var top0 = p.OverlookTop;
+        boxes.Add(new TerrainBox(Xz(oc), new Vector2(h, h), p.OverlookAngleDeg, 0, top0, TerrainKind.Platform));
+        boxes.Add(new TerrainBox(Xz(oc + oDir * (h - 0.08f)), new Vector2(h, 0.08f), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
+        boxes.Add(new TerrainBox(Xz(oc + oTan * (h - 0.08f)), new Vector2(0.08f, h), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
+        var rampStart = oc - oDir * (h + 7.5f);
+        var rampEnd = oc - oDir * h;
+        ramps.Add(new TerrainRamp(Xz(rampStart), Xz(rampEnd), 1.25f, 0, top0));
+        var b1 = oc - oDir * (h + 4.2f) - oTan * 2.35f; // low block, further in
+        var b2 = oc - oDir * (h + 1.6f) - oTan * 2.35f; // middle block, by the platform's corner
+        boxes.Add(new TerrainBox(Xz(b1), new Vector2(0.7f, 0.7f), p.OverlookAngleDeg, 0, top0 / 3, TerrainKind.JumpBlock));
+        boxes.Add(new TerrainBox(Xz(b2), new Vector2(0.7f, 0.7f), p.OverlookAngleDeg, 0, top0 * 2 / 3, TerrainKind.JumpBlock));
+        var overlook = new Overlook(oc with { Y = top0 }, p.OverlookAngleDeg, h, Xz(rampStart), [Xz(b1), Xz(b2)]);
+
+        foreach (var tier in tiers.Where(x => x.Rise > 0))
+        {
+            rings.Add(new TerrainRing(tier.Radius - 3.5f, tier.Radius + 3.5f, tier.Rise, tier.StartDeg - 4, tier.EndDeg + 4));
+        }
+
+        var reach = MathF.Max(p.MinGateRadius, p.OverlookRadius + h + 2);
+        foreach (var g in gates) reach = MathF.Max(reach, g.Position.Length());
+        if (parentGate != null) reach = MathF.Max(reach, parentGate.Position.Length());
+        foreach (var f in files) reach = MathF.Max(reach, new Vector2(f.Box.Center.X, f.Box.Center.Z).Length() + 1);
+        return (new PlaceTerrain(boxes, ramps, rings, reach + 2.5f), overlook);
     }
 
     // ------------------------------------------------------------------ vistas
