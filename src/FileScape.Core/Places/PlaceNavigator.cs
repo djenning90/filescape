@@ -20,22 +20,36 @@ public enum PlaceMove
 
     /// <summary>Back to the previously visited folder.</summary>
     Back,
+
+    /// <summary>Through a link to its destination (AD-18): history remembers the connection used.</summary>
+    Link,
 }
 
-public sealed record PlaceChange(int From, int To, PlaceMove Move);
+/// <summary>
+/// One change of the current folder. <see cref="ViaLink"/> is the link involved: for <see cref="PlaceMove.Link"/> the
+/// link followed; for <see cref="PlaceMove.Back"/> the link through which the folder being left was entered, so the
+/// return arrives in front of that link's gate (LINK-03).
+/// </summary>
+public sealed record PlaceChange(int From, int To, PlaceMove Move, int ViaLink = -1);
 
 /// <summary>
-/// Where the user *is* (PLACE-01): the current folder, the visit history and the chosen root. It is deliberately
+/// Where the user *is* (PLACE-01): the current folder, the visit history and the arrival root. It is deliberately
 /// separate from <see cref="Interaction.SelectionState"/> (what the user inspects): selecting something never moves
-/// the user, and travelling does not have to change the selection.
+/// the user, and travelling does not have to change the selection. History (where you came from, including links)
+/// is distinct from parenthood (Up always goes to the physical parent, LINK-03); the arrival root is a starting
+/// point, not an edge (LINK-04).
 /// </summary>
 public sealed class PlaceNavigator
 {
-    private readonly List<int> _history = [];
+    private readonly List<(int Id, int Via)> _history = [];
 
     public int Root { get; private set; }
     public int Current { get; private set; }
-    public IReadOnlyList<int> History => _history;
+
+    /// <summary>The link through which the current folder was entered, or -1.</summary>
+    public int CurrentVia { get; private set; } = -1;
+
+    public IReadOnlyList<int> History => _history.Select(h => h.Id).ToList();
 
     public event Action<PlaceChange>? Changed;
 
@@ -44,6 +58,7 @@ public sealed class PlaceNavigator
         _history.Clear();
         Root = root;
         Current = root;
+        CurrentVia = -1;
     }
 
     /// <summary>Enters a child folder of the current folder. Links and files cannot be entered.</summary>
@@ -57,14 +72,36 @@ public sealed class PlaceNavigator
         return Move(childId, PlaceMove.Enter);
     }
 
+    /// <summary>Up to the physical parent — beyond the arrival root too, up to the top of the tree.</summary>
     public bool Up(FsTree tree)
     {
-        if (!tree.Contains(Current) || tree[Current].IsRoot || Current == Root)
+        if (!tree.Contains(Current) || tree[Current].IsRoot)
         {
             return false;
         }
 
         return Move(tree[Current].ParentId, PlaceMove.Up);
+    }
+
+    /// <summary>Arrives at a link's destination folder (resolved by the explorer); Back returns through the link.</summary>
+    public bool FollowLink(FsTree tree, int linkId, int targetId)
+    {
+        if (!tree.Contains(targetId) || !tree.Contains(linkId))
+        {
+            return false;
+        }
+
+        if (!tree[targetId].IsDirectory)
+        {
+            targetId = tree[targetId].ParentId;
+        }
+
+        if (targetId == Current)
+        {
+            return false;
+        }
+
+        return Move(targetId, PlaceMove.Link, linkId);
     }
 
     /// <summary>Goes to any folder at or below the root. A file's id goes to its folder.</summary>
@@ -92,15 +129,17 @@ public sealed class PlaceNavigator
             return false;
         }
 
-        var previous = _history[^1];
+        var (previous, previousVia) = _history[^1];
         _history.RemoveAt(_history.Count - 1);
         var from = Current;
+        var via = CurrentVia;
         Current = previous;
-        Changed?.Invoke(new PlaceChange(from, previous, PlaceMove.Back));
+        CurrentVia = previousVia;
+        Changed?.Invoke(new PlaceChange(from, previous, PlaceMove.Back, via));
         return true;
     }
 
-    private bool Move(int to, PlaceMove move)
+    private bool Move(int to, PlaceMove move, int via = -1)
     {
         if (to == Current)
         {
@@ -108,14 +147,15 @@ public sealed class PlaceNavigator
         }
 
         var from = Current;
-        _history.Add(from);
+        _history.Add((from, CurrentVia));
         if (_history.Count > 200)
         {
             _history.RemoveAt(0);
         }
 
         Current = to;
-        Changed?.Invoke(new PlaceChange(from, to, move));
+        CurrentVia = via;
+        Changed?.Invoke(new PlaceChange(from, to, move, via));
         return true;
     }
 

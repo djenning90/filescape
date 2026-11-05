@@ -239,8 +239,12 @@ public class PlaceTests
         }
 
         Listing.IsUnknown(ListingState.Empty).Should().BeFalse();
-        c.GateFor(tree.Find("shortcut").Id)!.CanEnter.Should().BeFalse("links are shown but never followed (FS-03)");
+        // Revised 2026-11-05 (LINK-02, AD-18): links are followed on purpose when they can be; a link with no readable
+        // information (this synthetic one) or an unsupported kind is not enterable, and an unresolved link has no vista.
+        c.GateFor(tree.Find("shortcut").Id)!.CanEnter.Should().BeFalse("nothing is known about where this link leads");
         c.Vistas.Should().NotContain(v => v.FolderId == tree.Find("shortcut").Id);
+        Listing.IsUnknown(ListingState.Unlisted).Should().BeTrue();
+        Listing.Describe(ListingState.Unlisted).Should().NotBe(Listing.Describe(ListingState.Empty));
         c.Vistas.Single(v => v.FolderId == tree.Find("queued").Id).State.Should().Be(ListingState.Pending);
     }
 
@@ -364,7 +368,8 @@ public class PlaceTests
         t.Update(Along(g, 1, height: g.Height + 1), 2.3).Should().BeNull("flying above the lintel escapes the place without travelling");
         t.Update(Along(g, 3), 2.4);
         t.Update(Along(g, -3), 2.5).Should().BeNull("walking inward through a gate is not travel");
-        ThresholdTracker.Crosses(g with { State = ListingState.Link }, Along(g, -1), Along(g, 1)).Should().BeFalse();
+        ThresholdTracker.Crosses(g with { State = ListingState.Link, Followable = false }, Along(g, -1), Along(g, 1)).Should().BeFalse("a link that cannot be followed is not a way through");
+        ThresholdTracker.Crosses(g with { State = ListingState.Link, Followable = true }, Along(g, -1), Along(g, 1)).Should().BeTrue("a followable link is entered on purpose by walking through it (LINK-02)");
     }
 
     /// <summary>Found in the exported app: stepping back (S) from the arrival terrace walked through the parent gate.</summary>

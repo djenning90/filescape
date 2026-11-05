@@ -35,8 +35,14 @@ public enum ListingState
     /// <summary>A cloud placeholder directory that is deliberately not listed (FS-13).</summary>
     Cloud,
 
-    /// <summary>A directory link (junction, symlink, mount point). Shown, never followed (FS-03).</summary>
+    /// <summary>A directory link (junction, symlink, mount point): a connection to elsewhere, followed only on purpose (AD-18).</summary>
     Link,
+
+    /// <summary>Known to exist, not listed yet: it is listed when visited (on-demand exploration, AD-17).</summary>
+    Unlisted,
+
+    /// <summary>Its volume, share or distribution could not be reached.</summary>
+    Unavailable,
 }
 
 public static class Listing
@@ -44,6 +50,7 @@ public static class Listing
     public static ListingState Of(FsNode n)
     {
         if (n.Kind == NodeKind.Link) return ListingState.Link;
+        if ((n.Flags & NodeFlags.Unavailable) != 0 && n.Children.Count == 0) return ListingState.Unavailable;
         if ((n.Flags & NodeFlags.AccessDenied) != 0) return ListingState.Denied;
         if ((n.Flags & (NodeFlags.Vanished | NodeFlags.EnumerationError)) != 0 && n.Children.Count == 0) return ListingState.Failed;
         if ((n.Flags & NodeFlags.CloudNotTraversed) != 0) return ListingState.Cloud;
@@ -52,6 +59,7 @@ public static class Listing
             DirScanState.Pending => ListingState.Pending,
             DirScanState.Cancelled or DirScanState.NotTraversed => ListingState.NotScanned,
             DirScanState.Failed => ListingState.Failed,
+            DirScanState.Unlisted => ListingState.Unlisted,
             _ when (n.Flags & (NodeFlags.Incomplete | NodeFlags.Vanished | NodeFlags.EnumerationError)) != 0 => ListingState.Partial,
             _ => n.Children.Count == 0 ? ListingState.Empty : ListingState.Open,
         };
@@ -70,13 +78,15 @@ public static class Listing
         ListingState.Denied => "access denied",
         ListingState.Failed => "listing failed",
         ListingState.Cloud => "cloud — not listed",
-        ListingState.Link => "link — not followed",
+        ListingState.Link => "link",
+        ListingState.Unlisted => "not listed yet",
+        ListingState.Unavailable => "unavailable",
         _ => "",
     };
 }
 
 /// <summary>A file structure in the place. <see cref="Box"/> is its solid (also used for picking).</summary>
-public sealed record PlacedFile(int Id, Box Box, FileCategory Category);
+public sealed record PlacedFile(int Id, Box Box, FileCategory Category, bool Core = false);
 
 /// <summary>A labelled type quarter: files of one category share an angular wedge of the near half (PLACE-03).</summary>
 public sealed record FileQuarter(FileCategory Category, int Count, float StartDeg, float EndDeg, Vector3 SignPosition);
@@ -96,11 +106,16 @@ public sealed record Gate(
     ListingState State,
     int ChainLength,
     Box Bounds,
-    bool IsParent = false)
+    bool IsParent = false,
+    bool Followable = true)
 {
     public Vector3 Outward => PlaceGeometry.Direction(AngleDeg);
     public Vector3 Tangent => new(-Outward.Z, 0, Outward.X);
-    public bool CanEnter => State != ListingState.Link;
+
+    /// <summary>Folders can always be entered; a link gate only when its link can be followed (AD-18, LINK-06).</summary>
+    public bool CanEnter => State != ListingState.Link || Followable;
+
+    public bool IsLink => State == ListingState.Link;
 }
 
 /// <summary>An alphabetical tier of gates in a wide folder (PLACE-05).</summary>
@@ -178,6 +193,12 @@ public sealed class PlaceComposition
 
     /// <summary>The overlook platform with the place's summary (JUMP-02).</summary>
     public required Overlook Overlook { get; init; }
+
+    /// <summary>Entries of this folder not shown because of the visibility filter (VISI-04).</summary>
+    public int HiddenCount { get; init; }
+
+    /// <summary>The place's identity (AD-20): hub, location root, project or ordinary folder, with its evidence.</summary>
+    public PlaceKindInfo Kind { get; init; } = PlaceKindInfo.Ordinary;
 
     /// <summary>The tree version this composition was made from.</summary>
     public required int TreeVersion { get; init; }

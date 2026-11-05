@@ -90,7 +90,7 @@ public static class PlaceComposer
 {
     private static readonly IComparer<string> NameOrder = StringComparer.OrdinalIgnoreCase;
 
-    public static PlaceComposition Compose(FsTree tree, int folderId, PlaceParams? parameters = null)
+    public static PlaceComposition Compose(FsTree tree, int folderId, PlaceParams? parameters = null, Func<FsNode, bool>? visible = null, PlaceKindInfo? kind = null)
     {
         var p = parameters ?? PlaceParams.Default;
         var folder = tree[folderId];
@@ -101,9 +101,16 @@ public static class PlaceComposer
 
         var fileIds = new List<int>();
         var childIds = new List<int>();
+        var hidden = 0;
         foreach (var c in folder.Children)
         {
             var n = tree[c];
+            if (visible != null && !visible(n))
+            {
+                hidden++; // filtered from the place only: totals, selection and history are unaffected (VISI-04)
+                continue;
+            }
+
             if (n.IsDirectory || (n.Kind == NodeKind.Link && (n.Flags & NodeFlags.DirectoryLink) != 0)) childIds.Add(c);
             else fileIds.Add(c); // files and file links are structures
         }
@@ -113,7 +120,15 @@ public static class PlaceComposer
         var identity = PlaceIdentity.For(tree.DisplayName(folderId));
         var landmark = new Landmark(Vector3.Zero, LandmarkHeight(folder), p.LandmarkRadius, identity);
 
-        var (files, quarters, fileRadius) = ComposeFiles(tree, fileIds, p);
+        // A project's README and manifests form its "core" by the avenue, the first thing you walk past (IDENT-04).
+        var core = kind?.Kind == PlaceKind.Project ? kind.CoreFiles.Where(fileIds.Contains).ToList() : [];
+        var (files, quarters, fileRadius) = ComposeFiles(tree, fileIds.Where(id => !core.Contains(id)).ToList(), p);
+        float[] coreAngles = [148, 212, 136, 224, 124, 236];
+        for (var i = 0; i < core.Count && i < coreAngles.Length; i++)
+        {
+            var c = PlaceGeometry.Direction(coreAngles[i]) * 6.2f;
+            files.Add(new PlacedFile(core[i], Box.FromBase(c, p.FileFootprint, p.Scale.Height(tree[core[i]].Size), p.FileFootprint), FileCategories.Of(tree[core[i]].Name), Core: true));
+        }
         var (gates, tiers) = ComposeGates(tree, childIds, p);
 
         var vistas = new List<Vista>();
@@ -124,15 +139,18 @@ public static class PlaceComposer
             var gap = gates.Count > 1 ? (gates[1].AngleDeg - gates[0].AngleDeg) * MathF.PI / 180f : MathF.PI;
             foreach (var g in gates)
             {
+                // A resolved link previews its destination (LINK-03); other links have no vista.
+                var previewId = g.TargetId;
                 if (g.State == ListingState.Link)
                 {
-                    continue;
+                    if (tree[g.TargetId].Link is not { Status: LinkStatus.Resolved, TargetId: >= 0 } li || !tree.Contains(li.TargetId) || !tree[li.TargetId].IsDirectory) continue;
+                    previewId = li.TargetId;
                 }
 
                 var dist = g.Position.Length() + p.VistaDistance;
                 var radius = Math.Clamp(0.42f * gap * dist, 4f, 14f);
                 var center = g.Outward * dist;
-                vistas.Add(ComposeVista(tree, g.TargetId, center, g.AngleDeg, radius, p));
+                vistas.Add(ComposeVista(tree, previewId, center, g.AngleDeg, radius, p));
                 var start = g.Outward * (p.LandmarkRadius + 1.6f);
                 avenues.Add(new Avenue(g.TargetId, [start, g.Position, center - g.Outward * radius]));
             }
@@ -172,6 +190,8 @@ public static class PlaceComposer
             Arrival = PlaceGeometry.FacingPose(arrivalGround with { Y = p.TerraceTop }, 0, p.EyeHeight, p.ArrivalLookPitch),
             Terrain = terrain,
             Overlook = overlook,
+            HiddenCount = hidden,
+            Kind = kind ?? PlaceKindInfo.Ordinary,
             Files = files,
             Quarters = quarters,
             Gates = gates,
@@ -210,6 +230,12 @@ public static class PlaceComposer
                 Mix(n.Children.Count);
                 Mix((long)n.ScanState);
                 Mix((long)n.Flags);
+                if (n.Link is { } li)
+                {
+                    Mix((long)li.Status);
+                    Mix(li.TargetId);
+                    if (li.TargetId >= 0 && tree.Contains(li.TargetId)) Mix(tree[li.TargetId].Children.Count);
+                }
             }
 
             if (!f.IsRoot)
@@ -380,7 +406,8 @@ public static class PlaceComposer
         var state = Listing.Of(child);
         var chain = child.IsDirectory ? ChainLength(tree, childId) : 0;
         return new Gate(childId, pos, angleDeg, p.GateWidth, p.GateHeight, tier, state, chain,
-            PlaceGeometry.RotatedBounds(pos, angleDeg, p.GateWidth, p.GateDepth, p.GateHeight));
+            PlaceGeometry.RotatedBounds(pos, angleDeg, p.GateWidth, p.GateDepth, p.GateHeight),
+            Followable: child.Kind != NodeKind.Link || (child.Link?.CanFollow ?? false));
     }
 
     // ------------------------------------------------------------------ terrain (AD-16, WALK-05, JUMP-02)
