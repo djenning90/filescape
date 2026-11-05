@@ -28,7 +28,8 @@ $log = New-Object System.Collections.Generic.List[string]
 $fails = 0
 function Log($s) { $script:log.Add($s); Write-Host $s }
 function Check($ok, $what) { if ($ok) { Log "PASS OS $what" } else { $script:fails++; Log "FAIL OS $what" } }
-function State { for ($i = 0; $i -lt 20; $i++) { try { return Get-Content $state -Raw | ConvertFrom-Json } catch { Start-Sleep -Milliseconds 50 } } }
+# The app rewrites the state file in place (WriteAllText truncates first), so a read can see it empty: retry until it parses to an object.
+function State { for ($i = 0; $i -lt 20; $i++) { try { $o = Get-Content $state -Raw | ConvertFrom-Json; if ($o) { return $o } } catch { }; Start-Sleep -Milliseconds 50 } }
 function Wait-Settled([int]$ms = 400) { Start-Sleep -Milliseconds $ms; for ($i = 0; $i -lt 80; $i++) { $s = State; if (-not $s.transition -and -not $s.guided -and -not $s.landing) { break }; Start-Sleep -Milliseconds 100 }; Start-Sleep -Milliseconds 300 }
 function Dist($a, $b) { [math]::Sqrt([math]::Pow($a[0] - $b[0], 2) + [math]::Pow($a[2] - $b[2], 2)) }
 function Client-Click($h, [int]$x, [int]$y) {

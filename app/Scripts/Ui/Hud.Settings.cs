@@ -147,7 +147,15 @@ public partial class Hud
     public void ToggleSettings()
     {
         _settingsPanel.Visible = !_settingsPanel.Visible;
-        if (_settingsPanel.Visible) DismissHint();
+        if (!_settingsPanel.Visible) return;
+        // Drawn above every other HUD panel (it was added before them, so they used to cover parts of it), and opaque.
+        _settingsPanel.MoveToFront();
+        var sb = (StyleBoxFlat)_root.Theme.GetStylebox("panel", "PanelContainer").Duplicate();
+        sb.BgColor = new Color(sb.BgColor, 0.98f);
+        sb.ContentMarginLeft = sb.ContentMarginRight = 18;
+        sb.ContentMarginTop = sb.ContentMarginBottom = 14;
+        _settingsPanel.AddThemeStyleboxOverride("panel", sb);
+        DismissHint();
     }
 
     public void HideSettings() => _settingsPanel.Visible = false;
