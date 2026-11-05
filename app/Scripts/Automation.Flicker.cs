@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using FileScape.App.Visual;
+using FileScape.Core.Units;
 using Godot;
 using GEnvironment = Godot.Environment;
 
@@ -229,7 +230,7 @@ public partial class Automation
         var pos = start + towardSun * (t * 36f) + new Vector3(0, 17f, 0);
         var lookYaw = yaw + 10f * Mathf.Sin(t * Mathf.Tau);
         const float elevation = 24f; // looking down at the wet ground ahead
-        _main.Rig.SetPose(pos, lookYaw, -elevation, 30f);
+        _main.Rig.SetPose(pos, Degrees.Of(lookYaw), Degrees.Of(-elevation), 30f);
     }
 
     private void PreFix()
@@ -246,7 +247,7 @@ public partial class Automation
         {
             // Far enough and low enough that the whole 80 u beam, including its top, is in frame while orbiting.
             var sb = _main.Layout!.NodeBoxes[_main.Selection.Selected];
-            _main.Rig.SetDesired(Visualization.Gd(sb.Center) with { Y = 30 }, 120f, frame * 0.9f, 8f);
+            _main.Rig.SetDesired(Visualization.Gd(sb.Center) with { Y = 30 }, 120f, Degrees.Of(frame * 0.9f), Degrees.Of(8f));
             _main.Rig.Snap();
             return;
         }
@@ -265,7 +266,7 @@ public partial class Automation
 
         // Orbit the selection at a typical inspection distance, as DJ would after selecting something.
         var b = _main.Layout!.NodeBoxes[_main.Selection.Selected];
-        _main.Rig.SetDesired(Visualization.Gd(b.Center) with { Y = 0 }, 30f, frame * 0.9f, 20f);
+        _main.Rig.SetDesired(Visualization.Gd(b.Center) with { Y = 0 }, 30f, Degrees.Of(frame * 0.9f), Degrees.Of(20f));
         _main.Rig.Snap();
     }
 
@@ -280,7 +281,7 @@ public partial class Automation
         var pos = a.Lerp(b, 0.1f + 0.7f * t);
         var dir = (b - a).Normalized();
         var yaw = Mathf.RadToDeg(Mathf.Atan2(-dir.X, -dir.Z)) + 8f * Mathf.Sin(t * Mathf.Tau);
-        _main.Rig.SetPose(pos, yaw, -6f, 20f);
+        _main.Rig.SetPose(pos, Degrees.Of(yaw), Degrees.Of(-6f), 20f);
     }
 
     private Vector3 TowardSun()
@@ -295,11 +296,11 @@ public partial class Automation
         var b = _main.Layout!.Bounds;
         var towardSun = TowardSun();
         var yaw = Mathf.RadToDeg(Mathf.Atan2(-towardSun.X, -towardSun.Z));
-        _main.Rig.SetPose(Visualization.Gd(b.Center) with { Y = 20 }, yaw, 25f, 30f);
+        _main.Rig.SetPose(Visualization.Gd(b.Center) with { Y = 20 }, Degrees.Of(yaw), Degrees.Of(25f), 30f);
         await Frames(5);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         _main.GetViewport().GetTexture().GetImage().SavePng($"{_out}/flicker-sun-view.png");
-        _main.Rig.SetPose(Visualization.Gd(b.Center) with { Y = 20 }, yaw, -30f, 30f);
+        _main.Rig.SetPose(Visualization.Gd(b.Center) with { Y = 20 }, Degrees.Of(yaw), Degrees.Of(-30f), 30f);
         await Frames(5);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         _main.GetViewport().GetTexture().GetImage().SavePng($"{_out}/flicker-sun-reflection-view.png");

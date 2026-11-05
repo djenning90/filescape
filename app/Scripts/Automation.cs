@@ -4,6 +4,7 @@ using FileScape.App.Visual;
 using FileScape.Core.Model;
 using FileScape.Core.Scanning;
 using FileScape.Core.Shell;
+using FileScape.Core.Units;
 using Godot;
 
 namespace FileScape.App;
@@ -93,7 +94,7 @@ public partial class Automation : Node
         await Shot("04-district-overview");
 
         // Disorientation: far away, looking almost straight down at empty ground.
-        _main.Rig.SetDesired(new Vector3(4000, 0, 3000), 9000, 137, 85);
+        _main.Rig.SetDesired(new Vector3(4000, 0, 3000), 9000, Degrees.Of(137), Degrees.Of(85));
         _main.Rig.Snap();
         await Frames(5);
         await Shot("05-disoriented");
@@ -204,7 +205,7 @@ public partial class Automation : Node
             if (_main.Layout != null)
             {
                 var b = _main.Layout.Bounds;
-                _main.Rig.SetDesired(Visual.Visualization.Gd(b.Center) with { Y = 0 }, Mathf.Max(b.Size.X, -b.Min.Z) * 0.8f + 30, (float)(t * 18), 30);
+                _main.Rig.SetDesired(Visual.Visualization.Gd(b.Center) with { Y = 0 }, Mathf.Max(b.Size.X, -b.Min.Z) * 0.8f + 30, Degrees.Of((float)(t * 18)), Degrees.Of(30));
             }
 
             await Frames(1);
@@ -383,7 +384,7 @@ public partial class Automation : Node
             // The first half orbits the overview. The second half dollies in to street level and orbits closer.
             var dist = t < 0.5 ? far : Mathf.Lerp(far, 25, (float)((t - 0.5) * 2));
             var pitch = t < 0.5 ? 34 : Mathf.Lerp(34, 14, (float)((t - 0.5) * 2));
-            _main.Rig.SetDesired(centre, dist, (float)(t * 540), pitch);
+            _main.Rig.SetDesired(centre, dist, Degrees.Of((float)(t * 540)), Degrees.Of(pitch));
             _main.Rig.Snap();
             await Frames(1);
         }

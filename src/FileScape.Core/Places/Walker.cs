@@ -136,9 +136,16 @@ public sealed class Walker
     /// <summary>The smoothed eye height (world Y, metres) that the camera uses; it trails upward steps.</summary>
     private float _eyeY;
 
+    // Durations converted once to float seconds for the per-sub-step arithmetic (TimeSpan→float costs a division).
+    private readonly float _stepSeconds, _coyoteSeconds, _jumpBufferSeconds, _maxFrameSeconds;
+
     public Walker(WalkParams? parameters = null)
     {
         _p = (parameters ?? WalkParams.Default).Validate();
+        _stepSeconds = 1f / _p.SubStepsPerSecond;
+        _coyoteSeconds = _p.CoyoteTime.ToSecondsF();
+        _jumpBufferSeconds = _p.JumpBuffer.ToSecondsF();
+        _maxFrameSeconds = _p.MaxFrame.ToSecondsF();
     }
 
     public WalkParams Params => _p;
@@ -212,12 +219,11 @@ public sealed class Walker
     public void Update(PlaceTerrain terrain, WalkInput input, TimeSpan frame)
     {
         if (input.JumpPressed) _sinceJumpPressedSeconds = 0;
-        _accumulatorSeconds += Math.Clamp(frame.ToSecondsF(), 0, _p.MaxFrame.ToSecondsF());
-        var stepSeconds = 1f / _p.SubStepsPerSecond;
-        while (_accumulatorSeconds >= stepSeconds)
+        _accumulatorSeconds += Math.Clamp(frame.ToSecondsF(), 0, _maxFrameSeconds);
+        while (_accumulatorSeconds >= _stepSeconds)
         {
-            _accumulatorSeconds -= stepSeconds;
-            Step(terrain, input, stepSeconds);
+            _accumulatorSeconds -= _stepSeconds;
+            Step(terrain, input, _stepSeconds);
         }
     }
 
@@ -242,11 +248,11 @@ public sealed class Walker
 
         // Jump: on the ground or shortly after leaving it, pressed now or shortly before.
         var verticalMetersPerSecond = VerticalVelocity.Value;
-        if (_sinceJumpPressedSeconds <= _p.JumpBuffer.ToSecondsF() && _sinceGroundedSeconds <= _p.CoyoteTime.ToSecondsF() && verticalMetersPerSecond <= 0.01f)
+        if (_sinceJumpPressedSeconds <= _jumpBufferSeconds && _sinceGroundedSeconds <= _coyoteSeconds && verticalMetersPerSecond <= 0.01f)
         {
             verticalMetersPerSecond = _p.JumpSpeed.Value;
             Grounded = false;
-            _sinceGroundedSeconds = _p.CoyoteTime.ToSecondsF() + 1;
+            _sinceGroundedSeconds = _coyoteSeconds + 1;
             _sinceJumpPressedSeconds = 999f;
             Jumps++;
         }

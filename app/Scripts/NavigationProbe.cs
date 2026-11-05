@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using FileScape.Core.Scanning;
+using FileScape.Core.Units;
 using Godot;
 
 namespace FileScape.App;
@@ -100,21 +101,21 @@ public partial class NavigationProbe : Node
         var yaw0 = Rig.Yaw;
         Motion(new Vector2(100, 0));
         await Frames(2);
-        Check(Near(Rig.Yaw, yaw0 - 100 * CameraRig.LookSensitivity, 0.01f), F($"mouse-look yaw: 100 px → {Rig.Yaw - yaw0:0.00}°"));
+        Check(Near(Rig.Yaw.Value, yaw0.Value - 100 * CameraRig.LookDegreesPerPixel, 0.01f), F($"mouse-look yaw: 100 px → {(Rig.Yaw - yaw0).Value:0.00}°"));
         Motion(new Vector2(0, -20000));
         await Frames(2);
         var upY = Rig.Camera.GlobalTransform.Basis.Y.Y;
-        Check(Near(Rig.LookPitch, 85, 0.01f) && upY > 0.05f, F($"look up stops at {Rig.LookPitch:0.0}° without flipping (camera up.y {upY:0.000})"));
+        Check(Near(Rig.LookPitch.Value, 85, 0.01f) && upY > 0.05f, F($"look up stops at {Rig.LookPitch.Value:0.0}° without flipping (camera up.y {upY:0.000})"));
         Motion(new Vector2(0, 40000));
         await Frames(2);
-        Check(Near(Rig.LookPitch, -85, 0.01f) && Rig.Camera.GlobalTransform.Basis.Y.Y > 0.05f, F($"look down stops at {Rig.LookPitch:0.0}° without flipping"));
+        Check(Near(Rig.LookPitch.Value, -85, 0.01f) && Rig.Camera.GlobalTransform.Basis.Y.Y > 0.05f, F($"look down stops at {Rig.LookPitch.Value:0.0}° without flipping"));
         Check(Mathf.Abs(Rig.Camera.GlobalTransform.Basis.X.Y) < 1e-4f, "no roll: camera right vector stays horizontal");
         // Climb well clear of the ground first: the speed series below flies downward at −30°, and reaching the
         // ground floor would turn the remaining motion into a horizontal slide and distort the speed ratios.
-        Motion(new Vector2(0, (0 - Rig.LookPitch) / -CameraRig.LookSensitivity));
+        Motion(new Vector2(0, (0 - Rig.LookPitch.Value) / -CameraRig.LookDegreesPerPixel));
         await Frames(2);
         await FlyMove([Key.Shift, Key.E], 2.5);
-        Motion(new Vector2(0, (-30 - Rig.LookPitch) / -CameraRig.LookSensitivity));
+        Motion(new Vector2(0, (-30 - Rig.LookPitch.Value) / -CameraRig.LookDegreesPerPixel));
         await Frames(2);
         var altitude = Rig.Camera.GlobalPosition.Y;
         Log(F($"look pitch set to {Rig.LookPitch:0.0}°, altitude {altitude:0} u"));
@@ -127,8 +128,8 @@ public partial class NavigationProbe : Node
         var fleft = await FlyMove([Key.Left], 0.6);
         var fshift = await FlyMove([Key.Shift, Key.W], 0.6);
         var look = ToGd(FileScape.Core.Interaction.CameraMath.Forward(Rig.Yaw, Rig.LookPitch));
-        Check(Rig.Camera.GlobalPosition.Y > CameraRig.MinCameraHeight + 1, F($"instrument: the speed series stayed above ground (altitude {Rig.Camera.GlobalPosition.Y:0} u)"));
-        Log(F($"fly speeds u/s (speed setting {Rig.FlySpeed:0.0}): W={fw.Speed:0.00} Up={fup.Speed:0.00} W+Up={fboth.Speed:0.00} W+A={fdiag.Speed:0.00} Left={fleft.Speed:0.00} Shift+W={fshift.Speed:0.00}"));
+        Check(Rig.Camera.GlobalPosition.Y > CameraRig.MinCameraHeightWorldUnits + 1, F($"instrument: the speed series stayed above ground (altitude {Rig.Camera.GlobalPosition.Y:0} u)"));
+        Log(F($"fly speeds u/s (speed setting {Rig.FlySpeedWorldUnitsPerSecond:0.0}): W={fw.Speed:0.00} Up={fup.Speed:0.00} W+Up={fboth.Speed:0.00} W+A={fdiag.Speed:0.00} Left={fleft.Speed:0.00} Shift+W={fshift.Speed:0.00}"));
         Check(Near(Dot(fw.Dir, look), 1, 0.02) && fw.Delta.Y < 0, F($"W flies along the view direction, descending when looking down (dot {Dot(fw.Dir, look):0.000})"));
         Check(Near(fup.Speed / fw.Speed, 1, 0.08), F($"Up arrow = W in flight (ratio {fup.Speed / fw.Speed:0.000})"));
         Check(Near(fboth.Speed / fw.Speed, 1, 0.08), F($"W+Up does not double flight speed (ratio {fboth.Speed / fw.Speed:0.000})"));
@@ -139,12 +140,12 @@ public partial class NavigationProbe : Node
         var fq = await FlyMove([Key.Q], 0.2);
         Check(fe.Delta.Y > 0 && Mathf.Abs(fe.Delta.X) + Mathf.Abs(fe.Delta.Z) < 0.01f * fe.Delta.Length() + 1e-3f, "E ascends in world space while flying");
         Check(fq.Delta.Y < 0, "Q descends while flying");
-        var s0 = Rig.FlySpeed;
+        var s0 = Rig.FlySpeedWorldUnitsPerSecond;
         await Wheel(true, 3);
-        Check(Near(Rig.FlySpeed / s0, 1.953f, 0.02f), F($"wheel up ×3 raises flight speed {s0:0.0} → {Rig.FlySpeed:0.0} u/s"));
-        Check(_main.Hud.FlyChipText.Contains(Rig.FlySpeed.ToString("0.#", CultureInfo.CurrentCulture), StringComparison.Ordinal), "flight speed shown while it changes");
+        Check(Near(Rig.FlySpeedWorldUnitsPerSecond / s0, 1.953f, 0.02f), F($"wheel up ×3 raises flight speed {s0:0.0} → {Rig.FlySpeedWorldUnitsPerSecond:0.0} u/s"));
+        Check(_main.Hud.FlyChipText.Contains(Rig.FlySpeedWorldUnitsPerSecond.ToString("0.#", CultureInfo.CurrentCulture), StringComparison.Ordinal), "flight speed shown while it changes");
         await Wheel(false, 3);
-        Check(Near(Rig.FlySpeed, s0, 0.01f * s0), "wheel down restores the speed");
+        Check(Near(Rig.FlySpeedWorldUnitsPerSecond, s0, 0.01f * s0), "wheel down restores the speed");
         var dist = Rig.Distance;
         Check(Near(Rig.Distance, dist, 1e-3f), "wheel in flight does not zoom");
 

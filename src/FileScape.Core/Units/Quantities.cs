@@ -17,7 +17,7 @@ namespace FileScape.Core.Units;
 // own values (WalkParams.Validate) and IsFinite is available for checks.
 
 /// <summary>A length in metres (Places world space: 1 world unit = 1 m). Signed: may be a displacement.</summary>
-public readonly record struct Meters(float Value) : IComparable<Meters>
+public readonly record struct Meters(float Value) : IComparable<Meters>, IFormattable
 {
     public static readonly Meters Zero = default;
 
@@ -37,6 +37,9 @@ public readonly record struct Meters(float Value) : IComparable<Meters>
 
     public static MetersPerSecond operator /(Meters distance, TimeSpan duration) => new(distance.Value / (float)duration.TotalSeconds);
 
+    /// <summary>The time to cover a distance at a speed (rounded to the nearest tick).</summary>
+    public static TimeSpan operator /(Meters distance, MetersPerSecond speed) => Durations.FromSeconds(distance.Value / speed.Value);
+
     public static bool operator <(Meters a, Meters b) => a.Value < b.Value;
     public static bool operator >(Meters a, Meters b) => a.Value > b.Value;
     public static bool operator <=(Meters a, Meters b) => a.Value <= b.Value;
@@ -49,10 +52,13 @@ public readonly record struct Meters(float Value) : IComparable<Meters>
     public Meters Abs() => new(MathF.Abs(Value));
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + " m";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75 m").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + " m";
 }
 
 /// <summary>A speed (a magnitude, or a signed component such as a vertical velocity) in metres per second.</summary>
-public readonly record struct MetersPerSecond(float Value) : IComparable<MetersPerSecond>
+public readonly record struct MetersPerSecond(float Value) : IComparable<MetersPerSecond>, IFormattable
 {
     public static readonly MetersPerSecond Zero = default;
 
@@ -79,10 +85,13 @@ public readonly record struct MetersPerSecond(float Value) : IComparable<MetersP
     public int CompareTo(MetersPerSecond other) => Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + " m/s";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75 m/s").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + " m/s";
 }
 
 /// <summary>An acceleration in metres per second squared (gravity is a positive magnitude acting downwards).</summary>
-public readonly record struct MetersPerSecondSquared(float Value)
+public readonly record struct MetersPerSecondSquared(float Value) : IFormattable
 {
     public static MetersPerSecondSquared Of(float metersPerSecondSquared) => new(metersPerSecondSquared);
 
@@ -91,6 +100,9 @@ public readonly record struct MetersPerSecondSquared(float Value)
     public static MetersPerSecond operator *(MetersPerSecondSquared a, TimeSpan duration) => new(a.Value * (float)duration.TotalSeconds);
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + " m/s²";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75 m/s²").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + " m/s²";
 }
 
 /// <summary>
@@ -98,7 +110,7 @@ public readonly record struct MetersPerSecondSquared(float Value)
 /// angles: clockwise from north) — see docs/units.md. Degrees are not normalised automatically: a yaw accumulates
 /// turns, and <see cref="Wrapped"/> gives the equivalent in (-180, 180] when a short-way difference is needed.
 /// </summary>
-public readonly record struct Degrees(float Value) : IComparable<Degrees>
+public readonly record struct Degrees(float Value) : IComparable<Degrees>, IFormattable
 {
     private const float RadiansPerDegree = MathF.PI / 180f;
 
@@ -142,10 +154,13 @@ public readonly record struct Degrees(float Value) : IComparable<Degrees>
     public int CompareTo(Degrees other) => Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + "°";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75°").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + "°";
 }
 
 /// <summary>An angular speed in degrees per second (e.g. how fast the arrow keys turn the heading).</summary>
-public readonly record struct DegreesPerSecond(float Value)
+public readonly record struct DegreesPerSecond(float Value) : IFormattable
 {
     public static DegreesPerSecond Of(float degreesPerSecond) => new(degreesPerSecond);
 
@@ -154,6 +169,9 @@ public readonly record struct DegreesPerSecond(float Value)
     public static DegreesPerSecond operator *(DegreesPerSecond rate, float ratio) => new(rate.Value * ratio);
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + "°/s";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75°/s").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + "°/s";
 }
 
 /// <summary>
@@ -162,7 +180,7 @@ public readonly record struct DegreesPerSecond(float Value)
 /// After one <see cref="TimeConstant"/> (1/rate) ≈ 63 % of a step change is done, after 2.3 time constants 90 %, after
 /// 4.6 time constants 99 %. A higher rate responds faster; zero never moves.
 /// </summary>
-public readonly record struct PerSecond(float Value)
+public readonly record struct PerSecond(float Value) : IFormattable
 {
     public static PerSecond Of(float perSecond) => new(perSecond);
 
@@ -178,6 +196,9 @@ public readonly record struct PerSecond(float Value)
     public TimeSpan TimeConstant => TimeSpan.FromSeconds(1.0 / Value);
 
     public override string ToString() => Value.ToString("0.###", CultureInfo.InvariantCulture) + "/s";
+
+    /// <summary>Formats the number with <paramref name="format"/> and appends the unit ("{x:0.00}" → "1.75/s").</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => Value.ToString(format ?? "0.###", formatProvider) + "/s";
 }
 
 /// <summary>Creating durations from computed seconds.</summary>

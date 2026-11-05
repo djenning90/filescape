@@ -1,5 +1,6 @@
 using FileScape.Core.Interaction;
 using FileScape.Core.Places;
+using FileScape.Core.Units;
 using Godot;
 using GVector3 = Godot.Vector3;
 using NVector2 = System.Numerics.Vector2;
@@ -24,15 +25,44 @@ public enum Locomotion
 /// </summary>
 public partial class Main
 {
-    private const float TakeOffRise = 3.5f, FlightDefaultSpeed = 10f, FlightMinClearance = 0.6f;
+    // Places flight (world units are metres here; docs/units.md).
+
+    /// <summary>How high T lifts you before free flight takes over (above the eye on foot).</summary>
+    private static readonly Meters TakeOffRise = Meters.Of(3.5f);
+
+    /// <summary>
+    /// The take-off rise eases out: its speed is the remaining height × this rate (3.5 m → 9.1 m/s at first), never
+    /// below <see cref="TakeOffMinRiseSpeed"/>, so it ends gently but does end. It takes ≈ 1.3 s.
+    /// </summary>
+    private static readonly PerSecond TakeOffEasing = PerSecond.Of(2.6f);
+
+    private static readonly MetersPerSecond TakeOffMinRiseSpeed = MetersPerSecond.Of(0.8f);
+
+    private static readonly MetersPerSecond FlightDefaultSpeed = MetersPerSecond.Of(10f);
+
+    /// <summary>The eye never goes lower than this above the ground under it while flying.</summary>
+    private static readonly Meters FlightMinClearance = Meters.Of(0.6f);
+
+    /// <summary>How quickly flight velocity follows the keys: 14/s, a time constant of ≈ 70 ms (as in map flight).</summary>
+    private static readonly PerSecond FlightResponse = PerSecond.Of(14f);
+
+    /// <summary>Landing glides at about this speed, taking between the two durations (continuous, never a cut).</summary>
+    private static readonly MetersPerSecond LandingSpeed = MetersPerSecond.Of(9f);
+
+    private static readonly TimeSpan LandingMinDuration = TimeSpan.FromSeconds(0.45), LandingMaxDuration = TimeSpan.FromSeconds(1.8);
 
     private readonly Walker _walker = new();
     private Locomotion _locomotion = Locomotion.Walking;
     private bool _placeLook;
     private bool _jumpQueued;
-    private GVector3 _flyEye, _flyVel;
-    private float _flightSpeed = FlightDefaultSpeed;
-    private float _riseRemaining;
+
+    /// <summary>The flying eye (world, metres) and its velocity (world, metres per second).</summary>
+    private GVector3 _flyEye, _flightVelocity;
+
+    private MetersPerSecond _flightSpeed = FlightDefaultSpeed;
+
+    /// <summary>Height of the take-off rise still to come.</summary>
+    private Meters _riseRemaining;
     private LandingGlide? _landing;
     private bool _guided;
     private Locomotion _afterGuide;
@@ -44,14 +74,15 @@ public partial class Main
     public bool LandingInProgress => _landing != null;
     public bool GuidedGlide => _guided;
     public int Relocations => _relocations;
-    public float FlightSpeed => _flightSpeed;
+    public MetersPerSecond FlightSpeed => _flightSpeed;
     public string? LastLandingNote { get; private set; }
 
+    /// <summary>A continuous descent from the flying eye to a standing eye (world positions).</summary>
     private sealed class LandingGlide
     {
         public required GVector3 From, To;
-        public required float Duration;
-        public float T;
+        public required TimeSpan Duration;
+        public TimeSpan Elapsed;
     }
 
     private PlaceTerrain Terrain => _place?.Terrain ?? PlaceTerrain.Flat;
@@ -59,7 +90,7 @@ public partial class Main
     // ------------------------------------------------------------------ per frame
 
     /// <summary>Advances walking or flight and puts the camera at the eye. <paramref name="blocked"/>: no input reaches the scene.</summary>
-    private void UpdatePlaceLocomotion(float dt, bool blocked)
+    private void UpdatePlaceLocomotion(TimeSpan dt, bool blocked)
     {
         if (_place == null || _transition != null) return;
         if (_guided)
@@ -92,8 +123,8 @@ public partial class Main
 
         if (_landing is { } l)
         {
-            l.T += dt;
-            var k = Mathf.Clamp(l.T / l.Duration, 0, 1);
+            l.Elapsed += dt;
+            var k = Mathf.Clamp((float)(l.Elapsed / l.Duration), 0, 1); // progress 0..1, smoothstepped below
             var s = k * k * (3 - 2 * k);
             _rig.SetPose(l.From.Lerp(l.To, s), _walker.Yaw, _walker.LookPitch, PivotAhead);
             if (k >= 1)
@@ -109,23 +140,24 @@ public partial class Main
         }
 
         // Free flight: the existing fly controls (WASD along the view, E/Space up, Q down, Shift ×3, wheel speed).
-        _walker.Look(-turn * _walker.Params.TurnRate * dt, 0);
+        _walker.Look(-(_walker.Params.TurnRate * dt) * turn, Degrees.Zero);
         var vertical = blocked ? 0 : _held.Axis(InputBindings.Down, InputBindings.Up) + (_held.IsHeld(InputBindings.Jump) ? 1 : 0);
         var input = new NVector3(strafe, Mathf.Clamp(vertical, -1, 1), fwd);
         var speed = _flightSpeed * (run ? 3f : 1f);
-        var wanted = Gd(CameraMath.FlyDelta(input, _walker.Yaw, _walker.LookPitch, speed, 1f));
-        _flyVel = _flyVel.Lerp(wanted, 1f - Mathf.Exp(-14f * dt));
-        _flyEye += _flyVel * dt;
-        if (_riseRemaining > 0)
+        var wantedVelocity = Gd(CameraMath.FlyVelocity(input, _walker.Yaw, _walker.LookPitch, speed.Value));
+        _flightVelocity = _flightVelocity.Lerp(wantedVelocity, FlightResponse.SmoothingFactor(dt));
+        _flyEye += _flightVelocity * dt.ToSecondsF();
+        if (_riseRemaining > Meters.Zero)
         {
             // Take-off is a continuous rise (WALK-06), fast at first and easing out.
-            var dy = Mathf.Min(_riseRemaining, Mathf.Max(0.8f, _riseRemaining * 2.6f) * dt); // ≤ 9 m/s, easing out
-            _flyEye.Y += dy;
-            _riseRemaining -= dy;
+            var riseSpeed = MetersPerSecond.Of(MathF.Max(TakeOffMinRiseSpeed.Value, _riseRemaining.Value * TakeOffEasing.Value));
+            var rise = Meters.Min(_riseRemaining, riseSpeed * dt);
+            _flyEye.Y += rise.Value;
+            _riseRemaining -= rise;
         }
 
         var ground = Terrain.SupportHeight(new NVector2(_flyEye.X, _flyEye.Z), 0.1f, _flyEye.Y, 0);
-        _flyEye.Y = Mathf.Max(_flyEye.Y, ground + FlightMinClearance);
+        _flyEye.Y = Mathf.Max(_flyEye.Y, ground + FlightMinClearance.Value);
         _rig.SetPose(_flyEye, _walker.Yaw, _walker.LookPitch, PivotAhead);
     }
 
@@ -140,12 +172,14 @@ public partial class Main
         else Land();
     }
 
-    private void TakeOff(float rise = TakeOffRise)
+    private void TakeOff() => TakeOff(TakeOffRise);
+
+    private void TakeOff(Meters rise)
     {
         _locomotion = Locomotion.Flying;
         _landing = null;
         _flyEye = _rig.CameraPosition;
-        _flyVel = GVector3.Zero;
+        _flightVelocity = GVector3.Zero;
         _riseRemaining = rise;
         _hud.NoteInteraction(flew: true);
         UpdateFlightHud();
@@ -159,18 +193,19 @@ public partial class Main
     public void Land()
     {
         if (_locomotion != Locomotion.Flying || _place == null) return;
-        _riseRemaining = 0;
+        _riseRemaining = Meters.Zero;
         var eye = _rig.CameraPosition;
         var p = new NVector2(eye.X, eye.Z);
-        var r = _walker.Params.Radius;
+        var r = _walker.Params.Radius.Value;
         var spot = FindLandingSpot(p, eye.Y);
         if (spot is { } s)
         {
-            var target = new GVector3(s.X, Terrain.SupportHeight(s, r, 1000, 0) + _walker.Params.EyeHeight, s.Y);
+            var target = new GVector3(s.X, Terrain.SupportHeight(s, r, 1000, 0) + _walker.Params.EyeHeight.Value, s.Y);
             var moved = new NVector2(s.X - p.X, s.Y - p.Y).Length();
             LastLandingNote = moved > 0.3f ? $"Landed {moved:0.#} m away: there was no clear ground right below." : null;
             if (LastLandingNote != null) _hud.Toast(LastLandingNote);
-            _landing = new LandingGlide { From = eye, To = target, Duration = Mathf.Clamp(eye.DistanceTo(target) / 9f, 0.45f, 1.8f) };
+            var duration = Meters.Of(eye.DistanceTo(target)) / LandingSpeed;
+            _landing = new LandingGlide { From = eye, To = target, Duration = duration < LandingMinDuration ? LandingMinDuration : duration > LandingMaxDuration ? LandingMaxDuration : duration };
             UpdateFlightHud();
             return;
         }
@@ -187,15 +222,19 @@ public partial class Main
     {
         var t = Terrain;
         var w = _walker.Params;
+        var radius = w.Radius.Value;
+        var eyeHeight = w.EyeHeight.Value;
+        var bodyHeight = w.BodyHeight.Value;
+        var stepHeight = w.StepHeight.Value;
         bool Ok(NVector2 q, out float support)
         {
-            support = t.SupportHeight(q, w.Radius, 1000, 0);
-            if (q.Length() >= t.BoundaryRadius - w.Radius - 0.2f || support + w.EyeHeight > eyeY + 0.5f || !t.IsClear(q, w.Radius, support, w.BodyHeight)) return false;
+            support = t.SupportHeight(q, radius, 1000, 0);
+            if (q.Length() >= t.BoundaryRadius - radius - 0.2f || support + eyeHeight > eyeY + 0.5f || !t.IsClear(q, radius, support, bodyHeight)) return false;
             // Land on ground, terraces, stairs, the overlook — not on the roof of a file tower, the landmark or a pillar.
-            foreach (var i in t.BoxesNear(q, w.Radius))
+            foreach (var i in t.BoxesNear(q, radius))
             {
                 var b = t.Boxes[i];
-                if (b.Kind is TerrainKind.Tower or TerrainKind.Landmark or TerrainKind.Pillar && b.Top > w.StepHeight && b.Overlaps(q, w.Radius)) return false;
+                if (b.Kind is TerrainKind.Tower or TerrainKind.Landmark or TerrainKind.Pillar && b.Top > stepHeight && b.Overlaps(q, radius)) return false;
             }
 
             return true;
@@ -206,11 +245,11 @@ public partial class Main
         // Inside a structure or just outside the edge: the nearest clear spot within a few metres.
         for (var ring = 1; ring <= 12; ring++)
         {
-            var radius = ring * 0.5f;
+            var searchRadius = ring * 0.5f;
             for (var k = 0; k < 16; k++)
             {
                 var a = k * Mathf.Tau / 16;
-                var q = p + new NVector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
+                var q = p + new NVector2(Mathf.Cos(a), Mathf.Sin(a)) * searchRadius;
                 if (Ok(q, out _)) return q;
             }
         }
@@ -235,7 +274,7 @@ public partial class Main
         var places = _experience == Experience.Places;
         var flying = places && _locomotion == Locomotion.Flying;
         _hud.SetFlightMode(places, flying, _landing != null);
-        if (places) _hud.SetFlyStatus(flying, _flightSpeed, highlight: false, places: true, landing: _landing != null);
+        if (places) _hud.SetFlyStatus(flying, _flightSpeed.Value, highlight: false, places: true, landing: _landing != null);
     }
 
     // ------------------------------------------------------------------ guided glides (Home, Destinations, B, F)
@@ -249,12 +288,12 @@ public partial class Main
         _rig.GlideToPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
     }
 
-    private void StartGuideFrame(Aabb box, float pitch, float? yaw, float padding, Locomotion after)
+    private void StartGuideFrame(Aabb box, Degrees elevation, Degrees? yaw, float padding, Locomotion after)
     {
         _guided = true;
         _afterGuide = after;
         _landing = null;
-        _rig.Frame(box, pitch: pitch, yaw: yaw, padding: padding);
+        _rig.Frame(box, elevation: elevation, yaw: yaw, padding: padding);
     }
 
     private void EndGuide()
@@ -271,7 +310,7 @@ public partial class Main
         {
             _walker.SetGaze(_rig.Yaw, _rig.LookPitch);
             _flyEye = eye;
-            _flyVel = GVector3.Zero;
+            _flightVelocity = GVector3.Zero;
         }
 
         UpdateFlightHud();
@@ -291,7 +330,7 @@ public partial class Main
         {
             _walker.SetGaze(pose.Yaw, pose.LookPitch);
             _flyEye = Gd(pose.Eye);
-            _flyVel = GVector3.Zero;
+            _flightVelocity = GVector3.Zero;
             _rig.SetPose(_flyEye, pose.Yaw, pose.LookPitch, PivotAhead);
         }
     }
@@ -303,9 +342,9 @@ public partial class Main
         var d = target - eye;
         var flat = new NVector2(d.X, d.Z).Length();
         if (flat < 0.01f) return;
-        var yaw = -PlaceTerrain.PlaceAngle(new NVector2(d.X, d.Z));
-        var pitch = Mathf.RadToDeg(Mathf.Atan2(d.Y, flat));
-        StartGuide(new PlacePose(eye, CameraRig.NearestAngle(_rig.Yaw, yaw), Mathf.Clamp(pitch, -60, 60)), Locomotion.Walking);
+        var yaw = PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(new NVector2(d.X, d.Z)));
+        var pitch = Degrees.FromRadians(MathF.Atan2(d.Y, flat)).Clamp(Degrees.Of(-60), Degrees.Of(60));
+        StartGuide(new PlacePose(eye, CameraRig.NearestAngle(_rig.Yaw, yaw), pitch), Locomotion.Walking);
     }
 
     // ------------------------------------------------------------------ look capture (hold right mouse)
@@ -331,17 +370,18 @@ public partial class Main
         }
     }
 
-    private void PlaceLook(Vector2 relativePixels, float sensitivity = CameraRig.LookSensitivity)
+    /// <summary>Look from a mouse delta in physical screen pixels (x right, y down) at <paramref name="degreesPerPixel"/>.</summary>
+    private void PlaceLook(Vector2 screenPixels, float degreesPerPixel = CameraRig.LookDegreesPerPixel)
     {
         if (_transition != null) return;
         if (_guided) EndGuide();
-        _walker.Look(-relativePixels.X * sensitivity, -relativePixels.Y * sensitivity);
+        _walker.Look(Degrees.Of(-screenPixels.X * degreesPerPixel), Degrees.Of(-screenPixels.Y * degreesPerPixel));
     }
 
     private void StepPlaceFlightSpeed(float notches)
     {
-        _flightSpeed = CameraMath.StepFlySpeed(_flightSpeed, notches);
-        _hud.SetFlyStatus(true, _flightSpeed, highlight: true, places: true, landing: false);
+        _flightSpeed = MetersPerSecond.Of(CameraMath.StepFlySpeed(_flightSpeed.Value, notches));
+        _hud.SetFlyStatus(true, _flightSpeed.Value, highlight: true, places: true, landing: false);
     }
 }
 
@@ -353,14 +393,14 @@ public partial class Main
     /// <summary>[direct] Puts a flying user at an eye position (set-up for the landing cases).</summary>
     public void ProbeFlyAt(Godot.Vector3 eye)
     {
-        if (_locomotion != Locomotion.Flying) TakeOff(rise: 0);
+        if (_locomotion != Locomotion.Flying) TakeOff(Meters.Zero);
         _flyEye = eye;
-        _flyVel = GVector3.Zero;
+        _flightVelocity = GVector3.Zero;
         _rig.SetPose(eye, _walker.Yaw, _walker.LookPitch, PivotAhead);
     }
 
     /// <summary>[direct] Points the gaze (heading, look pitch) without moving.</summary>
-    public void ProbeSetGaze(float yaw, float lookPitch)
+    public void ProbeSetGaze(Degrees yaw, Degrees lookPitch)
     {
         _walker.SetGaze(yaw, lookPitch);
         if (_locomotion == Locomotion.Walking) _rig.SetPose(Gd(_walker.Eye), yaw, lookPitch, PivotAhead);

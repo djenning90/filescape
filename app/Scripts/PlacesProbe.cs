@@ -4,6 +4,7 @@ using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Scanning;
+using FileScape.Core.Units;
 using Godot;
 
 namespace FileScape.App;
@@ -98,7 +99,7 @@ public partial class PlacesProbe : Node
         for (var i = 0; i < 30; i++) { Motion(new Vector2(50, 0)); await Frames(1); }
         Mouse(MouseButton.Right, false, centre);
         await Frames(3);
-        Check(!_main.Rig.IsFlying && _main.Navigator.Current == R, F($"turned {30 * 50 * CameraRig.LookSensitivity:0}° with the mouse; still in the root place"));
+        Check(!_main.Rig.IsFlying && _main.Navigator.Current == R, F($"turned {30 * 50 * CameraRig.LookDegreesPerPixel:0}° with the mouse; still in the root place"));
         await Shot("looking-back-toward-the-way-in");
         await Key(Godot.Key.Home);
         await Settle();
@@ -143,7 +144,7 @@ public partial class PlacesProbe : Node
         // Hovering on the threshold must not switch back and forth (PLACE-06 hysteresis, real controls).
         var transitionsBefore = _main.CompletedTransitions;
         var pg = Place.ParentGate!;
-        _main.Rig.SetPose(ToGd(pg.Position - pg.Outward * 1.2f) + new Vector3(0, 2.6f, 0), PlaceGeometry.YawFor(pg.AngleDeg), -4, 12);
+        _main.Rig.SetPose(ToGd(pg.Position - pg.Outward * 1.2f) + new Vector3(0, 2.6f, 0), PlaceGeometry.YawFor(pg.AngleDeg), Degrees.Of(-4), 12);
         Log("[direct] placed the camera 1.2 u inside the parent gate, facing it (set-up for the dithering test)");
         await Frames(70); // past the arrival cooldown
         for (var i = 0; i < 6; i++)
@@ -166,7 +167,7 @@ public partial class PlacesProbe : Node
         var gateBack = Place.GateFor(target.TargetId)!;
         var depth = ThresholdTracker.Depth(gateBack, _main.Rig.CameraPosition.ToNumerics());
         var facing = ToGd(CameraMath.HorizontalForward(_main.Rig.Yaw)).Dot(-ToGd(gateBack.Outward));
-        Check(depth < -ThresholdTracker.ArmDepth && facing > 0.95f, F($"returned in front of the '{targetName}' gate ({-depth:0.0} u inside), facing into the parent (dot {facing:0.00})"));
+        Check(depth < -ThresholdTracker.ArmDepth.Value && facing > 0.95f, F($"returned in front of the '{targetName}' gate ({-depth:0.0} u inside), facing into the parent (dot {facing:0.00})"));
         await Settle();
         await Shot("returned-to-parent");
 
@@ -441,7 +442,7 @@ public partial class PlacesProbe : Node
         await Look(-5, 50);
         await Frames(20);
         // Turn round to the ▲ gate and walk back through it.
-        await Look(180f / 50 / CameraRig.LookSensitivity, 50);
+        await Look(180f / 50 / CameraRig.LookDegreesPerPixel, 50);
         Key1(Godot.Key.W, true);
         for (var i = 0; i < 240 && !_main.InTransition; i++) await Frames(1);
         Key1(Godot.Key.W, false);
@@ -623,7 +624,7 @@ public partial class PlacesProbe : Node
 
     // ------------------------------------------------------------ helpers
 
-    private bool AtPose(PlacePose pose) => _main.Rig.CameraPosition.DistanceTo(ToGd(pose.Eye)) < 0.6f && Mathf.Abs(Mathf.Wrap(_main.Rig.Yaw - pose.Yaw, -180, 180)) < 2f;
+    private bool AtPose(PlacePose pose) => _main.Rig.CameraPosition.DistanceTo(ToGd(pose.Eye)) < 0.6f && Mathf.Abs((_main.Rig.Yaw - pose.Yaw).Wrapped().Value) < 2f;
 
     private static void Inject(InputEvent e) => Input.ParseInputEvent(e);
 

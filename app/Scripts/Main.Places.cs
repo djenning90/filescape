@@ -5,6 +5,7 @@ using FileScape.Core.Layout;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Scanning;
+using FileScape.Core.Units;
 using Godot;
 using GVector3 = Godot.Vector3;
 using NVector3 = System.Numerics.Vector3;
@@ -26,9 +27,14 @@ public enum Experience
 /// </summary>
 public partial class Main
 {
-    private const double RecomposeInterval = 0.35;
+    /// <summary>A place is recomposed at most this often while its neighbourhood changes (PLACE-12).</summary>
+    private static readonly TimeSpan RecomposeInterval = TimeSpan.FromSeconds(0.35);
+
+    /// <summary>World signs are re-ranked this often (sorting every sign each frame would be wasteful in wide folders).</summary>
+    private static readonly TimeSpan SignRefreshInterval = TimeSpan.FromSeconds(0.2);
     private const float PivotAhead = 12f;
-    private const double TransitionOut = 0.42, TransitionIn = 0.62;
+    /// <summary>The threshold transition: glide out and fade (old place), then glide in (new place) (PLACE-07).</summary>
+    private static readonly TimeSpan TransitionOut = TimeSpan.FromSeconds(0.42), TransitionIn = TimeSpan.FromSeconds(0.62);
 
     private readonly PlaceNavigator _nav = new();
     private readonly ThresholdTracker _threshold = new();
@@ -36,11 +42,12 @@ public partial class Main
     private PlaceWorld _placeWorld = null!;
     private PlaceComposition? _place;
     private Experience _experience = Experience.Places;
-    private double _lastComposeAt = -10;
+    private TimeSpan _lastComposeAt = TimeSpan.FromSeconds(-10);
     private PlaceTransition? _transition;
     private Label3D _hereLabel = null!;
     private MeshInstance3D _hereRing = null!;
-    private double _now, _lastSignUpdate;
+    /// <summary>The app clock (time since start) for this frame.</summary>
+    private TimeSpan _now, _lastSignUpdate;
     private int _transitions;
     private bool _mapNoteShown;
 
@@ -60,9 +67,9 @@ public partial class Main
         public required PlaceChange Change;
         public required GVector3 FromEye;
         public required GVector3 ExitDirection;
-        public required float FromYaw, FromPitch;
+        public required Degrees FromYaw, FromPitch;
         public required string Caption;
-        public double T;
+        public TimeSpan Elapsed;
         public bool Arrived;
         public PlacePose Arrival;
         public GVector3 ApproachEye;
@@ -204,7 +211,7 @@ public partial class Main
                     FromYaw = _rig.Yaw,
                     FromPitch = _rig.LookPitch,
                     Caption = _tree.DisplayName(_nav.Current),
-                    T = TransitionOut,
+                    Elapsed = TransitionOut,
                     Arrived = true,
                     Arrival = _place.Arrival,
                     ApproachEye = Gd(_place.Arrival.Eye) + new GVector3(0, 6, 10),
@@ -252,7 +259,7 @@ public partial class Main
             if (_layout.Contains(c)) box = box.Union(_layout.NodeBoxes[c]);
         }
 
-        _rig.Frame(new Aabb(Gd(box.Min), Gd(box.Size)), pitch: 35, padding: 1.25f);
+        _rig.Frame(new Aabb(Gd(box.Min), Gd(box.Size)), elevation: Degrees.Of(35), padding: 1.25f);
     }
 
     // ------------------------------------------------------------------ composition
@@ -261,7 +268,7 @@ public partial class Main
     /// Recomposes the current place when its neighbourhood changed (PLACE-12): cheap, local, throttled. The camera stays
     /// where it is; the threshold tracker follows the new gate positions.
     /// </summary>
-    private void MaybeRecompose(double now)
+    private void MaybeRecompose(TimeSpan now)
     {
         if (_tree == null || _tree.Count == 0 || _transition != null || _awaitingArrival)
         {
@@ -383,7 +390,7 @@ public partial class Main
         if (_tree == null || _place == null || _transition != null) return;
         _selection.Select(id);
         var pose = _place.ParentGate?.TargetId == id
-            ? _place.Standing(_place.ParentGate.Position - _place.ParentGate.Outward * _placeParams.ApproachStandOff, 180, -3, _placeParams)
+            ? _place.Standing(_place.ParentGate.Position - _place.ParentGate.Outward * _placeParams.ApproachStandOff, 180, Degrees.Of(-3), _placeParams)
             : _place.ApproachPose(id, _placeParams);
         StartGuide(pose, _locomotion);
     }
@@ -392,7 +399,7 @@ public partial class Main
     {
         _landing = null;
         _guided = false;
-        _riseRemaining = 0;
+        _riseRemaining = Meters.Zero;
         if (_tree == null) return;
         if (_experience != Experience.Places || _place == null)
         {
@@ -439,10 +446,10 @@ public partial class Main
     {
         var tr = _transition;
         if (tr == null) return;
-        tr.T += delta;
+        tr.Elapsed += Durations.FromSeconds(delta);
         if (!tr.Arrived)
         {
-            var k = Mathf.Clamp((float)(tr.T / TransitionOut), 0, 1);
+            var k = Mathf.Clamp((float)(tr.Elapsed / TransitionOut), 0, 1); // progress 0..1, smoothstepped
             var e = k * k * (3 - 2 * k);
             _rig.SetPose(tr.FromEye + tr.ExitDirection * (10f * e), tr.FromYaw, tr.FromPitch, PivotAhead);
             _hud.SetTransition(e, tr.Caption);
@@ -454,7 +461,7 @@ public partial class Main
             return;
         }
 
-        var t = Mathf.Clamp((float)((tr.T - TransitionOut) / TransitionIn), 0, 1);
+        var t = Mathf.Clamp((float)((tr.Elapsed - TransitionOut) / TransitionIn), 0, 1);
         var s = t * t * (3 - 2 * t);
         var eye = tr.ApproachEye.Lerp(Gd(tr.Arrival.Eye), s);
         _rig.SetPose(eye, tr.Arrival.Yaw, tr.Arrival.LookPitch, PivotAhead);
@@ -569,7 +576,7 @@ public partial class Main
     private void UpdatePlaceFrame()
     {
         if (_place == null || _tree == null) return;
-        if (_now - _lastSignUpdate > 0.2)
+        if (_now - _lastSignUpdate > SignRefreshInterval)
         {
             _lastSignUpdate = _now; // sorting every sign by distance each frame would be wasteful in wide folders
             _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
@@ -643,16 +650,16 @@ public partial class Main
         }
 
         var half = NVector3.Max(b.Size * 0.5f, new NVector3(3.5f, 0, 3.5f));
-        StartGuideFrame(new Aabb(Gd(c - half), Gd(half * 2)), 22, null, 1.3f, Locomotion.Flying);
+        StartGuideFrame(new Aabb(Gd(c - half), Gd(half * 2)), Degrees.Of(22), null, 1.3f, Locomotion.Flying);
     }
 
     /// <summary>B in Places: rise above the place to see its neighbourhood (PLACE-10).</summary>
     private void Ascend()
     {
         if (_place == null || _transition != null) return;
-        if (_locomotion == Locomotion.Walking) TakeOff(rise: 0); // ascending is flight (WALK-06)
+        if (_locomotion == Locomotion.Walking) TakeOff(Meters.Zero); // ascending is flight (WALK-06)
         var b = _place.Bounds;
-        StartGuideFrame(new Aabb(Gd(b.Min), Gd(b.Size)), 58, _rig.Yaw, 0.9f, Locomotion.Flying);
+        StartGuideFrame(new Aabb(Gd(b.Min), Gd(b.Size)), Degrees.Of(58), _rig.Yaw, 0.9f, Locomotion.Flying);
     }
 
     private static GVector3 Gd(NVector3 v) => new(v.X, v.Y, v.Z);

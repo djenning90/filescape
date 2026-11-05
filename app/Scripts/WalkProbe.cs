@@ -2,6 +2,7 @@ using System.Text;
 using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
+using FileScape.Core.Units;
 using Godot;
 using NVector2 = System.Numerics.Vector2;
 using NVector3 = System.Numerics.Vector3;
@@ -48,15 +49,15 @@ public partial class WalkProbe : ProbeBase
         var foot = ov.RampFoot;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - foot);
         var start = foot - axis * 2;
-        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), -PlaceTerrain.PlaceAngle(axis), -5)); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         await Hold(3.2, Godot.Key.W);
         await Seconds(0.5);
         LogPose("after walking up the ramp");
-        App.ProbeSetGaze(-PlaceTerrain.PlaceAngle(-new NVector2(ov.Top.X, ov.Top.Z)) , -8); // [direct] face the plaza
+        App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(-new NVector2(ov.Top.X, ov.Top.Z))), Degrees.Of(-8)); // [direct] face the plaza
         await Frames(3);
         await Shot("overlook-view");
-        App.ProbeSetGaze(-PlaceTerrain.PlaceAngle(new NVector2(ov.Top.X, ov.Top.Z)) + 180 - 180, 0);
+        App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(new NVector2(ov.Top.X, ov.Top.Z))), Degrees.Zero);
         await Key(Godot.Key.T);
         await Seconds(1.5);
         LogPose("flying");
@@ -68,7 +69,7 @@ public partial class WalkProbe : ProbeBase
     }
 
     private Walker W => App.Walker;
-    private float EyeAboveSupport => App.Rig.CameraPosition.Y - W.Support;
+    private float EyeAboveSupport => App.Rig.CameraPosition.Y - W.Support.Value;
     private NVector2 FeetXz => new(W.Feet.X, W.Feet.Z);
 
     private int Find(int parent, string name) => Tree[parent].Children.FirstOrDefault(c => Tree[c].Name == name, -1);
@@ -110,7 +111,7 @@ public partial class WalkProbe : ProbeBase
     }
 
     /// <summary>Horizontal speed after the start-up ramp, from two timed samples (independent of key-event latency).</summary>
-    private async Task<float> SteadySpeed(float yaw, float pitch, params Godot.Key[] keys)
+    private async Task<float> SteadySpeed(Degrees yaw, Degrees pitch, params Godot.Key[] keys)
     {
         // [direct] the same clear start in the south corridor each time: ~10 m of free plaza ahead (north).
         App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 12f), yaw, pitch));
@@ -176,47 +177,47 @@ public partial class WalkProbe : ProbeBase
 
         // ---- 1. Arrive on foot (WALK-01, PLACE-02)
         Check(App.Locomotion == Locomotion.Walking, "arrives on foot (walking is the default)");
-        Check(MathF.Abs(EyeAboveSupport - 1.75f) < 0.03f, F($"eye is 1.75 m above the support (got {EyeAboveSupport:0.00} on support {W.Support:0.00})"));
+        Check(MathF.Abs(EyeAboveSupport - 1.75f) < 0.03f, F($"eye is 1.75 m above the support (got {EyeAboveSupport:0.00} on support {W.Support.Value:0.00})"));
         Check(App.Hud.BreadcrumbNames.LastOrDefault() == rootName && App.Hud.BreadcrumbNames.FirstOrDefault() == "This computer", $"breadcrumb runs from This computer to {rootName} ({string.Join(" › ", App.Hud.BreadcrumbNames)})");
         Check(App.PlaceWorld.LandmarkSign == rootName, "the landmark plaque names the place");
         await Shot("arrival-on-foot");
         await LabelsClear("arrival");
 
         // ---- 2. Look and steer with the right mouse (WALK-03)
-        var yaw0 = W.Yaw;
+        var yaw0 = W.Yaw.Value;
         await Look(new Vector2(-300, 120));
-        Check(MathF.Abs(W.Yaw - yaw0 - 36f) < 2f, F($"right-drag right/left turns the heading ({W.Yaw - yaw0:0.0}°)"));
-        Check(W.LookPitch < -15f, F($"right-drag down lowers the gaze ({W.LookPitch:0.0}°)"));
+        Check(MathF.Abs(W.Yaw.Value - yaw0 - 36f) < 2f, F($"right-drag right/left turns the heading ({W.Yaw.Value - yaw0:0.0}°)"));
+        Check(W.LookPitch.Value < -15f, F($"right-drag down lowers the gaze ({W.LookPitch.Value:0.0}°)"));
         Check(!App.PlaceLookCaptured && Input.MouseMode == Input.MouseModeEnum.Visible, "releasing the right button releases the cursor");
-        App.ProbeSetGaze(0, -6); // [direct] face north again
+        App.ProbeSetGaze(Degrees.Zero, Degrees.Of(-6)); // [direct] face north again
 
         // ---- 3. Walk down the stairs (WALK-05)
         var start = FeetXz;
         await Hold(1.4, Godot.Key.Up);
         await Seconds(0.3);
-        Check(W.Grounded && W.Support < 0.01f && W.Jumps == 0, F($"Up arrow walks off the terrace down the stairs without jumping (support {W.Support:0.00})"));
+        Check(W.Grounded && W.Support.Value < 0.01f && W.Jumps == 0, F($"Up arrow walks off the terrace down the stairs without jumping (support {W.Support.Value:0.00})"));
         Check(NVector2.Distance(start, FeetXz) > 4f, F($"walked {NVector2.Distance(start, FeetXz):0.0} m"));
         await Shot("plaza-at-eye-level");
 
         // ---- 4. Looking sharply down does not push into the ground (WALK-02)
-        App.ProbeSetGaze(W.Yaw, 0); // [direct]
+        App.ProbeSetGaze(W.Yaw, Degrees.Zero); // [direct]
         await Look(new Vector2(0, 700));
-        Check(W.LookPitch < -70f, F($"looking sharply down ({W.LookPitch:0} deg)"));
-        var downSpeed = await SteadySpeed(0, W.LookPitch, Godot.Key.W);
-        var levelSpeed = await SteadySpeed(0, 0, Godot.Key.W);
-        Check(MathF.Abs(downSpeed / levelSpeed - 1) < 0.03f && W.Support < 0.01f, F($"walking while looking down is as fast and stays on the ground ({downSpeed:0.00} m/s vs {levelSpeed:0.00} m/s level)"));
+        Check(W.LookPitch.Value < -70f, F($"looking sharply down ({W.LookPitch.Value:0} deg)"));
+        var downSpeed = await SteadySpeed(Degrees.Zero, W.LookPitch, Godot.Key.W);
+        var levelSpeed = await SteadySpeed(Degrees.Zero, Degrees.Zero, Godot.Key.W);
+        Check(MathF.Abs(downSpeed / levelSpeed - 1) < 0.03f && W.Support.Value < 0.01f, F($"walking while looking down is as fast and stays on the ground ({downSpeed:0.00} m/s vs {levelSpeed:0.00} m/s level)"));
         await Shot("looking-down-while-walking");
 
         // ---- 5. Turning with the arrows while walking curves (WALK-03), diagonal not faster (WALK-04)
-        yaw0 = W.Yaw;
+        yaw0 = W.Yaw.Value;
         var a = FeetXz;
         await Hold(1.0, Godot.Key.Up, Godot.Key.Left);
-        Check(W.Yaw - yaw0 > 90f && NVector2.Distance(a, FeetXz) > 2.5f, F($"Up + Left walks a curve (turned {W.Yaw - yaw0:0}°, moved {NVector2.Distance(a, FeetXz):0.0} m)"));
-        var diag = await SteadySpeed(45, 0, Godot.Key.W, Godot.Key.D); // heading north-west, so W+D runs due north
+        Check(W.Yaw.Value - yaw0 > 90f && NVector2.Distance(a, FeetXz) > 2.5f, F($"Up + Left walks a curve (turned {W.Yaw.Value - yaw0:0}°, moved {NVector2.Distance(a, FeetXz):0.0} m)"));
+        var diag = await SteadySpeed(Degrees.Of(45), Degrees.Zero, Godot.Key.W, Godot.Key.D); // heading north-west, so W+D runs due north
         Check(MathF.Abs(diag / levelSpeed - 1) < 0.03f, F($"W+D is not faster than W ({diag:0.00} vs {levelSpeed:0.00} m/s)"));
 
         // ---- 6. Jump (JUMP-01), on flat plaza ground
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 5.2f), 0, -5)); // [direct] a clear flat spot south of the landmark
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 5.2f), Degrees.Zero, Degrees.Of(-5))); // [direct] a clear flat spot south of the landmark
         await Frames(3);
         var takeoff = W.Feet.Y;
         var apex = 0f;
@@ -233,20 +234,20 @@ public partial class WalkProbe : ProbeBase
         var foot = ov.RampFoot;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - foot);
         var rampStart = foot - axis * 1.5f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(rampStart.X, 1.75f, rampStart.Y), -PlaceTerrain.PlaceAngle(axis), -5)); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(rampStart.X, 1.75f, rampStart.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         jumps = W.Jumps;
         await Hold(3.0, Godot.Key.W);
         await Seconds(0.3);
-        Check(MathF.Abs(W.Support - ov.Top.Y) < 0.02f && W.Jumps == jumps, F($"the ramp leads up to the overlook without jumping (support {W.Support:0.00})"));
-        App.ProbeSetGaze(-PlaceTerrain.PlaceAngle(-new NVector2(ov.Top.X, ov.Top.Z)), -10); // [direct] face the plaza
+        Check(MathF.Abs(W.Support.Value - ov.Top.Y) < 0.02f && W.Jumps == jumps, F($"the ramp leads up to the overlook without jumping (support {W.Support.Value:0.00})"));
+        App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(-new NVector2(ov.Top.X, ov.Top.Z))), Degrees.Of(-10)); // [direct] face the plaza
         await Frames(3);
         await Shot("overlook");
 
         var blocks = ov.JumpBlocks;
         var along = NVector2.Normalize(blocks[1] - blocks[0]);
         var before1 = blocks[0] - along * 4f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(before1.X, 1.75f, before1.Y), -PlaceTerrain.PlaceAngle(along), -5)); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(before1.X, 1.75f, before1.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(along)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         var heights = new[] { ov.Top.Y / 3, ov.Top.Y * 2 / 3, ov.Top.Y };
         var stops = new[] { blocks[0], blocks[1], new NVector2(ov.Top.X, ov.Top.Z) };
@@ -254,16 +255,16 @@ public partial class WalkProbe : ProbeBase
         for (var k = 0; k < 3; k++)
         {
             var target = Place.Terrain.Boxes.First(b => b.Kind is TerrainKind.JumpBlock or TerrainKind.Platform && b.Closest(stops[k]).Distance == 0 && MathF.Abs(b.Top - heights[k]) < 0.01f);
-            App.ProbeSetGaze(-PlaceTerrain.PlaceAngle(NVector2.Normalize(stops[k] - FeetXz)), -5); // [direct] aim (steering is the player's job)
+            App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(NVector2.Normalize(stops[k] - FeetXz))), Degrees.Of(-5)); // [direct] aim (steering is the player's job)
             Key1(Godot.Key.W, true);
             await Until(() => target.Closest(FeetXz).Distance < 1.0f, 3);
             Key1(Godot.Key.Space, true);
             await Frames(2);
             Key1(Godot.Key.Space, false);
-            await Until(() => W.Grounded && W.Support > heights[k] - 0.05f, 1.5);
+            await Until(() => W.Grounded && W.Support.Value > heights[k] - 0.05f, 1.5);
             Key1(Godot.Key.W, false); // stop on the block (a 1.4 m block is quickly walked off)
             await Seconds(0.35);
-            if (MathF.Abs(W.Support - heights[k]) < 0.05f) reached++;
+            if (MathF.Abs(W.Support.Value - heights[k]) < 0.05f) reached++;
             else break;
         }
 
@@ -477,8 +478,8 @@ public partial class WalkProbe : ProbeBase
         await Key(Godot.Key.T);
         await Until(() => App.Locomotion == Locomotion.Walking && !App.LandingInProgress, 5);
         await Seconds(0.3);
-        Check(App.Locomotion == Locomotion.Walking && W.Grounded && MathF.Abs(EyeAboveSupport - 1.75f) < 0.05f && Place.Terrain.IsClear(FeetXz, W.Params.Radius, W.Support, W.Params.BodyHeight),
-            F($"T lands on a valid surface below, not inside anything (support {W.Support:0.00})"));
+        Check(App.Locomotion == Locomotion.Walking && W.Grounded && MathF.Abs(EyeAboveSupport - 1.75f) < 0.05f && Place.Terrain.IsClear(FeetXz, W.Params.Radius.Value, W.Support.Value, W.Params.BodyHeight.Value),
+            F($"T lands on a valid surface below, not inside anything (support {W.Support.Value:0.00})"));
         await Shot("landed");
 
         var vista = Place.Vistas.Count > 0 ? Place.Vistas[0] : null;
@@ -550,7 +551,7 @@ public partial class WalkProbe : ProbeBase
         var ov = Place.Overlook;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - ov.RampFoot);
         var start = ov.RampFoot - axis * 2.5f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), -PlaceTerrain.PlaceAngle(axis), -4)); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-4))); // [direct]
         await Frames(10);
         await HoldFrames(80, Godot.Key.W);
         await LookFrames(new Vector2(-6, 0.4f), 30);
@@ -638,7 +639,7 @@ public partial class WalkProbe : ProbeBase
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         var a = Place.Arrival;
         await Measure("arrival-eye-3.35");
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 9f), 0, -4)); // [direct] plaza, facing north
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 9f), Degrees.Zero, Degrees.Of(-4))); // [direct] plaza, facing north
         await Measure("plaza-eye-1.75");
         App.ProbeFlyAt(new Vector3(0, 4.6f, 9f)); // [direct] same spot, the old walking height
         await Measure("plaza-eye-4.6");

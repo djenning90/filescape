@@ -7,6 +7,7 @@ using FileScape.Core.Layout;
 using FileScape.Core.Model;
 using FileScape.Core.Scanning;
 using FileScape.Core.Shell;
+using FileScape.Core.Units;
 using Godot;
 using GVector3 = Godot.Vector3;
 
@@ -19,7 +20,13 @@ namespace FileScape.App;
 /// </summary>
 public partial class Main : Node3D
 {
-    private const double BatchBudgetMs = 6.0;
+    /// <summary>Scan batches are applied for at most this long per frame, so a fast scan never stalls rendering (AD-04).</summary>
+    private static readonly TimeSpan BatchBudget = TimeSpan.FromMilliseconds(6);
+
+    // Refresh intervals of the per-frame bookkeeping (app clock). Labels track the camera closely; the status line,
+    // state file and stats overlay need not change every frame.
+    private static readonly TimeSpan LabelRefreshInterval = TimeSpan.FromSeconds(0.08), StatusRefreshInterval = TimeSpan.FromSeconds(0.1),
+        StateWriteInterval = TimeSpan.FromSeconds(0.15), StatsRefreshInterval = TimeSpan.FromSeconds(0.25), ProcessMemoryInterval = TimeSpan.FromSeconds(1);
 
     private readonly Visualization[] _visualizations = [new ClassicVisualization(), new DistrictVisualization()];
     private readonly SelectionState _selection = new();
@@ -44,8 +51,13 @@ public partial class Main : Node3D
     private int _visIndex;
     private Quality _quality = Quality.High;
     private int _layoutTreeVersion = -1;
-    private double _lastLayoutAt = -10;
-    private double _layoutInterval = 0.25;
+    private TimeSpan _lastLayoutAt = TimeSpan.FromSeconds(-10);
+
+    /// <summary>
+    /// Map re-layout during a scan is throttled to this interval, adapted to about 8× the last layout+build cost
+    /// (0.25–3 s), so re-layout takes at most ≈ 1/8 of the frame time (AD-04).
+    /// </summary>
+    private TimeSpan _layoutInterval = TimeSpan.FromSeconds(0.25);
     private bool _needsInitialFrame;
     private bool _scanFinishedReported;
 
@@ -53,7 +65,7 @@ public partial class Main : Node3D
     private MouseButton _pressButton = MouseButton.None;
     private bool _dragged;
     private bool _hoverDirty;
-    private double _lastLabelRefresh, _lastStatusRefresh, _lastStatsRefresh, _lastProcessMemoryAt;
+    private TimeSpan _lastLabelRefresh, _lastStatusRefresh, _lastStatsRefresh, _lastProcessMemoryAt;
     private long _processPrivateBytes;
 
     public PerfRecorder Perf { get; } = new();
@@ -244,7 +256,7 @@ public partial class Main : Node3D
         _shell = _tree.Source.IsLive ? new WindowsShellActions() : new MockShellActions();
         _layout = null;
         _layoutTreeVersion = -1;
-        _lastLayoutAt = -10;
+        _lastLayoutAt = TimeSpan.FromSeconds(-10);
         _needsInitialFrame = true;
         _scanFinishedReported = false;
         _selection.Reset();
@@ -313,13 +325,13 @@ public partial class Main : Node3D
     public override void _Process(double delta)
     {
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
-        var now = _clock.Elapsed.TotalSeconds;
-        _now = now;
+        var now = _clock.Elapsed; // the app clock (time since start)
+        _now = _clock.Elapsed;
         DrainBatches();
         var places = _experience == Experience.Places;
         if (places)
         {
-            MaybeRecompose(now);
+            MaybeRecompose(_now);
             UpdateTransition(delta);
         }
         else
@@ -327,7 +339,7 @@ public partial class Main : Node3D
             MaybeRelayout(now);
         }
 
-        HandleKeyboardMovement((float)delta);
+        HandleKeyboardMovement(Durations.FromSeconds(delta));
         if (places) CheckThresholds();
 
         if (places && _place != null && _tree != null)
@@ -339,7 +351,7 @@ public partial class Main : Node3D
             }
 
             UpdatePlaceFrame();
-            if (_labelsVisible && now - _lastLabelRefresh > 0.08)
+            if (_labelsVisible && now - _lastLabelRefresh > LabelRefreshInterval)
             {
                 _lastLabelRefresh = now;
                 if (_transition == null) _labels.RefreshPlace(_rig.Camera, _tree, _place, _selection, _hud.BlockingRects, worldSigns: _placeWorld.VisibleSignRects(_rig.Camera));
@@ -356,26 +368,26 @@ public partial class Main : Node3D
 
             UpdateHighlights();
             UpdateHereMarker();
-            if (_labelsVisible && now - _lastLabelRefresh > 0.08)
+            if (_labelsVisible && now - _lastLabelRefresh > LabelRefreshInterval)
             {
                 _lastLabelRefresh = now;
                 _labels.Refresh(_rig.Camera, _tree, _layout, _selection, _hud.BlockingRects);
             }
         }
 
-        if (now - _lastStatusRefresh > 0.1)
+        if (now - _lastStatusRefresh > StatusRefreshInterval)
         {
             _lastStatusRefresh = now;
             UpdateStatus();
         }
 
-        if (_stateFile != null && now - _lastStateWrite > 0.15)
+        if (_stateFile != null && now - _lastStateWrite > StateWriteInterval)
         {
             _lastStateWrite = now;
             WriteState();
         }
 
-        if (now - _lastStatsRefresh > 0.25)
+        if (now - _lastStatsRefresh > StatsRefreshInterval)
         {
             _lastStatsRefresh = now;
             UpdateStats(now);
@@ -389,15 +401,15 @@ public partial class Main : Node3D
             return;
         }
 
-        var start = _clock.Elapsed.TotalMilliseconds;
-        while (_clock.Elapsed.TotalMilliseconds - start < BatchBudgetMs && _session.TryDequeue(out var batch))
+        var start = _clock.Elapsed;
+        while (_clock.Elapsed - start < BatchBudget && _session.TryDequeue(out var batch))
         {
             _tree.Apply(batch);
             HandleReplies(batch);
         }
     }
 
-    private void MaybeRelayout(double now)
+    private void MaybeRelayout(TimeSpan now)
     {
         if (_tree == null || _tree.Count == 0 || _tree.Version == _layoutTreeVersion)
         {
@@ -436,7 +448,7 @@ public partial class Main : Node3D
         Perf.MarkRelayout(LastLayoutMs + LastBuildMs);
 
         // Adaptive cadence: re-layout costs at most about 1/8 of the time during a scan.
-        _layoutInterval = Math.Clamp((LastLayoutMs + LastBuildMs) * 8 / 1000.0, 0.25, 3.0);
+        _layoutInterval = TimeSpan.FromSeconds(Math.Clamp((LastLayoutMs + LastBuildMs) * 8 / 1000.0, 0.25, 3.0));
 
         if (_needsInitialFrame && _experience != Experience.Places)
         {
@@ -508,7 +520,7 @@ public partial class Main : Node3D
             box = new Box(box.Min with { X = MathF.Max(box.Min.X, -maxHalfWidth) }, box.Max with { X = MathF.Min(box.Max.X, maxHalfWidth) });
         }
 
-        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), pitch: 30, yaw: 0, padding: 1.05f);
+        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: Degrees.Of(30), yaw: Degrees.Zero, padding: 1.05f);
         if (snap)
         {
             _rig.Snap();
@@ -531,7 +543,7 @@ public partial class Main : Node3D
         }
 
         var b = _layout.Bounds;
-        _rig.Frame(new Aabb(Visualization.Gd(b.Min), Visualization.Gd(b.Size)), pitch: 62, yaw: 0, padding: 1.02f);
+        _rig.Frame(new Aabb(Visualization.Gd(b.Min), Visualization.Gd(b.Size)), elevation: Degrees.Of(62), yaw: Degrees.Zero, padding: 1.02f);
         if (snap)
         {
             _rig.Snap();
@@ -581,7 +593,7 @@ public partial class Main : Node3D
         var centre = box.Center;
         var half = System.Numerics.Vector3.Max(box.Size * 0.5f, new System.Numerics.Vector3(minSize * 0.5f, 0, minSize * 0.5f));
         box = new Box(centre - half, centre + half);
-        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), pitch: Mathf.Clamp(_rig.Pitch, 25, 55), padding: 1.15f);
+        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: _rig.Pitch.Clamp(Degrees.Of(25), Degrees.Of(55)), padding: 1.15f);
         if (snap)
         {
             _rig.Snap();
@@ -678,7 +690,7 @@ public partial class Main : Node3D
 
     private readonly HeldActions _held = new();
     private string? _stateFile;
-    private double _lastStateWrite;
+    private TimeSpan _lastStateWrite;
     private bool _windowFocused = true;
     private Vector2 _flyStartMouse;
     private int _consumedEscapes;
@@ -756,7 +768,7 @@ public partial class Main : Node3D
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
                 // Factor carries multi-notch and fractional (high-resolution wheel, touchpad) scrolling.
                 _rig.StepFlySpeed((wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1) * WheelNotches(wheel));
-                _hud.SetFlyStatus(true, _rig.FlySpeed, highlight: true);
+                _hud.SetFlyStatus(true, _rig.FlySpeedWorldUnitsPerSecond, highlight: true);
                 GetViewport().SetInputAsHandled();
                 break;
             case InputEventKey { Pressed: true, Echo: false } esc when esc.IsAction(InputBindings.Parent):
@@ -886,13 +898,13 @@ public partial class Main : Node3D
         if (_experience == Experience.Places)
         {
             // In a place you stand somewhere: dragging turns your head (no orbit, no pan).
-            if (_pressButton == MouseButton.Left) PlaceLook(mm.ScreenRelative, CameraRig.LookSensitivity * 1.4f);
+            if (_pressButton == MouseButton.Left) PlaceLook(mm.ScreenRelative, CameraRig.LookDegreesPerPixel * 1.4f);
             return;
         }
 
         if (_pressButton == MouseButton.Left)
         {
-            _rig.Orbit(-mm.ScreenRelative.X * CameraRig.OrbitYawSensitivity, -mm.ScreenRelative.Y * CameraRig.OrbitPitchSensitivity);
+            _rig.Orbit(Degrees.Of(-mm.ScreenRelative.X * CameraRig.OrbitYawDegreesPerPixel), Degrees.Of(-mm.ScreenRelative.Y * CameraRig.OrbitPitchDegreesPerPixel));
         }
         else if (_pressButton == MouseButton.Middle)
         {
@@ -963,7 +975,7 @@ public partial class Main : Node3D
         _pressButton = MouseButton.None;
         _rig.EnterFly();
         Input.MouseMode = Input.MouseModeEnum.Captured;
-        _hud.SetFlyStatus(true, _rig.FlySpeed, highlight: false);
+        _hud.SetFlyStatus(true, _rig.FlySpeedWorldUnitsPerSecond, highlight: false);
         _hud.NoteInteraction(flew: true);
     }
 
@@ -982,7 +994,7 @@ public partial class Main : Node3D
         }
 
         _rig.ExitFly();
-        _hud.SetFlyStatus(false, _rig.FlySpeed, highlight: false);
+        _hud.SetFlyStatus(false, _rig.FlySpeedWorldUnitsPerSecond, highlight: false);
         RepivotOnView();
     }
 
@@ -1018,11 +1030,11 @@ public partial class Main : Node3D
         var up = _rig.Camera.GlobalTransform.Basis.Y;
         return
             System.FormattableString.Invariant($"{{\"mode\":\"{_rig.Mode}\",\"mouseMode\":\"{Input.MouseMode}\",\"focused\":{(_windowFocused ? "true" : "false")},\"modal\":{(ModalOpen ? "true" : "false")},\"dragging\":\"{_pressButton}\",") +
-            System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw:0.###},\"lookPitch\":{_rig.LookPitch:0.###},\"up\":{up.Y:0.####},") +
-            System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeed:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
+            System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw.Value:0.###},\"lookPitch\":{_rig.LookPitch.Value:0.###},\"up\":{up.Y:0.####},") +
+            System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeedWorldUnitsPerSecond:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
             System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
             System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
-            System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\"}}");
+            System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\"}}");
     }
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
@@ -1050,7 +1062,7 @@ public partial class Main : Node3D
         _dragged = false;
     }
 
-    private void HandleKeyboardMovement(float dt)
+    private void HandleKeyboardMovement(TimeSpan dt)
     {
         // A focused UI control (or an open dialog) owns the keyboard; navigation resumes when it lets go.
         var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null || _transition != null;
@@ -1280,14 +1292,14 @@ public partial class Main : Node3D
         }
     }
 
-    private void UpdateStats(double now)
+    private void UpdateStats(TimeSpan now)
     {
         if (!_hud.StatsVisible)
         {
             return;
         }
 
-        if (now - _lastProcessMemoryAt > 1)
+        if (now - _lastProcessMemoryAt > ProcessMemoryInterval)
         {
             _lastProcessMemoryAt = now;
             using var proc = System.Diagnostics.Process.GetCurrentProcess();
@@ -1301,7 +1313,7 @@ public partial class Main : Node3D
         _hud.SetStats(
             $"{Engine.GetFramesPerSecond():0} fps · frame avg {s.Mean:0.0} ms · p95 {s.P95:0.0} · max {s.Max:0.0} · GPU {gpu:0.0} ms\n" +
             $"nodes {_tree?.Count:N0} · instances {InstanceCount:N0} · draw calls {draw:0} · labels {_labels.LastShown}\n" +
-            $"last layout {LastLayoutMs:0.0} ms · build {LastBuildMs:0.0} ms · relayout every ≥{_layoutInterval:0.00}s while scanning\n" +
+            $"last layout {LastLayoutMs:0.0} ms · build {LastBuildMs:0.0} ms · relayout every ≥{_layoutInterval.TotalSeconds:0.00}s while scanning\n" +
             $"managed {GC.GetTotalMemory(false) / (1024 * 1024):N0} MB · process private {_processPrivateBytes / (1024 * 1024):N0} MB · video {vmem:0} MB\n" +
             $"{RenderingServer.GetVideoAdapterName()} · {RenderingServer.GetVideoAdapterApiVersion()} · {_quality} · {ActiveVisualization.Name}",
             true);
