@@ -235,6 +235,7 @@ public partial class Main : Node3D
         _selection.SelectionChanged += _ => UpdateInspector();
 
         BuildPlaceScene();
+        BuildAerialScene();
         CallDeferred(MethodName.BuildDialogs);
     }
 
@@ -360,6 +361,7 @@ public partial class Main : Node3D
                 UpdateHover();
             }
 
+            UpdateAerial();
             UpdatePlaceFrame();
             if (_labelsVisible && now - _lastLabelRefresh > LabelRefreshInterval)
             {
@@ -542,7 +544,7 @@ public partial class Main : Node3D
     {
         if (_experience == Experience.Places)
         {
-            Ascend();
+            AerialView(); // B: this place and its neighbours from above (AERIAL-06)
             if (snap) _rig.Snap();
             return;
         }

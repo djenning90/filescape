@@ -29,6 +29,13 @@ public sealed record Preferences
     /// </summary>
     public bool LevelViewOnRelease { get; init; } = true;
 
+    /// <summary>
+    /// Flight: W moves where you look (climbing when looking up, diving when looking down), as before 2026-11-06. Off by
+    /// default: W/S/A/D move level and only E/Space and Q/C change height (FLY-03), so looking down from above never
+    /// makes you dive.
+    /// </summary>
+    public bool FlyAlongGaze { get; init; }
+
     /// <summary>Walking speed on foot (W). The default is <see cref="WalkParams.Default"/>'s.</summary>
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
 
@@ -76,6 +83,7 @@ public sealed record Preferences
             ["reverseLookHorizontal"] = ReverseLookHorizontal,
             ["reverseLookVertical"] = ReverseLookVertical,
             ["levelViewOnRelease"] = LevelViewOnRelease,
+            ["flyAlongGaze"] = FlyAlongGaze,
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
         };
@@ -100,6 +108,7 @@ public sealed record Preferences
             if (Bool("reverseLookHorizontal") is { } h) p = p with { ReverseLookHorizontal = h };
             if (Bool("reverseLookVertical") is { } vv) p = p with { ReverseLookVertical = vv };
             if (Bool("levelViewOnRelease") is { } lv) p = p with { LevelViewOnRelease = lv };
+            if (Bool("flyAlongGaze") is { } fg) p = p with { FlyAlongGaze = fg };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
         }
@@ -137,5 +146,5 @@ public sealed record Preferences
     }
 
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s");
+        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s");
 }

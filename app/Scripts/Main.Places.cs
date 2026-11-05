@@ -167,6 +167,9 @@ public partial class Main
         _spot.Visible = false;
         _labels.HideAll();
         _signs.Clear();
+        _aerialShown = false;
+        _aerial.Visible = false;
+        _placeWorld.SetVistasVisible(true);
         EndFly();
         _transition = null;
         _hud.SetTransition(0, null);
@@ -310,6 +313,7 @@ public partial class Main
         var sw = System.Diagnostics.Stopwatch.StartNew();
         _place = PlaceComposer.Compose(_tree!, _nav.Current, _placeParams, IsVisibleInPlace, KindOf(_nav.Current));
         if (!rebuildOnly) _explorer?.Visit(_nav.Current); // list it now (and its child folders) if not yet listed
+        if (!rebuildOnly) NoteVisited(_nav.Current);
         LastComposeMs = sw.Elapsed.TotalMilliseconds;
         sw.Restart();
         _placeWorld.Build(_tree!, _place, _quality);
@@ -337,6 +341,8 @@ public partial class Main
     public bool TravelInto(int id)
     {
         if (_tree == null || !_tree.Contains(id) || _transition != null) return false;
+        // From the air, another place is reached by flying there (arriving above it), not through a gate (AERIAL-03).
+        if (_aerialShown && _tree[id].IsDirectory && AerialTravelTo(id, land: false)) return true;
         if (_place?.ParentGate?.TargetId == id) return TravelUp();
         if (_tree[id].Kind == NodeKind.Link) return FollowLink(id); // deliberate, resolved on demand (LINK-02)
 
@@ -494,6 +500,11 @@ public partial class Main
             ArriveAt(tr.Arrival, snap: true);
             _transitions++;
             _upwardSettle = tr.Change.Move == PlaceMove.Up ? (tr.Change, _now) : null;
+            if (_landAfterArrival)
+            {
+                _landAfterArrival = false;
+                Land(); // T over another place: land in it, on the spot below (or the nearest clear ground)
+            }
         }
     }
 
@@ -530,6 +541,8 @@ public partial class Main
             pose = place.Arrival;
         }
 
+        if (AerialArrival(change) is { } aerialPose) pose = aerialPose; // from the air: arrive flying, in world terms
+        NoteVisited(change.To);
         tr.Arrived = true;
         tr.Arrival = pose;
         UpdateInspector();
@@ -660,10 +673,7 @@ public partial class Main
         UpdateGateSigns();
         PlaceBox(_selectionBox, _selection.Selected, 1f);
         PlaceBox(_hoverBox, _selection.Hovered != _selection.Selected ? _selection.Hovered : -1, 0.6f);
-        var height = _rig.CameraPosition.Y;
-        _hud.SetAscentChip(height > 40
-            ? $"Above {_tree.DisplayName(_nav.Current)}: this is its neighbourhood only (places are separate spaces linked by gates). M: whole-filesystem map · Home: land"
-            : null);
+        _hud.SetAscentChip(AerialChip());
     }
 
     private readonly List<SignCandidate> _signCandidates = [];
@@ -675,14 +685,15 @@ public partial class Main
     /// </summary>
     private void UpdateGateSigns()
     {
-        if (_place == null || _tree == null || _transition != null || AerialSignsActive)
+        if (_place == null || _tree == null || _transition != null)
         {
-            if (_transition != null || _place == null) _signs.Clear();
+            _signs.Clear();
             return;
         }
 
         _signCandidates.Clear();
-        foreach (var g in _place.ParentGate is { } pg ? _place.Gates.Append(pg) : _place.Gates)
+        var gatesNamed = !_aerialShown || CameraAltitude < 80f; // from high up, the places are named instead
+        foreach (var g in !gatesNamed ? [] : _place.ParentGate is { } pg ? _place.Gates.Append(pg) : _place.Gates)
         {
             var n = _tree[g.TargetId];
             var focus = g.TargetId == GateChipTarget || g.TargetId == _selection.Selected || g.TargetId == _selection.Hovered;
@@ -698,6 +709,7 @@ public partial class Main
             _signCandidates.Add(new SignCandidate(g.TargetId, anchor, n.Name, detail, color, FileIcons.For(n), focus));
         }
 
+        if (_aerialShown) _signCandidates.AddRange(_aerial.Labels); // from the air: the places around, too (AERIAL-01)
         _signs.Layout(_rig.Camera, _signCandidates, _hud.BlockingRects, (c, d) =>
             !c.Focus && d < 16f && _placeWorld.GatePlates.TryGetValue(c.Id, out var plate) && plate.Visible);
     }
@@ -810,7 +822,8 @@ public partial class Main
         if (_place == null) return -1;
         var origin = _rig.Camera.ProjectRayOrigin(screen);
         var dir = _rig.Camera.ProjectRayNormal(screen);
-        return PlacePicker.Pick(_place, origin.ToNumerics(), dir.ToNumerics());
+        var hit = PlacePicker.Pick(_place, origin.ToNumerics(), dir.ToNumerics());
+        return hit >= 0 ? hit : PickIsland(screen); // from the air, the other places can be picked too
     }
 
     /// <summary>F in Places: frame the selection if it is part of this place.</summary>

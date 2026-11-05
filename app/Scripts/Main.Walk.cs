@@ -28,7 +28,33 @@ public partial class Main
     // Places flight (world units are metres here; docs/units.md).
 
     /// <summary>How high T lifts you before free flight takes over (above the eye on foot).</summary>
-    private static readonly Meters TakeOffRise = Meters.Of(3.5f);
+    /// <summary>
+    /// How high T lifts you above the eye (FLY-04): 16 m (was 3.5 m) — high enough to see the whole plaza and its gates
+    /// below, low enough that the place still fills the view. B goes higher (the neighbourhood).
+    /// </summary>
+    private static readonly Meters TakeOffRise = Meters.Of(16f);
+
+    /// <summary>The gaze the take-off settles on, once: looking down across the place (FLY-04). Never forced again.</summary>
+    private static readonly Degrees TakeOffGaze = Degrees.Of(-35);
+
+    /// <summary>How quickly the take-off gaze is reached (≈ 0.75 s to 90 %).</summary>
+    private static readonly PerSecond TakeOffGazeRate = PerSecond.Of(3f);
+
+    /// <summary>Climbing and descending (E/Space, Q/C) move at this share of the flight speed.</summary>
+    private const float VerticalFlightShare = 0.8f;
+
+    /// <summary>The take-off's target gaze while it is being eased in; null once reached or once the user looks.</summary>
+    private Degrees? _takeOffPitch;
+
+    /// <summary>The vertical flight input this frame (−1 down … 1 up), for checks (FLY-03).</summary>
+    public float LastFlightVertical { get; private set; }
+
+    /// <summary>
+    /// Flight speed grows with height above the ground (FLY-02): ×1 below 15 m, ×(height / 15) above, up to ×30, so the
+    /// plaza is crossed gently and the aerial world (places hundreds of metres apart) in seconds. The wheel still sets
+    /// the base speed.
+    /// </summary>
+    public float FlightAltitudeFactor => Mathf.Clamp(CameraAltitude / 15f, 1f, 30f);
 
     /// <summary>
     /// The take-off rise eases out: its speed is the remaining height × this rate (3.5 m → 9.1 m/s at first), never
@@ -143,18 +169,42 @@ public partial class Main
                 _locomotion = Locomotion.Walking;
                 _walker.TeleportToEye(Terrain, l.To.ToNumerics(), _walker.Yaw, _walker.LookPitch);
                 _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
+                // Back on foot: the walking gaze returns to level (FLY-05), whatever was chosen in the air.
+                if (Mathf.Abs(_walker.LookPitch.Value) > 0.5f) _leveling = new LookLeveling(_walker.LookPitch);
                 UpdateFlightHud();
             }
 
             return;
         }
 
-        // Free flight: the existing fly controls (WASD along the view, E/Space up, Q down, Shift ×3, wheel speed).
+        // Free flight (FLY-02/03): W/S and A/D move level along the heading, whatever the gaze, so you can look down and
+        // still fly across; E or Space climbs, Q or C descends — the only vertical controls (unless the Settings option
+        // "fly where you look" is on). Speed grows with height, so crossing the aerial world takes seconds, not minutes.
         _walker.Look(-(_walker.Params.TurnRate * dt) * turn, Degrees.Zero);
+        if (_takeOffPitch is { } aim)
+        {
+            // The take-off settles the gaze on a downward view once, smoothly; looking with the mouse takes over at once.
+            var k = TakeOffGazeRate.SmoothingFactor(dt);
+            _walker.SetGaze(_walker.Yaw, _walker.LookPitch + (aim - _walker.LookPitch) * k);
+            if (_riseRemaining <= Meters.Zero && Mathf.Abs((aim - _walker.LookPitch).Value) < 0.5f) _takeOffPitch = null;
+        }
+
         var vertical = blocked ? 0 : _held.Axis(InputBindings.Down, InputBindings.Up) + (_held.IsHeld(InputBindings.Jump) ? 1 : 0);
-        var input = new NVector3(strafe, Mathf.Clamp(vertical, -1, 1), fwd);
-        var speed = _flightSpeed * (run ? 3f : 1f);
-        var wantedVelocity = Gd(CameraMath.FlyVelocity(input, _walker.Yaw, _walker.LookPitch, speed.Value));
+        LastFlightVertical = Mathf.Clamp(vertical, -1, 1);
+        var speed = _flightSpeed * FlightAltitudeFactor * (run ? 3f : 1f);
+        GVector3 wantedVelocity;
+        if (_prefs.FlyAlongGaze)
+        {
+            wantedVelocity = Gd(CameraMath.FlyVelocity(new NVector3(strafe, LastFlightVertical, fwd), _walker.Yaw, _walker.LookPitch, speed.Value));
+        }
+        else
+        {
+            var heading = CameraMath.HorizontalForward(_walker.Yaw);
+            var right = CameraMath.Right(_walker.Yaw);
+            var level = new GVector3(heading.X, 0, heading.Z) * fwd + new GVector3(right.X, 0, right.Z) * strafe;
+            if (level.LengthSquared() > 1) level = level.Normalized();
+            wantedVelocity = level * speed.Value + GVector3.Up * (LastFlightVertical * speed.Value * VerticalFlightShare);
+        }
         _flightVelocity = _flightVelocity.Lerp(wantedVelocity, FlightResponse.SmoothingFactor(dt));
         _flyEye += _flightVelocity * dt.ToSecondsF();
         if (_riseRemaining > Meters.Zero)
@@ -169,6 +219,7 @@ public partial class Main
         var ground = Terrain.SupportHeight(new NVector2(_flyEye.X, _flyEye.Z), 0.1f, _flyEye.Y, 0);
         _flyEye.Y = Mathf.Max(_flyEye.Y, ground + FlightMinClearance.Value);
         _rig.SetPose(_flyEye, _walker.Yaw, _walker.LookPitch, PivotAhead);
+        _hud.SetFlyStatus(true, (_flightSpeed * FlightAltitudeFactor).Value, highlight: false, places: true, landing: false, altitude: CameraAltitude, alongGaze: _prefs.FlyAlongGaze);
     }
 
     // ------------------------------------------------------------------ flight (WALK-06/07)
@@ -182,10 +233,15 @@ public partial class Main
         else Land();
     }
 
-    private void TakeOff() => TakeOff(TakeOffRise);
+    private void TakeOff()
+    {
+        TakeOff(TakeOffRise);
+        _takeOffPitch = TakeOffGaze; // a useful downward view, once (FLY-04)
+    }
 
     private void TakeOff(Meters rise)
     {
+        _takeOffPitch = null;
         _locomotion = Locomotion.Flying;
         _landing = null;
         _flyEye = _rig.CameraPosition;
@@ -204,6 +260,29 @@ public partial class Main
     {
         if (_locomotion != Locomotion.Flying || _place == null) return;
         _riseRemaining = Meters.Zero;
+        _takeOffPitch = null;
+        if (_aerialShown && _worldMap != null && _tree != null)
+        {
+            // From the air (AERIAL-03): over another place, land in it; over open space far from here, land in the
+            // nearest place (at its arrival point if there is no ground below). Over this place, land here.
+            var (xz, _) = WorldCamera();
+            var under = _worldMap.IslandAt(xz, 1.0f);
+            if (under < 0)
+            {
+                var here = _worldMap.Islands[_nav.Current];
+                if (System.Numerics.Vector2.Distance(xz, here.Center) > here.Radius + 15f)
+                {
+                    under = _worldMap.Islands.Values.MinBy(i => System.Numerics.Vector2.Distance(xz, i.Center) - i.Radius)!.Id;
+                }
+            }
+
+            if (under >= 0 && under != _nav.Current && AerialTravelTo(under, land: true))
+            {
+                LastLandingNote = $"Landing in {_tree.DisplayName(under)}";
+                return;
+            }
+        }
+
         var eye = _rig.CameraPosition;
         var p = new NVector2(eye.X, eye.Z);
         var r = _walker.Params.Radius.Value;
@@ -369,6 +448,7 @@ public partial class Main
         _flyStartMouse = mousePosition;
         _placeLook = true;
         _leveling = null;
+        _takeOffPitch = null;
         _pressButton = MouseButton.None;
         Input.MouseMode = Input.MouseModeEnum.Captured;
     }
@@ -391,7 +471,8 @@ public partial class Main
     /// </summary>
     private void LevelAfterLook()
     {
-        if (!_prefs.LevelViewOnRelease || _experience != Experience.Places || _place == null) return;
+        // On foot only (CTRL-04/FLY-01): in flight the pitch you choose stays, so you can look down from above.
+        if (!_prefs.LevelViewOnRelease || _experience != Experience.Places || _place == null || _locomotion != Locomotion.Walking) return;
         if (MathF.Abs(_walker.LookPitch.Value) < 0.01f) return;
         _leveling = new LookLeveling(_walker.LookPitch);
     }
@@ -405,6 +486,7 @@ public partial class Main
         if (_transition != null) return;
         if (_guided) EndGuide();
         _leveling = null; // looking again takes over from any return to level
+        _takeOffPitch = null;
         // The user's direction preference applies here only: arrow-key turning and the camera conventions are unchanged (CTRL-01).
         var (yaw, pitch) = _prefs.LookDelta(screenPixels.ToNumerics2(), degreesPerPixel);
         _walker.Look(yaw, pitch);

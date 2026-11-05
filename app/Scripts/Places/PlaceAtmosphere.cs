@@ -71,4 +71,23 @@ public static class PlaceAtmosphere
         groundMat.SetShaderParameter("puddle_roughness", 0.12f);
         ground.MaterialOverride = groundMat;
     }
+
+    /// <summary>
+    /// Thins the haze as you climb (AERIAL-01): at eye level it fades the vistas into the distance (0.011/m volumetric,
+    /// ≈ 7 % left after 240 m), which would hide the aerial world's places hundreds of metres away. <paramref name="blend"/>
+    /// 0 = on the ground, 1 = high up (≈ 0.0009/m: about 70 % of a place 400 m away still shows).
+    /// </summary>
+    public static void SetAerial(WorldEnvironment world, float blend, Quality quality)
+    {
+        var env = world.Environment;
+        if (env == null) return;
+        var b = Mathf.Clamp(blend, 0, 1);
+        // High up, screen-space reflections and occlusion add little and cost GPU time over the wide view (measured).
+        var high = quality == Quality.High;
+        env.SsrEnabled = high && b < 0.5f;
+        env.SsaoEnabled = high && b < 0.5f;
+        env.VolumetricFogDensity = Mathf.Lerp(0.011f, 0.0009f, b);
+        env.FogDensity = Mathf.Lerp(0.006f, 0.0005f, b);
+        env.VolumetricFogLength = Mathf.Lerp(240f, 900f, b);
+    }
 }

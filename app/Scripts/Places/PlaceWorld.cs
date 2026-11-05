@@ -386,26 +386,42 @@ public partial class PlaceWorld : Node3D
             AddPlate(pg, "▲ " + PlaceText.Fit(tree.DisplayName(pg.TargetId), 22), PlacePalette.Up.Lightened(0.3f));
         }
 
-        // ---- routes and vistas (PLACE-09, AD-14: symbolic distance)
+        // ---- routes and vistas (PLACE-09, AD-14: symbolic distance). Route segments beyond a gate lead to its vista,
+        // so they belong with the vistas (hidden from the air, where the real places and their roads show instead).
+        var vStreets = new InstanceBatch();
         foreach (var a in c.Avenues)
         {
             var target = tree[a.TargetId];
             var isParent = c.ParentGate?.TargetId == a.TargetId;
             var col = isParent ? PlacePalette.Up * 0.13f : PlacePalette.For(Listing.Of(target), PlaceIdentity.For(target.Name)) * 0.55f;
+            var gate = isParent ? c.ParentGate : c.GateFor(a.TargetId);
+            var gateR = gate == null ? float.MaxValue : new System.Numerics.Vector2(gate.Position.X, gate.Position.Z).Length() + 1f;
             var along = 0f;
             for (var i = 1; i < a.Points.Length; i++)
             {
                 var p0 = Gd(a.Points[i - 1]) with { Y = 0.03f };
                 var p1 = Gd(a.Points[i]) with { Y = 0.03f };
-                streets.AddSegment(p0, p1, i == 1 ? 0.5f : 0.8f, 0.03f, col, along);
+                var beyond = new Vector2((p0.X + p1.X) / 2, (p0.Z + p1.Z) / 2).Length() > gateR;
+                (beyond ? vStreets : streets).AddSegment(p0, p1, i == 1 ? 0.5f : 0.8f, 0.03f, col, along);
                 along += p0.DistanceTo(p1);
             }
         }
 
+        // Vistas have their own batches: from the air the aerial world's islands replace them (AERIAL-01).
+        var vTowers = new InstanceBatch();
+        var vBeacons = new InstanceBatch();
+        var vSpires = new InstanceBatch();
         foreach (var v in c.ParentVista is { } pv ? c.Vistas.Append(pv) : c.Vistas)
         {
-            BuildVista(tree, v, towers, beacons, spires, streets, (t, a, px, col, rng, pri, bb) => Sign(t, a, px, col, rng, pri, bb), isParent: v == c.ParentVista);
+            BuildVista(tree, v, vTowers, vBeacons, vSpires, vStreets, (t, a, px, col, rng, pri, bb) => Sign(t, a, px, col, rng, pri, bb), isParent: v == c.ParentVista);
         }
+
+        Emit("vista-towers", vTowers, _box, _tower, false);
+        Emit("vista-beacons", vBeacons, _column, _beacon, false);
+        Emit("vista-spires", vSpires, _spire, _vistaSpire, false);
+        Emit("vista-streets", vStreets, _box, _street, false);
+        InstanceCount += vTowers.Count + vBeacons.Count + vSpires.Count + vStreets.Count;
+        SetVistasVisible(_vistasVisible);
 
         Emit("towers", towers, _box, _tower, true);
         Emit("gates", gates, _box, _gate, true);
@@ -415,7 +431,7 @@ public partial class PlaceWorld : Node3D
         Emit("terrain", terrain, _box, _terrain, true);
         Emit("badges", badges, _quad, _badge, false);
         Emit("spires", spires, _spire, _vistaSpire, false);
-        InstanceCount = towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count + terrain.Count;
+        InstanceCount += towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count + terrain.Count;
         for (var i = signIndex; i < _signs.Count; i++) _signs[i].Visible = false;
     }
 
@@ -520,6 +536,15 @@ public partial class PlaceWorld : Node3D
         batch.Add(side * (r.HalfWidth * 2), normal * thick, along, centre, color, new Color(r.HalfWidth * 2, thick, along.Length(), 0));
     }
 
+    private bool _vistasVisible = true;
+
+    /// <summary>Shows or hides the vistas (symbolic previews beyond the gates): hidden while the aerial world shows the real places.</summary>
+    public void SetVistasVisible(bool visible)
+    {
+        _vistasVisible = visible;
+        foreach (var slot in new[] { "vista-towers", "vista-beacons", "vista-spires", "vista-streets" }) SetSlotVisible(slot, visible);
+    }
+
     /// <summary>Vista names repeat the gate names, so on the plaza they stay hidden; from above or beyond the gates they show.</summary>
     private const int VistaPriority = 3;
 
@@ -575,7 +600,7 @@ public partial class PlaceWorld : Node3D
                      .OrderBy(m => m.Priority == 0 ? 0 : m.Priority == PlatePriority ? 1 : 2).ThenBy(m => m.D)
                      .Select(m => (m.Label, m.Range, m.Priority)))
         {
-            var visible = priority == VistaPriority ? overview : label.GlobalPosition.DistanceTo(camera) <= range && (priority == 0 || shown < maxVisible);
+            var visible = priority == VistaPriority ? overview && _vistasVisible : label.GlobalPosition.DistanceTo(camera) <= range && (priority == 0 || shown < maxVisible);
             // A plate reads from inside the place only (it faces in), and never from above (flight, overview).
             if (visible && _plateGates.TryGetValue(label, out var plateGate))
             {

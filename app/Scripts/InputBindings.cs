@@ -42,7 +42,7 @@ public static class InputBindings
     [
         (Forward, "W / Up arrow"), (Back, "S / Down arrow"), (Left, "A"), (Right, "D"),
         (TurnLeft, "Left arrow (maps: move left)"), (TurnRight, "Right arrow (maps: move right)"),
-        (Up, "E (flight: up)"), (Down, "Q (flight: down)"), (Fast, "Shift"), (Jump, "Space (flight: up)"),
+        (Up, "E (flight: up)"), (Down, "Q or C (flight: down)"), (Fast, "Shift"), (Jump, "Space (flight: up)"),
     ];
 
     public static void Register()
@@ -55,7 +55,7 @@ public static class InputBindings
         Logical(TurnRight, Key.Right);
         Physical(Jump, Key.Space);
         Physical(Up, Key.E);
-        Physical(Down, Key.Q);
+        Physical(Down, Key.Q); Physical(Down, Key.C); // C: descend, under the left hand next to Space (climb)
         Logical(Fast, Key.Shift);
 
         Mouse(FlyLook, MouseButton.Right);

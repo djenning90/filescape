@@ -33,6 +33,7 @@ public partial class WalkProbe : ProbeBase
         if (Mode == "walk-look") await LookAround();
         else if (Mode == "walk-perf") await PerfIsolation();
         else if (Mode == "walk-tour") await Tour();
+        else if (Mode == "walk-explore") await Explore();
         else await Journey();
     }
 

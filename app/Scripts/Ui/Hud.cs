@@ -682,11 +682,13 @@ public partial class Hud : CanvasLayer
         if (_movedOnce && _flewOnce) DismissHint();
     }
 
-    public void SetFlyStatus(bool flying, float speed, bool highlight, bool places = false, bool landing = false)
+    public void SetFlyStatus(bool flying, float speed, bool highlight, bool places = false, bool landing = false, float? altitude = null, bool alongGaze = false)
     {
         _flyPanel.Visible = flying;
+        // The flight reminder (FLY-03): what moves you level, what moves you up and down, how to land.
+        var move = alongGaze ? "W where you look" : "W A S D level";
         _flyLabel.Text = places
-            ? landing ? "LANDING…" : $"✈ FLYING  ·  {speed:0.#} m/s (wheel, Shift ×3)  ·  E / Space up · Q down  ·  T to land on foot"
+            ? landing ? "LANDING…" : $"✈ {(altitude is { } h ? $"{h:0} m up · " : "")}{speed:0} m/s  ·  {move}  ·  E/Space up · Q/C down  ·  B aerial view  ·  T land"
             : $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
         if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + 1.2;
     }

@@ -15,7 +15,7 @@ public partial class Hud
     public event Action? SettingsToggled;
 
     private PanelContainer _settingsPanel = null!;
-    private CheckBox _reverseH = null!, _reverseV = null!, _levelView = null!;
+    private CheckBox _reverseH = null!, _reverseV = null!, _levelView = null!, _flyGaze = null!;
     private HSlider _walkSlider = null!, _runSlider = null!;
     private Label _walkValue = null!, _runValue = null!, _settingsNote = null!;
     private Button _settingsButton = null!;
@@ -29,6 +29,7 @@ public partial class Hud
     public bool ReverseHorizontalChecked => _reverseH.ButtonPressed;
     public bool ReverseVerticalChecked => _reverseV.ButtonPressed;
     public Rect2 LevelViewRect => _levelView.GetGlobalRect();
+    public Rect2 FlyGazeRect => _flyGaze.GetGlobalRect();
     public string WalkSpeedText => _walkValue.Text;
 
     private void BuildSettings(HBoxContainer topRow)
@@ -65,12 +66,16 @@ public partial class Hud
         _reverseV.TooltipText = "Off: the usual direction (mouse down looks down). On: mouse down looks up.";
         _reverseH.Toggled += _ => EmitPreferences();
         _reverseV.Toggled += _ => EmitPreferences();
-        _levelView = new CheckBox { Text = "Level the view when you let go — no staring at the sky or the ground", FocusMode = Control.FocusModeEnum.None };
+        _levelView = new CheckBox { Text = "On foot: level the view when you let go (in flight your view stays where you leave it)", FocusMode = Control.FocusModeEnum.None };
         _levelView.TooltipText = "On: releasing the mouse button eases your view back to level in about a third of a second; the direction you turned to is kept. Off: the view stays where you left it.";
         _levelView.Toggled += _ => EmitPreferences();
         v.AddChild(_reverseH);
         v.AddChild(_reverseV);
         v.AddChild(_levelView);
+        _flyGaze = new CheckBox { Text = "Flight: W flies where you look (off: W/S/A/D stay level; E/Space up, Q/C down)", FocusMode = Control.FocusModeEnum.None };
+        _flyGaze.TooltipText = "Off (default): looking down from above never makes you dive; height changes only with E/Space and Q/C. On: forward follows your gaze, as before.";
+        _flyGaze.Toggled += _ => EmitPreferences();
+        v.AddChild(_flyGaze);
         var mapNote = new Label { Text = "The arrow keys always turn the way they point. The maps keep their own mouse controls (orbit, fly), unchanged.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         mapNote.AddThemeFontSizeOverride("font_size", 12);
         mapNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
@@ -133,6 +138,7 @@ public partial class Hud
         _reverseH.ButtonPressed = p.ReverseLookHorizontal;
         _reverseV.ButtonPressed = p.ReverseLookVertical;
         _levelView.ButtonPressed = p.LevelViewOnRelease;
+        _flyGaze.ButtonPressed = p.FlyAlongGaze;
         _walkSlider.Value = p.WalkSpeed.Value;
         _runSlider.Value = p.RunSpeed.Value;
         _walkValue.Text = string.Create(CultureInfo.InvariantCulture, $"{p.WalkSpeed.Value:0.0} m/s");
@@ -149,6 +155,7 @@ public partial class Hud
             ReverseLookHorizontal = _reverseH.ButtonPressed,
             ReverseLookVertical = _reverseV.ButtonPressed,
             LevelViewOnRelease = _levelView.ButtonPressed,
+            FlyAlongGaze = _flyGaze.ButtonPressed,
             WalkSpeed = MetersPerSecond.Of((float)_walkSlider.Value),
             RunSpeed = MetersPerSecond.Of((float)_runSlider.Value),
         });

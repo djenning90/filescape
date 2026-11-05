@@ -13,7 +13,7 @@ namespace FileScape.Core.Places;
 /// <param name="Center">World position of the place's centre (its landmark), metres; Vector2.Y is world Z.</param>
 /// <param name="NorthDeg">The place angle (clockwise from world north) that is "north" inside this place.</param>
 /// <param name="Radius">The place's estimated footprint radius, metres (its gates and file quarters).</param>
-/// <param name="SubtreeRadius">The radius of the disc that holds this place and everything laid out below it.</param>
+/// <param name="SubtreeRadius">How far this place and everything laid out below it reach from its centre (across or ahead).</param>
 /// <param name="ParentId">The folder it is laid out from (−1 for the world's centre).</param>
 /// <param name="Depth">Steps from the world's centre.</param>
 /// <param name="HiddenChildren">Direct child folders not laid out because the world reached its size limit.</param>
@@ -31,11 +31,14 @@ public sealed record WorldLayoutParams
     /// <summary>More children than this are set in several rows (nearer and farther), like a wide place's tiers.</summary>
     public int ChildrenPerRow { get; init; } = 14;
 
+    /// <summary>Children are kept together: at most this much empty angle beside each one.</summary>
+    public float MaxSpareDeg { get; init; } = 10f;
+
     /// <summary>
     /// Subtree radii are rounded up to the next step of this ratio, so a subtree that grows a little (a deeper folder
     /// listed) keeps its size and its siblings do not move (stability, AERIAL-02).
     /// </summary>
-    public float RadiusStep { get; init; } = 1.25f;
+    public float RadiusStep { get; init; } = 1.4f;
 
     /// <summary>Places laid out at most: the explored namespace of a long session, or a bounded tree's folders. Beyond it,
     /// the deepest folders are counted on their parent (HiddenChildren) rather than drawn (a stated limit, AERIAL-05).</summary>
@@ -172,13 +175,14 @@ public static class WorldLayout
             kids[id] = list;
         }
 
-        // Post-order: each place's own radius, where each child goes (angle and distance) and its subtree disc.
-        // Each child has its own angular slot (equal shares of the arc, in name order) and its own distance, set by its
-        // own subtree: a child's disc always fits its slot's cone, so siblings never overlap, and a subtree growing
-        // deeper down moves only itself (never its siblings). Many children are set in rows (like tiers), so a wide
-        // folder's places stay near it.
+        // Post-order. Each subtree is summarised in its root's own frame by a rectangle: half-width L across, reach F
+        // ahead, and only its own island behind (everything below a place lies ahead of it, within ±80° of its north).
+        // A place's children are packed side by side across the arc ahead, each taking the angle its rectangle needs at
+        // its distance; consecutive leaf folders of a wide place share a wedge, stacked near to far (rows), so 70 empty
+        // folders sit within a few hundred metres instead of kilometres. Sizes are rounded up (RadiusStep) for stability.
         var own = new Dictionary<int, float>(order.Count);
-        var subtree = new Dictionary<int, float>(order.Count);
+        var halfWidth = new Dictionary<int, float>(order.Count);
+        var reach = new Dictionary<int, float>(order.Count);
         var slots = new Dictionary<int, (float AngleOffsetDeg, float Distance)[]>(order.Count);
         for (var i = order.Count - 1; i >= 0; i--)
         {
@@ -188,45 +192,84 @@ public static class WorldLayout
             var children = kids[id];
             if (children.Count == 0)
             {
-                subtree[id] = Round(r, p);
+                halfWidth[id] = r;
+                reach[id] = r;
                 continue;
             }
 
             var full = id == root;
-            var arc = full ? 360f : p.ChildArcDeg;
-            var rows = children.Count <= p.ChildrenPerRow ? 1 : (int)MathF.Ceiling(children.Count / (float)p.ChildrenPerRow);
-            var perRow = (int)MathF.Ceiling(children.Count / (float)rows);
-            var slot = arc / perRow;
-            var half = MathF.Min(slot, 179f) * 0.5f * MathF.PI / 180f;
-            var placed = new (float, float)[children.Count];
-            var rowBase = r + p.Gap;
-            var extent = r;
-            for (var row = 0; row < rows; row++)
+            var arc = (full ? 360f : p.ChildArcDeg) * MathF.PI / 180f;
+            // Groups: a non-leaf child alone; runs of leaf children in stacks of up to `stack` (near to far).
+            var leaves = children.Count(c => kids[c].Count == 0);
+            var stack = leaves > p.ChildrenPerRow ? (int)MathF.Ceiling(leaves / (float)p.ChildrenPerRow) : 1;
+            var groups = new List<List<int>>();
+            foreach (var c in children)
             {
-                var rowFar = rowBase;
-                for (var k = row; k < children.Count; k += rows)
+                var leaf = kids[c].Count == 0;
+                if (leaf && groups.Count > 0 && groups[^1].Count < stack && kids[groups[^1][0]].Count == 0) groups[^1].Add(c);
+                else groups.Add([c]);
+            }
+
+            var maxOwn = 0f;
+            foreach (var c in children) maxOwn = MathF.Max(maxOwn, own[c]);
+            var rho = r + maxOwn + p.Gap;
+            var half = new float[groups.Count];
+            for (var guard = 0; guard < 800; guard++)
+            {
+                var sum = 0f;
+                for (var g = 0; g < groups.Count; g++)
                 {
-                    var rc = subtree[children[k]];
-                    var col = k / rows;
-                    // Out of the parent's own footprint (or the previous row), and far enough that the disc fits the cone.
-                    var dist = MathF.Max(rowBase + rc, (rc + p.Gap / 2) / MathF.Sin(half));
-                    var offset = full ? (col + 0.5f) * slot - 180f : (col + 0.5f) * slot - arc / 2;
-                    placed[k] = (offset, dist);
-                    rowFar = MathF.Max(rowFar, dist + rc);
+                    var l = 0f;
+                    foreach (var c in groups[g]) l = MathF.Max(l, halfWidth[c]);
+                    half[g] = MathF.Atan((l + p.Gap / 2) / rho);
+                    sum += 2 * half[g];
                 }
 
-                rowBase = rowFar + p.Gap;
-                extent = MathF.Max(extent, rowFar);
+                if (sum <= arc) break;
+                rho *= 1.03f;
+            }
+
+            var used = 0f;
+            foreach (var h in half) used += 2 * h;
+            var spare = MathF.Max(0, MathF.Min(p.MaxSpareDeg * MathF.PI / 180f, (arc - used) / groups.Count));
+            var angle = -(used + spare * groups.Count) / 2;
+            var placed = new (float, float)[children.Count];
+            float lat = r, ahead = r;
+            for (var g = 0; g < groups.Count; g++)
+            {
+                angle += half[g] + spare / 2;
+                var dist = rho;
+                foreach (var c in groups[g])
+                {
+                    var k = children.IndexOf(c);
+                    var deg = angle * 180f / MathF.PI;
+                    placed[k] = (deg, dist);
+                    // This child's rectangle, turned to its direction and moved to its place, in this place's frame.
+                    var north = Flat(PlaceGeometry.Direction(deg));
+                    var east = Flat(PlaceGeometry.Direction(deg + 90));
+                    var centre = north * dist;
+                    foreach (var (x, z) in new[] { (-halfWidth[c], -reach[c]), (halfWidth[c], -reach[c]), (-halfWidth[c], own[c]), (halfWidth[c], own[c]) })
+                    {
+                        var q = centre + east * x + north * -z;
+                        lat = MathF.Max(lat, MathF.Abs(q.X));
+                        ahead = MathF.Max(ahead, -q.Y);
+                    }
+
+                    dist += 2 * own[c] + p.Gap;
+                }
+
+                angle += half[g] + spare / 2;
             }
 
             slots[id] = placed;
-            subtree[id] = Round(extent, p);
+            halfWidth[id] = Round(lat, p);
+            reach[id] = Round(ahead, p);
         }
 
         // Pre-order: positions and norths (west → east = clockwise = left to right when facing a place's north).
         var islands = new Dictionary<int, WorldIsland>(order.Count)
         {
-            [root] = new WorldIsland(root, Vector2.Zero, 0, own[root], subtree[root], -1, 0, hidden.GetValueOrDefault(root)),
+            [root] = new WorldIsland(root, Vector2.Zero, 0, own[root], MathF.Max(halfWidth[root], reach[root]), -1, 0, hidden.GetValueOrDefault(root)),
         };
         foreach (var id in order)
         {
@@ -240,7 +283,7 @@ public static class WorldLayout
                 var a = self.NorthDeg + offset;
                 var dir = PlaceGeometry.Direction(a);
                 var c = children[k];
-                islands[c] = new WorldIsland(c, self.Center + new Vector2(dir.X, dir.Z) * dist, a, own[c], subtree[c], id, depth[c], hidden.GetValueOrDefault(c));
+                islands[c] = new WorldIsland(c, self.Center + new Vector2(dir.X, dir.Z) * dist, a, own[c], MathF.Max(halfWidth[c], reach[c]), id, depth[c], hidden.GetValueOrDefault(c));
             }
         }
 
@@ -272,6 +315,8 @@ public static class WorldLayout
         var fileRing = 8f + MathF.Sqrt(files * 5.76f / 2.1f);
         return MathF.Max(30f, MathF.Max(gateRing + 8f, fileRing + 4f));
     }
+
+    private static Vector2 Flat(Vector3 v) => new(v.X, v.Z);
 
     private static float Round(float r, WorldLayoutParams p)
     {
