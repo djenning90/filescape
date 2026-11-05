@@ -319,7 +319,13 @@ public partial class Hud : CanvasLayer
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
         };
         _help.AddChild(text);
+        _helpText = text;
     }
+
+    private RichTextLabel _helpText = null!;
+
+    /// <summary>Shows which build is running at the end of Help (delivery traceability).</summary>
+    public void SetBuildIdentifier(string id) => _helpText.Text += $"\n\n[color=#7f8fab]Build: {id}[/color]";
 
     private void BuildStatsAndToast()
     {

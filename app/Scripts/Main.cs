@@ -121,7 +121,13 @@ public partial class Main : Node3D
             StartScan(new SyntheticTreeSource { TargetNodes = args.SyntheticNodes ?? 12_000, NodesPerSecond = args.SyntheticRate ?? 0 });
         }
 
-        if (args.Automation is { } walkMode && walkMode.StartsWith("walk", StringComparison.Ordinal))
+        GD.Print($"[build] {BuildInfo.Identifier}");
+        _hud.SetBuildIdentifier(BuildInfo.Identifier);
+        if (args.Automation == "smoke")
+        {
+            AddChild(new SmokeProbe(this, args.OutputDirectory ?? OS.GetUserDataDir()));
+        }
+        else if (args.Automation is { } walkMode && walkMode.StartsWith("walk", StringComparison.Ordinal))
         {
             AddChild(new WalkProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), walkMode));
         }

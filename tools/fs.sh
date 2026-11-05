@@ -5,7 +5,10 @@
 #   tools/fs.sh test-wsl         run the test suite with the Linux SDK (Windows-only tests skip)
 #   tools/fs.sh run [-- args]    launch the app on Windows (args after -- go to FileScape, e.g. --root='C:\some dir')
 #   tools/fs.sh editor           open the Godot editor on the project
-#   tools/fs.sh export           export a Windows build to %LOCALAPPDATA%\FileScape\build and verify its files
+#   tools/fs.sh export           export to a fresh staging dir, verify (files, hashes, a smoke launch), then promote it to
+#                                %LOCALAPPDATA%\FileScape\build, keeping the previous build as previous-<stamp>
+#   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
+#   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
 #   tools/fs.sh which            print the discovered tools
 #
 # Windows programs are executed directly through WSL interop (no PowerShell command strings), so every argument
@@ -41,6 +44,75 @@ export WSLENV="${WSLENV:+$WSLENV:}MSBUILDDISABLENODEREUSE:DOTNET_CLI_USE_MSBUILD
 # Build servers keep the stdout pipe open after the build finishes; disabling them prevents hangs.
 NOSERVERS=(--disable-build-servers -nodeReuse:false -p:UseSharedCompilation=false)
 
+
+# ---- build delivery helpers (export, builds, prune-builds)
+fs_base_w() {
+  # FILESCAPE_TEST_LOCALAPPDATA: test hook for the path checks ("" or an odd value must be refused).
+  local lad; lad="${FILESCAPE_TEST_LOCALAPPDATA-$(win_env LOCALAPPDATA)}"
+  if [[ ! "$lad" =~ ^[A-Za-z]:\\.+ ]]; then echo "fs.sh: LOCALAPPDATA did not resolve ('$lad'); refusing to continue" >&2; return 1; fi
+  echo "$lad\\FileScape"
+}
+
+check_base() {
+  # The base must be a real .../AppData/Local/FileScape directory on a Windows drive; never anything shorter.
+  case "$1" in
+    /mnt/[a-z]/*/AppData/Local/FileScape) mkdir -p "$1" ;;
+    *) echo "fs.sh: unexpected build base '$1'; refusing to continue" >&2; exit 1 ;;
+  esac
+}
+
+verify_build() {
+  local d="$1" data="$1/data_FileScape.App_windows_x86_64" f
+  for f in "$d/FileScape.exe" "$data/FileScape.App.dll" "$data/FileScape.Core.dll" "$data/GodotSharp.dll" \
+           "$data/FileScape.App.runtimeconfig.json" "$data/FileScape.App.deps.json" "$data/System.Private.CoreLib.dll"; do
+    [[ -s "$f" ]] || { echo "fs.sh: missing or empty: $f" >&2; return 1; }
+  done
+  local n; n="$(find "$data" -maxdepth 1 -type f | wc -l)"
+  [[ "$n" -ge 150 ]] || { echo "fs.sh: only $n files in $data (expected >= 150)" >&2; return 1; }
+  [[ "$(stat -c %s "$d/FileScape.exe")" -gt 50000000 ]] || { echo "fs.sh: FileScape.exe is unexpectedly small" >&2; return 1; }
+}
+
+write_build_info() {
+  local d="$1" data="$1/data_FileScape.App_windows_x86_64"
+  local commit dirty
+  commit="$(git -C "$REPO" rev-parse --short=12 HEAD)"
+  dirty="$(git -C "$REPO" status --porcelain | wc -l)"
+  {
+    echo "build $commit$([[ $dirty -gt 0 ]] && echo "+$dirty-uncommitted") $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "commit $(git -C "$REPO" rev-parse HEAD)"
+    echo "uncommitted_paths $dirty"
+    echo "files $(find "$data" -maxdepth 1 -type f | wc -l)"
+    echo "sha256 FileScape.exe $(sha256sum "$d/FileScape.exe" | cut -d' ' -f1)"
+    echo "sha256 FileScape.App.dll $(sha256sum "$data/FileScape.App.dll" | cut -d' ' -f1)"
+    echo "sha256 FileScape.Core.dll $(sha256sum "$data/FileScape.Core.dll" | cut -d' ' -f1)"
+  } > "$d/build-info.txt"
+}
+
+smoke_build() {
+  # Launch the staged exe on synthetic data: it must compose a place and quit cleanly (--automate=smoke).
+  local dw="$1" d="$2"
+  set +e
+  (cd "$d" && timeout 120 ./FileScape.exe -- --automate=smoke "--out=$dw\\smoke" --window=640x360 --ui-scale=1 >/dev/null 2>&1)
+  local code=$?
+  set -e
+  [[ $code -eq 0 ]] && grep -q "smoke ok" "$d/smoke/smoke.log" 2>/dev/null && { echo "fs.sh: smoke launch OK ($(grep 'smoke ok' "$d/smoke/smoke.log" | tail -1))"; return 0; }
+  echo "fs.sh: smoke launch failed (exit $code)" >&2; return 1
+}
+
+running_paths() {
+  # Paths of running FileScape processes (one per line). Exit status is non-zero if this cannot be established,
+  # so callers fail closed instead of assuming nothing runs.
+  # FILESCAPE_TEST_RUNNING: test hook ("fail" = the check itself fails; any other value = that running path).
+  if [[ -n "${FILESCAPE_TEST_RUNNING:-}" ]]; then [[ "$FILESCAPE_TEST_RUNNING" == fail ]] && return 1; echo "$FILESCAPE_TEST_RUNNING"; return 0; fi
+  local out code
+  set +e
+  out="$( (cd /mnt/c && powershell.exe -NoProfile -NonInteractive -Command "try { Get-Process -Name FileScape -ErrorAction SilentlyContinue | ForEach-Object { if (-not \$_.Path) { throw 'path unavailable' }; \$_.Path }; exit 0 } catch { exit 3 }") 2>/dev/null )"
+  code=$?
+  set -e
+  [[ $code -eq 0 ]] || return 1
+  tr -d '\r' <<<"$out"
+}
+
 cmd="${1:-}"; shift || true
 [[ "${1:-}" == "--" ]] && shift
 
@@ -60,31 +132,56 @@ case "$cmd" in
     G="$(find_godot_dir)"
     "$G/Godot_v4.7.2-stable_mono_win64.exe" --editor --path "$APP_W" >/dev/null 2>&1 & ;;
   export)
-    # Export into a staging folder first and replace the build only when it is complete and not running. On
-    # 2026-11-05 a direct export deleted the unlocked files of a build DJ had open (the files were restored); never again.
+    # Safe delivery (2026-11-05, see docs/windows-workflow.md "Exporting and delivering a build"):
+    #  1. resolve and sanity-check every path before touching anything;
+    #  2. export into a NEW, unique staging directory (never reused, never deleted by this command);
+    #  3. verify completeness, write build-info.txt (commit, hashes), and smoke-launch the staged exe;
+    #  4. determine which FileScape processes run, failing closed if that cannot be established;
+    #  5. promote by renaming (build -> previous-<stamp>, staging -> build) only if nothing runs from build.
     G="$(find_godot_dir)"
-    OUT_W="$(win_env LOCALAPPDATA)\\FileScape\\build"
-    OUT="$(wslpath "$OUT_W")"
-    STAGE_W="$OUT_W-staging"
-    STAGE="$(wslpath "$STAGE_W")"
-    rm -rf "$STAGE"; mkdir -p "$STAGE"
+    BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"
+    check_base "$BASE"
+    STAMP="$(date -u +%Y%m%d-%H%M%S)-$$"
+    STAGE_W="$BASE_W\\staging-$STAMP"; STAGE="$BASE/staging-$STAMP"
+    OUT_W="$BASE_W\\build"; OUT="$BASE/build"
+    mkdir "$STAGE"   # fails if it somehow exists: a staging dir is never reused
+    echo "fs.sh: exporting to $STAGE_W"
     set +e
     "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --headless --path "$APP_W" --export-release "Windows Desktop" "$STAGE_W\\FileScape.exe"
     code=$?
     set -e
-    # Godot can report success while producing an incomplete export (e.g. no .NET assemblies), so check the files.
-    if [[ $code -ne 0 ]]; then echo "fs.sh: Godot export exited with $code" >&2; exit $code; fi
-    if [[ ! -f "$STAGE/FileScape.exe" || ! -f "$STAGE/data_FileScape.App_windows_x86_64/FileScape.App.dll" || ! -f "$STAGE/data_FileScape.App_windows_x86_64/FileScape.Core.dll" ]]; then
-      echo "fs.sh: export incomplete: FileScape.exe or its .NET assemblies are missing in $STAGE_W" >&2; exit 3
-    fi
-    running="$( (cd /mnt/c && powershell.exe -NoProfile -Command "(Get-Process FileScape -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '$OUT_W*' }).Id") | tr -d '\r' )"
-    if [[ -n "$running" ]]; then
-      echo "fs.sh: FileScape is running from $OUT_W (pid $running); the new export is complete in $STAGE_W. Close FileScape and run 'tools/fs.sh export' again (or use the staged build)." >&2
+    if [[ $code -ne 0 ]]; then echo "fs.sh: Godot export exited with $code; staged files left in $STAGE_W" >&2; exit $code; fi
+    verify_build "$STAGE" || { echo "fs.sh: export incomplete in $STAGE_W (left for inspection)" >&2; exit 3; }
+    write_build_info "$STAGE"
+    smoke_build "$STAGE_W" "$STAGE" || { echo "fs.sh: the staged build did not pass the smoke launch; not promoted ($STAGE_W)" >&2; exit 5; }
+    running="$(running_paths)" || { echo "fs.sh: could not determine which FileScape processes run; not promoting. Verified build: $STAGE_W\\FileScape.exe" >&2; exit 6; }
+    if grep -qiF "$OUT_W\\" <<<"$running"; then
+      echo "fs.sh: FileScape is running from $OUT_W; not replacing it. Verified build: $STAGE_W\\FileScape.exe (run 'tools/fs.sh export' again after closing FileScape, or use it directly)." >&2
       exit 4
     fi
-    rm -rf "$OUT"
+    if [[ -e "$OUT" ]]; then mv "$OUT" "$BASE/previous-$STAMP"; echo "fs.sh: previous build kept as $BASE_W\\previous-$STAMP"; fi
     mv "$STAGE" "$OUT"
-    echo "fs.sh: export OK -> $OUT_W\\FileScape.exe" ;;
+    verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
+    echo "fs.sh: export OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
+  builds)
+    BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"; check_base "$BASE"
+    for d in "$BASE"/build "$BASE"/staging-* "$BASE"/previous-*; do
+      [[ -d "$d" ]] || continue
+      info="(no build-info)"; [[ -f "$d/build-info.txt" ]] && info="$(grep '^build ' "$d/build-info.txt" | cut -d' ' -f2-)"
+      complete="complete"; verify_build "$d" >/dev/null 2>&1 || complete="INCOMPLETE"
+      echo "$(basename "$d"): $complete $info"
+    done
+    echo "running: $(running_paths || echo '(could not determine)')" ;;
+  prune-builds)
+    BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"; check_base "$BASE"
+    running="$(running_paths)" || { echo "fs.sh: could not determine running FileScape processes; nothing deleted" >&2; exit 6; }
+    newest_prev="$(ls -1d "$BASE"/previous-* 2>/dev/null | sort | tail -1 || true)"
+    for d in "$BASE"/staging-* "$BASE"/previous-*; do
+      [[ -d "$d" && "$d" != "$newest_prev" ]] || continue
+      dw="$BASE_W\\$(basename "$d")"
+      if grep -qiF "$dw\\" <<<"$running"; then echo "keep (running): $dw"; continue; fi
+      rm -rf -- "$d"; echo "deleted: $dw"
+    done ;;
   *)
     sed -n '2,13p' "$0"; exit 2 ;;
 esac
