@@ -70,6 +70,8 @@ public sealed class FsTree
                 AddToAggregates(parent, node);
             }
 
+            if (node.Kind == NodeKind.Directory && !node.IsSettled) AddUnsettled(node, 1);
+
             if (IsProblem(node.Flags))
             {
                 FlaggedProblemCount++;
@@ -80,10 +82,12 @@ public sealed class FsTree
         {
             var dir = _nodes[update.Id];
             var wasProblem = IsProblem(dir.Flags);
+            var wasSettled = dir.IsSettled;
             dir.ScanState = update.State;
             dir.Flags = (dir.Flags & ~update.ClearFlags) | update.AddFlags;
             if ((update.ClearFlags & (NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable)) != 0) dir.Error = null;
             dir.Error = update.Error ?? dir.Error;
+            if (wasSettled != dir.IsSettled) AddUnsettled(dir, wasSettled ? 1 : -1);
             if (!wasProblem && IsProblem(dir.Flags))
             {
                 FlaggedProblemCount++;
@@ -117,6 +121,16 @@ public sealed class FsTree
         Version++;
     }
 
+    /// <summary>Adds <paramref name="delta"/> to the unsettled-directory count of <paramref name="dir"/> and every ancestor.</summary>
+    private void AddUnsettled(FsNode dir, int delta)
+    {
+        for (var current = dir; ; current = _nodes[current.ParentId])
+        {
+            current.SubtreeUnsettledDirs += delta;
+            if (current.ParentId < 0) break;
+        }
+    }
+
     private void AddToAggregates(FsNode parent, FsNode child)
     {
         switch (child.Kind)
@@ -128,7 +142,12 @@ public sealed class FsTree
             case NodeKind.Directory:
                 parent.DirectDirCount++;
                 break;
+            case NodeKind.Link:
+                parent.DirectLinkCount++;
+                break;
         }
+
+        if ((child.Flags & (NodeFlags.Hidden | NodeFlags.System)) != 0) parent.DirectHiddenCount++;
 
         var current = parent;
         while (true)
@@ -141,6 +160,10 @@ public sealed class FsTree
             else if (child.Kind == NodeKind.Directory)
             {
                 current.SubtreeDirCount++;
+            }
+            else if (child.Kind == NodeKind.Link)
+            {
+                current.SubtreeLinkCount++;
             }
 
             if (current.ParentId < 0)

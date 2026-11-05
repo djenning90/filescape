@@ -211,6 +211,28 @@ public sealed class FsNode
     public int SubtreeFileCount { get; internal set; }
     public int SubtreeDirCount { get; internal set; }
 
+    /// <summary>Direct child links (junctions, symlinks, …): shown, never followed into the totals.</summary>
+    public int DirectLinkCount { get; internal set; }
+
+    /// <summary>Links anywhere in the subtree (their destinations are not counted, so nothing is counted twice).</summary>
+    public int SubtreeLinkCount { get; internal set; }
+
+    /// <summary>Direct entries with the Windows hidden or system attribute. The counts above include them.</summary>
+    public int DirectHiddenCount { get; internal set; }
+
+    /// <summary>
+    /// Directories in this subtree, this one included, whose own listing is not complete (not listed yet, pending,
+    /// partial, denied, failed, unavailable, cloud, beyond the entry limit). Zero means the subtree totals are complete;
+    /// otherwise they are what has been found so far — a lower bound (SUM-02). Maintained incrementally, so no label
+    /// ever walks the tree to find out.
+    /// </summary>
+    public int SubtreeUnsettledDirs { get; internal set; }
+
+    /// <summary>True when this directory's own listing is complete and trustworthy (see <see cref="SubtreeUnsettledDirs"/>).</summary>
+    public bool IsSettled => Kind == NodeKind.Directory && ScanState == DirScanState.Complete && (Flags & UnsettledFlags) == 0;
+
+    internal const NodeFlags UnsettledFlags = NodeFlags.Incomplete | NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable | NodeFlags.CloudNotTraversed;
+
     public bool IsDirectory => Kind == NodeKind.Directory;
     public bool IsHub => Location == LocationKind.Hub;
     public bool IsRoot => ParentId < 0;
