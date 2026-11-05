@@ -17,6 +17,9 @@ public static class PlacePalette
     public static readonly Color Cloud = new(0.85f, 0.92f, 1f);
     public static readonly Color Link = new(0.2f, 0.95f, 1f);
     public static readonly Color Up = new(0.92f, 0.95f, 1f);
+    public static readonly Color Unlisted = new(0.62f, 0.68f, 0.86f);
+    public static readonly Color Unavailable = new(0.62f, 0.6f, 0.66f);
+    public static readonly Color LinkBlocked = new(0.35f, 0.55f, 0.6f);
 
     public static Color Accent(PlaceIdentity id, float value = 1f) => Color.FromHsv(id.Hue, 0.6f, value * 0.95f);
 
@@ -29,18 +32,24 @@ public static class PlacePalette
         ListingState.Failed => Failed,
         ListingState.Cloud => Cloud,
         ListingState.Link => Link,
+        ListingState.Unlisted => Unlisted,
+        ListingState.Unavailable => Unavailable,
         ListingState.Empty => Accent(id, 0.65f),
         _ => Accent(id),
     };
 
-    /// <summary>Gate shader style bits: 1 pulse (pending), 2 hatched (sealed link), 4 dim (empty).</summary>
+    /// <summary>Gate shader style bits: 1 pulse (pending), 2 hatched (cannot be passed), 4 dim (empty).</summary>
     public static float Style(ListingState state) => state switch
     {
         ListingState.Pending => 1,
-        ListingState.Link => 2,
+        ListingState.Unavailable => 2 + 4,
         ListingState.Empty => 4,
         _ => 0,
     };
+
+    /// <summary>A gate's colour and style, with links as connections: open when followable, hatched when not (AD-18).</summary>
+    public static (Color Color, float Style) ForGate(Gate g, PlaceIdentity id) =>
+        g.IsLink ? (g.Followable ? (Link, 0f) : (LinkBlocked, 2f)) : (For(g.State, id), Style(g.State));
 }
 
 /// <summary>
@@ -118,6 +127,7 @@ public partial class PlaceWorld : Node3D
 
         foreach (var n in _transient) n.QueueFree();
         _transient.Clear();
+        _nearHide.Clear();
         foreach (var s in _signs) s.Visible = false;
         _managed.Clear();
         GateSigns.Clear();
@@ -185,8 +195,11 @@ public partial class PlaceWorld : Node3D
         LandmarkSign = tree.DisplayName(c.FolderId);
         // The folder's name is a plaque at eye level in front of the landmark, facing the way you arrive.
         var plaque = new Vector3(0, 0, c.Landmark.Radius * 2.9f);
-        Sign(LandmarkSign, plaque + new Vector3(0, 3.0f, 0), 0.016f, accent.Lightened(0.55f), 1e9f, 0);
-        Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.25f, 0), 0.0075f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
+        // Sized for a walker (eye 1.75 m): readable from the arrival terrace, hidden when you stand next to it.
+        var nameSign = Sign(LandmarkSign, plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
+        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.1f, 0), 0.0052f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
+        _nearHide[nameSign] = 6.5f;
+        _nearHide[summarySign] = 6.5f;
         // Lights scatter in volumetric fog as glowing spheres; gate lights must not, the landmark only a little.
         var light = new OmniLight3D { LightColor = accent, LightEnergy = 3.2f, OmniRange = 26, Position = new Vector3(0, 3.5f, 0), LightSpecular = 0.1f, ShadowEnabled = false, LightVolumetricFogEnergy = 0.15f };
         AddChild(light);
@@ -222,8 +235,8 @@ public partial class PlaceWorld : Node3D
         {
             var child = tree[g.TargetId];
             var id = PlaceIdentity.For(child.Name);
-            var col = PlacePalette.For(g.State, id);
-            AddGate(gates, portals, g, col, PlacePalette.Style(g.State));
+            var (col, gateStyle) = PlacePalette.ForGate(g, id);
+            AddGate(gates, portals, g, col, gateStyle);
             var signScale = singleRing ? Mathf.Clamp(g.Position.Length() / 30f, 1f, 1.8f) : 1f;
             // Alternate sign heights so neighbouring names never print over each other.
             var stagger = (c.Gates.Count > 6 && (gateIndex++ & 1) == 1) ? 1.7f : 0f;
@@ -374,6 +387,9 @@ public partial class PlaceWorld : Node3D
 
     private float _ringRadius;
 
+    /// <summary>Signs that hide when the camera is closer than this (horizontally): they would fill the view.</summary>
+    private readonly Dictionary<Label3D, float> _nearHide = [];
+
     /// <summary>Distance-managed signs (PLACE-05): far gate names hide; at most <paramref name="maxVisible"/> managed signs show.</summary>
     public void UpdateSigns(Vector3 camera, int maxVisible = 70)
     {
@@ -385,6 +401,12 @@ public partial class PlaceWorld : Node3D
                      .Select(m => (m.Label, m.Range, m.Priority)))
         {
             var visible = priority == VistaPriority ? overview : label.GlobalPosition.DistanceTo(camera) <= range && (priority == 0 || shown < maxVisible);
+            if (visible && _nearHide.TryGetValue(label, out var near))
+            {
+                var flat = new Vector2(label.GlobalPosition.X - camera.X, label.GlobalPosition.Z - camera.Z).Length();
+                visible = flat > near;
+                label.Modulate = label.Modulate with { A = Mathf.Clamp((flat - near) / 4f, 0, 1) };
+            }
             label.Visible = visible;
             if (visible) shown++;
         }
@@ -527,10 +549,26 @@ public static class PlaceText
         return state is ListingState.Open or ListingState.Empty ? parts : parts + " · " + Listing.Describe(state);
     }
 
+    /// <summary>A link's status in a few words (VISI-02): a connection, not an error, unless it is broken or unsupported.</summary>
+    public static string LinkShort(FsTree tree, FsNode link)
+    {
+        if (link.Link is not { } li) return "link";
+        return li.Status switch
+        {
+            LinkStatus.Resolved when li.TargetId >= 0 && tree.Contains(li.TargetId) => $"to {tree.DisplayName(li.TargetId)}",
+            LinkStatus.Unresolved => li.Kind is LinkKind.LinuxSymlink or LinkKind.Other ? "can't follow" : li.KindName,
+            LinkStatus.Broken => "broken link",
+            LinkStatus.Denied => "can't read link",
+            LinkStatus.Unavailable => "target unavailable",
+            LinkStatus.Unsupported => li.Kind == LinkKind.LinuxSymlink ? "Linux link · can't follow" : "can't follow",
+            _ => "link",
+        };
+    }
+
     public static string GateSubtitle(FsTree tree, FsNode child, Gate g)
     {
         var state = g.State;
-        if (state == ListingState.Link) return "link — not followed";
+        if (state == ListingState.Link) return LinkShort(tree, child);
         if (Listing.IsUnknown(state) && state != ListingState.Partial) return Listing.Describe(state);
         if (state == ListingState.Empty) return "empty";
         var text = $"{child.SubtreeFileCount:N0} files · {SizeFormat.Short(child.SubtreeBytes)}";

@@ -119,7 +119,7 @@ public partial class Main
         if (_riseRemaining > 0)
         {
             // Take-off is a continuous rise (WALK-06), fast at first and easing out.
-            var dy = Mathf.Min(_riseRemaining, Mathf.Max(0.9f, _riseRemaining * 4.5f) * dt);
+            var dy = Mathf.Min(_riseRemaining, Mathf.Max(0.8f, _riseRemaining * 2.6f) * dt); // ≤ 9 m/s, easing out
             _flyEye.Y += dy;
             _riseRemaining -= dy;
         }
@@ -341,6 +341,15 @@ public partial class Main
 {
     /// <summary>[direct] Puts the walker at a pose (probes use it to set up a case, never to test a control).</summary>
     public void ProbePlaceUser(PlacePose pose) => PlaceUserAt(pose);
+
+    /// <summary>[direct] Puts a flying user at an eye position (set-up for the landing cases).</summary>
+    public void ProbeFlyAt(Godot.Vector3 eye)
+    {
+        if (_locomotion != Locomotion.Flying) TakeOff(rise: 0);
+        _flyEye = eye;
+        _flyVel = GVector3.Zero;
+        _rig.SetPose(eye, _walker.Yaw, _walker.LookPitch, PivotAhead);
+    }
 
     /// <summary>[direct] Points the gaze (heading, look pitch) without moving.</summary>
     public void ProbeSetGaze(float yaw, float lookPitch)

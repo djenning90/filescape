@@ -111,6 +111,7 @@ public partial class Hud
         _enterButton = MakeButton("Go inside (G)", () => EnterRequested?.Invoke(), "Travel into this folder: in Places through its gate, from a map straight into its place.");
         _enterButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _openButton.GetParent().AddChild(_enterButton);
+        BuildWorld(row, v);
     }
 
     /// <summary>Sets the "You are in" breadcrumb. Long paths keep the root, an ellipsis with the hidden depth, and the last levels.</summary>

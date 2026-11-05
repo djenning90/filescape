@@ -190,7 +190,7 @@ public static class FixtureBuilder
 
         if (OperatingSystem.IsWindows())
         {
-            foreach (var denied in new[] { Path.Combine(root, "special", "access-denied"), Path.Combine(root, PlacesFixture.RootName, "locked") })
+            foreach (var denied in new[] { Path.Combine(root, "special", "access-denied"), Path.Combine(root, PlacesFixture.RootName, "locked"), Path.Combine(root, WalkFixture.RootName, "locked") })
             {
                 if (Directory.Exists(denied))
                 {
@@ -198,14 +198,16 @@ public static class FixtureBuilder
                 }
             }
 
-            // Remove links first, so a recursive delete can never reach their targets.
-            foreach (var link in new[] { Path.Combine("special", "junction-loop-to-fixture-root"), Path.Combine("special", "dir-symlink-to-wide"), Path.Combine(PlacesFixture.RootName, "link-to-documents") })
+            // Remove every link first (found without following any), so a recursive delete can never reach a target.
+            foreach (var link in ReparsePointsUnder(root))
             {
-                var p = Path.Combine(root, link);
-                if (Directory.Exists(p))
-                {
-                    Directory.Delete(p, recursive: false);
-                }
+                if (Directory.Exists(link)) Directory.Delete(link, recursive: false);
+                else if (File.Exists(link)) File.Delete(link);
+            }
+
+            foreach (var attr in new[] { Path.Combine(root, WalkFixture.RootName, "hidden-cache"), Path.Combine(root, WalkFixture.RootName, "system-stuff") })
+            {
+                if (Directory.Exists(attr)) File.SetAttributes(attr, FileAttributes.Directory);
             }
         }
 
@@ -218,6 +220,35 @@ public static class FixtureBuilder
         Directory.Delete(root, recursive: true);
     }
 
+    /// <summary>Reparse points under a directory, found without traversing any of them.</summary>
+    private static List<string> ReparsePointsUnder(string root)
+    {
+        var found = new List<string>();
+        var stack = new Stack<string>([root]);
+        while (stack.Count > 0)
+        {
+            var dir = stack.Pop();
+            IEnumerable<string> entries;
+            try
+            {
+                entries = Directory.EnumerateFileSystemEntries(dir).ToList();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var e in entries)
+            {
+                var a = File.GetAttributes(e);
+                if ((a & FileAttributes.ReparsePoint) != 0) found.Add(e);
+                else if ((a & FileAttributes.Directory) != 0) stack.Push(e);
+            }
+        }
+
+        return found;
+    }
+
     /// <summary>Deletes leftover fixtures (from interrupted runs) under the default parent. It only touches marked fixtures.</summary>
     public static int DeleteAllUnderDefaultParent()
     {
@@ -227,7 +258,7 @@ public static class FixtureBuilder
         }
 
         var n = 0;
-        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*").Concat(Directory.GetDirectories(DefaultParent, "places-*")))
+        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*").Concat(Directory.GetDirectories(DefaultParent, "places-*")).Concat(Directory.GetDirectories(DefaultParent, "walk-*")))
         {
             if (File.Exists(Path.Combine(dir, MarkerName)))
             {

@@ -53,7 +53,7 @@ public partial class Hud : CanvasLayer
     {
         get
         {
-            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _placePanel, _destPanel })
+            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _placePanel, _destPanel, _locPanel, _problemPanel, _notePanel, _flyPanel, _ascentPanel, _hintPanel })
             {
                 if (c.Visible)
                 {
@@ -355,6 +355,18 @@ public partial class Hud : CanvasLayer
         if (_toastPanel.Visible && Time.GetTicksMsec() / 1000.0 > _toastUntil)
         {
             _toastPanel.Visible = false;
+        }
+
+        // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it (VISI-01).
+        if (_placePanel.Visible)
+        {
+            var bottom = _placePanel.Position.Y + _placePanel.Size.Y;
+            _destPanel.OffsetTop = bottom + 8;
+            _destPanel.OffsetBottom = _destPanel.OffsetTop + 280;
+            _flyPanel.OffsetTop = bottom + 8;
+            _ascentPanel.OffsetTop = bottom + 52;
+            _notePanel.OffsetTop = bottom + 96;
+            _problemPanel.OffsetTop = bottom + 8;
         }
     }
 

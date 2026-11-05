@@ -141,11 +141,36 @@ public static class Inspector
 
         var kind = n.Kind switch
         {
+            NodeKind.Directory when n.IsHub => "The hub of all locations (drives and WSL distributions)",
+            NodeKind.Directory when n.Location == LocationKind.Wsl => "WSL distribution root (Linux, through \\\\wsl.localhost)",
+            NodeKind.Directory when n.Location == LocationKind.Drive => "Drive root",
+            NodeKind.Directory when n.Location != LocationKind.None => "Location root",
             NodeKind.Directory => n.IsRoot ? "Directory (scan root)" : "Directory",
-            NodeKind.Link => (n.Flags & NodeFlags.DirectoryLink) != 0 ? "Link to a directory (junction/symlink/mount) — not followed" : "Link to a file (symlink) — not followed",
+            NodeKind.Link => n.Link is { } li ? $"{Cap(li.KindName)}{((n.Flags & NodeFlags.DirectoryLink) != 0 ? " to a folder" : "")}" : (n.Flags & NodeFlags.DirectoryLink) != 0 ? "Link to a directory" : "Link to a file",
+            _ when (n.Flags & NodeFlags.AppAlias) != 0 => "App execution alias (a Windows launcher; opening it runs a program)",
+            _ when (n.Flags & NodeFlags.LinuxSpecial) != 0 => "Linux special file (FIFO, socket or device): shown, never opened",
             _ => $"File · {FileCategories.Of(n.Name)}{(System.IO.Path.GetExtension(n.Name) is { Length: > 0 } ext ? $" ({ext})" : "")}",
         };
         Row(sb, "Type", kind);
+        if (n.Link is { } link && n.Kind == NodeKind.Link)
+        {
+            // LINK-06/08: where it points, whether it can be followed, and why not.
+            if (link.TargetText != null) Row(sb, "Points to", $"[code]{Escape(link.TargetText)}[/code]");
+            var status = link.Status switch
+            {
+                LinkStatus.Resolved when link.TargetId >= 0 && tree.Contains(link.TargetId) => $"[color=#7fe0e0]a connection to {Escape(tree.FullPath(link.TargetId))}[/color] — walk through its gate (or G) to go there; Backspace returns",
+                LinkStatus.Unresolved when link.CanFollow => "[color=#7fe0e0]a connection, not followed yet[/color] — walk through its gate (or G) to follow it",
+                _ => $"[color=#ffb070]{Escape(FileScape.Core.Scanning.WorldExplorer.Explain(link))}[/color]",
+            };
+            Row(sb, "Connection", status);
+            if (link.Kind == LinkKind.LinuxSymlink)
+            {
+                sb.Append("[color=#7f8fab][font_size=12]Through \\\\wsl.localhost Windows reports only that this is a Linux link (and the length of its target). Its target cannot be read or followed from Windows.[/font_size][/color]\n");
+            }
+
+            var others = tree.Nodes.Count(o => o.Kind == NodeKind.Link && o.Id != n.Id && o.Link?.TargetId is { } t && t >= 0 && t == link.TargetId);
+            if (others > 0) Row(sb, "Also", $"{others} other link{(others == 1 ? "" : "s")} lead{(others == 1 ? "s" : "")} to the same folder");
+        }
 
         if (n.Kind == NodeKind.File)
         {
@@ -158,7 +183,7 @@ public static class Inspector
             Row(sb, "Direct contents", $"{n.DirectFileCount:N0} files ({SizeFormat.Exact(n.DirectFileBytes)}), {n.DirectDirCount:N0} directories, {n.Children.Count - n.DirectFileCount - n.DirectDirCount:N0} links");
             var partial = n.SubtreeDirCount > 0 && tree.Nodes.Count > 0 && (n.IsListingIncomplete || HasIncompleteDescendant(tree, n));
             Row(sb, partial ? "Subtree (so far)" : "Subtree total", $"{n.SubtreeFileCount:N0} files, {n.SubtreeDirCount:N0} directories, {SizeFormat.Exact(n.SubtreeBytes)} ({SizeFormat.Short(n.SubtreeBytes)})");
-            sb.Append("[color=#7f8fab][font_size=12]Totals: logical sizes; hard-linked files count once per name (may double count); links are not followed.[/font_size][/color]\n");
+            sb.Append("[color=#7f8fab][font_size=12]Totals cover what has been listed so far: logical sizes, hidden items included, link destinations never included (no double counting through links); hard-linked files count once per name.[/font_size][/color]\n");
             Row(sb, "Scan state", n.ScanState switch
             {
                 DirScanState.Complete => (n.Flags & NodeFlags.Incomplete) != 0 ? "[color=#ffd36b]listed partially[/color]" : "listed",
@@ -166,6 +191,7 @@ public static class Inspector
                 DirScanState.Failed => "[color=#ff6b5b]could not be listed[/color]",
                 DirScanState.Cancelled => "[color=#ffd36b]not listed — scan cancelled[/color]",
                 DirScanState.NotTraversed => (n.Flags & NodeFlags.CloudNotTraversed) != 0 ? "[color=#cfe3ff]not listed — cloud placeholder directory (listing could fetch from the provider)[/color]" : "[color=#ffd36b]not listed — entry limit reached[/color]",
+                DirScanState.Unlisted => "[color=#b6c2d6]not listed yet — it is listed when you go in[/color]",
                 _ => "-",
             });
         }
@@ -188,7 +214,7 @@ public static class Inspector
         if (tree.Source.IsLive)
         {
             Row(sb, "Attributes", n.Attributes == 0 ? "none" : $"{n.Attributes} (0x{(uint)n.Attributes:X})");
-            sb.Append("\n[color=#7fe0a0]LIVE — read from the Windows filesystem during this scan.[/color]");
+            sb.Append("\n[color=#7fe0a0]LIVE — read from the filesystem (metadata only) when this place was listed.[/color]");
         }
         else
         {
@@ -223,7 +249,10 @@ public static class Inspector
         Add(NodeFlags.Hidden, "hidden");
         Add(NodeFlags.System, "system");
         Add(NodeFlags.ReadOnly, "read-only");
-        Add(NodeFlags.ReparsePoint, "reparse point (not traversed)", "#66eeff");
+        Add(NodeFlags.ReparsePoint, "reparse point", "#66eeff");
+        Add(NodeFlags.Unavailable, "UNAVAILABLE (drive, share or distribution not reachable)", "#ffaa44");
+        Add(NodeFlags.AppAlias, "app alias", "#ffaa44");
+        Add(NodeFlags.LinuxSpecial, "Linux special file", "#c8d4ea");
         Add(NodeFlags.CloudPlaceholder, "cloud placeholder (contents may not be local)", "#cfe3ff");
         Add(NodeFlags.Sparse, "sparse");
         Add(NodeFlags.Compressed, "compressed");
@@ -235,6 +264,8 @@ public static class Inspector
         Add(NodeFlags.Synthetic, "synthetic", "#ffcf70");
         return string.Join(", ", parts);
     }
+
+    private static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     private static void Row(StringBuilder sb, string key, string value) =>
         sb.Append(CultureInfo.InvariantCulture, $"[color=#8fa6c8]{key}[/color]  {value}\n");

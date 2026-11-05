@@ -4,6 +4,7 @@ using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
+using FileScape.Core.Scanning;
 using Godot;
 using GVector3 = Godot.Vector3;
 using NVector3 = System.Numerics.Vector3;
@@ -101,6 +102,13 @@ public partial class Main
         _hud.DestinationSelected += ApproachDestination;
         _hud.DestinationActivated += id => TravelInto(id);
         _hud.EnterRequested += EnterSelection;
+        _hud.LocationChosen += OnLocationChosen;
+        _hud.PathSubmitted += OnPathSubmitted;
+        _hud.LocationsRequested += ShowLocations;
+        _hud.HiddenToggled += ToggleHiddenVisibility;
+        _hud.RetryRequested += RetrySelection;
+        _hud.OrdinaryOverrideToggled += ToggleOrdinaryOverride;
+        _hud.ProblemChosen += ApproachDestination;
     }
 
     // ------------------------------------------------------------------ experience switching (AD-15)
@@ -216,7 +224,10 @@ public partial class Main
         list.Add((PlacePalette.Pending, "gate: scanning…"));
         list.Add((PlacePalette.NotScanned, "gate: not scanned"));
         list.Add((PlacePalette.Denied, "gate: access denied"));
-        list.Add((PlacePalette.Link, "gate: link (sealed)"));
+        list.Add((PlacePalette.Link, "⇢ link: a connection (walk in to follow)"));
+        list.Add((PlacePalette.LinkBlocked, "⇢ link that can't be followed"));
+        list.Add((PlacePalette.Unlisted, "gate: not listed yet"));
+        list.Add((PlacePalette.Unavailable, "gate: unavailable"));
         list.Add((PlacePalette.Failed, "gate: listing failed"));
         list.Add((PlacePalette.Cloud, "gate: cloud, not listed"));
         list.Add((PlacePalette.Up, "▲ way up"));
@@ -243,7 +254,7 @@ public partial class Main
     /// </summary>
     private void MaybeRecompose(double now)
     {
-        if (_tree == null || _tree.Count == 0 || _transition != null)
+        if (_tree == null || _tree.Count == 0 || _transition != null || _awaitingArrival)
         {
             return;
         }
@@ -270,7 +281,8 @@ public partial class Main
     private void Recompose(bool rebuildOnly)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        _place = PlaceComposer.Compose(_tree!, _nav.Current, _placeParams);
+        _place = PlaceComposer.Compose(_tree!, _nav.Current, _placeParams, IsVisibleInPlace, KindOf(_nav.Current));
+        if (!rebuildOnly) _explorer?.Visit(_nav.Current); // list it now (and its child folders) if not yet listed
         LastComposeMs = sw.Elapsed.TotalMilliseconds;
         sw.Restart();
         _placeWorld.Build(_tree!, _place, _quality);
@@ -299,11 +311,7 @@ public partial class Main
     {
         if (_tree == null || !_tree.Contains(id) || _transition != null) return false;
         if (_place?.ParentGate?.TargetId == id) return TravelUp();
-        if (_tree[id].Kind == NodeKind.Link)
-        {
-            _hud.Toast($"“{_tree[id].Name}” is a link. FileScape shows links but never follows them (they can lead outside this folder or loop).");
-            return false;
-        }
+        if (_tree[id].Kind == NodeKind.Link) return FollowLink(id); // deliberate, resolved on demand (LINK-02)
 
         if (!_tree[id].IsDirectory) return false;
         return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id);
@@ -314,7 +322,7 @@ public partial class Main
         if (_tree == null || _transition != null) return false;
         if (!_nav.Up(_tree))
         {
-            _hud.Toast("This is the folder you chose to explore. Use Open folder… to start somewhere higher.");
+            _hud.Toast(_tree.Root.IsHub ? $"This is {WorldExplorer.HubName}, the top: every drive and distribution is a gate here." : "This is the top of the sample data.");
             return false;
         }
 
@@ -357,6 +365,12 @@ public partial class Main
 
     private void ApproachDestination(int id)
     {
+        if (id < 0)
+        {
+            ToggleHiddenVisibility(); // the "N hidden" row
+            return;
+        }
+
         if (_tree == null || _place == null || _transition != null) return;
         _selection.Select(id);
         var pose = _place.ParentGate?.TargetId == id
@@ -396,6 +410,7 @@ public partial class Main
             PlaceMove.Root => "Back to the root:",
             PlaceMove.Back => "Back to",
             PlaceMove.Enter => "Entering",
+            PlaceMove.Link => "Through the link to",
             _ => "Going to",
         };
         _transition = new PlaceTransition
@@ -451,7 +466,13 @@ public partial class Main
         var place = _place!;
         var from = change.From;
         PlacePose pose;
-        if (_tree![from].ParentId == change.To || (change.Move != PlaceMove.Root && IsAncestor(change.To, from)))
+        if (change.Move == PlaceMove.Back && change.ViaLink >= 0 && _tree!.Contains(change.ViaLink) && _tree[change.ViaLink].ParentId == change.To)
+        {
+            // Back through a link: stand in front of the link's gate, facing in, with the link selected (LINK-03).
+            pose = place.ReturnPose(change.ViaLink, _placeParams);
+            _selection.Select(change.ViaLink);
+        }
+        else if (change.Move != PlaceMove.Link && (_tree![from].ParentId == change.To || (change.Move != PlaceMove.Root && IsAncestor(change.To, from))))
         {
             // Coming back up: stand in front of the gate on the way to where you were, facing in (PLACE-07).
             var child = PlaceNavigator.ChildToward(_tree, change.To, from);
@@ -469,7 +490,7 @@ public partial class Main
         var fwd = Gd(CameraMath.HorizontalForward(pose.Yaw));
         tr.ApproachEye = Gd(pose.Eye) - fwd * 9f + new GVector3(0, 2.5f, 0);
         _rig.SetPose(tr.ApproachEye, pose.Yaw, pose.LookPitch, PivotAhead);
-        GD.Print($"[place] {change.Move} {_tree.FullPath(change.From)} -> {_tree.FullPath(change.To)} gates={place.Gates.Count} files={place.Files.Count} compose_ms={LastComposeMs:0.0} build_ms={LastPlaceBuildMs:0.0}");
+        GD.Print($"[place] {change.Move} {_tree!.FullPath(change.From)} -> {_tree.FullPath(change.To)} gates={place.Gates.Count} files={place.Files.Count} compose_ms={LastComposeMs:0.0} build_ms={LastPlaceBuildMs:0.0}");
     }
 
     private bool IsAncestor(int ancestor, int id)
@@ -498,24 +519,35 @@ public partial class Main
     {
         if (_tree == null || _tree.Count == 0) return;
         var cur = _nav.Current;
-        var path = PlaceNavigator.Breadcrumb(_tree, cur).Where(id => id == _nav.Root || IsAncestor(_nav.Root, id)).Select(id => (id, _tree.DisplayName(id))).ToList();
-        _hud.SetPlace(path, PlaceText.Summary(_tree, _tree[cur]), canUp: cur != _nav.Root, atRoot: cur == _nav.Root);
+        // The breadcrumb is the physical location, from the top (This computer) down (LINK-03, LOC-01).
+        var path = PlaceNavigator.Breadcrumb(_tree, cur).Select(id => (id, _tree.DisplayName(id))).ToList();
+        _hud.SetPlace(path, PlaceText.Summary(_tree, _tree[cur]) + LocationNote(cur), canUp: !_tree[cur].IsRoot, atRoot: cur == _nav.Root);
+        _hud.SetConnection(ConnectionText());
         if (_place == null) return;
+        _hud.SetHiddenCount(_place.HiddenCount, _showHidden);
+        _hud.SetProblems(PlaceProblems());
         var items = new List<(int, string, Color, string)>();
         if (_place.ParentGate is { } pg)
         {
             items.Add((pg.TargetId, $"▲  Up to {_tree.DisplayName(pg.TargetId)}", PlacePalette.Up, "The way back: the gate behind the arrival point."));
         }
 
-        foreach (var g in _place.Gates.OrderBy(g => _tree[g.TargetId].Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var g in _place.Gates.OrderBy(g => _tree[g.TargetId].Name, StringComparer.OrdinalIgnoreCase).ThenBy(g => _tree[g.TargetId].Name, StringComparer.Ordinal))
         {
             var n = _tree[g.TargetId];
             var state = Listing.Describe(g.State);
-            var text = g.State is ListingState.Open or ListingState.Partial
+            var text = g.IsLink
+                ? $"⇢ {n.Name}   ·  {PlaceText.LinkShort(_tree, n)}"
+                : g.State is ListingState.Open or ListingState.Partial
                 ? $"{n.Name}   ·  {n.DirectFileCount:N0} files, {n.DirectDirCount:N0} folders{(g.State == ListingState.Partial ? " · partly listed" : "")}"
                 : $"{n.Name}   ·  {state}";
             var where = _place.IsWide ? $"Tier {g.Tier + 1}" : "On the gate ring";
-            items.Add((g.TargetId, text, PlacePalette.For(g.State, PlaceIdentity.For(n.Name)).Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}"));
+            items.Add((g.TargetId, text, PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}"));
+        }
+
+        if (_place.HiddenCount > 0 && !_showHidden)
+        {
+            items.Add((-1, $"({_place.HiddenCount:N0} hidden or system item{(_place.HiddenCount == 1 ? "" : "s")} not shown · H shows them)", new Color(0.6f, 0.66f, 0.78f), "Entries with the Windows hidden or system attribute. Names starting with a dot are always shown."));
         }
 
         var title = _place.Gates.Count == 0

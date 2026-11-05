@@ -113,7 +113,7 @@ public partial class Main : Node3D
 
         if (args.Root is { } root)
         {
-            StartScan(new DirectoryScanner(root));
+            StartLive(root);
         }
         else
         {
@@ -253,6 +253,7 @@ public partial class Main : Node3D
         _hud.SetSource(_tree.Source.IsLive ? $"LIVE · {MiddleTruncate(_tree.Source.RootDisplayPath, 48)}" : "SYNTHETIC SAMPLE DATA — not your files", _tree.Source.IsLive,
             _tree.Source.IsLive ? $"Live Windows filesystem, metadata only: {_tree.Source.RootDisplayPath}" : _tree.Source.Description);
         _session.Start();
+        OnSourceStarted(source);
         UpdateInspector();
     }
 
@@ -261,6 +262,13 @@ public partial class Main : Node3D
 
     public void CancelScan()
     {
+        if (_explorer != null)
+        {
+            _explorer.CancelBackground();
+            _hud.Toast("Background listing of the arrival folder stopped. Places are still listed when you visit them.");
+            return;
+        }
+
         if (_session is { IsFinished: false })
         {
             _session.Cancel();
@@ -277,49 +285,26 @@ public partial class Main : Node3D
     private void OnFolderChosen(string path)
     {
         var full = System.IO.Path.GetFullPath(path);
-        var reason = BroadRootReason(full);
-        if (reason != null)
+        if (_explorer != null)
         {
-            Confirm($"{reason}\n\nScanning reads metadata only, but a large tree can take a long time and use a lot of memory (the scan stops at {ScanSession.DefaultMaxNodes:N0} entries). Cloud-backed folders may contact their provider.\n\nScan {full} anyway?",
-                () => StartScan(new DirectoryScanner(full)));
+            // Already exploring the live filesystem: go there in the same world and make it the arrival root.
+            var ticket = _explorer.GoTo(full);
+            _pendingGoTo[ticket] = full;
+            _pendingNewRoot = ticket;
+            _hud.SetTransitionNote($"Finding {full}…");
             return;
         }
 
-        StartScan(new DirectoryScanner(full));
-    }
-
-    /// <summary>Returns a warning if the chosen root is a whole drive, a user profile, or a cloud-synced folder (FS-12).</summary>
-    private static string? BroadRootReason(string full)
-    {
-        var trimmed = System.IO.Path.TrimEndingDirectorySeparator(full);
-        if (System.IO.Path.GetPathRoot(full) is { } pr && System.IO.Path.TrimEndingDirectorySeparator(pr).Equals(trimmed, StringComparison.OrdinalIgnoreCase))
-        {
-            return "This is the root of a drive or network share.";
-        }
-
-        var profile = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
-        if (trimmed.Equals(System.IO.Path.TrimEndingDirectorySeparator(profile), StringComparison.OrdinalIgnoreCase))
-        {
-            return "This is your whole user profile.";
-        }
-
-        foreach (var v in new[] { "OneDrive", "OneDriveConsumer", "OneDriveCommercial" })
-        {
-            var od = System.Environment.GetEnvironmentVariable(v);
-            if (!string.IsNullOrEmpty(od) && trimmed.StartsWith(System.IO.Path.TrimEndingDirectorySeparator(od), StringComparison.OrdinalIgnoreCase))
-            {
-                return "This folder is inside OneDrive (cloud-synced).";
-            }
-        }
-
-        return full.StartsWith(@"\\", StringComparison.Ordinal) ? "This is a network path." : null;
+        // Broad places (drive roots, profiles, cloud folders) need no confirmation any more: they are listed on demand
+        // and never traversed in the background (LOC-02, Locations.IsBroad), which supersedes FS-12's confirmation.
+        StartLive(full);
     }
 
     // ---------------------------------------------------------------- frame loop
 
     public override void _Process(double delta)
     {
-        Perf.BeginFrame(delta, _session is { IsFinished: false });
+        Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed.TotalSeconds;
         _now = now;
         DrainBatches();
@@ -400,6 +385,7 @@ public partial class Main : Node3D
         while (_clock.Elapsed.TotalMilliseconds - start < BatchBudgetMs && _session.TryDequeue(out var batch))
         {
             _tree.Apply(batch);
+            HandleReplies(batch);
         }
     }
 
@@ -690,7 +676,7 @@ public partial class Main : Node3D
     private int _consumedEscapes;
 
     /// <summary>True while a modal dialog is open; scene navigation is paused and held keys are cleared.</summary>
-    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false);
+    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false);
 
     public bool WindowFocused => _windowFocused;
     public bool IsDragging => _pressButton != MouseButton.None;
@@ -934,6 +920,11 @@ public partial class Main : Node3D
     /// <summary>Escape peels back one layer at a time: help overlay, then parent directory. Flight is handled in _Input.</summary>
     private void HandleEscape()
     {
+        if (_hud.ClosePopups())
+        {
+            return;
+        }
+
         if (_hud.HelpVisible)
         {
             _hud.ToggleHelp();
@@ -1182,11 +1173,17 @@ public partial class Main : Node3D
         if (_tree != null && _tree.Count > 0 && _selection.Selected < 0 && _experience == Experience.Places)
         {
             var here = _tree[_nav.Current];
+            var kind = KindOf(here.Id);
+            var identity = kind.Kind == FileScape.Core.Places.PlaceKind.Ordinary && !kind.Overridden
+                ? ""
+                : $"[b]{kind.Label}[/b] — because: {string.Join(", ", kind.Evidence)}\n" +
+                  (kind.Kind == FileScape.Core.Places.PlaceKind.Project ? "Its README and manifests stand by the avenue as the project core. Nothing is built or run.\n" : "") + "\n";
             _hud.SetInspector($"You are in {_tree.DisplayName(here.Id)}",
-                $"[color=#9fb0cc]{PlaceText.Summary(_tree, here)}\n\nClick a tower or gate to inspect it — that never moves you.\nWalk through a gate (or double-click it) to go in; the ▲ gate behind you goes back.\n\n[b]F1[/b] controls · [b]Home[/b] arrival point · [b]M[/b] map[/color]",
+                $"[color=#9fb0cc]{identity}{PlaceText.Summary(_tree, here)}\n[font_size=12]Totals: what has been listed so far, hidden items included, link destinations not included.[/font_size]\n\nClick a tower or gate to inspect it — that never moves you.\nWalk through a gate (or double-click it) to go in; the ▲ gate behind you goes up.\n\n[b]F1[/b] controls · [b]Home[/b] arrival point · [b]L[/b] locations · [b]M[/b] map[/color]",
                 new Color(0, 0, 0, 0));
             _hud.SetSelectionActions(false, false, false);
             _hud.SetEnterAction(false, "Go inside (G)");
+            _hud.SetWorldActions(_explorer != null && NeedsRetry(here), kind.Kind == FileScape.Core.Places.PlaceKind.Project ? "Not a project" : kind.Overridden ? "Show as project" : null);
             return;
         }
 
@@ -1204,11 +1201,16 @@ public partial class Main : Node3D
         _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
         _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
         var places = _experience == Experience.Places;
-        var enterable = node.IsDirectory && node.Id != _nav.Current;
+        _hud.SetWorldActions(_explorer != null && NeedsRetry(node), null);
+        var enterable = (node.IsDirectory || (node.Kind == NodeKind.Link && node.Link is { CanFollow: true })) && node.Id != _nav.Current;
         _hud.SetEnterAction(enterable || (!places && !node.IsDirectory),
-            places ? (node.Id == _nav.Current ? "You are here" : node.IsDirectory ? "Go inside (G)" : "Go inside (G)") : "Go here in Places (G)");
+            places ? (node.Id == _nav.Current ? "You are here" : node.Kind == NodeKind.Link ? "Follow link (G)" : "Go inside (G)") : "Go here in Places (G)");
         if (places) _hud.HighlightDestination(node.Id);
     }
+
+    private static bool NeedsRetry(FsNode n) =>
+        (n.Kind == NodeKind.Directory && (n.ScanState is DirScanState.Failed or DirScanState.Cancelled || (n.Flags & (NodeFlags.AccessDenied | NodeFlags.Unavailable | NodeFlags.EnumerationError)) != 0)) ||
+        (n.Kind == NodeKind.Link && n.Link is { Status: LinkStatus.Broken or LinkStatus.Denied or LinkStatus.Unavailable });
 
     private void UpdateStatus()
     {
@@ -1218,6 +1220,20 @@ public partial class Main : Node3D
         }
 
         var p = _session.Snapshot();
+        if (_explorer != null && p.State == ScanState.Running)
+        {
+            // On-demand exploration (AD-17): the source never "completes"; say what it is doing.
+            var listed = $"{p.Nodes:N0} entries listed · {p.Directories:N0} folders · {p.Files:N0} files · {p.Links:N0} links · {SizeFormat.Short(p.LogicalBytes)}";
+            var bg = p.BackgroundActive ? $" · listing the arrival folder in the background ({p.PendingDirectories:N0} queued)" : "";
+            var waiting = p.CurrentPath != null && p.CurrentOperationDuration.TotalSeconds > 1.0
+                ? $" · waiting on Windows for {p.CurrentOperationDuration.TotalSeconds:0.0}s: {p.CurrentPath}"
+                : "";
+            var problemsText = p.Problems > 0 ? $" · {p.Problems:N0} folders could not be listed" : "";
+            var head = p.Idle && waiting.Length == 0 ? "Exploring on demand" : "Listing…";
+            _hud.SetStatus($"{head} · {listed}{problemsText}{bg}{waiting}", p.Idle ? 1 : 0.5, p.BackgroundActive, p.Problems > 0 ? new Color(1f, 0.85f, 0.6f) : new Color(0.7f, 0.95f, 0.8f));
+            return;
+        }
+
         var counts = $"{p.Nodes:N0} entries · {p.Directories:N0} dirs · {p.Files:N0} files · {p.Links:N0} links · {SizeFormat.Short(p.LogicalBytes)} logical";
         var problems = p.Problems > 0 ? $" · {p.Problems:N0} problem dirs" : "";
         var done = Math.Max(0, p.Directories - p.PendingDirectories);
