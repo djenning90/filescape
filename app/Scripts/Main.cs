@@ -874,6 +874,8 @@ public partial class Main : Node3D
                 if (hit >= 0) Select(hit);
             }
 
+            EndDragLook();
+
             _pressButton = MouseButton.None;
         }
     }
@@ -1061,8 +1063,15 @@ public partial class Main : Node3D
         EndPlaceLook();
         _jumpQueued = false;
         _held.Clear();
+        EndDragLook();
         _pressButton = MouseButton.None;
         _dragged = false;
+    }
+
+    /// <summary>A left-button drag in a place is a look: when it ends, the view returns to level like a right-button look (CTRL-04).</summary>
+    private void EndDragLook()
+    {
+        if (_experience == Experience.Places && _pressButton == MouseButton.Left && _dragged) LevelAfterLook();
     }
 
     private void HandleKeyboardMovement(TimeSpan dt)
@@ -1085,7 +1094,12 @@ public partial class Main : Node3D
         if (_experience == Experience.Places)
         {
             if (_placeLook && !Input.IsMouseButtonPressed(MouseButton.Right)) EndPlaceLook();
-            if (_pressButton != MouseButton.None && !Input.IsMouseButtonPressed(_pressButton)) _pressButton = MouseButton.None;
+            if (_pressButton != MouseButton.None && !Input.IsMouseButtonPressed(_pressButton))
+            {
+                EndDragLook(); // a release the OS did not deliver still ends the look
+                _pressButton = MouseButton.None;
+            }
+
             UpdatePlaceLocomotion(dt, blocked: false);
             return;
         }

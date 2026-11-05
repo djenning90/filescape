@@ -215,3 +215,45 @@ public class UsabilityPassTests
         place.Gates.OrderBy(g => g.AngleDeg).Select(g => tree[g.TargetId].Name).Should().Equal("Folder 1", "Folder 2", "folder 3", "Folder 10");
     }
 }
+
+/// <summary>CTRL-04: letting go after a mouse look eases the view back to level.</summary>
+public class LookLevelingTests
+{
+    [Theory]
+    [InlineData(40f)]
+    [InlineData(-55f)]
+    [InlineData(3f)]
+    public void Returns_to_level_smoothly_and_finishes_in_the_stated_time(float startDegrees)
+    {
+        var l = new FileScape.Core.Interaction.LookLeveling(FileScape.Core.Units.Degrees.Of(startDegrees));
+        var dt = TimeSpan.FromSeconds(1.0 / 60);
+        var previous = startDegrees;
+        var frames = 0;
+        var largestStep = 0f;
+        while (!l.Done)
+        {
+            var p = l.Step(dt).Value;
+            frames++;
+            MathF.Sign(p).Should().NotBe(-MathF.Sign(startDegrees), "it never overshoots past level");
+            MathF.Abs(p).Should().BeLessThanOrEqualTo(MathF.Abs(previous) + 1e-4f, "it only moves toward level");
+            largestStep = MathF.Max(largestStep, MathF.Abs(previous - p));
+            previous = p;
+            frames.Should().BeLessThan(100);
+        }
+
+        previous.Should().Be(0f, "it ends exactly level");
+        (frames * dt).Should().BeCloseTo(FileScape.Core.Interaction.LookLeveling.Duration, TimeSpan.FromSeconds(1.0 / 60));
+        // Smoothstep peaks at 1.5× the average rate: no jump in any single frame.
+        largestStep.Should().BeLessThan(MathF.Abs(startDegrees) * 1.5f / 21f + 0.01f);
+    }
+
+    [Fact]
+    public void Levelling_is_on_by_default_and_saved()
+    {
+        FileScape.Core.Interaction.Preferences.Default.LevelViewOnRelease.Should().BeTrue();
+        var off = FileScape.Core.Interaction.Preferences.Default with { LevelViewOnRelease = false };
+        FileScape.Core.Interaction.Preferences.FromJson(off.ToJson(), out var problem).LevelViewOnRelease.Should().BeFalse();
+        problem.Should().BeNull();
+        FileScape.Core.Interaction.Preferences.FromJson("{\"version\":1}", out _).LevelViewOnRelease.Should().BeTrue("older files without the field get the default");
+    }
+}

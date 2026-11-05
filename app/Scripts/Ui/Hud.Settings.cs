@@ -6,7 +6,7 @@ using Godot;
 namespace FileScape.App.Ui;
 
 /// <summary>
-/// Settings (CTRL-01..03): mouse-look direction and walking speeds, saved for next time. Opened from the ⚙ Settings
+/// Settings (CTRL-01..04): mouse-look direction and levelling and walking speeds, saved for next time. Opened from the ⚙ Settings
 /// button in the top bar or F4; Esc closes it.
 /// </summary>
 public partial class Hud
@@ -15,7 +15,7 @@ public partial class Hud
     public event Action? SettingsToggled;
 
     private PanelContainer _settingsPanel = null!;
-    private CheckBox _reverseH = null!, _reverseV = null!;
+    private CheckBox _reverseH = null!, _reverseV = null!, _levelView = null!;
     private HSlider _walkSlider = null!, _runSlider = null!;
     private Label _walkValue = null!, _runValue = null!, _settingsNote = null!;
     private Button _settingsButton = null!;
@@ -28,6 +28,7 @@ public partial class Hud
     public Rect2 ReverseVerticalRect => _reverseV.GetGlobalRect();
     public bool ReverseHorizontalChecked => _reverseH.ButtonPressed;
     public bool ReverseVerticalChecked => _reverseV.ButtonPressed;
+    public Rect2 LevelViewRect => _levelView.GetGlobalRect();
     public string WalkSpeedText => _walkValue.Text;
 
     private void BuildSettings(HBoxContainer topRow)
@@ -64,8 +65,12 @@ public partial class Hud
         _reverseV.TooltipText = "Off: the usual direction (mouse down looks down). On: mouse down looks up.";
         _reverseH.Toggled += _ => EmitPreferences();
         _reverseV.Toggled += _ => EmitPreferences();
+        _levelView = new CheckBox { Text = "Level the view when you let go — no staring at the sky or the ground", FocusMode = Control.FocusModeEnum.None };
+        _levelView.TooltipText = "On: releasing the mouse button eases your view back to level in about a third of a second; the direction you turned to is kept. Off: the view stays where you left it.";
+        _levelView.Toggled += _ => EmitPreferences();
         v.AddChild(_reverseH);
         v.AddChild(_reverseV);
+        v.AddChild(_levelView);
         var mapNote = new Label { Text = "The arrow keys always turn the way they point. The maps keep their own mouse controls (orbit, fly), unchanged.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         mapNote.AddThemeFontSizeOverride("font_size", 12);
         mapNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
@@ -104,7 +109,7 @@ public partial class Hud
         _settingsNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
         v.AddChild(_settingsNote);
         var buttons = new HBoxContainer();
-        buttons.AddChild(MakeButton("Reset to defaults", () => PreferencesChanged?.Invoke(Preferences.Default), "Reverse both look directions; walk 8 m/s, run 16 m/s."));
+        buttons.AddChild(MakeButton("Reset to defaults", () => PreferencesChanged?.Invoke(Preferences.Default), "Reverse both look directions, level the view on release; walk 8 m/s, run 16 m/s."));
         buttons.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         buttons.AddChild(MakeButton("Close (Esc)", () => _settingsPanel.Visible = false, "Close. Changes are already saved."));
         v.AddChild(buttons);
@@ -117,6 +122,7 @@ public partial class Hud
         _shownPrefs = p;
         _reverseH.ButtonPressed = p.ReverseLookHorizontal;
         _reverseV.ButtonPressed = p.ReverseLookVertical;
+        _levelView.ButtonPressed = p.LevelViewOnRelease;
         _walkSlider.Value = p.WalkSpeed.Value;
         _runSlider.Value = p.RunSpeed.Value;
         _walkValue.Text = string.Create(CultureInfo.InvariantCulture, $"{p.WalkSpeed.Value:0.0} m/s");
@@ -132,6 +138,7 @@ public partial class Hud
         {
             ReverseLookHorizontal = _reverseH.ButtonPressed,
             ReverseLookVertical = _reverseV.ButtonPressed,
+            LevelViewOnRelease = _levelView.ButtonPressed,
             WalkSpeed = MetersPerSecond.Of((float)_walkSlider.Value),
             RunSpeed = MetersPerSecond.Of((float)_runSlider.Value),
         });

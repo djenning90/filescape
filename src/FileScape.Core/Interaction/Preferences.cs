@@ -23,6 +23,12 @@ public sealed record Preferences
     /// <summary>Reverse vertical mouse look in Places. Off: moving the mouse down looks down. On: moving it down looks up. On by default (KD-20).</summary>
     public bool ReverseLookVertical { get; init; } = true;
 
+    /// <summary>
+    /// After a mouse look ends (right button released, or a left-button drag let go), ease the view back to level so
+    /// you are not left looking at the sky or the ground (CTRL-04). The heading you turned to is kept. On by default.
+    /// </summary>
+    public bool LevelViewOnRelease { get; init; } = true;
+
     /// <summary>Walking speed on foot (W). The default is <see cref="WalkParams.Default"/>'s.</summary>
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
 
@@ -69,6 +75,7 @@ public sealed record Preferences
             ["version"] = 1,
             ["reverseLookHorizontal"] = ReverseLookHorizontal,
             ["reverseLookVertical"] = ReverseLookVertical,
+            ["levelViewOnRelease"] = LevelViewOnRelease,
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
         };
@@ -92,6 +99,7 @@ public sealed record Preferences
             float? Num(string k) => o[k] is JsonValue v && v.TryGetValue<double>(out var d) ? (float)d : null;
             if (Bool("reverseLookHorizontal") is { } h) p = p with { ReverseLookHorizontal = h };
             if (Bool("reverseLookVertical") is { } vv) p = p with { ReverseLookVertical = vv };
+            if (Bool("levelViewOnRelease") is { } lv) p = p with { LevelViewOnRelease = lv };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
         }
@@ -129,5 +137,5 @@ public sealed record Preferences
     }
 
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s");
+        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s");
 }

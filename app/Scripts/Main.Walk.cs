@@ -54,6 +54,9 @@ public partial class Main
     private readonly Walker _walker = new();
     private Locomotion _locomotion = Locomotion.Walking;
     private bool _placeLook;
+
+    /// <summary>The eased return to level after a mouse look (CTRL-04); null when none is running.</summary>
+    private LookLeveling? _leveling;
     private bool _jumpQueued;
 
     /// <summary>The flying eye (world, metres) and its velocity (world, metres per second).</summary>
@@ -71,6 +74,7 @@ public partial class Main
     public Locomotion Locomotion => _locomotion;
     public Walker Walker => _walker;
     public bool PlaceLookCaptured => _placeLook;
+    public bool Leveling => _leveling != null;
     public bool LandingInProgress => _landing != null;
     public bool GuidedGlide => _guided;
     public int Relocations => _relocations;
@@ -98,6 +102,12 @@ public partial class Main
             var anyInput = !blocked && (_held.Any || _jumpQueued);
             if (!_rig.IsSettled && !anyInput) return;
             EndGuide();
+        }
+
+        if (_leveling != null)
+        {
+            _walker.SetGaze(_walker.Yaw, _leveling.Step(dt));
+            if (_leveling.Done) _leveling = null;
         }
 
         var fwd = blocked ? 0 : _held.Axis(InputBindings.Back, InputBindings.Forward);
@@ -282,6 +292,7 @@ public partial class Main
     /// <summary>Eases the camera to a pose; locomotion resumes there (on foot or flying) when it settles or on any input.</summary>
     private void StartGuide(PlacePose pose, Locomotion after)
     {
+        _leveling = null;
         _guided = true;
         _afterGuide = after;
         _landing = null;
@@ -290,6 +301,7 @@ public partial class Main
 
     private void StartGuideFrame(Aabb box, Degrees elevation, Degrees? yaw, float padding, Locomotion after)
     {
+        _leveling = null;
         _guided = true;
         _afterGuide = after;
         _landing = null;
@@ -319,6 +331,7 @@ public partial class Main
     /// <summary>Puts the user at a pose instantly in the current locomotion (arrival after travel, first frame).</summary>
     private void PlaceUserAt(PlacePose pose)
     {
+        _leveling = null;
         _guided = false;
         _landing = null;
         if (_locomotion == Locomotion.Walking)
@@ -355,6 +368,7 @@ public partial class Main
         if (_guided) EndGuide();
         _flyStartMouse = mousePosition;
         _placeLook = true;
+        _leveling = null;
         _pressButton = MouseButton.None;
         Input.MouseMode = Input.MouseModeEnum.Captured;
     }
@@ -363,11 +377,23 @@ public partial class Main
     {
         if (!_placeLook) return;
         _placeLook = false;
+        LevelAfterLook();
         if (Input.MouseMode == Input.MouseModeEnum.Captured)
         {
             Input.MouseMode = Input.MouseModeEnum.Visible;
             if (_flyStartMouse != Vector2.Zero) Input.WarpMouse(_flyStartMouse);
         }
+    }
+
+    /// <summary>
+    /// A mouse look has ended (right button released, Esc, focus lost, or a left-button drag let go): if the user wants
+    /// it (Settings, on by default), ease the pitch back to level over <see cref="LookLeveling.Duration"/> (CTRL-04).
+    /// </summary>
+    private void LevelAfterLook()
+    {
+        if (!_prefs.LevelViewOnRelease || _experience != Experience.Places || _place == null) return;
+        if (MathF.Abs(_walker.LookPitch.Value) < 0.01f) return;
+        _leveling = new LookLeveling(_walker.LookPitch);
     }
 
     /// <summary>
@@ -378,6 +404,7 @@ public partial class Main
     {
         if (_transition != null) return;
         if (_guided) EndGuide();
+        _leveling = null; // looking again takes over from any return to level
         // The user's direction preference applies here only: arrow-key turning and the camera conventions are unchanged (CTRL-01).
         var (yaw, pitch) = _prefs.LookDelta(screenPixels.ToNumerics2(), degreesPerPixel);
         _walker.Look(yaw, pitch);
@@ -407,6 +434,7 @@ public partial class Main
     /// <summary>[direct] Points the gaze (heading, look pitch) without moving.</summary>
     public void ProbeSetGaze(Degrees yaw, Degrees lookPitch)
     {
+        _leveling = null;
         _walker.SetGaze(yaw, lookPitch);
         if (_locomotion == Locomotion.Walking) _rig.SetPose(Gd(_walker.Eye), yaw, lookPitch, PivotAhead);
     }

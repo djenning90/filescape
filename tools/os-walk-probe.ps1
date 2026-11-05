@@ -83,10 +83,13 @@ $a = $s
 Right-Down; Start-Sleep -Milliseconds 150
 $mid = State
 Drag-Relative 300 120 15
-Right-Up; Start-Sleep -Milliseconds 300
+Start-Sleep -Milliseconds 300
+$h = State   # still held: the pitch as looked
+Right-Up; Start-Sleep -Milliseconds 700
 $s = State
 Check ($mid.lookCaptured -and -not $s.lookCaptured -and $s.mouseMode -eq 'Visible') "right-hold captures the mouse to look; release frees it"
-Check ($s.reverseH -and $s.reverseV -and ($s.yaw - $a.yaw) -gt 10 -and ($s.lookPitch - $a.lookPitch) -gt 3) "default (both reversed), real mouse right+down at UI $($s.uiScale): turns left and looks up (yaw $([math]::Round($a.yaw, 1)) -> $([math]::Round($s.yaw, 1)), pitch $([math]::Round($a.lookPitch, 1)) -> $([math]::Round($s.lookPitch, 1)))"
+Check ($h.reverseH -and $h.reverseV -and ($h.yaw - $a.yaw) -gt 10 -and ($h.lookPitch - $a.lookPitch) -gt 3) "default (both reversed), real mouse right+down at UI $($h.uiScale): turns left and looks up (yaw $([math]::Round($a.yaw, 1)) -> $([math]::Round($h.yaw, 1)), pitch $([math]::Round($a.lookPitch, 1)) -> $([math]::Round($h.lookPitch, 1)) while held)"
+Check ($s.levelView -and [math]::Abs($s.lookPitch) -lt 0.05 -and [math]::Abs($s.yaw - $h.yaw) -lt 0.05) "real release: the view is level again 0.7 s later (pitch $([math]::Round($s.lookPitch, 2))), heading kept ($([math]::Round($s.yaw, 1)))"
 
 # Settings with real input: F4, click "Reverse left / right" (its centre from the state file), Esc; then the mouse turns the usual way.
 Hold-Key 'F4' 80; Start-Sleep -Milliseconds 400
@@ -99,8 +102,9 @@ Center-Cursor $w
 $a = State
 Right-Down; Start-Sleep -Milliseconds 150
 Drag-Relative 300 120 15
+Start-Sleep -Milliseconds 300
+$s = State   # still held
 Right-Up; Start-Sleep -Milliseconds 300
-$s = State
 Check (-not $a.settingsOpen -and -not $s.reverseH -and $s.reverseV -and ($s.yaw - $a.yaw) -lt -10 -and ($s.lookPitch - $a.lookPitch) -gt 3) "after clicking the checkbox: right turns right, down still looks up (yaw $([math]::Round($a.yaw, 1)) -> $([math]::Round($s.yaw, 1)), pitch $([math]::Round($a.lookPitch, 1)) -> $([math]::Round($s.lookPitch, 1)))"
 $saved = if (Test-Path $prefs) { Get-Content $prefs -Raw | ConvertFrom-Json } else { $null }
 Check ($saved -ne $null -and -not $saved.reverseLookHorizontal -and $saved.reverseLookVertical) "the change is saved to the probe's own preferences file ($prefs)"

@@ -37,8 +37,9 @@ public partial class Main
         var scale = GetWindow().ContentScaleFactor;
         var h = _hud.ReverseHorizontalRect.GetCenter() * scale;
         var v = _hud.ReverseVerticalRect.GetCenter() * scale;
-        return System.FormattableString.Invariant($"\"reverseH\":{(_prefs.ReverseLookHorizontal ? "true" : "false")},\"reverseV\":{(_prefs.ReverseLookVertical ? "true" : "false")},\"walkSpeed\":{_prefs.WalkSpeed.Value:0.##},\"runSpeed\":{_prefs.RunSpeed.Value:0.##},") +
-            System.FormattableString.Invariant($"\"settingsOpen\":{(_hud.SettingsVisible ? "true" : "false")},\"settingsH\":[{h.X:0},{h.Y:0}],\"settingsV\":[{v.X:0},{v.Y:0}],\"uiScale\":{scale:0.##},\"gateChip\":\"{JsonEscape(_hud.GateChipText)}\",\"prefsFile\":\"{JsonEscape(_prefsPath ?? "")}\"");
+        var lv = _hud.LevelViewRect.GetCenter() * scale;
+        return System.FormattableString.Invariant($"\"reverseH\":{(_prefs.ReverseLookHorizontal ? "true" : "false")},\"reverseV\":{(_prefs.ReverseLookVertical ? "true" : "false")},\"levelView\":{(_prefs.LevelViewOnRelease ? "true" : "false")},\"walkSpeed\":{_prefs.WalkSpeed.Value:0.##},\"runSpeed\":{_prefs.RunSpeed.Value:0.##},") +
+            System.FormattableString.Invariant($"\"settingsOpen\":{(_hud.SettingsVisible ? "true" : "false")},\"settingsH\":[{h.X:0},{h.Y:0}],\"settingsV\":[{v.X:0},{v.Y:0}],\"settingsLevel\":[{lv.X:0},{lv.Y:0}],\"uiScale\":{scale:0.##},\"gateChip\":\"{JsonEscape(_hud.GateChipText)}\",\"prefsFile\":\"{JsonEscape(_prefsPath ?? "")}\"");
     }
 
     /// <summary>Applies and saves new preferences (the Settings panel; probes use it only to set up a case).</summary>

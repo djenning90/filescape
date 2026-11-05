@@ -137,9 +137,13 @@ public partial class WalkProbe : ProbeBase
         Mouse(MouseButton.Right, true, centre);
         await Frames(2);
         for (var i = 0; i < steps; i++) { Motion(total / steps); await Frames(1); }
+        _pitchAtRelease = W.LookPitch.Value;
         Mouse(MouseButton.Right, false, centre);
         await Frames(3);
     }
+
+    /// <summary>The look pitch (degrees) just before the last <see cref="Look"/> or <see cref="DragLeft"/> let go: after that the view eases back to level (CTRL-04).</summary>
+    private float _pitchAtRelease;
 
     /// <summary>VISI-01: overlay labels are on screen, never over each other or a HUD panel.</summary>
     private async Task LabelsClear(string where)
@@ -202,7 +206,7 @@ public partial class WalkProbe : ProbeBase
         // ---- 4. Looking sharply down does not push into the ground (WALK-02)
         App.ProbeSetGaze(W.Yaw, Degrees.Zero); // [direct]
         await Look(new Vector2(0, App.Preferences.ReverseLookVertical ? -700 : 700)); // down, in the chosen direction
-        Check(W.LookPitch.Value < -70f, F($"looking sharply down ({W.LookPitch.Value:0} deg)"));
+        Check(_pitchAtRelease < -70f, F($"looking sharply down ({_pitchAtRelease:0} deg)"));
         var downSpeed = await SteadySpeed(Degrees.Zero, W.LookPitch, Godot.Key.W);
         var levelSpeed = await SteadySpeed(Degrees.Zero, Degrees.Zero, Godot.Key.W);
         Check(MathF.Abs(downSpeed / levelSpeed - 1) < 0.03f && W.Support.Value < 0.01f, F($"walking while looking down is as fast and stays on the ground ({downSpeed:0.00} m/s vs {levelSpeed:0.00} m/s level)"));
@@ -545,7 +549,7 @@ public partial class WalkProbe : ProbeBase
             var y = W.Yaw.Value;
             var p = W.LookPitch.Value;
             await act();
-            return (W.Yaw.Value - y, W.LookPitch.Value - p);
+            return (W.Yaw.Value - y, _pitchAtRelease - p); // pitch while still held: on release it levels (checked below)
         }
 
         var right = await Delta(() => Look(new Vector2(300, 0)));
@@ -596,6 +600,68 @@ public partial class WalkProbe : ProbeBase
         arrow = await Delta(() => Hold(0.5, Godot.Key.Right));
         Check(App.Preferences.ReverseLookHorizontal && App.Preferences.ReverseLookVertical && App.Hud.ReverseHorizontalChecked && arrow.Yaw < -30f, F($"both reversed again; → still turns right ({arrow.Yaw:+0;-0}°)"));
         Check(App.PreferencesPath == null, "…and nothing was written");
+        await LevelOnRelease();
+    }
+
+    /// <summary>CTRL-04: letting go after looking up or down eases the view back to level; the heading is kept; Settings can turn it off.</summary>
+    private async Task LevelOnRelease()
+    {
+        Check(App.Preferences.LevelViewOnRelease, "default: the view levels when you let go");
+
+        async Task<(float Held, float Soon, float Later, float YawHeld, float YawLater, bool Monotone, double Seconds)> LookAndLetGo(Func<Task> look)
+        {
+            App.ProbeSetGaze(Degrees.Zero, Degrees.Zero); // [direct] a level start
+            await Frames(2);
+            await look(); // releases, then waits 3 frames
+            var soon = W.LookPitch.Value;
+            var yawHeld = W.Yaw.Value;
+            var t0 = Time.GetTicksUsec();
+            var previous = MathF.Abs(soon);
+            var monotone = true;
+            while (App.Leveling && Time.GetTicksUsec() - t0 < 2_000_000)
+            {
+                await Frames(1);
+                monotone &= MathF.Abs(W.LookPitch.Value) <= previous + 1e-3f;
+                previous = MathF.Abs(W.LookPitch.Value);
+            }
+
+            var seconds = (Time.GetTicksUsec() - t0) / 1e6;
+            await Seconds(0.3);
+            return (_pitchAtRelease, soon, W.LookPitch.Value, yawHeld, W.Yaw.Value, monotone, seconds);
+        }
+
+        var up = await LookAndLetGo(() => Look(new Vector2(150, -250)));
+        Check(MathF.Abs(up.Held) > 20f && MathF.Abs(up.Soon) > 1f && MathF.Abs(up.Later) < 0.01f && up.Monotone && up.Seconds < 0.6,
+            F($"right mouse: pitch {up.Held:+0;-0}° while held eases to level after release ({up.Soon:+0.0;-0.0}° three frames later, level within {up.Seconds + 0.05:0.00} s, never past level)"));
+        Check(MathF.Abs(up.YawLater - up.YawHeld) < 0.01f && MathF.Abs(up.YawHeld) > 10f, F($"…and the heading turned to is kept ({up.YawHeld:+0;-0}°)"));
+        var drag = await LookAndLetGo(() => DragLeft(new Vector2(0, 200)));
+        Check(MathF.Abs(drag.Held) > 20f && MathF.Abs(drag.Later) < 0.01f && drag.Monotone, F($"left-drag: pitch {drag.Held:+0;-0}° levels after release too"));
+
+        // Looking again while it levels takes over at once.
+        App.ProbeSetGaze(Degrees.Zero, Degrees.Zero);
+        await Look(new Vector2(0, -250));
+        Check(App.Leveling, "levelling has started");
+        await Look(new Vector2(0, -100), steps: 5);
+        Check(MathF.Abs(_pitchAtRelease) > 10f, F($"a new look during levelling takes over ({_pitchAtRelease:+0;-0}° while held)"));
+        for (var i = 0; i < 60 && App.Leveling; i++) await Frames(1);
+
+        // Off in Settings (a real click): the view stays where you left it.
+        await Key(Godot.Key.F4);
+        await Frames(3);
+        await Click(App.Hud.LevelViewRect.GetCenter());
+        await Frames(2);
+        await Key(Godot.Key.Escape);
+        await Frames(2);
+        var off = await LookAndLetGo(() => Look(new Vector2(0, -250)));
+        Check(!App.Preferences.LevelViewOnRelease && MathF.Abs(off.Later - off.Held) < 0.01f && MathF.Abs(off.Held) > 20f, F($"levelling off (checkbox clicked): the view stays at {off.Later:+0;-0}°"));
+        await Key(Godot.Key.F4);
+        await Frames(3);
+        await Click(App.Hud.LevelViewRect.GetCenter());
+        await Frames(2);
+        await Key(Godot.Key.Escape);
+        await Frames(2);
+        Check(App.Preferences.LevelViewOnRelease && App.PreferencesPath == null, "levelling back on; nothing was written");
+        App.ProbeSetGaze(W.Yaw, Degrees.Zero);
     }
 
     /// <summary>A left-button drag in the scene by <paramref name="total"/> physical pixels (positions included, so it counts as a drag).</summary>
@@ -613,6 +679,7 @@ public partial class WalkProbe : ProbeBase
             await Frames(1);
         }
 
+        _pitchAtRelease = W.LookPitch.Value;
         Mouse(MouseButton.Left, false, at);
         await Frames(3);
     }

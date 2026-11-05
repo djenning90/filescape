@@ -298,7 +298,8 @@ public partial class Hud : CanvasLayer
                 "    beyond it you see a preview of that place. [b]Walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back.\n" +
                 "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways\n" +
                 "    hold [b]right mouse[/b] to look and steer    [b]Space[/b] jump    hold [b]Shift[/b] run (walk 8 m/s, run 16 m/s by default)\n" +
-                "    [b]F4[/b] or [b]⚙ Settings[/b]: mouse-look direction (left/right and up/down separately) and walking speeds, saved for next time.\n" +
+                "    [b]F4[/b] or [b]⚙ Settings[/b]: mouse-look direction (left/right and up/down separately), levelling and walking speeds, saved for next time.\n" +
+                "    Letting go of the mouse after looking eases the view back to level (the direction you turned to is kept; Settings can turn this off).\n" +
                 "    Going [b]up[/b] (the ▲ gate or U) arrives facing the next ▲ gate: keep walking forward to keep going up.\n" +
                 "    Stairs and ramps are walked; the [b]overlook[/b] (ramp, or jump the blocks) shows this folder's summary.\n" +
                 "[b]Flight[/b]   [b]T[/b] or the ✈ button: rise and fly (look with right mouse, W A S D along the view, [b]E[/b]/[b]Space[/b] up, [b]Q[/b] down,\n" +
