@@ -95,7 +95,8 @@ public sealed record PlaceParams
 /// </summary>
 public static class PlaceComposer
 {
-    private static readonly IComparer<string> NameOrder = StringComparer.OrdinalIgnoreCase;
+    /// <summary>Gates, file rows and beacons in natural name order (ORD-01): "Folder 2" before "Folder 10".</summary>
+    private static readonly IComparer<string> NameOrder = NaturalNameOrder.Instance;
 
     public static PlaceComposition Compose(FsTree tree, int folderId, PlaceParams? parameters = null, Func<FsNode, bool>? visible = null, PlaceKindInfo? kind = null)
     {
@@ -275,6 +276,12 @@ public static class PlaceComposer
 
     // ------------------------------------------------------------------ files
 
+    /// <summary>
+    /// The narrowest a type's wedge may be, in file cells at the innermost row: one cell and a little margin. A wider
+    /// minimum (1.5–1.6 before 2026-11-05 evening) pushed the first row out to 22 m for nine small types.
+    /// </summary>
+    private const float FileWedgeCells = 1.15f;
+
     private static (List<PlacedFile> Files, List<FileQuarter> Quarters, float Radius) ComposeFiles(FsTree tree, List<int> fileIds, PlaceParams p)
     {
         var files = new List<PlacedFile>(fileIds.Count);
@@ -290,49 +297,95 @@ public static class PlaceComposer
             .Select(g => (Category: g.Key, Ids: g.OrderBy(id => tree[id].Name, NameOrder).ThenBy(id => id).ToList()))
             .ToList();
 
-        var span = 2 * p.FileHalfSpanDeg;
-        // Every quarter needs room for at least one cell on the innermost row; widen the first row if necessary.
-        var inner = MathF.Max(p.FileInnerRadius, groups.Count * p.FileCell * 1.6f / (span * MathF.PI / 180f));
-        var minAngle = p.FileCell * 1.5f / inner * 180f / MathF.PI;
-        var spare = span - minAngle * groups.Count;
-        var start = 180 - p.FileHalfSpanDeg;
-        var total = fileIds.Count;
-        var maxRadius = 0f;
-        foreach (var (category, ids) in groups)
+        // The avenue from the landmark south to the ▲ gate stays clear. With two or more types, the types are split
+        // into a west and an east side of it (in type order, balanced by count), so no type's wedge straddles the
+        // avenue: a narrow wedge there lost its inner cells and was pushed outward a row at a time (30 files once
+        // reached 44 m, putting the arrival point 43 m from the landmark). A single type keeps the whole span.
+        var clear = p.CorridorHalfWidth + p.FileFootprint / 2 + 0.1f;
+        var sides = new List<(float From, float To, List<(FileCategory Category, List<int> Ids)> Groups)>();
+        float inner;
+        if (groups.Count == 1)
         {
-            var width = minAngle + spare * ids.Count / total;
-            var a = start;
-            var b = start + width;
-            start = b;
-            var placed = 0;
-            var outer = inner;
-            for (var row = 0; placed < ids.Count; row++)
+            inner = p.FileInnerRadius;
+            sides.Add((180 - p.FileHalfSpanDeg, 180 + p.FileHalfSpanDeg, groups));
+        }
+        else
+        {
+            var total0 = fileIds.Count;
+            var split = 1;
+            var best = float.MaxValue;
+            for (int k = 1, run = 0; k < groups.Count; k++)
             {
-                var r = inner + row * p.FileCell;
-                var step = p.FileCell / r * 180f / MathF.PI;
-                for (var theta = a + step / 2; theta + step / 2 <= b + 1e-3f && placed < ids.Count; theta += step)
-                {
-                    var c = PlaceGeometry.Direction(theta) * r;
-                    if (MathF.Abs(c.X) < p.CorridorHalfWidth + p.FileFootprint / 2 && c.Z > 0)
-                    {
-                        continue; // keep the route from the landmark to the parent gate clear
-                    }
-
-                    var id = ids[placed++];
-                    var h = p.Scale.Height(tree[id].Size);
-                    files.Add(new PlacedFile(id, Box.FromBase(c, p.FileFootprint, h, p.FileFootprint), category));
-                    maxRadius = MathF.Max(maxRadius, r + p.FileFootprint);
-                    outer = MathF.Max(outer, r);
-                }
-
-                if (row > 100_000)
-                {
-                    throw new InvalidOperationException("file quarter did not converge"); // defensive: geometry bug
-                }
+                run += groups[k - 1].Ids.Count;
+                var d = MathF.Abs(run - total0 / 2f);
+                if (d < best) { best = d; split = k; }
             }
 
-            // The sign stands at the quarter's outer edge, the side that faces the arrival terrace.
-            quarters.Add(new FileQuarter(category, ids.Count, a, b, PlaceGeometry.Direction((a + b) / 2) * (outer + 1.6f)));
+            var west = groups.Take(split).ToList();
+            var east = groups.Skip(split).ToList();
+            var most = Math.Max(west.Count, east.Count);
+            inner = p.FileInnerRadius;
+            var gapDeg = 0f;
+            for (var iter = 0; iter < 4; iter++)
+            {
+                gapDeg = MathF.Asin(MathF.Min(1, clear / inner)) * 180f / MathF.PI;
+                var sideRad = (p.FileHalfSpanDeg - gapDeg) * MathF.PI / 180f;
+                inner = MathF.Max(p.FileInnerRadius, most * p.FileCell * FileWedgeCells / sideRad);
+            }
+
+            gapDeg = MathF.Asin(MathF.Min(1, clear / inner)) * 180f / MathF.PI;
+            sides.Add((180 - p.FileHalfSpanDeg, 180 - gapDeg, west));
+            sides.Add((180 + gapDeg, 180 + p.FileHalfSpanDeg, east));
+        }
+
+        var maxRadius = 0f;
+        foreach (var (from, to, sideGroups) in sides)
+        {
+            var span = to - from;
+            var minAngle = p.FileCell * FileWedgeCells / inner * 180f / MathF.PI;
+                        var spare = MathF.Max(0, span - minAngle * sideGroups.Count);
+            var start = from;
+            var total = sideGroups.Sum(g => g.Ids.Count);
+            foreach (var (category, ids) in sideGroups)
+            {
+                var width = sideGroups.Count == 1 ? span : minAngle + spare * ids.Count / total;
+                var a = start;
+                var b = start + width;
+                start = b;
+                var placed = 0;
+                var outer = inner;
+                for (var row = 0; placed < ids.Count; row++)
+                {
+                    var r = inner + row * p.FileCell;
+                    var step = p.FileCell / r * 180f / MathF.PI;
+                    for (var theta = a + step / 2; theta + step / 2 <= b + 1e-3f && placed < ids.Count; theta += step)
+                    {
+                        var c = PlaceGeometry.Direction(theta) * r;
+                        if (MathF.Abs(c.X) < p.CorridorHalfWidth + p.FileFootprint / 2 && c.Z > 0)
+                        {
+                            continue; // keep the route from the landmark to the parent gate clear
+                        }
+
+                        var id = ids[placed++];
+                        var h = p.Scale.Height(tree[id].Size);
+                        files.Add(new PlacedFile(id, Box.FromBase(c, p.FileFootprint, h, p.FileFootprint), category));
+                        maxRadius = MathF.Max(maxRadius, r + p.FileFootprint);
+                        outer = MathF.Max(outer, r);
+                    }
+
+                    if (row > 100_000)
+                    {
+                        throw new InvalidOperationException("file quarter did not converge"); // defensive: geometry bug
+                    }
+                }
+
+                // The sign stands at the quarter's outer edge, the side that faces the arrival terrace — never in the
+                // avenue to the ▲ gate, where it stood in front of the gate for anyone arriving from below.
+                var sign = PlaceGeometry.Direction((a + b) / 2) * (outer + 1.6f);
+                var avenue = p.CorridorHalfWidth + 1.2f;
+                if (sign.Z > 0 && MathF.Abs(sign.X) < avenue) sign = sign with { X = (sign.X < 0 || (sign.X == 0 && (a + b) / 2 > 180) ? -avenue : avenue) };
+                quarters.Add(new FileQuarter(category, ids.Count, a, b, sign));
+            }
         }
 
         return (files, quarters, maxRadius);
@@ -530,7 +583,7 @@ public static class PlaceComposer
         }
 
         // Beacons for the folder's own children: an arc beyond the vista, away from the viewer.
-        dirIds.Sort((a, b) => NameOrder.Compare(tree[a].Name, tree[b].Name));
+        dirIds.Sort((a, b) => NameOrder.Compare(tree[a].Name, tree[b].Name) is var k && k != 0 ? k : a.CompareTo(b));
         var shown = dirIds.Where(d => d != excludeChild).Take(p.VistaMaxBeacons).ToList();
         var outward = PlaceGeometry.Direction(facingDeg);
         for (var i = 0; i < shown.Count; i++)

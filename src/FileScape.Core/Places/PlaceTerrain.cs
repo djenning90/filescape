@@ -176,15 +176,17 @@ public sealed class PlaceTerrain
     /// <summary>
     /// The height of the highest surface under a disc at <paramref name="p"/> that someone with feet at
     /// <paramref name="feet"/> could stand on: surfaces whose underside is above <paramref name="feet"/> plus
-    /// <paramref name="reach"/> (lintels, overhangs) are ignored.
+    /// <paramref name="reach"/> (lintels, overhangs) are ignored. With <paramref name="maxRise"/>, surfaces whose top is
+    /// more than that above the feet are ignored too: for a walker those are walls it touches, not floors. (Without it,
+    /// a walker brushing a pillar was snapped onto its top, 7 m up — found at 30 m/s, 2026-11-05 evening.)
     /// </summary>
-    public float SupportHeight(Vector2 p, float radius, float feet, float reach)
+    public float SupportHeight(Vector2 p, float radius, float feet, float reach, float maxRise = float.PositiveInfinity)
     {
         var h = 0f;
         foreach (var i in BoxesNear(p, radius))
         {
             var b = Boxes[i];
-            if (b.Bottom <= feet + reach && b.Top > h && b.Overlaps(p, radius)) h = b.Top;
+            if (b.Bottom <= feet + reach && b.Top > h && b.Top <= feet + maxRise && b.Overlaps(p, radius)) h = b.Top;
         }
 
         foreach (var r in Ramps)

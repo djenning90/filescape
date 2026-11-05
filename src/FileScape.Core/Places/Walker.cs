@@ -28,10 +28,15 @@ public sealed record WalkParams
     /// <summary>The highest ledge climbed without jumping (stairs, tier terraces at 0.42 m). Raise it and low blocks stop needing a jump.</summary>
     public Meters StepHeight { get; init; } = Meters.Of(0.45f);
 
-    public MetersPerSecond WalkSpeed { get; init; } = MetersPerSecond.Of(4.2f);
+    /// <summary>
+    /// Walking speed (W). 8 m/s, a fast run in human terms, because places are large (the nearest child gate is ≈ 45 m
+    /// from the arrival point) and DJ found 4.2 m/s too slow (KD-20, 2026-11-05 evening). The user can change it
+    /// (Settings: Interaction.Preferences, 2–30 m/s).
+    /// </summary>
+    public MetersPerSecond WalkSpeed { get; init; } = MetersPerSecond.Of(8f);
 
-    /// <summary>Speed while Shift is held.</summary>
-    public MetersPerSecond RunSpeed { get; init; } = MetersPerSecond.Of(8.4f);
+    /// <summary>Speed while Shift is held: twice the walking speed (was 8.4 m/s).</summary>
+    public MetersPerSecond RunSpeed { get; init; } = MetersPerSecond.Of(16f);
 
     /// <summary>
     /// How quickly horizontal velocity follows the input on the ground (exponential smoothing, <see cref="PerSecond"/>):
@@ -79,7 +84,7 @@ public sealed record WalkParams
 
     /// <summary>
     /// Fixed integration frequency. Behaviour does not depend on the frame rate because every frame is integrated in
-    /// these steps (WALK-04); 120 Hz keeps a running walker (8.4 m/s) moving 7 cm per step, well under its radius.
+    /// these steps (WALK-04); 120 Hz keeps a running walker (16 m/s) moving 13 cm per step and the fastest allowed (30 m/s) 25 cm, under its 0.35 m radius, so it cannot pass through a 0.55 m gate pillar.
     /// </summary>
     public int SubStepsPerSecond { get; init; } = 120;
 
@@ -100,6 +105,8 @@ public sealed record WalkParams
         Positive(BodyHeight.Value, nameof(BodyHeight));
         Positive(Radius.Value, nameof(Radius));
         Positive(Gravity.Value, nameof(Gravity));
+        Positive(WalkSpeed.Value, nameof(WalkSpeed));
+        Positive(RunSpeed.Value, nameof(RunSpeed));
         Positive(SubStepsPerSecond, nameof(SubStepsPerSecond));
         if (!StepHeight.IsFinite || StepHeight < Meters.Zero) throw new ArgumentOutOfRangeException(nameof(StepHeight));
         if (!FallLimit.IsFinite) throw new ArgumentOutOfRangeException(nameof(FallLimit));
@@ -122,7 +129,7 @@ public readonly record struct WalkInput(float Forward, float Strafe, float Turn,
 /// </summary>
 public sealed class Walker
 {
-    private readonly WalkParams _p;
+    private WalkParams _p;
 
     /// <summary>Frame time not yet integrated, in seconds (always less than one sub-step).</summary>
     private float _accumulatorSeconds;
@@ -149,6 +156,9 @@ public sealed class Walker
     }
 
     public WalkParams Params => _p;
+
+    /// <summary>Changes the walking and running speeds (the user's preference, CTRL-02); everything else is kept.</summary>
+    public void SetSpeeds(MetersPerSecond walk, MetersPerSecond run) => _p = (_p with { WalkSpeed = walk, RunSpeed = run }).Validate();
 
     /// <summary>The feet position in world space, metres: (x, height of the support, z).</summary>
     public Vector3 Feet { get; private set; }
@@ -304,7 +314,8 @@ public sealed class Walker
         pos = moved;
 
         // Vertical: gravity, landing, stepping up and staying on the ground walking down.
-        var support = terrain.SupportHeight(pos, radius, feet.Y, allowance);
+        // Only what can be stepped (or, airborne, reached) onto supports: a solid the disc merely touches is a wall.
+        var support = terrain.SupportHeight(pos, radius, feet.Y, allowance, maxRise: allowance);
         var y = feet.Y;
         if (Grounded)
         {

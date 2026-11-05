@@ -11,6 +11,15 @@ namespace FileScape.Core.Tests;
 /// Behaviour preservation for the units refactor (2026-11-05): numbers captured from the pre-refactor code (commit
 /// 7079862) for a scripted walker run and for the camera math. The refactor changes types and names, not results.
 /// Tolerances: 1e-4 m / 1e-3° on positions and angles after ~200 fixed sub-steps of float arithmetic.
+/// <para>
+/// Re-captured 2026-11-05 evening, deliberately, after the movement-tuning pass changed the file layout (types on
+/// either side of the avenue, narrower minimum wedges): the arrival point moved 19.568 m north. The walker runs with
+/// the speeds the numbers were first captured with (<see cref="TraversalTests.Before"/>, 4.2 / 8.4 m/s), and the first
+/// three marks equal the 7079862 numbers translated by −19.5681 m in z (to 3e-5 m). From the running jump on, the
+/// walker meets a file tower that now stands in its path and slides along it, so later marks differ (one landing, as
+/// before). A first re-capture showed it landing on the tower's top (feet 6.38 m): that was a walker defect, a touched
+/// wall counted as support, fixed in the same pass (PlaceTerrain.SupportHeight maxRise), and these numbers are after it.
+/// </para>
 /// </summary>
 public class GoldenBehaviourTests(ITestOutputHelper output)
 {
@@ -20,7 +29,7 @@ public class GoldenBehaviourTests(ITestOutputHelper output)
         for (var i = 0; i < 6; i++) s.Dir(new Spec($"dir-{i}").File("a.txt"));
         var tree = new Spec("parent").Dir(s).Build();
         var place = PlaceComposer.Compose(tree, tree.Root.Children[0]);
-        var w = new Walker();
+        var w = new Walker(TraversalTests.Before); // the speeds the golden numbers were captured with (4.2 / 8.4 m/s)
         w.TeleportToEye(place.Terrain, place.Arrival.Eye, place.Arrival.Yaw, place.Arrival.LookPitch);
         var marks = new List<(Vector3, float, float, int, int, Vector3)>();
         void Run(WalkInput input, int frames)
@@ -50,12 +59,13 @@ public class GoldenBehaviourTests(ITestOutputHelper output)
 
         (float X, float Y, float Z, float Yaw, float Pitch, int Jumps, int Landings, float EyeY)[] expected =
         [
-            (-3.982211E-06f, 0f, 39.534042f, -0f, -6f, 0, 0, 1.75f),
-            (0.92612076f, 0f, 36.978718f, -47.999973f, -6f, 0, 0, 1.75f),
-            (0.98251027f, 0.08479167f, 36.925602f, -59.999973f, -36f, 1, 0, 1.8347917f),
-            (6.244893f, 0f, 35.570705f, -59.999973f, -36f, 1, 1, 1.75f),
-            (5.3725514f, 0f, 33.05193f, -59.999973f, -36f, 1, 1, 1.75f),
-            (5.2318926f, 0f, 32.808266f, -59.999973f, -36f, 1, 1, 1.75f),
+            // Re-captured 2026-11-05 evening (see the class remarks): the file layout changed, not the walker.
+            (-2.2715137E-06f, 0f, 19.965942f, -0f, -6f, 0, 0, 1.75f),
+            (0.9261224f, 0f, 17.410603f, -47.999973f, -6f, 0, 0, 1.75f),
+            (0.98251194f, 0.08479167f, 17.357487f, -59.999973f, -36f, 1, 0, 1.8347917f),
+            (6.030019f, 0f, 16.280514f, -59.999973f, -36f, 1, 1, 1.75f),
+            (5.817644f, 0f, 13.772353f, -59.999973f, -36f, 1, 1, 1.75f),
+            (5.6817427f, 0f, 13.528696f, -59.999973f, -36f, 1, 1, 1.75f),
         ];
         marks.Length.Should().Be(expected.Length);
         for (var i = 0; i < marks.Length; i++)
