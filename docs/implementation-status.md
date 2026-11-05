@@ -1,8 +1,41 @@
 # Implementation status
 
-Last updated: 2026-11-04, after the Places pass (commits `2eabd73`…HEAD); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-05, after the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Walking world pass (2026-11-05)
+
+DJ's direction after playing Places: the place concept is achieved and the visuals are compelling (preserved); next, *a world you inhabit on foot, connected to the real places on your computer*. Walking is primary, flight explicit. ChatGPT has not played the app (its desktop control is unavailable). **Nothing below claims DJ's acceptance of movement feel or looks.**
+
+**What exists now (requirements WALK/JUMP/LINK/LOC/VISI/IDENT; decisions AD-16..AD-20).**
+- *On foot by default.* A Core kinematic walker (eye 1.75 m, step 0.45 m, radius 0.35 m, gravity, slide-along collision, 120 Hz sub-steps) over terrain composed with each place: towers, landmark and gate pillars block; the arrival terrace has stairs front and back; tiers are walkable terraces (rise 0.42 m). ↑/↓ walk, ←/→ turn (they used to strafe), WASD walk and strafe, hold right mouse to look and steer (heading and gaze separate), left-drag also turns the head, Space jumps (coyote time, jump buffer, ledge tolerance), Shift runs.
+- *An overlook in every place*: a platform with the place's summary, reached by a ramp (no jumping) or by two jump blocks (optional shortcut). Every gate is reachable without jumping (tested over the terrain).
+- *Flight is a mode* (T / ✈ button): a continuous rise, the old fly controls, wheel speed; T lands on the clear surface below (never a tower roof), else the nearest clear spot, else the arrival point with an explanation. B rises above the place in flight.
+- *One connected namespace* (AD-17): "This computer" → drives and WSL distributions (registry, no wake-up) → the arrival folder as a path; listed on visit (plus its child folders); background traversal only under the arrival folder and never for broad places; several listings in flight on workers.
+- *Links followed on purpose* (AD-18): reparse tags identify junctions, symbolic links, mounted volumes, Linux symlinks, app aliases, cloud placeholders (folders, not links) and Linux special files. Walking through a followable link's gate (or G / double-click) resolves it and travels; the HUD names the connection; the breadcrumb is the physical location; Backspace returns in front of the link; Up goes to the real parent and on past the arrival root; loops and second routes reach the existing node; broken/unsupported/denied/unavailable are distinct and listed in "⚠ N here need attention" with Retry. Totals never include link targets.
+- *Locations and paths* (LOC): L opens Locations (hub, arrival, drives, distributions); Ctrl+L takes a typed or pasted path (`C:\…`, `\\wsl.localhost\…`, `\\wsl$\…`, `/mnt/c/…`, `/home/…` → default distribution). Open folder… in a live world moves the arrival root without restarting.
+- *Visibility* (AD-19): hidden/system entries hidden by default (H / button, "N hidden" count); dot-names always shown; totals unchanged and labelled.
+- *Identity* (AD-20): hub (halo rings, location gates labelled by type), drive/distribution roots (banner with the case rule), software projects (manifest + README or .git; README and manifests on lit plinths by the avenue; evidence in the inspector; "Not a project" override).
+- *Readability*: overlay labels never overlap each other, the HUD or the screen edge; the left HUD column stacks; the landmark plaque is sized for a walker and hides up close; short words on gates.
+
+**Evidence tiers** (raw runs in `%LOCALAPPDATA%\FileScape\evidence\2026-11-05-walk\`; copies in `docs/evidence/2026-11-05-walk/`):
+- *Core tests:* **126 passed + 11 skipped on Windows** (`dotnet.exe`; the skips are POSIX-symlink tests, with a reason), **123 + 14 skipped on WSL**. New: 19 walker/terrain tests (`WalkTests`), 13 explorer tests on real POSIX symlinks (`WorldExplorerTests`), 3 Windows tests on real junctions plus a live WSL fixture through `\\wsl.localhost` (`WindowsWorldTests`), 7 connected-place tests. Two earlier Places tests were revised to the new link contract (LINK-02 supersedes "never followed") — a requirement change, not a weakening.
+- *Injected input through Godot's pipeline* (`--automate=walk`, fixture "Wayfarer" + WSL fixture): **66 checks, 0 failures** (`walk.log`): arrival on foot; look; stairs; looking down; curve; diagonal; jump; the overlook by ramp and by three jumps; Home; a child and back; a junction outside the root and back; a loop; two routes; a broken link; problems; hidden/system; a project; Up past the root; WSL by pasted path (case pair, Linux link); the hub; a not-ready drive (unavailable, worst frame 26 ms); take-off and landing; landing above a vista; modal Locations; labels clear at five places. `[direct]` steps only set up a case (placing the walker for a speed sample or a jump, selecting an item before G).
+- *Earlier journeys, ported to the shipping configuration:* Places journey **52/52** (`places.log`, Atlas Studio; expectations updated where the design changed: physical breadcrumb, captured look, junction now followed), Places scan scenario **0 failures** (`places-scan.log`), map navigation probe **0 failures** (`navigation.log`).
+- *OS-level input* (`tools/os-walk-probe.ps1`, real SendInput and Alt-Tab, judged from the state file, staged export): **17/17** (`os-walk-results.txt`).
+- *My visual observation:* journey screenshots and frames sampled from a 48 s guided recording at eye level (`walk-tour.avi`, Godot movie writer, 1,430 frames at 30 fps, 1600×900, ≈ 300 MB, outside the repo).
+
+**Measurements — read with care.** On 2026-11-05 Windows reported a *remote (Terminal Services) session* and the GPU was markedly slower than on 2026-11-04: **yesterday's export, measured again today, gave root High 20.2 ms mean (6.5 ms yesterday)**, wide-hall 19.1, Low 9.4. Absolute numbers below are therefore not comparable with the 2026-11-04 table; same-run comparisons are.
+- Stationary isolation at one spot (`walk-perf`, High): eye 1.75 m 13.95 ms GPU, eye 4.6 m 13.64 ms, all place geometry hidden 12.85 ms, SSR off 12.03 ms, Low quality 4.93 ms — the walking view and the new terrain add about 1 ms; the rest is the environment and post-processing under today's conditions. Effect toggles drifted upwards over the run (machine state).
+- Walking with turns and a run (journey, High, 146 nodes, 226 instances): mean 16.5–28.9 ms across runs today (p99 27–44 ms) — dominated by machine state, as the control shows.
+- Explorer: the arrival place appears ≈ 1.4 s after launch on the fixture (including Godot start-up); a not-ready drive answers within one frame budget (worst frame 26 ms).
+
+**Instrument defects found and fixed (not product defects):** jump apex measured against a ramp's changing support; the jump-block script kept walking after landing; "typing doesn't walk" held W into the path field (so the path got a "w"); distance-over-wall-clock speed comparisons (replaced by steady-state speed from a fixed clear start — one run had walked into the landmark); per-frame take-off thresholds that measured frame time; the old Places probe assumed node 0 and a finishing scan; the scan scenario assumed the first place appears before its neighbourhood completes (yesterday's build fails the same way today; now re-observed on a slow stream); `os-walk-probe` would have targeted the first FileScape window (DJ's session was open) — it now targets only the process it starts.
+**Product defects found and fixed:** OneDrive (cloud tag) was a "link"; Esc did not close Locations; the HUD's left column overlapped when the place panel grew; selected/hovered labels ignored the HUD; labels clipped at the screen edge; the landmark plaque filled the view at walking height; take-off rose up to 16 m/s; landing could set you on a tower roof; the overlook panel was huge at the rail; the walker's 0.3 m radius let tower faces fill the view.
+**Process incident:** `fs.sh export` deleted the unlocked files of the installed build while DJ's FileScape (started 2026-11-04 23:01) was running from it. DJ's process was not touched; the 163 missing runtime files were restored from a staged export; `fs.sh export` now exports to `build-staging` and refuses (exit 4) to replace a running build. **The standalone build at `%LOCALAPPDATA%\FileScape\build` is still the 2026-11-04 build until DJ closes FileScape and runs `tools/fs.sh export` (or uses `build-staging\FileScape.exe`, which is the new build).**
+
+**Linux symlinks through Windows (AD-18, measured):** `\\wsl.localhost` reports them with reparse tag `0xA000001D` and a length equal to the target text's length, but `FSCTL_GET_REPARSE_POINT` fails (error 1), opening them fails ("path not found"), and listing through them fails. FileScape therefore identifies them and marks them "Linux link · can't follow". FIFOs show as tag `0x80000024`. `\\wsl.localhost\` itself cannot be listed; distributions come from the registry.
 
 ## Places pass (2026-11-04)
 
@@ -134,18 +167,31 @@ Other measurements:
 - **KD-06 Spatial stability during scans is partial.** The selection stays fixed on screen, but other subtrees can shift sideways as siblings grow.
 - **KD-07 District overview is dark at bird's-eye distance.** It reads mainly through labels and streets. LOD/impostors are not implemented.
 - Allocated size, hard-link counts, owner/security info: not queried (labelled in the inspector).
-- **KD-10 Places has no ground following or collision.** Walking keeps the height you are at (the arrival terrace is at eye height 4.6, walking poses 2.6); you can pass through towers, gates and terraces. Q/E change height.
+- **KD-10 (resolved 2026-11-05)** Places now has ground following, collision, stairs, ramps and jumping (AD-16). In flight there is still no collision (by design).
 - **KD-11 Places geography is local and partly symbolic (by design, AD-14).** Vista distances are symbolic; vistas are omitted beyond 24 children (tiers); grandchildren appear only as beacons (≤ 16, the rest counted). Whether this reads as honest is DJ's call.
 - **KD-12 Gates can shift while the current folder is still being listed** (alphabetical insertion during a scan). In practice a folder's entries arrive in one batch, so this is rare; the camera never moves.
 - **KD-13 Isolated ~30 ms frames when a right-drag starts** in the walking measurements (p99 stays ≈ 8 ms). Not investigated.
 - **KD-14 Places HUD at DPI scale > 1 not exercised** (automation forces `--ui-scale=1`; the OS probe's Destinations coordinates assume it).
+- **KD-16 Measurements on 2026-11-05 are machine-state dominated** (remote session; yesterday's build 3× slower today). Re-measure on a local console session before comparing with 2026-11-04.
+- **KD-17 Linux symlinks through \\wsl.localhost cannot be followed** (Windows does not expose their targets). A WSL-side helper (`wsl.exe readlink`) would be an execution bridge; deferred (AD-18).
+- **KD-18 Not exercised:** a stopped WSL distribution (entering one would start it), Windows directory symlinks and mounted volumes (creating them needs Developer Mode/admin), a link to a denied or unavailable target, the "Not a project" button and Retry by automation, DPI scaling above 1.0 for the new HUD parts, the C:\ root in evidence runs (privacy).
+- **KD-19 The maps show the explored world.** With live data the Classic/District maps lay out the hub, the arrival folder's ancestor chain and whatever has been listed; arrows in the maps still strafe (NAV-07).
+- **KD-20 Movement feel is untuned by a human:** speeds (walk 4.2, run 8.4 m/s), turn rate 120°/s, jump 0.83 m, flight 10 m/s, look sensitivity are my choices, consistent and measured, not DJ's.
 - **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
 
 ## Provisional decisions to confirm with DJ
 
 Godot (AD-01), the Fishbone default (AD-08), the log height scale (AD-07), click = select-only (FSN approached on click), and D3D12 as the default driver (KD-01, AD-11).
 
-## Next useful iteration (recommended)
+## Next useful iteration (recommended, 2026-11-05)
+
+1. **DJ walks it:** arrival on foot, the stairs, ←/→ turning (the changed arrows), Space, the overlook, T flight and landing; then a junction, Backspace, Locations, a pasted WSL path. Tune speeds, turn rate, jump and flight to DJ's hands (KD-20).
+2. **Re-measure performance on a local session** (KD-16) and, if walking views are costly, add a cheaper "walking" quality between High and Low.
+3. **Richer identities with bounded previews:** photo collections (thumbnails as facades) and document collections — the first content-aware places, behind the file-appearance extension point (KD-15).
+4. **Connected-world depth:** a remembered history across sessions, Explorer's virtual namespaces (This PC libraries, network neighbourhood), and an explicit opt-in WSL helper for Linux symlinks (KD-17).
+5. **Maps over the explored world:** frame the arrival subtree by default and mark the ancestor chain as a path (KD-19).
+
+### Earlier recommendation (2026-11-04)
 
 1. **DJ plays Places** on the fixture and on a real project folder: is arrival comfortable, are gates and the way back obvious, does walking through a gate feel deliberate (or should entry need a confirm key), is the discontinuity (separate places, symbolic vistas) acceptable, does District's flicker still occur after the beam fix?
 2. **Grounded walking:** follow the plaza/terrace height and step down from the arrival terrace; gentle collision with towers and gate pillars (camera only).

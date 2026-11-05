@@ -2,57 +2,63 @@
 
 Explore a real Windows filesystem as a place. A Godot 4.7 .NET app over a shared, engine-independent C# core, with three experiences over the same model:
 
-- **Places** (default, new on 2026-11-04): you are *inside* a folder. Its files stand around you as glass towers in type quarters, every child folder is a named gate you can walk through, and beyond each gate a vista previews the next place. Places are separate spaces linked by gates (docs/decisions.md AD-14).
+- **Places** (default): you are *inside* a folder, **on foot**. Its files stand around you as glass towers in type quarters, every child folder is a named gate you walk through, and beyond each gate a vista previews the next place. Places are separate spaces linked by gates (docs/decisions.md AD-14); since 2026-11-05 you walk them (AD-16), flight is a mode you switch on, and the world is connected: links lead where they point, and drives and WSL distributions are reachable from a hub (AD-17, AD-18).
 - **Classic FSN** and **District**: the whole-tree reference maps from the first prototype (FSN-inspired landscape, futuristic city). They mark where you are in Places.
 
-**Status (2026-11-04):** see `docs/implementation-status.md` for what is demonstrated, provisional and unknown. Camera feel and the Places look await DJ's hands-on judgement.
+**Status (2026-11-05):** see `docs/implementation-status.md` for what is demonstrated, provisional and unknown. Movement feel and the looks await DJ's hands-on judgement.
 
 ## Try it
 
 Prerequisites (already set up on DJ's laptop; details in `docs/windows-workflow.md`): Windows .NET SDK 8+ and the portable Godot 4.7.2 .NET editor under `C:\Users\David\tools\godot\`.
 
-**Standalone build** (fastest): `%LOCALAPPDATA%\FileScape\build\FileScape.exe`
+**Standalone build:** `%LOCALAPPDATA%\FileScape\build\FileScape.exe`. If a FileScape was running when the build was made, the new build waits in `%LOCALAPPDATA%\FileScape\build-staging\FileScape.exe`; close FileScape and run `tools/fs.sh export` to install it (the export refuses to replace a running build).
 
-It starts in **Places** on synthetic sample data (amber badge "SYNTHETIC SAMPLE DATA"). Click **Open folder…** to explore a real folder (green "LIVE" badge). Drive roots, your profile, OneDrive and network paths ask first. Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (Vulkan crashed intermittently on this GPU, KD-01).
+It starts in **Places** on synthetic sample data (amber badge). Click **Open folder…**, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
 
-A deterministic test tree for trying Places is created by `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create-places` (it prints the path of "Atlas Studio" under `%TEMP%\FileScape-fixtures`); open that folder.
+Test trees (deterministic, in `%TEMP%\FileScape-fixtures`, safe to delete with `… delete <dir>`):
+- `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create-walk` → **Wayfarer**: a software project, junctions (outside the root, a loop, two routes, a broken one), a denied folder, hidden/system folders, a Unicode name.
+- `… create-places` → **Atlas Studio**: wide, deep, empty, many-files cases.
+- `tools/make-wsl-fixture.sh` (in WSL) prints a `\\wsl.localhost\…` path with case pairs, Linux symlinks, a FIFO and a small project.
 
 **From the repository (WSL):**
 
 ```
 tools/fs.sh build
 tools/fs.sh run                                        # synthetic sample data, in Places
-tools/fs.sh run -- --root='C:\Program Files\dotnet'     # a live folder
+tools/fs.sh run -- --root='C:\Program Files\dotnet'     # a live folder (the arrival point)
 tools/fs.sh run -- --vis=district                      # start in a map: places | classic | district
 tools/fs.sh test                                        # tests with Windows dotnet.exe (exit code = result)
 ```
 
-### A short journey to try in Places
+### A short journey to try (open Wayfarer)
 
-1. **Arrive.** You stand on a terrace at the entrance of the folder. The name is on the landmark ahead and in "You are in" at the top left. Towers around the avenue are the files (height = size, colour = type); the gates beyond are the child folders, each with its name. The list on the left (**Destinations**) names every one of them.
-2. **Look around.** Hold the **right mouse button** and move the mouse. Turn round: behind you is the **▲ Up** gate (not at the root) and a preview of the parent beyond it.
-3. **Go somewhere.** Click a folder in Destinations: you walk up to its gate. Hold **W** (or ↑) and walk through. A short fade marks the threshold, and you arrive in the new place, with its own colour and landmark.
-4. **Come back.** Turn round and walk through the ▲ gate, or press **U**. You arrive in front of the gate you came from, facing into the parent, with that folder selected.
-5. **Inspect without moving.** Click any tower or gate: the inspector shows true metadata; **Enter** opens it with Windows. Selecting never changes where you are.
-6. **Rise and see the map.** **B** rises above the place (it shows this neighbourhood only). **M** opens the whole-filesystem map with "You are here"; **M** again comes back. In a map, select any folder and press **G** to go there.
-7. **Get home.** **Home** returns to this folder's arrival point, **Ctrl+Home** to the folder you chose. Try the wide folder (many gates on tiers), a deep chain, an empty folder and a locked one.
+1. **Arrive on foot.** You stand on a terrace at the folder's entrance; its name is on the landmark ahead and in "You are in". **↑** walks you down the stairs; **← / →** turn; hold the **right mouse button** to look around.
+2. **Climb the overlook** (to the left of the landmark, west): walk up its ramp, or hop the two low blocks with **Space**. The panel up there sums up the place.
+3. **Enter a child.** Click **Photos** in Destinations (you walk up to its gate), then keep walking through the gate. **U** brings you back in front of it.
+4. **Follow a link.** Walk through **to-shared-library** (a teal junction gate). You arrive in *Shared Library*, outside Wayfarer: the breadcrumb shows where it really is, a line says which link you came through. **Backspace** returns through the link; **U** would go to its real parent instead.
+5. **Try the odd ones.** *back-to-wayfarer* says it loops back here; *photos-shortcut* and *also-photos* reach the same Photos place; *broken-link* is hatched and explains itself; "⚠ … need attention" lists the problems. **H** shows the two hidden/system folders.
+6. **A project.** Projects › lighthouse is recognised as a software project: its README and manifests stand on lit plinths by the avenue; the inspector says why.
+7. **Elsewhere on the computer.** **L** opens Locations (drives, WSL distributions, the hub); **Ctrl+L** takes a pasted path such as `\\wsl.localhost\Ubuntu-24.04\home\you` or `/home/you`. Linux names keep their case (*Notes* and *notes* are two gates).
+8. **Fly and land.** **T** takes off (E/Space up, Q down, wheel speed); **T** again lands you safely on foot. **Home** is this folder's arrival point, **Ctrl+Home** the folder you started in; **M** the map.
 
 ### Controls (also in Help, F1)
 
-| To… | Do this |
+| To… | Do this (Places) |
 |---|---|
-| Walk | **W A S D** or **arrow keys** · **Q / E** down / up · hold **Shift** for 3× speed |
-| Look around and fly | **hold the right mouse button** and move the mouse; W A S D / arrows then move where you look; the **wheel** changes flight speed; release (or **Esc**) to stop |
-| Go into a folder (Places) | walk **through its gate** facing it · **double-click** the gate or its Destinations row · select it and press **G** |
-| Go back (Places) | walk through the **▲ Up** gate · **U** / **PgUp** · **Backspace** previous place · breadcrumb segments · **Ctrl+Home** root |
-| Orbit / pan / zoom | **left-drag** orbits · **middle-drag** pans · **wheel** zooms |
-| Inspect | **click** to select · **F** frames the selection · **Esc** in Places: back to the folder itself; in maps: parent |
-| Recover | **Home** arrival point (maps: start view) · **B** ascend (maps: overview) |
-| Maps | **M** Places ↔ map · **Tab** cycles Places → Classic FSN → District · **G** on a folder in a map enters it in Places |
+| Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run |
+| Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag** |
+| Jump | **Space** (never opens or runs anything) |
+| Fly | **T** or the ✈ button: rise and fly — W A S D along the view, **E / Space** up, **Q** down, **wheel** speed, **Shift** ×3 · **T** again lands on foot (safely; if there is nowhere to stand below, at the arrival point, with a note) · **B** rises above the place |
+| Go into a folder or link | walk **through its gate** facing it · **double-click** it or its Destinations row · select it and press **G** |
+| Go back | **Backspace** where you came from (also back through a link) · **U / PgUp** physical parent (also above the folder you started in) · the ▲ gate · breadcrumb · **Ctrl+Home** arrival root |
+| Elsewhere | **L** Locations · **Ctrl+L** go to a typed or pasted Windows / WSL / Linux path · **Open folder…** |
+| Show | **H** hidden and system items (off by default; dot-files always shown) |
+| Inspect | **click** to select (never moves you) · **F** turns to look at it · **Esc** closes popups, then back to the folder itself |
+| Maps | **M** Places ↔ map · **Tab** cycles Places → Classic FSN → District · **G** on a folder in a map enters it in Places. In the maps the arrows still move sideways and the right mouse flies while held |
 | Open | **Enter** opens with Windows (asks first for programs, links, cloud files); MOCK on sample data |
 | Other | **F1** help · **F2** quality · **F3** stats |
 
-Walking backwards through a gate never travels, and flying above a gate's lintel escapes the place without travelling.
+Walking backwards through a gate never travels; flying above a gate's lintel leaves the place without travelling.
 
 ## Layout of the repository
 

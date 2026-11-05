@@ -36,6 +36,32 @@ FileScape.Core/Places                                   app/
 └──────────────────────────────────────────────┘        └───────────────────────────────────────────────┘
 ```
 
+Walking world and connected namespace (2026-11-05, AD-16..AD-20):
+
+```
+FileScape.Core                                             app/
+┌───────────────────────────────────────────────────┐      ┌─────────────────────────────────────────────────┐
+│ Scanning/WorldExplorer (IScanSource, on demand)    │─────▶│ Main.World: StartLive, replies, FollowLink,      │
+│   coordinator thread: ids, bookkeeping, batches   │ batch│   Locations (L) / Go to path (Ctrl+L), H filter, │
+│   worker tasks: listings, path probes, link       │+reply│   identity override, Retry                       │
+│   resolution (several in flight; LOC-04)          │◀─────│   Visit(current) on every arrival                │
+│   hub "This computer" → drives, WSL distributions │ req. │ Main.Walk: locomotion (walking / flight /        │
+│ Scanning/Reparse  tag → kind (LINK-01)            │      │   landing / guided glides), look capture         │
+│ Scanning/Locations discovery, normalisation, case │      │ Ui/Hud.World: Locations popup, connection chip,  │
+│ Model: LinkInfo, LocationKind, Unlisted state     │      │   problem list, Hidden toggle, Retry/override    │
+│ Places/PlaceTerrain  boxes, ramps, rings, boundary│      │ Places/PlaceWorld: terrain, overlook panel,      │
+│ Places/Walker        kinematic first person       │─────▶│   identity dressing, link gate styles            │
+│ Places/PlaceKinds    hub / location / project     │      │ Ui/LabelLayer: labels never over HUD/each other  │
+│ Places/PlaceNavigator FollowLink, via-link history│      │ WalkProbe (walk, walk-perf, walk-tour)           │
+└───────────────────────────────────────────────────┘      └─────────────────────────────────────────────────┘
+```
+
+- **One namespace (AD-17):** live data is one `FsTree` rooted at the hub. Location roots carry their absolute path (`LocationPath`); every other node's path is built from its location. The arrival folder's ancestors are *Unlisted* stubs until visited; listing a stub merges the child it already knew. The navigator's *root* is the arrival folder, not node 0; Up continues to the physical parent and to the hub.
+- **Threading:** the explorer's coordinator thread is the only place ids are assigned, so batches stay in id order and the main thread stays the only writer of `FsTree` (AD-04). Listings, path probes and link resolutions are worker tasks; replies (`ExplorerReply`) and link updates travel in the same batches.
+- **Links (AD-18):** links are leaves; following one ensures its target *path* in the same tree, so a loop or a second route reaches an existing node. Totals never cross links. History remembers the link used (`PlaceChange.ViaLink`); Back returns in front of it.
+- **Walking (AD-16):** `PlaceComposer` produces `PlaceTerrain` with the place; `Walker` integrates input at 120 Hz sub-steps; the app copies the eye pose into `CameraRig.SetPose`. Flight and landing live in `Main.Walk`; glides use the rig's orbit easing and hand back to walking or flight when they settle.
+- **Identity (AD-20):** `PlaceKinds` classifies from names only; the composer uses it for the project core, `PlaceWorld` for dressing; it never affects listing state or the world style.
+
 Responsibilities:
 
 - **Filesystem model and operations (Core):** node identity, hierarchy, metadata, flags, scan states, enumeration policy (FS-*), shell actions. See `DirectoryScanner` remarks for the exact policies.
@@ -46,11 +72,13 @@ Responsibilities:
 - **Places (Core + app):** *what is where* in a folder's place is decided by `PlaceComposer` (pure, deterministic, local: folder, children, grandchildren, parent's largest files). `PlaceComposition` is the contract a future themed world (forest, alien city) would produce with its own composer; rendering (`PlaceWorld`) and atmosphere are app-side. Current folder (`PlaceNavigator`) and selection (`SelectionState`) are separate concepts.
 - **File appearance (future extension point):** today a file is a tower whose height/colour come from `SizeScale.Place` and `FileCategories`. Content previews (a photo's image, a document's first page) would plug in as a per-file appearance provider consulted by `PlaceWorld`, fed by a separate, deliberate, bounded preview reader — never by the metadata scan (FS-01).
 
-What is deliberately absent: plugin framework, services/IPC, persistence, watchers, LOD/subtree summarization, background layout (AD-04 revisit).
+What is deliberately absent: plugin framework, services/IPC, a WSL-side helper (AD-18), persistence, watchers, LOD/subtree summarization, background layout (AD-04 revisit).
 
 Key flows:
 - **Scan:** `Main.StartScan(source)` → new `FsTree` + `ScanSession.Start()` → batches drained per frame → `Relayout()` (adaptive cadence) keeps the selected node fixed on screen.
 - **Select:** a mouse click → `Picker.Pick` → `SelectionState.Select(id)` → inspector, highlight, beam and labels update.
 - **Switch visualization:** new layout for the same tree → rebuild instances → fly to the same selected id.
+- **Live start:** `--root` / Open folder… → `WorldExplorer(path)` → hub + locations → arrival path ensured (reply ticket 0) → navigator root → Visit → listing → place composed.
+- **Link travel:** gate crossing / G / double-click on a link → `FollowLink` → worker resolves the target → path ensured in the tree → reply → `PlaceNavigator.FollowLink` → transition; Backspace returns through the link.
 - **Places travel:** gate crossing / G / Destinations / U / breadcrumb → `PlaceNavigator` changes the current folder → transition: glide out through the gate + fade (0.42 s) → `PlaceComposer.Compose(new folder)` + `PlaceWorld.Build` → glide in to the arrival (or return) pose (0.62 s). During scans the place is recomposed only when `PlaceComposer.Signature` (the local neighbourhood) changes, at most every 0.35 s; the whole-tree layout is computed only when a map is shown.
 - **Open:** `RequestOpen` → mock (synthetic) / confirmation (code, link, cloud) / `ShellExecuteExW` → result toast and log.
