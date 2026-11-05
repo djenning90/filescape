@@ -62,6 +62,8 @@ FileScape.Core                                             app/
 - **Walking (AD-16):** `PlaceComposer` produces `PlaceTerrain` with the place; `Walker` integrates input at 120 Hz sub-steps; the app copies the eye pose into `CameraRig.SetPose`. Flight and landing live in `Main.Walk`; glides use the rig's orbit easing and hand back to walking or flight when they settle.
 - **Identity (AD-20):** `PlaceKinds` classifies from names only; the composer uses it for the project core, `PlaceWorld` for dressing; it never affects listing state or the world style.
 
+Units, coordinates and quantity types: `docs/units.md` (Places: 1 world unit = 1 m; maps: abstract layout units; `FileScape.Core.Units`).
+
 Responsibilities:
 
 - **Filesystem model and operations (Core):** node identity, hierarchy, metadata, flags, scan states, enumeration policy (FS-*), shell actions. See `DirectoryScanner` remarks for the exact policies.
