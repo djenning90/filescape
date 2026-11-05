@@ -36,7 +36,9 @@ public sealed record ScanProgress(
     TimeSpan? CancelAcknowledgedAfter,
     string? FailureMessage,
     bool Idle = false,
-    bool BackgroundActive = false);
+    bool BackgroundActive = false,
+    bool LimitReached = false,
+    int MaxNodes = 0);
 
 /// <summary>Something that can produce a tree as a stream of batches. Implementations run on a background thread.</summary>
 public interface IScanSource
@@ -196,7 +198,9 @@ public sealed class ScanSession : IDisposable
             ack,
             _failure,
             ctx.Idle,
-            ctx.BackgroundActive);
+            ctx.BackgroundActive,
+            ctx.LimitReached,
+            ctx.MaxNodes);
     }
 
     internal void Enqueue(ScanBatch batch) => _batches.Enqueue(batch);

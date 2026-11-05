@@ -38,6 +38,13 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
         public string? DefaultDistribution { get; init; }
 
+        /// <summary>
+        /// Extra nodes, beyond the session's MaxNodes, that only deliberate requests (the place you enter, a path you
+        /// type, a link you follow) may use, so the destination stays reachable after background listing has used the
+        /// budget. Null: max(64, MaxNodes / 50).
+        /// </summary>
+        public int? LimitReserve { get; init; }
+
         /// <summary>Test hook, called on a worker just before a directory is enumerated.</summary>
         public Action<string>? BeforeEnumerate { get; init; }
     }
@@ -58,6 +65,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public bool Prefetched;
         public bool Retry;
         public int Depth;
+        public Priority Priority = Priority.Background;
     }
 
     private sealed class LinkEntry
@@ -74,7 +82,8 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     private sealed record Entry(string Name, NodeKind Kind, NodeFlags Flags, FileAttributes Attributes, long Size,
         DateTime? Created, DateTime? Modified, DateTime? Accessed, LinkInfo? Link);
 
-    private sealed record ListResult(int DirId, List<Entry> Entries, NodeFlags Failure, string? Error);
+    /// <param name="Truncated">The listing stopped at its entry cap (the node budget), so the folder is only partly listed.</param>
+    private sealed record ListResult(int DirId, List<Entry> Entries, NodeFlags Failure, string? Error, bool Truncated = false);
 
     private sealed record ProbeResult(Entry? Entry, string? Error, NodeFlags Failure);
 
@@ -325,6 +334,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
 
         d.State = DirState.Queued;
+        if (p < d.Priority || d.Priority == Priority.Background) d.Priority = p;
         (p switch { Priority.Urgent => _urgent, Priority.Prefetch => _prefetch, _ => _background }).Enqueue(d);
     }
 
@@ -344,15 +354,37 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
     }
 
+    private int Reserve => _o.LimitReserve ?? Math.Max(64, _ctx.MaxNodes / 50);
+
+    /// <summary>
+    /// Entries a listing of this priority may still add to the tree (FS-10, 2026-11-05). The tree never exceeds
+    /// MaxNodes (plus <see cref="Reserve"/> for deliberate requests): the budget is checked when a listing is dispatched
+    /// (its worker stops enumerating there) and again when it is applied. Transient buffering is bounded by
+    /// MaxConcurrent × the remaining budget — the limit bounds the tree, it is not an exact memory ceiling.
+    /// </summary>
+    private int Budget(Priority p) =>
+        Math.Max(0, (p == Priority.Urgent ? _ctx.MaxNodes + Reserve : _ctx.MaxNodes) - _ctx.Nodes);
+
     private void StartListings()
     {
         while (_inflight.Count < _o.MaxConcurrent && Next() is { } d)
         {
+            var cap = Budget(d.Priority);
+            if (cap == 0)
+            {
+                // The budget is used up: background and prefetched folders stay unlisted, honestly marked.
+                _ctx.LimitReached = true;
+                d.State = DirState.Unlisted;
+                _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, DirScanState.NotTraversed, NodeFlags.Incomplete,
+                    $"Not listed: FileScape's entry limit ({_ctx.MaxNodes:N0}) was reached."));
+                continue;
+            }
+
             d.State = DirState.Listing;
             var path = d.Path;
             var hook = _o.BeforeEnumerate;
             var id = d.Id;
-            var task = Task.Run(() => List(id, path, hook));
+            var task = Task.Run(() => List(id, path, hook, cap));
             task.ContinueWith(_ => _wake.Release(), TaskScheduler.Default);
             _inflight.Add(new Inflight { Task = task, Dir = d, Start = Stopwatch.GetTimestamp() });
         }
@@ -389,21 +421,36 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     {
         var hadChildren = d.Children.Count > 0;
         var created = 0;
+        var room = Budget(d.Priority); // other listings may have used budget since this one was dispatched
+        var truncated = r.Truncated;
+        var kept = 0;
         foreach (var e in r.Entries)
         {
-            if (_ctx.Nodes >= _ctx.MaxNodes)
+            if (d.Children.ContainsKey(e.Name)) continue; // already known (an ancestor stub's child): merge
+            if (created >= room)
             {
-                _ctx.LimitReached = true;
+                truncated = true;
                 break;
             }
 
-            if (d.Children.ContainsKey(e.Name)) continue; // already known (an ancestor stub's child): merge
             AddEntry(d, e);
             created++;
         }
 
+        kept = d.Children.Count;
+
         var state = DirScanState.Complete;
         var add = NodeFlags.None;
+        var error = r.Error;
+        if (truncated)
+        {
+            // Only part of the folder fits the budget: say so, never call it complete (FS-08, FS-10).
+            _ctx.LimitReached = true;
+            add |= NodeFlags.Incomplete;
+            error = $"Only {kept:N0} entries are listed: FileScape's entry limit ({_ctx.MaxNodes:N0}) was reached. Start fresh here (Locations) to explore from this folder with a new budget.";
+            LargestTruncatedListing = Math.Max(LargestTruncatedListing, r.Entries.Count);
+        }
+
         if (r.Failure != NodeFlags.None)
         {
             state = r.Entries.Count == 0 ? DirScanState.Failed : DirScanState.Complete;
@@ -414,7 +461,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         d.State = r.Failure != NodeFlags.None && r.Entries.Count == 0 ? DirState.Failed : DirState.Listed;
         var clear = d.Retry ? NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable | NodeFlags.Incomplete : 0;
         d.Retry = false;
-        _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, state, add, r.Error, clear, SortChildren: hadChildren && created > 0));
+        _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, state, add, error, clear, SortChildren: hadChildren && created > 0));
         if (d.Visited) Prefetch(d);
     }
 
@@ -468,14 +515,31 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         BufferSize = 64 * 1024,
     };
 
-    /// <summary>Worker: one directory listing, metadata only; reparse entries classified by tag.</summary>
-    private static ListResult List(int id, string path, Action<string>? hook)
+    /// <summary>The most entries a truncated listing kept (tests check that buffering respected the budget).</summary>
+    public int LargestTruncatedListing { get; private set; }
+
+    /// <summary>
+    /// Worker: one directory listing, metadata only; reparse entries classified by tag. It stops after
+    /// <paramref name="cap"/> entries (plus one, to know the folder is larger), so a huge folder is never buffered
+    /// beyond the node budget. A truncated listing keeps the first entries in the OS's enumeration order.
+    /// </summary>
+    private static ListResult List(int id, string path, Action<string>? hook, int cap)
     {
         var entries = new List<Entry>();
+        var truncated = false;
         try
         {
             hook?.Invoke(path);
-            foreach (var e in new FileSystemEnumerable<Entry>(path, ToEntry, ListOptions)) entries.Add(Classify(path, e));
+            foreach (var e in new FileSystemEnumerable<Entry>(path, ToEntry, ListOptions))
+            {
+                if (entries.Count >= cap)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                entries.Add(Classify(path, e));
+            }
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -497,7 +561,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
             k = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
             return k != 0 ? k : StringComparer.Ordinal.Compare(a.Name, b.Name);
         });
-        return new ListResult(id, entries, NodeFlags.None, null);
+        return new ListResult(id, entries, NodeFlags.None, null, truncated);
     }
 
     private static int Order(NodeKind k) => k switch { NodeKind.Directory => 0, NodeKind.Link => 1, _ => 2 };
@@ -867,13 +931,27 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     private static string Quote(string? s) => s == null ? "" : $"“{s}” ";
 
-    /// <summary>Worker: works out where a link points and whether that exists (LINK-06).</summary>
+    /// <summary>
+    /// Worker: works out where a link points and what is actually there (LINK-06), by probing rather than by
+    /// Directory.Exists/File.Exists (which answer "false" for missing, denied and unreachable alike):
+    /// read the link → read the target's attributes → for a folder, try to read its first entry.
+    /// </summary>
     private static ResolveResult Resolve(string linkPath, bool isDir, LinkInfo info)
     {
-        var text = info.TargetText ?? Reparse.ReadTarget(linkPath, isDir);
+        string? text;
+        try
+        {
+            text = info.TargetText ?? (isDir ? new DirectoryInfo(linkPath).LinkTarget : new FileInfo(linkPath).LinkTarget);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var (status, why) = ClassifyFailure(ex, linkPath);
+            return new ResolveResult(null, status == LinkStatus.Broken ? LinkStatus.Unavailable : status, $"The {info.KindName} itself could not be read: {why}");
+        }
+
         if (string.IsNullOrEmpty(text))
         {
-            return new ResolveResult(null, LinkStatus.Denied, $"The target of this {info.KindName} could not be read.");
+            return new ResolveResult(null, LinkStatus.Unsupported, $"Windows did not report where this {info.KindName} points.");
         }
 
         string target;
@@ -891,16 +969,76 @@ public sealed class WorldExplorer : IScanSource, IDisposable
             return new ResolveResult(null, LinkStatus.Broken, $"The target “{text}” is not a valid path.");
         }
 
+        var probe = ProbeTarget(target);
+        return probe.Status == LinkStatus.Resolved
+            ? new ResolveResult(target, LinkStatus.Resolved, null)
+            : new ResolveResult(null, probe.Status, probe.Status switch
+            {
+                LinkStatus.Broken => $"This {info.KindName} is broken: its target “{target}” does not exist.",
+                LinkStatus.Denied => $"The target “{target}” exists but cannot be opened with your permissions ({probe.Why}).",
+                _ => $"The target “{target}” is not reachable right now ({probe.Why}).",
+            });
+    }
+
+    /// <summary>
+    /// What is actually at a path: Resolved (exists, and a folder's first entry can be read), Broken (missing on a
+    /// reachable volume), Denied (access refused), or Unavailable (device not ready, network path or volume missing).
+    /// </summary>
+    public static (LinkStatus Status, string? Why) ProbeTarget(string target)
+    {
+        FileAttributes attrs;
         try
         {
-            if (Directory.Exists(target) || File.Exists(target)) return new ResolveResult(target, LinkStatus.Resolved, null);
-            return RootReachable(target)
-                ? new ResolveResult(null, LinkStatus.Broken, $"This {info.KindName} is broken: its target “{target}” does not exist.")
-                : new ResolveResult(null, LinkStatus.Unavailable, $"The target “{target}” is on a drive, share or distribution that is not available right now.");
+            attrs = File.GetAttributes(target);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new ResolveResult(null, LinkStatus.Denied, ex.Message);
+            return ClassifyFailure(ex, target);
         }
+
+        if ((attrs & FileAttributes.Directory) == 0) return (LinkStatus.Resolved, null);
+        try
+        {
+            // One entry is enough to know the folder can be listed; nothing else is read.
+            using var e = new FileSystemEnumerable<bool>(target, static (ref FileSystemEntry _) => true, ListOptions).GetEnumerator();
+            e.MoveNext();
+            return (LinkStatus.Resolved, null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var (status, why) = ClassifyFailure(ex, target);
+            return (status == LinkStatus.Broken ? LinkStatus.Unavailable : status, why);
+        }
+    }
+
+    // Win32 error codes (winerror.h) carried in HResult as 0x8007xxxx.
+    private const int ErrorFileNotFound = 2, ErrorPathNotFound = 3, ErrorAccessDenied = 5, ErrorInvalidDrive = 15, ErrorNotReady = 21,
+        ErrorBadNetPath = 53, ErrorNetNameDeleted = 64, ErrorBadNetName = 67, ErrorUnexpectedNetError = 59, ErrorBadDevice = 1200, ErrorNoSuchDevice = 433;
+
+    /// <summary>Maps an OS failure on <paramref name="path"/> to a link status, from the actual error, not a guess.</summary>
+    public static (LinkStatus Status, string Why) ClassifyFailure(Exception ex, string path)
+    {
+        if (ex is UnauthorizedAccessException) return (LinkStatus.Denied, "access denied");
+        var code = ex.HResult & 0xFFFF;
+        var facilityWin32 = (ex.HResult & unchecked((int)0xFFFF0000)) == unchecked((int)0x80070000);
+        if (facilityWin32)
+        {
+            switch (code)
+            {
+                case ErrorAccessDenied: return (LinkStatus.Denied, "access denied");
+                case ErrorNotReady: return (LinkStatus.Unavailable, "the device is not ready");
+                case ErrorInvalidDrive or ErrorBadDevice or ErrorNoSuchDevice: return (LinkStatus.Unavailable, "no such drive or device");
+                case ErrorBadNetPath or ErrorBadNetName or ErrorNetNameDeleted or ErrorUnexpectedNetError: return (LinkStatus.Unavailable, "the network location is not reachable");
+                case ErrorFileNotFound or ErrorPathNotFound:
+                    return RootReachable(path) ? (LinkStatus.Broken, "it does not exist") : (LinkStatus.Unavailable, "its drive, share or distribution is not available");
+            }
+        }
+
+        if (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return RootReachable(path) ? (LinkStatus.Broken, "it does not exist") : (LinkStatus.Unavailable, "its drive, share or distribution is not available");
+        }
+
+        return (LinkStatus.Unavailable, ex.Message);
     }
 }

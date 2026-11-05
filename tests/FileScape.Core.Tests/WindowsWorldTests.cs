@@ -15,6 +15,8 @@ public sealed class WindowsWorldTests : IDisposable
     public void Dispose()
     {
         if (!Directory.Exists(_root)) return;
+        var vault = Path.Combine(_root, "vault");
+        if (Directory.Exists(vault)) Icacls(vault, "/remove:d", "*" + MySid());
         foreach (var l in Directory.EnumerateDirectories(Path.Combine(_root, "arrival")).Where(p => (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0))
         {
             Directory.Delete(l); // removes the junction, never its target
@@ -33,6 +35,117 @@ public sealed class WindowsWorldTests : IDisposable
     }
 
     private string Arrival => Path.Combine(_root, "arrival");
+
+    private static string MySid() =>
+        OperatingSystem.IsWindows() ? System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value : throw new PlatformNotSupportedException();
+
+    private static void Icacls(string path, string op, string arg)
+    {
+        var psi = new ProcessStartInfo("icacls.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        psi.ArgumentList.Add(path);
+        psi.ArgumentList.Add(op);
+        psi.ArgumentList.Add(arg);
+        using var p = Process.Start(psi)!;
+        p.WaitForExit(10_000);
+        p.ExitCode.Should().Be(0, $"icacls {op} on {path}");
+    }
+
+    /// <summary>Maps (or with null, removes) a temporary drive letter for this user session.</summary>
+    private static void Subst(string letter, string? target)
+    {
+        var psi = new ProcessStartInfo("subst.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        psi.ArgumentList.Add(letter);
+        psi.ArgumentList.Add(target ?? "/d");
+        using var p = Process.Start(psi)!;
+        p.WaitForExit(10_000);
+        if (target != null) p.ExitCode.Should().Be(0, $"subst {letter} {target}");
+    }
+
+    private static string UnusedDriveRoot()
+    {
+        var used = DriveInfo.GetDrives().Select(d => char.ToUpperInvariant(d.Name[0])).ToHashSet();
+        for (var c = 'Q'; c <= 'Z'; c++) if (!used.Contains(c)) return $"{c}:\\";
+        throw new InvalidOperationException("no free drive letter for the test");
+    }
+
+    /// <summary>
+    /// LINK-06 by actual probing (2026-11-05 correction): a denied target, an unreachable drive and a missing target
+    /// each get their own status; Retry recovers once the cause is fixed.
+    /// </summary>
+    [WindowsFact]
+    public void Denied_unavailable_and_broken_targets_are_told_apart_and_retry_recovers()
+    {
+        Directory.CreateDirectory(Arrival);
+        var vault = Path.Combine(_root, "vault");
+        Directory.CreateDirectory(vault);
+        File.WriteAllText(Path.Combine(vault, "inside.txt"), "x");
+        var me = MySid();
+        Icacls(vault, "/deny", $"*{me}:(OI)(CI)(RX)");
+        Junction(Path.Combine(Arrival, "j-denied"), vault);
+        var nowhere = UnusedDriveRoot() + "nowhere";
+        // A junction whose target becomes unreachable: made through a temporary subst drive, which is then removed.
+        // (mklink /J refuses a target on a drive that does not exist.)
+        var letter = UnusedDriveRoot()[..2];
+        var substRoot = Path.Combine(_root, "subst-root");
+        Directory.CreateDirectory(Path.Combine(substRoot, "inner"));
+        try
+        {
+            Subst(letter, substRoot);
+            Junction(Path.Combine(Arrival, "j-nodrive"), letter + "\\inner");
+        }
+        finally
+        {
+            Subst(letter, null);
+        }
+
+        WorldExplorer.ProbeTarget(letter + "\\inner").Status.Should().Be(LinkStatus.Unavailable, "its drive is gone");
+        var gone = Path.Combine(_root, "gone");
+        Directory.CreateDirectory(gone);
+        Junction(Path.Combine(Arrival, "j-broken"), gone);
+        Directory.Delete(gone);
+        var notReady = DriveInfo.GetDrives().FirstOrDefault(d => !d.IsReady && d.DriveType == DriveType.Removable);
+
+        // Direct probes of the targets (not through a link).
+        WorldExplorer.ProbeTarget(vault).Status.Should().Be(LinkStatus.Denied, "the folder exists but cannot be listed");
+        WorldExplorer.ProbeTarget(nowhere).Status.Should().Be(LinkStatus.Unavailable, "its drive does not exist");
+        WorldExplorer.ProbeTarget(gone).Status.Should().Be(LinkStatus.Broken, "missing on a reachable volume");
+        if (notReady != null) WorldExplorer.ProbeTarget(Path.Combine(notReady.Name, "x")).Should().Be((LinkStatus.Unavailable, "the device is not ready"));
+
+        var (ex, s, t, replies) = Start(Arrival);
+        using (ex)
+        using (s)
+        {
+            Pump(s, t, replies, () => replies.ContainsKey(WorldExplorer.ArrivalTicket) && s.Snapshot().Idle && !s.HasPendingBatches);
+            var arrival = replies[WorldExplorer.ArrivalTicket].NodeId;
+            int Child(string n) => t[arrival].Children.Single(c => t[c].Name == n);
+            LinkStatus Follow(string name, out ExplorerReply reply)
+            {
+                var ticket = ex.FollowLink(Child(name));
+                Pump(s, t, replies, () => replies.ContainsKey(ticket));
+                Pump(s, t, replies, () => !s.HasPendingBatches);
+                reply = replies[ticket];
+                return t[Child(name)].Link!.Status;
+            }
+
+            Follow("j-denied", out var r1).Should().Be(LinkStatus.Denied);
+            r1.NodeId.Should().Be(-1);
+            r1.Error.Should().Contain("permissions");
+            Follow("j-nodrive", out var r2).Should().Be(LinkStatus.Unavailable);
+            r2.Error.Should().Contain("not reachable");
+            Follow("j-broken", out var r3).Should().Be(LinkStatus.Broken);
+
+            // Recovery: fix the cause, Retry, follow.
+            Icacls(vault, "/remove:d", "*" + me);
+            Directory.CreateDirectory(gone);
+            ex.Retry(Child("j-denied"));
+            ex.Retry(Child("j-broken"));
+            Pump(s, t, replies, () => t[Child("j-denied")].Link!.Status == LinkStatus.Resolved && t[Child("j-broken")].Link!.Status == LinkStatus.Resolved);
+            Follow("j-denied", out var ok1).Should().Be(LinkStatus.Resolved);
+            t.FullPath(ok1.NodeId).Should().BeEquivalentTo(vault);
+            Follow("j-broken", out var ok2).Should().Be(LinkStatus.Resolved);
+            t.FullPath(ok2.NodeId).Should().BeEquivalentTo(gone);
+        }
+    }
 
     private void Build()
     {

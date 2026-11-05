@@ -54,10 +54,10 @@ public sealed class WorldExplorerTests : IDisposable
         public readonly FsTree Tree;
         public readonly Dictionary<int, ExplorerReply> Replies = [];
 
-        public Harness(string arrival, WorldExplorer.Options? options = null)
+        public Harness(string arrival, WorldExplorer.Options? options = null, int maxNodes = ScanSession.DefaultMaxNodes)
         {
             Explorer = new WorldExplorer(arrival, options ?? new WorldExplorer.Options { Locations = [new LocationSeed("/", "/", LocationKind.Volume, true)] });
-            Session = new ScanSession(Explorer);
+            Session = new ScanSession(Explorer, maxNodes);
             Tree = new FsTree(Session.Source);
             Session.Start();
         }
@@ -268,6 +268,37 @@ public sealed class WorldExplorerTests : IDisposable
         h.Tree[b].ScanState.Should().Be(DirScanState.Cancelled);
         h.Explorer.Visit(b);
         h.Pump(() => h.Tree[b].ScanState == DirScanState.Complete);
+    }
+
+    /// <summary>FS-08/FS-10 (2026-11-05 correction): a folder cut by the entry limit is partial, never "complete".</summary>
+    [PosixFact]
+    public void The_entry_limit_marks_folders_partial_bounds_buffering_and_keeps_requested_places_reachable()
+    {
+        var big = Path.Combine(Arrival, "big");
+        Directory.CreateDirectory(big);
+        for (var i = 0; i < 300; i++) File.WriteAllText(Path.Combine(big, $"f{i:D3}.txt"), "x");
+        using var h = new Harness(Arrival, new WorldExplorer.Options { Locations = [new LocationSeed("/", "/", LocationKind.Volume, true)], LimitReserve = 10 }, maxNodes: 40);
+        var arrival = h.Await(WorldExplorer.ArrivalTicket).NodeId;
+        h.Pump(() => h.Idle);
+        var bigId = h.Child(arrival, "big");
+        var reply = h.Await(h.Explorer.GoTo(big));
+        reply.NodeId.Should().Be(bigId);
+        h.Pump(() => h.Idle && h.Tree[bigId].ScanState != DirScanState.Pending);
+        var node = h.Tree[bigId];
+        node.Children.Count.Should().BeInRange(1, 49);
+        node.Flags.Should().HaveFlag(NodeFlags.Incomplete);
+        Places.Listing.Of(node).Should().Be(Places.ListingState.Partial, "a cut listing reads 'partly listed', not complete");
+        node.Error.Should().Contain("entry limit").And.Contain("Start fresh");
+        h.Tree.Count.Should().BeLessThanOrEqualTo(40 + 10 + 8, "the tree stays within the budget plus the reserve (and a few path stubs)");
+        h.Explorer.LargestTruncatedListing.Should().BeLessThanOrEqualTo(50, "a 300-entry folder was not buffered whole");
+        var p = h.Session.Snapshot();
+        p.LimitReached.Should().BeTrue();
+        p.MaxNodes.Should().Be(40);
+
+        // After the budget is spent, a requested destination is still reached (its path is ensured).
+        var deep = h.Await(h.Explorer.GoTo(Path.Combine(_root, "outside", "deep")));
+        deep.Error.Should().BeNull();
+        h.Tree.FullPath(deep.NodeId).Should().Be(Path.Combine(_root, "outside", "deep"));
     }
 
     [Fact]
