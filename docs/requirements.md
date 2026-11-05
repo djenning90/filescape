@@ -15,7 +15,7 @@ choose a root → scan with visible progress → navigate the 3D hierarchy → s
 |---|---|---|
 | FS-01 | Metadata scanning only. No file mutations, no automatic execution, and files are never opened during a scan. | Demonstrated |
 | FS-02 | Asynchronous scan on a background thread, with live progress (entries, dirs, files, links, bytes, problems, queue, elapsed). The UI stays navigable. | Demonstrated |
-| FS-03 | Reparse points (junctions, symlinks, mount points) are shown as links and never traversed. This prevents cycles and volume crossings. | Demonstrated (fixture junction loop + dir/file symlinks) |
+| FS-03 | **Background scanning** never traverses reparse points (junctions, symlinks, mount points), which rules out cycles and volume crossings during a scan. *Revised 2026-11-05:* links are followed only by deliberate navigation (LINK-01..08). | Demonstrated for scanning (fixture junction loop + dir/file symlinks); deliberate following: see LINK-* |
 | FS-04 | Hidden and system entries are included and flagged, not silently skipped. | Demonstrated |
 | FS-05 | Inaccessible and vanished entries are recorded with the OS message, and the scan continues. | Demonstrated (deny-ACE fixture; deleted-mid-scan test) |
 | FS-06 | Unicode names and long paths (>260 chars) work where the APIs permit, and failures are surfaced. | Demonstrated for the scan, inspector and FullPath (372-char fixture path). Shell actions on long paths: not specifically tested |
@@ -87,6 +87,79 @@ Names: **Places** is the new experience. **Classic FSN** and **District** are re
 
 **Future direction (recorded, not implemented):** themed worlds (forest, jungle, alien city) would supply their own place composer and dressing behind the same `PlaceComposition` contract (AD-14). File structures should eventually show recognizable content — a photograph's image, a document's first page, other meaningful traits — through a file-appearance extension point; scanning stays metadata-only and any preview reading would be a separate, deliberate, bounded process.
 
+## Walking world and connected filesystem (2026-11-05)
+
+DJ's direction after playing Places: the place concept is achieved and the visuals are compelling — preserve them. Next: *a world you inhabit on foot, connected to the real places on your computer.* Walking is primary; flight is an explicit secondary mode. FileScape should move towards reaching anywhere Explorer reaches, starting with ordinary Windows directories, directory links and WSL filesystems.
+
+Principal journey: arrive on foot → understand the folder and its destinations → walk, look around, jump, inspect → enter a child → follow a directory link to another location → understand the destination and return → visit a Windows volume or WSL location → deliberately enter flight → return safely to walking. The *current folder*, *selection*, *navigation history* and *arrival root* stay distinct concepts.
+
+Decisions: AD-16 (walking), AD-17 (one connected namespace), AD-18 (links), AD-19 (visibility), AD-20 (place identity).
+
+### Walking and flight (WALK)
+
+| ID | Requirement | Acceptance criterion (observable) | Status |
+|---|---|---|---|
+| WALK-01 | **Grounded first person is the default in Places.** One world scale (1 u = 1 m); eye 1.75 m above the supporting surface; gravity and ground contact. | Core: standing on the plaza, the terrace and a tier gives eye − support = 1.75 ± 0.01. App: after arrival, eye height above the support equals 1.75. | |
+| WALK-02 | **Gaze-independent heading.** Forward/back/strafe move horizontally along the heading whatever the vertical gaze; looking straight down never pushes into the ground or stops movement. | Core: horizontal speed at look pitch −85°, 0°, +85° equal within 1 %; vertical position unchanged while walking on the flat. Injected: same. | |
+| WALK-03 | **Controls.** Up/Down arrows walk forward/back; Left/Right arrows turn (Up+Left walks a curve); W/S forward/back, A/D strafe; hold right mouse to look and steer (horizontal = heading, vertical = gaze); Space jump; Shift run. Arrow keys previously strafed: the change is documented in Help and the README. Focused UI controls keep their keys (NAV-08). | Injected and OS-level: each binding produces its motion; Up+Left curves (heading changes and position advances); a focused text field keeps the arrows. | |
+| WALK-04 | **Movement quality.** Frame-rate independent; diagonals normalised; responsive starts (≥ 90 % of speed within 0.25 s) and stops (≤ 0.2 s); level horizon (no roll); no camera bob, landing shake or forced rotation. | Core: speeds at 30/60/144 Hz equal within 2 %; diagonal = straight within 1 %; start/stop times measured; injected: up.y > 0 and roll 0 throughout. | |
+| WALK-05 | **Terrain.** Small steps (≤ 0.45 m) are climbed without jumping; walkable slopes (ramps, ≤ 35°) are walked up and down without bouncing; solid structures (towers, landmark, gate pillars, platform walls) block without snagging (the walker slides along them); thin decorations (signs, beacons, floor lines) never block. A boundary keeps walkers inside the place (no falling off the world). | Core tests: stairs climbed, ramp ascended at speed, walking into a tower at 45° slides along it, corridor between towers passable, boundary holds. | |
+| WALK-06 | **Flight is explicit.** A labelled **Flight (T)** control toggles flight; entering rises continuously and a chip says "Flying — T to land". Flight keeps the existing fly controls (look, WASD along view, E/Space up, Q down, wheel speed, Shift). **B** rises above the place in flight. | Injected T: mode = Flying, eye rises continuously (no jump > 0.5 m/frame), chip visible. | |
+| WALK-07 | **Safe landing.** Leaving flight descends continuously onto a valid surface below; where there is none (outside the walkable place, e.g. above a vista) the user is guided to the arrival point and told why. Never left falling indefinitely or inside geometry. | Injected: T above the plaza lands (support under feet, not inside a solid); T above a vista relocates to the arrival with a message; a forced fall below the world recovers to the arrival. | |
+| WALK-08 | **Home and Root.** Home = the current folder's safe arrival point (on foot); Ctrl+Home / Root = the arrival root's arrival point. | Injected Home/Ctrl+Home poses. | |
+| WALK-09 | **Input recovery** (NAV-08 carried over): Escape releases look capture and steps back from the selection; Alt-Tab, dialogs and lost releases leave nothing held or captured; typing in a field never walks. | OS-level Alt-Tab while walking/looking; injected text field. | |
+
+### Jumping (JUMP)
+
+| ID | Requirement | Acceptance criterion | Status |
+|---|---|---|---|
+| JUMP-01 | A modest jump (apex ≈ 0.8 m) that keeps running momentum and allows some air steering; forgiving timing (coyote time after leaving a ledge, a short jump buffer before landing, a small ledge tolerance). | Core: apex 0.75–0.85 m; running jump carries > 4 m; jump pressed 0.1 s after walking off a ledge still jumps; pressed 0.1 s before landing jumps on landing. | |
+| JUMP-02 | **A small route in every place:** an **overlook** platform with folder information (summary, orientation), reachable by a **walking ramp** and by an optional **jump shortcut** of low blocks. | Core: overlook reachable by walking only (ramp path) and by jumps; screenshots. | |
+| JUMP-03 | **No platforming required.** Every destination and file action stays reachable on foot without jumping (and by Destinations/G/double-click). Jumping never opens, executes or changes anything. Terrain relates to real structure where it is used (child-tier terraces, the overlook's summary); decoration never imitates access boundaries or errors. | Core: every gate reachable by a walking path from the arrival (no jump); code review: no action is bound to jumping. | |
+
+### Connected filesystem and links (LINK)
+
+| ID | Requirement | Acceptance criterion | Status |
+|---|---|---|---|
+| LINK-01 | **Kinds identified by the reparse tag**, not every reparse point treated as a symlink: junction, directory/file symbolic link, mounted volume, Linux symbolic link (WSL), app execution alias, cloud placeholder (a directory/file, not a link), Linux special files, and other/unknown tags (kept honestly, with the tag). | Windows test on fixtures: junction → Junction, `mklink /D` → SymbolicLink, OneDrive-style cloud tag → directory with cloud flag; WSL test: LX symlink → LinuxSymlink. | |
+| LINK-02 | **Deliberate following.** Walking through a supported directory link's gate (or G/double-click/Destinations) resolves it on demand and travels to the destination; background scanning never expands links. | Injected walk through a junction gate: current = target folder; scan log shows no traversal through links. | |
+| LINK-03 | **Connection shown, return dependable.** On arrival via a link the HUD shows the destination's real location and the connection used ("via link *X* in *Y*"); Back (Backspace / the "Back through link" button) returns to the link's place, in front of its gate. **Up** goes to the destination's *physical* parent (navigation history ≠ parenthood; entry path ≠ resolved path). | Injected: after link travel, breadcrumb = target's physical path; connection chip names the link; Back returns to the link's folder with the link selected; Up goes to the physical parent. | |
+| LINK-04 | **Outside the arrival root.** Links may lead anywhere reachable; the arrival root is an arrival point, not the edge of the world. Up from the arrival root continues to its parent. | Injected: a junction to a folder outside the fixture root travels there; Up from the root reaches its parent. | |
+| LINK-05 | **Cycles and repeated destinations.** A link back to an ancestor, or two links to one target, reach the *same* node: no new scan, no duplicate sub-world. The HUD says "leads back to *ancestor*" / "also reached via *other link*". | Core: loop junction target id = ancestor id; two links → same id; node count unchanged by repeated travel. | |
+| LINK-06 | **Distinct failure states.** Broken (target missing), inaccessible (access denied), unavailable (volume/share/distribution not reachable), unsupported (Linux link through Windows, unknown provider) each have their own marker and a concise explanation; retry where useful. A deliberately unexpanded link is a *connection*, not an error. | Fixture: broken symlink, denied target, unsupported LX link render and describe distinctly; Retry re-resolves. | |
+| LINK-07 | **Totals across links.** Folder totals never include link targets (no double counting); the inspector states that links are not included and that totals cover what has been listed so far. | Core: subtree bytes unchanged after resolving and listing a link's target. | |
+| LINK-08 | **Paths and actions tied to the intended item.** Displayed paths and Open/Show/Copy act on the selected item (the link itself or the destination folder, as labelled), with Unicode and case preserved. | Core: FullPath of a node reached via a link is its physical path; Unicode fixture name round-trips. | |
+
+### Locations: Windows volumes and WSL (LOC)
+
+| ID | Requirement | Acceptance criterion | Status |
+|---|---|---|---|
+| LOC-01 | **A location hub ("This computer")** lists Windows drives and WSL distributions and can be visited as a place; a **Go to path** field (Ctrl+L) accepts pasted Windows paths, `\\wsl.localhost\…`/`\\wsl$\…` paths and Linux paths (mapped to the default distribution). No new launch is needed. | Injected: Ctrl+L, paste a WSL path, Enter → current = that folder. Hub shows C:\ and the registered distributions. | |
+| LOC-02 | **Progressive, on-demand listing.** Locations are listed when entered (plus their immediate children for gate states); drives, profiles and distributions are never scanned wholesale. Background traversal is limited to the arrival root's subtree (and is cancellable). | Entering C:\ lists C:\ and its children only (node count bounded); scan log. | |
+| LOC-03 | **WSL through the supported UNC route** (`\\wsl.localhost\<distro>`), with Linux case distinctions preserved (`README` and `readme` are two entries) and Linux symlinks identified. | Live WSL fixture: both names present as separate gates/towers; LX links shown as Linux links. | |
+| LOC-04 | **Slow or unavailable locations never freeze the UI.** Listing runs off the main thread with several listings in flight; a slow/stopped distribution or missing drive shows "waiting on Windows…" then unavailable, with Retry. | Frame times while a listing blocks (test hook); a not-ready drive shows unavailable. | |
+| LOC-05 | **Ordinary permissions; no implicit execution.** No elevation or permission changes. Linux executables/scripts are browsed, never run implicitly; Open on a WSL file uses the Windows association and says so; unsupported actions are described. | Code review; inspector text for a WSL script. | |
+
+### Visibility, names and status (VISI)
+
+| ID | Requirement | Acceptance criterion | Status |
+|---|---|---|---|
+| VISI-01 | **Labels do not overlap** each other or the HUD; priority: current place, destinations, selection/hover, nearby relevant files. | Injected: screen rects of shown labels pairwise disjoint and outside HUD rects. | |
+| VISI-02 | **Concise status markers** instead of long sentences on every object: a symbol and a short word in the world, detail in the inspector. A link is shown as a connection, not an error. | Screenshot; sign texts ≤ 2 short lines. | |
+| VISI-03 | **Problem summary.** Access failures and unavailable destinations are aggregated in a discoverable summary (count + list), with details preserved. | Injected: summary count = problem nodes in the place; list entries select the node. | |
+| VISI-04 | **Hidden/system visibility control** (H and a toolbar toggle), off by default, with a clear indication ("N hidden"). Dot-prefixed names are a separate category and are shown by default. Changing visibility never changes selection, current place, totals or history; totals always include hidden entries and say so. | Injected toggle: gates/towers count changes by the hidden count; selection/current/history unchanged. | |
+
+### Place identity (IDENT)
+
+| ID | Requirement | Acceptance criterion | Status |
+|---|---|---|---|
+| IDENT-01 | Place *identity* (what a folder is), world *style* (futuristic) and *availability/access state* are separate concepts. | Code structure: identity classifier separate from palette and from ListingState. | |
+| IDENT-02 | **First identities:** location hub, drive/distribution root, ordinary folder, software project. Each has a clear spatial distinction within the futuristic style. | Screenshots of each. | |
+| IDENT-03 | **Explainable, overridable project recognition** from strong local evidence (manifests such as `*.sln`, `*.csproj`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, plus a README or `.git`), with a generic fallback; the inspector lists the evidence; an override returns the folder to "ordinary". No file contents are read. | Core tests: positive and negative cases; override. | |
+| IDENT-04 | A project place surfaces its README and manifests (a "project core" by the arrival); no build/deploy actions. | Screenshot; Core composition test. | |
+
+**Future direction (recorded):** photo collections, document collections and previews, financial collections (only from strong evidence), temporary workspaces, more world styles, long jumps/special movement, Explorer's virtual namespaces (This PC libraries, network neighbourhood, shell folders).
+
 ## Deliberate file actions (FILE)
 
 | ID | Requirement | Status |
@@ -120,3 +193,5 @@ Search, watchers/live refresh, persistent scan caches, bookmarks, split views, m
 - What tree sizes matter in practice (10k vs 1M nodes)? This drives LOD and background layout work.
 - Which mutation (if any) belongs in the first useful release?
 - Places: does entering a gate on foot feel deliberate enough, or should entry require a confirm key? Is the arrival viewpoint comfortable? (Design choices pending DJ's hands-on judgement.)
+- Walking: speeds, turn rate, jump height and the arrow-key change (turn instead of strafe) are provisional until DJ tries them.
+- Should the maps also use the new arrow behaviour? (Currently: maps keep arrows as strafe aliases, NAV-07.)

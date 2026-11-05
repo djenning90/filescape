@@ -95,3 +95,37 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 
 - **Decision:** The app has three experiences over the same tree, selection and shell actions: **Places** (default, AD-14) and the reference whole-tree maps **Classic FSN** and **District**. Tab cycles them; **M** toggles Places ↔ the last map. The *current folder* (`PlaceNavigator`) persists across switches and is marked in the maps; **G** on a folder in a map enters it in Places. While in Places the whole-tree layout is not computed (the local composition is), which keeps scanning responsive; switching to a map lays out on demand.
 - **Alternative:** fork a second application for Places — rejected (duplicated identity, metadata, inspector, shell, input).
+
+## AD-16 Walking: a kinematic walker in Core over terrain composed with the place (2026-11-05)
+
+- **Problem:** DJ wants to inhabit places on foot, with jumping, slopes and steps, and flight as an explicit secondary mode. Places had no ground or collision (KD-10).
+- **Decision:** `PlaceComposer` also produces a `PlaceTerrain` (support surfaces: plaza, arrival terrace with stairs, overlook with ramp and jump blocks, tier rings; solids: towers, landmark, gate pillars; a boundary circle). A `Walker` in Core (capsule as a vertical circle, eye 1.75 m, step 0.45 m, gravity, jump with coyote time/buffer/ledge tolerance, slide-along collision) integrates input at a fixed 120 Hz sub-step. The app feeds input and copies the eye pose to the camera. Flight is a second locomotion mode in the same controller; landing uses the terrain's support query and relocates to the arrival when there is no valid surface.
+- **Rationale:** deterministic, engine-independent and unit-testable (slopes, steps, snagging, diagonal speed, frame-rate independence) in the same way as the rest of Core; simple shapes are enough because the composition is ours; no physics colliders to keep in sync with MultiMesh geometry.
+- **Alternatives:** Godot `CharacterBody3D` with colliders generated per place (more general, but harder to test headlessly and duplicates geometry); keeping free camera movement with height following only (no jumping or obstacles).
+- **Revisit when:** places need arbitrary meshes (themes), moving platforms, or physics interactions.
+
+## AD-17 One connected namespace for live data, listed on demand (2026-11-05)
+
+- **Problem:** links can lead outside the chosen root, and DJ wants to reach drives and WSL distributions without relaunching. One `FsTree` per scan root cannot represent "outside"; a separate tree per destination would duplicate identities and break the shared selection/history; grafting link targets under links duplicates sub-worlds and loops.
+- **Decision:** live data is a single `FsTree` whose root is a **"This computer" hub**; its children are *location roots* (drives, WSL distributions as `\\wsl.localhost\<distro>`, and other UNC/volume roots when reached). A chosen folder is ensured as a path under its location: its ancestors exist as *unlisted* stubs (known name, contents not yet listed) and it becomes the navigator's **arrival root**. A `WorldExplorer` scan source runs a coordinator thread that assigns ids and emits batches (preserving the single-writer model, AD-04) and runs listings on worker tasks (several in flight, so one slow distribution blocks nothing else). Priorities: the current place, then its children (gate states and vistas), then background traversal of the arrival root's subtree only. Listing a stub merges with the children it already has. Name matching uses the location's rule: case-insensitive for Windows volumes, case-sensitive (ordinal) for WSL.
+- **Rationale:** one identity space keeps selection, history, maps and inspector unchanged; cycles and repeated destinations are naturally the same node; nothing broad is ever scanned wholesale.
+- **Alternatives:** per-region trees with cross-tree references; re-rooting the tree when going above the root; lazy-only listing (maps would show almost nothing).
+- **Consequences:** the maps show the *explored* world (the hub, the ancestor chain, what has been listed) — labelled as such. Totals of ancestors cover listed content only ("so far").
+- **Revisit when:** persistent caches or watchers arrive; trees exceed the 1M-node limit through exploration; Explorer's virtual namespaces are added.
+
+## AD-18 Link policy (2026-11-05)
+
+- **Decision:** reparse points are classified by tag (junction, symbolic link, mounted volume, Linux symlink, app alias, cloud placeholder, Linux special file, other). Link nodes remain leaves; background traversal never follows them (FS-03). Following is deliberate: resolving a link ensures its target path in the namespace (stubs + on-demand listing) and records the target node id on the link. Totals never cross links. A link whose target is an ancestor, or a second link to a known target, resolves to the existing node. Through `\\wsl.localhost`, Linux symlinks are identified (tag `0xA000001D`, size = target length) but Windows cannot read or follow them (`FSCTL_GET_REPARSE_POINT` fails over the 9P redirector; opening fails with "path not found"); they are shown as *Linux links — unsupported through Windows' WSL access*.
+- **Alternatives:** expand links during scanning with a visited set (still expands far beyond the root and costs scan time); a WSL-side helper (`wsl.exe readlink`) — an execution bridge, deferred until needed.
+- **Revisit when:** a supported Windows API exposes LX symlink targets, or DJ wants an explicit WSL helper.
+
+## AD-19 Visibility defaults (2026-11-05)
+
+- **Decision:** in Places, entries with the Windows **hidden or system** attribute are hidden by default (Explorer's default), with a toggle (H, toolbar) and an "N hidden" indication. Dot-prefixed names are a separate, *shown by default* category (they are common, important project files). Visibility filters composition only: totals, selection, history and the tree are unchanged; the inspector says totals include hidden entries. The maps keep showing everything (reference views).
+- **Revisit when:** DJ wants per-location rules or a separate dot-file toggle in the HUD.
+
+## AD-20 Place identity separate from style and state (2026-11-05)
+
+- **Decision:** `PlaceKind` (hub, location root, project, ordinary) is decided by an explainable classifier from names only (no contents): a project needs a manifest (`*.sln`, `*.csproj`, `*.fsproj`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `pom.xml`, `build.gradle(.kts)`, `CMakeLists.txt`, `project.godot`) **and** a README or `.git`; the evidence is listed in the inspector; the user can override to ordinary (per session). Identity changes composition (the project core by the arrival) and dressing; the futuristic *style* is unchanged; *state* (listing/access) stays in `ListingState`.
+- **Alternatives:** content sniffing (rejected: privacy, and FS-01); many presets (rejected: shallow).
+- **Revisit when:** photos/documents identities are added (they would need bounded previews, KD-15).
