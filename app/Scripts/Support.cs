@@ -38,6 +38,9 @@ public sealed record CommandLine
     /// <summary>--prefs=path: the preferences file. Default: %APPDATA%\FileScape\preferences.json, except under --automate, where nothing is read or saved unless --prefs is given (probes never touch DJ's settings).</summary>
     public string? PreferencesFile { get; init; }
 
+    /// <summary>--experiment=planetoids: the isolated planetoid traversal experiment (PLANET-02) instead of FileScape.</summary>
+    public string? Experiment { get; init; }
+
     public static CommandLine Parse(string[] args)
     {
         var map = args.Select(a => a.TrimStart('-').Split('=', 2)).ToDictionary(p => p[0], p => p.Length > 1 ? p[1] : "", StringComparer.OrdinalIgnoreCase);
@@ -66,6 +69,7 @@ public sealed record CommandLine
             StateFile = Get("state-file"),
             StressDistrictOnly = Get("district-only") != null,
             PreferencesFile = Get("prefs"),
+            Experiment = Get("experiment"),
         };
     }
 }

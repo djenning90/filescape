@@ -107,6 +107,9 @@ public partial class Main : Node3D
     internal MeshInstance3D SelectionBeam => _beam;
     internal MeshInstance3D Ground => _ground;
 
+    /// <summary>True when an isolated experiment runs instead of FileScape (nothing else is built).</summary>
+    private bool _experimentOnly;
+
     public override void _Ready()
     {
         InputBindings.Register();
@@ -120,6 +123,14 @@ public partial class Main : Node3D
         }
 
         _stateFile = args.StateFile;
+        if (args.Experiment == "planetoids")
+        {
+            // An isolated experiment (PLANET-02): its own scene; nothing of FileScape is built or scanned.
+            _experimentOnly = true;
+            AddChild(new Experiments.PlanetoidExperiment(args.Automation == "planetoids", args.OutputDirectory ?? OS.GetUserDataDir()));
+            return;
+        }
+
         BuildScene();
         LoadPreferences(args);
         _quality = args.Quality ?? Quality.High;
@@ -335,6 +346,7 @@ public partial class Main : Node3D
 
     public override void _Process(double delta)
     {
+        if (_experimentOnly) return;
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
         _now = _clock.Elapsed;
@@ -716,6 +728,7 @@ public partial class Main : Node3D
 
     public override void _Input(InputEvent @event)
     {
+        if (_experimentOnly) return;
         // Releases first, whoever has focus.
         if (@event is InputEventKey { Pressed: false } up)
         {
@@ -793,6 +806,7 @@ public partial class Main : Node3D
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (_experimentOnly) return;
         switch (@event)
         {
             case InputEventMouseButton mb:
