@@ -120,7 +120,11 @@ public partial class Main : Node3D
             StartScan(new SyntheticTreeSource { TargetNodes = args.SyntheticNodes ?? 12_000, NodesPerSecond = args.SyntheticRate ?? 0 });
         }
 
-        if (args.Automation is "places" or "places-scan" or "places-tour" or "places-debug")
+        if (args.Automation is { } walkMode && walkMode.StartsWith("walk", StringComparison.Ordinal))
+        {
+            AddChild(new WalkProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), walkMode));
+        }
+        else if (args.Automation is "places" or "places-scan" or "places-tour" or "places-debug")
         {
             AddChild(new PlacesProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), args.Automation));
         }
@@ -197,6 +201,7 @@ public partial class Main : Node3D
         _hud.FlyToRequested += FlyToSelection;
         _hud.CopyPathRequested += CopyPath;
         _hud.HelpToggled += () => _hud.ToggleHelp();
+        _hud.FlightToggled += ToggleFlight;
         _selection.SelectionChanged += _ => UpdateInspector();
 
         BuildPlaceScene();
@@ -708,10 +713,38 @@ public partial class Main : Node3D
                 EndFly();
             }
 
+            if (mbUp.ButtonIndex == MouseButton.Right && _placeLook)
+            {
+                EndPlaceLook();
+            }
+
             if (mbUp.ButtonIndex == _pressButton && mbUp.ButtonIndex != MouseButton.Left)
             {
                 _pressButton = MouseButton.None;
             }
+        }
+
+        if (_placeLook)
+        {
+            // Places look capture (right mouse held, WALK-03): motion turns the heading and gaze; Esc releases.
+            switch (@event)
+            {
+                case InputEventMouseMotion motion:
+                    PlaceLook(motion.Relative);
+                    GetViewport().SetInputAsHandled();
+                    break;
+                case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when _locomotion == Locomotion.Flying:
+                    StepPlaceFlightSpeed((wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1) * WheelNotches(wheel));
+                    GetViewport().SetInputAsHandled();
+                    break;
+                case InputEventKey { Pressed: true, Echo: false } esc when esc.IsAction(InputBindings.Parent):
+                    _consumedEscapes++;
+                    EndPlaceLook();
+                    GetViewport().SetInputAsHandled();
+                    break;
+            }
+
+            return;
         }
 
         if (!_rig.IsFlying)
@@ -758,6 +791,7 @@ public partial class Main : Node3D
 
                 if (!key.Echo)
                 {
+                    if (key.IsAction(InputBindings.Jump)) _jumpQueued = true;
                     HandleCommand(key);
                 }
 
@@ -775,13 +809,21 @@ public partial class Main : Node3D
 
         if (mb.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
         {
+            if (_experience == Experience.Places)
+            {
+                // On foot the wheel does nothing (no zoom: you are standing somewhere); in flight it sets the speed.
+                if (mb.Pressed && _locomotion == Locomotion.Flying) StepPlaceFlightSpeed((mb.ButtonIndex == MouseButton.WheelUp ? 1 : -1) * WheelNotches(mb));
+                return;
+            }
+
             if (mb.Pressed && !_rig.IsFlying) _rig.Zoom(Mathf.Pow(mb.ButtonIndex == MouseButton.WheelUp ? 0.87f : 1.15f, WheelNotches(mb)));
             return;
         }
 
         if (mb.Pressed && mb.IsAction(InputBindings.FlyLook))
         {
-            BeginFly(mb.Position);
+            if (_experience == Experience.Places) BeginPlaceLook(mb.Position);
+            else BeginFly(mb.Position);
             return;
         }
 
@@ -847,6 +889,13 @@ public partial class Main : Node3D
             return;
         }
 
+        if (_experience == Experience.Places)
+        {
+            // In a place you stand somewhere: dragging turns your head (no orbit, no pan).
+            if (_pressButton == MouseButton.Left) PlaceLook(mm.Relative, CameraRig.LookSensitivity * 1.4f);
+            return;
+        }
+
         if (_pressButton == MouseButton.Left)
         {
             _rig.Orbit(-mm.Relative.X * CameraRig.OrbitYawSensitivity, -mm.Relative.Y * CameraRig.OrbitPitchSensitivity);
@@ -876,6 +925,10 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
         else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
         else if (key.IsAction(InputBindings.OpenFolder)) ShowFolderDialog();
+        else if (key.IsAction(InputBindings.FlightToggle)) ToggleFlight();
+        else if (key.IsAction(InputBindings.HiddenToggle)) ToggleHiddenVisibility();
+        else if (key.IsAction(InputBindings.GoToPath)) ShowGoToPath();
+        else if (key.IsAction(InputBindings.Locations)) ShowLocations();
     }
 
     /// <summary>Escape peels back one layer at a time: help overlay, then parent directory. Flight is handled in _Input.</summary>
@@ -969,7 +1022,8 @@ public partial class Main : Node3D
             System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw:0.###},\"lookPitch\":{_rig.LookPitch:0.###},\"up\":{up.Y:0.####},") +
             System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeed:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
             System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
-            System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\"}}");
+            System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
+            System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")}}}");
     }
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
@@ -990,6 +1044,8 @@ public partial class Main : Node3D
     private void ReleaseAllInput()
     {
         EndFly();
+        EndPlaceLook();
+        _jumpQueued = false;
         _held.Clear();
         _pressButton = MouseButton.None;
         _dragged = false;
@@ -1006,7 +1062,17 @@ public partial class Main : Node3D
 
         if (blocked)
         {
-            if (_held.Any || _rig.IsFlying || _pressButton != MouseButton.None) ReleaseAllInput();
+            if (_held.Any || _rig.IsFlying || _placeLook || _pressButton != MouseButton.None) ReleaseAllInput();
+            // A walker keeps falling and landing while the keyboard is elsewhere; it just gets no input.
+            if (_experience == Experience.Places) UpdatePlaceLocomotion(dt, blocked: true);
+            return;
+        }
+
+        if (_experience == Experience.Places)
+        {
+            if (_placeLook && !Input.IsMouseButtonPressed(MouseButton.Right)) EndPlaceLook();
+            if (_pressButton != MouseButton.None && !Input.IsMouseButtonPressed(_pressButton)) _pressButton = MouseButton.None;
+            UpdatePlaceLocomotion(dt, blocked: false);
             return;
         }
 
@@ -1014,8 +1080,9 @@ public partial class Main : Node3D
         if (_rig.IsFlying && !Input.IsMouseButtonPressed(MouseButton.Right)) EndFly();
         if (_pressButton != MouseButton.None && !Input.IsMouseButtonPressed(_pressButton)) _pressButton = MouseButton.None;
 
+        // In the maps the arrow keys keep moving sideways (NAV-07); only Places turns with them (WALK-03).
         var input = new GVector3(
-            _held.Axis(InputBindings.Left, InputBindings.Right),
+            Mathf.Clamp(_held.Axis(InputBindings.Left, InputBindings.Right) + _held.Axis(InputBindings.TurnLeft, InputBindings.TurnRight), -1, 1),
             _held.Axis(InputBindings.Down, InputBindings.Up),
             _held.Axis(InputBindings.Back, InputBindings.Forward));
         var fast = _held.IsHeld(InputBindings.Fast);

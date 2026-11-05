@@ -13,6 +13,9 @@ public static class InputBindings
     public const string Forward = "nav_forward", Back = "nav_back", Left = "nav_left", Right = "nav_right";
     public const string Up = "nav_up", Down = "nav_down", Fast = "nav_fast";
 
+    // Walking (WALK-03): the arrow keys turn in Places; in the maps they still move sideways (aliases of A/D).
+    public const string TurnLeft = "nav_turn_left", TurnRight = "nav_turn_right", Jump = "nav_jump";
+
     // Mouse modes.
     public const string FlyLook = "nav_fly_look", Pan = "nav_pan", Orbit = "nav_orbit_select";
 
@@ -26,21 +29,28 @@ public static class InputBindings
     public const string EnterFolder = "cmd_enter_folder", UpPlace = "cmd_up_place", RootPlace = "cmd_root_place";
     public const string MapToggle = "cmd_map_toggle";
 
-    public static readonly string[] MovementActions = [Forward, Back, Left, Right, Up, Down, Fast];
+    // Walking world (WALK-06, VISI-04, LOC-01).
+    public const string FlightToggle = "cmd_flight", HiddenToggle = "cmd_hidden", Locations = "cmd_locations", GoToPath = "cmd_go_to_path";
+
+    public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
 
     /// <summary>Human-readable bindings for Help.</summary>
     public static readonly (string Action, string Keys)[] Describe =
     [
-        (Forward, "W / Up arrow"), (Back, "S / Down arrow"), (Left, "A / Left arrow"), (Right, "D / Right arrow"),
-        (Up, "E"), (Down, "Q"), (Fast, "Shift"),
+        (Forward, "W / Up arrow"), (Back, "S / Down arrow"), (Left, "A"), (Right, "D"),
+        (TurnLeft, "Left arrow (maps: move left)"), (TurnRight, "Right arrow (maps: move right)"),
+        (Up, "E (flight: up)"), (Down, "Q (flight: down)"), (Fast, "Shift"), (Jump, "Space (flight: up)"),
     ];
 
     public static void Register()
     {
         Physical(Forward, Key.W); Logical(Forward, Key.Up);
         Physical(Back, Key.S); Logical(Back, Key.Down);
-        Physical(Left, Key.A); Logical(Left, Key.Left);
-        Physical(Right, Key.D); Logical(Right, Key.Right);
+        Physical(Left, Key.A);
+        Physical(Right, Key.D);
+        Logical(TurnLeft, Key.Left);
+        Logical(TurnRight, Key.Right);
+        Physical(Jump, Key.Space);
         Physical(Up, Key.E);
         Physical(Down, Key.Q);
         Logical(Fast, Key.Shift);
@@ -64,6 +74,10 @@ public static class InputBindings
         Physical(UpPlace, Key.U); Logical(UpPlace, Key.Pageup);
         AddEvent(RootPlace, new InputEventKey { Keycode = Key.Home, CtrlPressed = true });
         Physical(MapToggle, Key.M);
+        Physical(FlightToggle, Key.T);
+        Physical(HiddenToggle, Key.H);
+        AddEvent(GoToPath, new InputEventKey { Keycode = Key.L, CtrlPressed = true });
+        Physical(Locations, Key.L);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

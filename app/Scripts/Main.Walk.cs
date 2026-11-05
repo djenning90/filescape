@@ -1,0 +1,351 @@
+using FileScape.Core.Interaction;
+using FileScape.Core.Places;
+using Godot;
+using GVector3 = Godot.Vector3;
+using NVector2 = System.Numerics.Vector2;
+using NVector3 = System.Numerics.Vector3;
+
+namespace FileScape.App;
+
+/// <summary>How the user moves in Places (WALK-01..09, AD-16).</summary>
+public enum Locomotion
+{
+    /// <summary>On foot (the default): gravity, steps, slopes, jumping, collision.</summary>
+    Walking,
+
+    /// <summary>The explicit flight mode (T): free movement along the view, no collision.</summary>
+    Flying,
+}
+
+/// <summary>
+/// Places locomotion. The Core <see cref="Walker"/> owns walking; this file feeds it input, runs flight (take-off,
+/// free flight, landing), pauses both while the camera glides to a requested pose (Home, Destinations, B), and copies
+/// the eye pose to the camera every frame. Look capture (right mouse held) changes heading and gaze in both modes.
+/// </summary>
+public partial class Main
+{
+    private const float TakeOffRise = 3.5f, FlightDefaultSpeed = 10f, FlightMinClearance = 0.6f;
+
+    private readonly Walker _walker = new();
+    private Locomotion _locomotion = Locomotion.Walking;
+    private bool _placeLook;
+    private bool _jumpQueued;
+    private GVector3 _flyEye, _flyVel;
+    private float _flightSpeed = FlightDefaultSpeed;
+    private float _riseRemaining;
+    private LandingGlide? _landing;
+    private bool _guided;
+    private Locomotion _afterGuide;
+    private int _relocations;
+
+    public Locomotion Locomotion => _locomotion;
+    public Walker Walker => _walker;
+    public bool PlaceLookCaptured => _placeLook;
+    public bool LandingInProgress => _landing != null;
+    public bool GuidedGlide => _guided;
+    public int Relocations => _relocations;
+    public float FlightSpeed => _flightSpeed;
+    public string? LastLandingNote { get; private set; }
+
+    private sealed class LandingGlide
+    {
+        public required GVector3 From, To;
+        public required float Duration;
+        public float T;
+    }
+
+    private PlaceTerrain Terrain => _place?.Terrain ?? PlaceTerrain.Flat;
+
+    // ------------------------------------------------------------------ per frame
+
+    /// <summary>Advances walking or flight and puts the camera at the eye. <paramref name="blocked"/>: no input reaches the scene.</summary>
+    private void UpdatePlaceLocomotion(float dt, bool blocked)
+    {
+        if (_place == null || _transition != null) return;
+        if (_guided)
+        {
+            var anyInput = !blocked && (_held.Any || _jumpQueued);
+            if (!_rig.IsSettled && !anyInput) return;
+            EndGuide();
+        }
+
+        var fwd = blocked ? 0 : _held.Axis(InputBindings.Back, InputBindings.Forward);
+        var strafe = blocked ? 0 : _held.Axis(InputBindings.Left, InputBindings.Right);
+        var turn = blocked ? 0 : _held.Axis(InputBindings.TurnLeft, InputBindings.TurnRight);
+        var run = !blocked && _held.IsHeld(InputBindings.Fast);
+        var jump = !blocked && _jumpQueued;
+        _jumpQueued = false;
+        if (!blocked && (fwd != 0 || strafe != 0 || turn != 0)) _hud.NoteInteraction(flew: false);
+
+        if (_locomotion == Locomotion.Walking)
+        {
+            _walker.Update(Terrain, new WalkInput(fwd, strafe, turn, run, jump), dt);
+            if (_walker.IsLost)
+            {
+                Relocate("You fell out of this place, so you were brought back to its arrival point.");
+                return;
+            }
+
+            _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
+            return;
+        }
+
+        if (_landing is { } l)
+        {
+            l.T += dt;
+            var k = Mathf.Clamp(l.T / l.Duration, 0, 1);
+            var s = k * k * (3 - 2 * k);
+            _rig.SetPose(l.From.Lerp(l.To, s), _walker.Yaw, _walker.LookPitch, PivotAhead);
+            if (k >= 1)
+            {
+                _landing = null;
+                _locomotion = Locomotion.Walking;
+                _walker.TeleportToEye(Terrain, l.To.ToNumerics(), _walker.Yaw, _walker.LookPitch);
+                _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
+                UpdateFlightHud();
+            }
+
+            return;
+        }
+
+        // Free flight: the existing fly controls (WASD along the view, E/Space up, Q down, Shift ×3, wheel speed).
+        _walker.Look(-turn * _walker.Params.TurnRate * dt, 0);
+        var vertical = blocked ? 0 : _held.Axis(InputBindings.Down, InputBindings.Up) + (_held.IsHeld(InputBindings.Jump) ? 1 : 0);
+        var input = new NVector3(strafe, Mathf.Clamp(vertical, -1, 1), fwd);
+        var speed = _flightSpeed * (run ? 3f : 1f);
+        var wanted = Gd(CameraMath.FlyDelta(input, _walker.Yaw, _walker.LookPitch, speed, 1f));
+        _flyVel = _flyVel.Lerp(wanted, 1f - Mathf.Exp(-14f * dt));
+        _flyEye += _flyVel * dt;
+        if (_riseRemaining > 0)
+        {
+            // Take-off is a continuous rise (WALK-06), fast at first and easing out.
+            var dy = Mathf.Min(_riseRemaining, Mathf.Max(0.9f, _riseRemaining * 4.5f) * dt);
+            _flyEye.Y += dy;
+            _riseRemaining -= dy;
+        }
+
+        var ground = Terrain.SupportHeight(new NVector2(_flyEye.X, _flyEye.Z), 0.1f, _flyEye.Y, 0);
+        _flyEye.Y = Mathf.Max(_flyEye.Y, ground + FlightMinClearance);
+        _rig.SetPose(_flyEye, _walker.Yaw, _walker.LookPitch, PivotAhead);
+    }
+
+    // ------------------------------------------------------------------ flight (WALK-06/07)
+
+    /// <summary>T / the Flight button: take off when walking, land when flying.</summary>
+    public void ToggleFlight()
+    {
+        if (_experience != Experience.Places || _place == null || _transition != null) return;
+        if (_guided) EndGuide();
+        if (_locomotion == Locomotion.Walking) TakeOff();
+        else Land();
+    }
+
+    private void TakeOff(float rise = TakeOffRise)
+    {
+        _locomotion = Locomotion.Flying;
+        _landing = null;
+        _flyEye = _rig.CameraPosition;
+        _flyVel = GVector3.Zero;
+        _riseRemaining = rise;
+        _hud.NoteInteraction(flew: true);
+        UpdateFlightHud();
+    }
+
+    /// <summary>
+    /// Returns to walking on a valid surface below (WALK-07). Above a spot that is outside the walkable place (a vista,
+    /// beyond the boundary) or inside a structure, the nearest clear ground nearby is used, else the arrival point —
+    /// and the user is told why.
+    /// </summary>
+    public void Land()
+    {
+        if (_locomotion != Locomotion.Flying || _place == null) return;
+        _riseRemaining = 0;
+        var eye = _rig.CameraPosition;
+        var p = new NVector2(eye.X, eye.Z);
+        var r = _walker.Params.Radius;
+        var spot = FindLandingSpot(p, eye.Y);
+        if (spot is { } s)
+        {
+            var target = new GVector3(s.X, Terrain.SupportHeight(s, r, 1000, 0) + _walker.Params.EyeHeight, s.Y);
+            var moved = new NVector2(s.X - p.X, s.Y - p.Y).Length();
+            LastLandingNote = moved > 0.3f ? $"Landed {moved:0.#} m away: there was no clear ground right below." : null;
+            if (LastLandingNote != null) _hud.Toast(LastLandingNote);
+            _landing = new LandingGlide { From = eye, To = target, Duration = Mathf.Clamp(eye.DistanceTo(target) / 9f, 0.45f, 1.8f) };
+            UpdateFlightHud();
+            return;
+        }
+
+        LastLandingNote = "There is no walkable ground below here (that is a distant view, outside this place), so you are landing at the arrival point.";
+        _hud.Toast(LastLandingNote);
+        _relocations++;
+        _locomotion = Locomotion.Walking;
+        StartGuide(_place.Arrival, Locomotion.Walking);
+        UpdateFlightHud();
+    }
+
+    private NVector2? FindLandingSpot(NVector2 p, float eyeY)
+    {
+        var t = Terrain;
+        var w = _walker.Params;
+        bool Ok(NVector2 q, out float support)
+        {
+            support = t.SupportHeight(q, w.Radius, 1000, 0);
+            return q.Length() < t.BoundaryRadius - w.Radius - 0.2f && support + w.EyeHeight <= eyeY + 0.5f && t.IsClear(q, w.Radius, support, w.BodyHeight);
+        }
+
+        if (Ok(p, out _)) return p;
+        if (p.Length() > t.BoundaryRadius + 1) return null;
+        // Inside a structure or just outside the edge: the nearest clear spot within a few metres.
+        for (var ring = 1; ring <= 12; ring++)
+        {
+            var radius = ring * 0.5f;
+            for (var k = 0; k < 16; k++)
+            {
+                var a = k * Mathf.Tau / 16;
+                var q = p + new NVector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
+                if (Ok(q, out _)) return q;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Back to the arrival point on foot, with a message (lost walkers, failed landings).</summary>
+    private void Relocate(string why)
+    {
+        _relocations++;
+        LastLandingNote = why;
+        _hud.Toast(why);
+        _locomotion = Locomotion.Walking;
+        _landing = null;
+        ArriveAt(_place!.Arrival, snap: true);
+        UpdateFlightHud();
+    }
+
+    private void UpdateFlightHud()
+    {
+        var places = _experience == Experience.Places;
+        var flying = places && _locomotion == Locomotion.Flying;
+        _hud.SetFlightMode(places, flying, _landing != null);
+        if (places) _hud.SetFlyStatus(flying, _flightSpeed, highlight: false, places: true, landing: _landing != null);
+    }
+
+    // ------------------------------------------------------------------ guided glides (Home, Destinations, B, F)
+
+    /// <summary>Eases the camera to a pose; locomotion resumes there (on foot or flying) when it settles or on any input.</summary>
+    private void StartGuide(PlacePose pose, Locomotion after)
+    {
+        _guided = true;
+        _afterGuide = after;
+        _landing = null;
+        _rig.GlideToPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
+    }
+
+    private void StartGuideFrame(Aabb box, float pitch, float? yaw, float padding, Locomotion after)
+    {
+        _guided = true;
+        _afterGuide = after;
+        _landing = null;
+        _rig.Frame(box, pitch: pitch, yaw: yaw, padding: padding);
+    }
+
+    private void EndGuide()
+    {
+        _guided = false;
+        _locomotion = _afterGuide;
+        var eye = _rig.CameraPosition;
+        if (_locomotion == Locomotion.Walking)
+        {
+            _walker.TeleportToEye(Terrain, eye.ToNumerics(), _rig.Yaw, _rig.LookPitch);
+            _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
+        }
+        else
+        {
+            _walker.SetGaze(_rig.Yaw, _rig.LookPitch);
+            _flyEye = eye;
+            _flyVel = GVector3.Zero;
+        }
+
+        UpdateFlightHud();
+    }
+
+    /// <summary>Puts the user at a pose instantly in the current locomotion (arrival after travel, first frame).</summary>
+    private void PlaceUserAt(PlacePose pose)
+    {
+        _guided = false;
+        _landing = null;
+        if (_locomotion == Locomotion.Walking)
+        {
+            _walker.TeleportToEye(Terrain, pose.Eye, pose.Yaw, pose.LookPitch);
+            _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
+        }
+        else
+        {
+            _walker.SetGaze(pose.Yaw, pose.LookPitch);
+            _flyEye = Gd(pose.Eye);
+            _flyVel = GVector3.Zero;
+            _rig.SetPose(_flyEye, pose.Yaw, pose.LookPitch, PivotAhead);
+        }
+    }
+
+    /// <summary>F while walking: turn to look at the selection without leaving the ground.</summary>
+    private void LookAtInPlace(NVector3 target)
+    {
+        var eye = _rig.CameraPosition.ToNumerics();
+        var d = target - eye;
+        var flat = new NVector2(d.X, d.Z).Length();
+        if (flat < 0.01f) return;
+        var yaw = -PlaceTerrain.PlaceAngle(new NVector2(d.X, d.Z));
+        var pitch = Mathf.RadToDeg(Mathf.Atan2(d.Y, flat));
+        StartGuide(new PlacePose(eye, CameraRig.NearestAngle(_rig.Yaw, yaw), Mathf.Clamp(pitch, -60, 60)), Locomotion.Walking);
+    }
+
+    // ------------------------------------------------------------------ look capture (hold right mouse)
+
+    private void BeginPlaceLook(Vector2 mousePosition)
+    {
+        if (ModalOpen || !_windowFocused || _placeLook) return;
+        if (_guided) EndGuide();
+        _flyStartMouse = mousePosition;
+        _placeLook = true;
+        _pressButton = MouseButton.None;
+        Input.MouseMode = Input.MouseModeEnum.Captured;
+    }
+
+    private void EndPlaceLook()
+    {
+        if (!_placeLook) return;
+        _placeLook = false;
+        if (Input.MouseMode == Input.MouseModeEnum.Captured)
+        {
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+            if (_flyStartMouse != Vector2.Zero) Input.WarpMouse(_flyStartMouse);
+        }
+    }
+
+    private void PlaceLook(Vector2 relativePixels, float sensitivity = CameraRig.LookSensitivity)
+    {
+        if (_transition != null) return;
+        if (_guided) EndGuide();
+        _walker.Look(-relativePixels.X * sensitivity, -relativePixels.Y * sensitivity);
+    }
+
+    private void StepPlaceFlightSpeed(float notches)
+    {
+        _flightSpeed = CameraMath.StepFlySpeed(_flightSpeed, notches);
+        _hud.SetFlyStatus(true, _flightSpeed, highlight: true, places: true, landing: false);
+    }
+}
+
+public partial class Main
+{
+    /// <summary>[direct] Puts the walker at a pose (probes use it to set up a case, never to test a control).</summary>
+    public void ProbePlaceUser(PlacePose pose) => PlaceUserAt(pose);
+
+    /// <summary>[direct] Points the gaze (heading, look pitch) without moving.</summary>
+    public void ProbeSetGaze(float yaw, float lookPitch)
+    {
+        _walker.SetGaze(yaw, lookPitch);
+        if (_locomotion == Locomotion.Walking) _rig.SetPose(Gd(_walker.Eye), yaw, lookPitch, PivotAhead);
+    }
+}

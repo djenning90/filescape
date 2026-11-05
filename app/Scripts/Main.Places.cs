@@ -137,6 +137,11 @@ public partial class Main
         _transition = null;
         _hud.SetTransition(0, null);
 
+        EndPlaceLook();
+        _locomotion = Locomotion.Walking;
+        _landing = null;
+        _guided = false;
+        UpdateFlightHud();
         if (places)
         {
             PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
@@ -279,10 +284,11 @@ public partial class Main
         if (_selection.Selected < 0) UpdateInspector();
     }
 
+    /// <summary>Puts the user at a pose: instantly (travel, first frame), or by a glide that ends on foot (Home, WALK-08).</summary>
     private void ArriveAt(PlacePose pose, bool snap)
     {
-        if (snap) _rig.SetPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
-        else _rig.GlideToPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
+        if (snap) PlaceUserAt(pose);
+        else StartGuide(pose, Locomotion.Walking);
         if (_place != null) _threshold.Reset(_place, pose.Eye, _now);
     }
 
@@ -354,13 +360,16 @@ public partial class Main
         if (_tree == null || _place == null || _transition != null) return;
         _selection.Select(id);
         var pose = _place.ParentGate?.TargetId == id
-            ? PlaceGeometry.FacingPose(_place.ParentGate.Position - _place.ParentGate.Outward * _placeParams.ApproachStandOff, 180, _placeParams.EyeHeight, -3)
+            ? _place.Standing(_place.ParentGate.Position - _place.ParentGate.Outward * _placeParams.ApproachStandOff, 180, -3, _placeParams)
             : _place.ApproachPose(id, _placeParams);
-        _rig.GlideToPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
+        StartGuide(pose, _locomotion);
     }
 
     private void OnPlaceChanged(PlaceChange change)
     {
+        _landing = null;
+        _guided = false;
+        _riseRemaining = 0;
         if (_tree == null) return;
         if (_experience != Experience.Places || _place == null)
         {
@@ -586,16 +595,23 @@ public partial class Main
         }
 
         var c = b.Center;
+        if (_locomotion == Locomotion.Walking)
+        {
+            LookAtInPlace(c); // on foot: turn to look at it
+            return;
+        }
+
         var half = NVector3.Max(b.Size * 0.5f, new NVector3(3.5f, 0, 3.5f));
-        _rig.Frame(new Aabb(Gd(c - half), Gd(half * 2)), pitch: 22, padding: 1.3f);
+        StartGuideFrame(new Aabb(Gd(c - half), Gd(half * 2)), 22, null, 1.3f, Locomotion.Flying);
     }
 
     /// <summary>B in Places: rise above the place to see its neighbourhood (PLACE-10).</summary>
     private void Ascend()
     {
-        if (_place == null) return;
+        if (_place == null || _transition != null) return;
+        if (_locomotion == Locomotion.Walking) TakeOff(rise: 0); // ascending is flight (WALK-06)
         var b = _place.Bounds;
-        _rig.Frame(new Aabb(Gd(b.Min), Gd(b.Size)), pitch: 58, yaw: _rig.Yaw, padding: 0.9f);
+        StartGuideFrame(new Aabb(Gd(b.Min), Gd(b.Size)), 58, _rig.Yaw, 0.9f, Locomotion.Flying);
     }
 
     private static GVector3 Gd(NVector3 v) => new(v.X, v.Y, v.Z);

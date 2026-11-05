@@ -23,6 +23,7 @@ public partial class Hud : CanvasLayer
     public event Action? FlyToRequested;
     public event Action? CopyPathRequested;
     public event Action? HelpToggled;
+    public event Action? FlightToggled;
 
     private Control _root = null!;
     private Label _sourceBadge = null!;
@@ -32,7 +33,7 @@ public partial class Hud : CanvasLayer
     private Button _cancel = null!;
     private Button _quality = null!;
     private readonly Button[] _visButtons = new Button[3];
-    private Button _homeButton = null!, _overviewButton = null!;
+    private Button _homeButton = null!, _overviewButton = null!, _flightButton = null!;
     private PanelContainer _inspector = null!;
     private RichTextLabel _inspectorBody = null!;
     private Label _inspectorTitle = null!;
@@ -181,6 +182,9 @@ public partial class Hud : CanvasLayer
         row.AddChild(_homeButton);
         _overviewButton = MakeButton("Overview", () => OverviewRequested?.Invoke(), "Bird's-eye view of the whole tree (B).");
         row.AddChild(_overviewButton);
+        _flightButton = MakeButton("✈ Flight (T)", () => FlightToggled?.Invoke(), "Equip flight: rise out of the place and fly freely (T). Press again to land safely on foot.");
+        _flightButton.ToggleMode = true;
+        row.AddChild(_flightButton);
         _quality = MakeButton("Quality: High", () => QualityToggled?.Invoke(), "Toggle effects (F2). Low disables volumetric fog, SSR and SSAO.");
         row.AddChild(_quality);
         var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
@@ -284,15 +288,20 @@ public partial class Hud : CanvasLayer
             FitContent = true,
             CustomMinimumSize = new Vector2(560, 0),
             Text =
-                "[b]Places[/b] (the default view: you are [i]inside[/i] a folder)\n" +
+                "[b]Places[/b] (the default view: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as glass towers, grouped by type. Each child folder is a [b]gate[/b] with its name;\n" +
                 "    beyond it you see a preview of that place. [b]Walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back.\n" +
-                "[b]G[/b]  go into the selected folder      [b]U[/b] / [b]PgUp[/b]  up      [b]Backspace[/b]  previous place\n" +
-                "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the chosen root\n" +
-                "[b]B[/b]  ascend above this place      [b]M[/b]  whole-filesystem map (and back)      [b]Tab[/b]  next view\n" +
-                "Places are separate spaces linked by gates; distances between them are symbolic. The maps show the real whole tree.\n" +
-                "Selecting something never moves you: [b]click[/b] inspects, travel is always deliberate.\n\n" +
-                "[b]Moving around[/b]\n" +
+                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways\n" +
+                "    hold [b]right mouse[/b] to look and steer    [b]Space[/b] jump    hold [b]Shift[/b] run    (the arrow keys used to step sideways; A / D still do)\n" +
+                "    Stairs and ramps are walked; the [b]overlook[/b] (ramp, or jump the blocks) shows this folder's summary.\n" +
+                "[b]Flight[/b]   [b]T[/b] or the ✈ button: rise and fly (look with right mouse, W A S D along the view, [b]E[/b]/[b]Space[/b] up, [b]Q[/b] down,\n" +
+                "    wheel = speed); [b]T[/b] again lands you safely on foot.   [b]B[/b] rises above the place in flight.\n" +
+                "[b]G[/b]  go into the selected folder or link      [b]U[/b] / [b]PgUp[/b]  up to the parent      [b]Backspace[/b]  back (also back through a link)\n" +
+                "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the arrival root      [b]M[/b]  map      [b]Tab[/b]  next view\n" +
+                "[b]L[/b]  locations (drives, WSL)      [b]Ctrl+L[/b]  go to a typed or pasted path      [b]H[/b]  show / hide hidden and system items\n" +
+                "Places are separate spaces linked by gates; distances between them are symbolic. The maps show the explored world.\n" +
+                "Selecting something never moves you: [b]click[/b] inspects, travel is always deliberate. Jumping never opens or runs anything.\n\n" +
+                "[b]Moving around in the maps (Classic FSN, District)[/b]\n" +
                 "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +
                 "[b]Hold right mouse[/b]  fly: look around with the mouse while W A S D / arrows move you\n" +
                 "    where you look; the [b]wheel[/b] changes flight speed; release to stop (or [b]Esc[/b])\n" +
@@ -520,12 +529,25 @@ public partial class Hud : CanvasLayer
         if (_movedOnce && _flewOnce) DismissHint();
     }
 
-    public void SetFlyStatus(bool flying, float speed, bool highlight)
+    public void SetFlyStatus(bool flying, float speed, bool highlight, bool places = false, bool landing = false)
     {
         _flyPanel.Visible = flying;
-        _flyLabel.Text = $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
+        _flyLabel.Text = places
+            ? landing ? "LANDING…" : $"✈ FLYING  ·  {speed:0.#} m/s (wheel, Shift ×3)  ·  E / Space up · Q down  ·  T to land on foot"
+            : $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
         if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + 1.2;
     }
+
+    /// <summary>The Flight toggle: shown in Places only, pressed while flying.</summary>
+    public void SetFlightMode(bool places, bool flying, bool landing)
+    {
+        _flightButton.Visible = places;
+        _flightButton.SetPressedNoSignal(flying);
+        _flightButton.Text = flying ? (landing ? "✈ Landing…" : "✈ Land (T)") : "✈ Flight (T)";
+    }
+
+    public bool FlightButtonPressed => _flightButton.ButtonPressed;
+    public Rect2 FlightButtonRect => _flightButton.GetGlobalRect();
 
     public void Toast(string text, Color? color = null, double seconds = 4.5)
     {

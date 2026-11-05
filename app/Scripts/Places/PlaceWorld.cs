@@ -146,7 +146,7 @@ public partial class PlaceWorld : Node3D
         var spires = new InstanceBatch();
         var signIndex = 0;
 
-        Label3D Sign(string text, Vector3 at, float pixel, Color color, float range, int priority, bool billboard = true)
+        Label3D Sign(string text, Vector3 at, float pixel, Color color, float range, int priority, bool billboard = true, float? facingYaw = null)
         {
             if (signIndex >= _signs.Count)
             {
@@ -172,7 +172,8 @@ public partial class PlaceWorld : Node3D
             l.Position = at;
             l.PixelSize = pixel;
             l.Modulate = color;
-            l.Billboard = billboard ? BaseMaterial3D.BillboardModeEnum.FixedY : BaseMaterial3D.BillboardModeEnum.Disabled;
+            l.Billboard = billboard && facingYaw == null ? BaseMaterial3D.BillboardModeEnum.FixedY : BaseMaterial3D.BillboardModeEnum.Disabled;
+            l.Rotation = new Vector3(0, facingYaw ?? 0, 0);
             l.Visible = true;
             _managed.Add((l, range, priority));
             return l;
@@ -273,10 +274,35 @@ public partial class PlaceWorld : Node3D
                 plaque + new Vector3(0, 1.3f, 1.5f), 0.0055f, new Color(0.8f, 0.86f, 1f), 1e9f, 0);
         }
 
-        // ---- the arrival terrace: where you stand on arrival, just inside the entrance
-        var arrival = Gd(c.Arrival.Eye);
-        var terraceH = Mathf.Max(0.2f, arrival.Y - 2.6f);
-        gates.Add(new Vector3(7f, 0, 0), new Vector3(0, terraceH, 0), new Vector3(0, 0, 5f), new Vector3(arrival.X, terraceH / 2, arrival.Z + 0.5f), accent * 0.6f, new Color(7f, terraceH, 5f, 0));
+        // ---- walkable terrain (AD-16): the arrival terrace and its stairs, the overlook with its ramp, rails and jump
+        // blocks. Calm accent colours only: decoration must never look like a state (denied, pending, failed).
+        foreach (var b in c.Terrain.Boxes)
+        {
+            var tint = b.Kind switch
+            {
+                TerrainKind.Platform => accent * 0.6f,
+                TerrainKind.Step => accent * 0.5f,
+                TerrainKind.JumpBlock => accent.Lightened(0.35f) * 0.75f,
+                TerrainKind.Rail => accent * 0.9f,
+                _ => default,
+            };
+            if (tint == default) continue;
+            AddTerrainBox(gates, b, tint);
+        }
+
+        foreach (var r in c.Terrain.Ramps)
+        {
+            AddRamp(gates, r, accent * 0.55f);
+        }
+
+        // The overlook's panel: the place's summary, facing the plaza (JUMP-02).
+        var ov = c.Overlook;
+        var od = Gd(PlaceGeometry.Direction(ov.AngleDeg));
+        var panelAt = Gd(ov.Top) + od * (ov.HalfSize - 0.35f) + new Vector3(0, 1.75f, 0);
+        var faceYaw = Mathf.Atan2(-od.X, -od.Z);
+        Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, 0.55f, 0), 0.006f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
+        Sign(PlaceText.OverlookText(tree, folder, c), panelAt, 0.0042f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
+        Sign("▲ overlook · ramp", Gd(new System.Numerics.Vector3(ov.RampFoot.X, 0, ov.RampFoot.Y)) + new Vector3(0, 1.1f, 0), 0.004f, accent.Lightened(0.4f), 22, 2);
 
         // ---- the way back (PLACE-07)
         if (c.ParentGate is { } pg)
@@ -303,7 +329,7 @@ public partial class PlaceWorld : Node3D
 
         foreach (var v in c.ParentVista is { } pv ? c.Vistas.Append(pv) : c.Vistas)
         {
-            BuildVista(tree, v, towers, beacons, spires, streets, Sign, isParent: v == c.ParentVista);
+            BuildVista(tree, v, towers, beacons, spires, streets, (t, a, px, col, rng, pri, bb) => Sign(t, a, px, col, rng, pri, bb), isParent: v == c.ParentVista);
         }
 
         Emit("towers", towers, _box, _tower, true);
@@ -314,6 +340,33 @@ public partial class PlaceWorld : Node3D
         Emit("spires", spires, _spire, _vistaSpire, false);
         InstanceCount = towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count;
         for (var i = signIndex; i < _signs.Count; i++) _signs[i].Visible = false;
+    }
+
+    /// <summary>A terrain box (oriented like gates: width along the tangent, depth along the outward direction).</summary>
+    private static void AddTerrainBox(InstanceBatch batch, TerrainBox b, Color color)
+    {
+        var a = Mathf.DegToRad(b.AngleDeg);
+        var v = new Vector3(Mathf.Sin(a), 0, -Mathf.Cos(a));
+        var u = new Vector3(-v.Z, 0, v.X);
+        var w = b.HalfExtents.X * 2;
+        var d = b.HalfExtents.Y * 2;
+        var h = b.Top - b.Bottom;
+        batch.Add(u * w, Vector3.Up * h, v * d, new Vector3(b.Center.X, b.Bottom + h / 2, b.Center.Y), color, new Color(w, h, d, 0));
+    }
+
+    /// <summary>A ramp as a sloped slab with lit edges.</summary>
+    private static void AddRamp(InstanceBatch batch, TerrainRamp r, Color color)
+    {
+        var start = new Vector3(r.Start.X, r.StartHeight, r.Start.Y);
+        var end = new Vector3(r.End.X, r.EndHeight, r.End.Y);
+        var along = end - start;
+        var flat = new Vector3(along.X, 0, along.Z).Normalized();
+        var side = flat.Cross(Vector3.Up).Normalized();
+        var normal = side.Cross(along).Normalized();
+        if (normal.Y < 0) normal = -normal;
+        const float thick = 0.18f;
+        var centre = (start + end) / 2 - normal * (thick / 2);
+        batch.Add(side * (r.HalfWidth * 2), normal * thick, along, centre, color, new Color(r.HalfWidth * 2, thick, along.Length(), 0));
     }
 
     /// <summary>Vista names repeat the gate names, so on the plaza they stay hidden; from above or beyond the gates they show.</summary>
@@ -484,6 +537,17 @@ public static class PlaceText
         if (g.ChainLength >= 3) text += $"\nchain of {g.ChainLength} single folders";
         if (state == ListingState.Partial) text += " · partly listed";
         return text;
+    }
+
+    /// <summary>The overlook panel (JUMP-02): what this place holds and how it is laid out, for orientation.</summary>
+    public static string OverlookText(FsTree tree, FsNode folder, PlaceComposition c)
+    {
+        var lines = new List<string> { Summary(tree, folder) };
+        var top = c.Quarters.OrderByDescending(q => q.Count).Take(3).Select(q => $"{CategoryName(q.Category)} {q.Count:N0}");
+        if (c.Quarters.Count > 0) lines.Add("Files by type: " + string.Join(" · ", top) + (c.Quarters.Count > 3 ? " · …" : ""));
+        lines.Add(c.Gates.Count == 0 ? "No folders lead on from here" : $"{c.Gates.Count:N0} gate{(c.Gates.Count == 1 ? "" : "s")} ahead, to the north" + (c.IsWide ? $", on {c.Tiers.Count} tiers A→Z" : ""));
+        if (c.ParentGate != null) lines.Add($"▲ {tree.DisplayName(c.ParentGate.TargetId)} is behind the arrival terrace");
+        return string.Join("\n", lines);
     }
 
     public static string CategoryName(FileCategory c) => c switch

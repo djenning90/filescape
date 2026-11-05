@@ -9,7 +9,7 @@ namespace FileScape.App.Ui;
 /// </summary>
 public partial class Hud
 {
-    public const string PlacesHintText = "WASD / arrows walk  ·  Hold right mouse to look  ·  Walk through a gate to enter  ·  U up  ·  Home arrival  ·  M map  ·  F1 help";
+    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T flight · walk through a gate to enter · F1 help";
 
     public event Action<int>? BreadcrumbRequested;
     public event Action? UpRequested;
