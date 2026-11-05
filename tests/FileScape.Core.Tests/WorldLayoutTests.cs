@@ -52,9 +52,9 @@ public class WorldLayoutTests
             // Ahead: north of the place in its own frame (local z < 0)...
             foreach (var k in kids) frame.ToLocal(k.Center).Y.Should().BeLessThan(0, $"{t[k.Id].Name} lies ahead of {t[parent.Id].Name}");
             // ...in natural order from west (left) to east (right), like the gates (ORD-01).
-            // (an angular order: a wide folder's children are in rows, so a later row's x is wider for the same angle)
-            var byName = kids.OrderBy(k => t[k.Id].Name, Interaction.NaturalNameOrder.Instance).Select(k => { var l = frame.ToLocal(k.Center); return MathF.Round(MathF.Atan2(l.X, -l.Y), 3); }).ToList();
-            byName.Should().BeInAscendingOrder($"children of {t[parent.Id].Name} run west → east in name order");
+            // (an angular order; a wide place's consecutive empty folders share a wedge, near to far)
+            var angles = kids.OrderBy(k => t[k.Id].Name, Interaction.NaturalNameOrder.Instance).Select(k => { var l = frame.ToLocal(k.Center); return MathF.Round(MathF.Atan2(l.X, -l.Y), 3); }).ToList();
+            angles.Should().BeInAscendingOrder($"children of {t[parent.Id].Name} run west → east in name order");
             // The parent is straight behind (the ▲ gate is south in every place).
             var back = frame.ToLocal(m.Islands[parent.ParentId].Center);
             back.Y.Should().BeGreaterThan(0);
@@ -77,20 +77,56 @@ public class WorldLayoutTests
     }
 
     [Fact]
-    public void Discovering_folders_deeper_down_does_not_move_their_neighbours()
+    public void Discovering_folders_deeper_down_keeps_the_world_recognisable()
     {
+        // Stability (AERIAL-02), stated honestly: places are packed by the size of what lies below them (compact, so a
+        // big subtree is not pushed kilometres out), and sizes are rounded in 1.4x steps. A discovery that does not
+        // change a rounded size moves nothing else; one that does may slide its siblings along their arc, but every
+        // place keeps its parent, its side of the world and its order among its siblings.
         var a = Sample().Build();
         var b = Sample(deeper: true).Build();
-        var ma = ByPath(a, WorldLayout.Compute(a));
-        var mb = ByPath(b, WorldLayout.Compute(b));
-        // Two new folders under Photos/2024: Photos' own subtree may re-arrange; every other place stays put.
+        var la = WorldLayout.Compute(a);
+        var lb = WorldLayout.Compute(b);
+        var ma = ByPath(a, la);
+        var mb = ByPath(b, lb);
+        var moved = new List<string>();
         foreach (var (path, island) in ma)
         {
-            if (path.Contains("Photos", StringComparison.Ordinal)) continue;
-            Vector2.Distance(mb[path].Center, island.Center).Should().BeLessThan(0.01f, $"{path} keeps its place");
+            var after = mb[path];
+            if (Vector2.Distance(after.Center, island.Center) > 0.01f) moved.Add($"{path} {Vector2.Distance(after.Center, island.Center):0} m");
+            if (island.ParentId < 0) continue;
+            // Same side: the direction from its parent turns by less than 45 degrees.
+            var da = island.NorthDeg;
+            var db = after.NorthDeg;
+            MathF.Abs(((db - da + 540) % 360) - 180).Should().BeLessThan(45f, $"{path} stays on its side of its parent");
+        }
+
+        // A place whose parent's subtree did not change keeps its place in its parent's frame: a discovery re-arranges
+        // only the children of the discovered folder's ancestors (here root, Photos and 2024).
+        var changed = new HashSet<string> { "root", "Photos", "2024" };
+        foreach (var path in ma.Keys.Where(k => ma[k].ParentId >= 0 && !changed.Contains(a[ma[k].ParentId].Name)))
+        {
+            var pa = la.FrameOf(ma[path].ParentId).ToLocal(ma[path].Center);
+            var pb = lb.FrameOf(mb[path].ParentId).ToLocal(mb[path].Center);
+            Vector2.Distance(pa, pb).Should().BeLessThan(0.01f, $"{path} keeps its place relative to its parent");
         }
 
         mb.Keys.Count(k => k.EndsWith("raw", StringComparison.Ordinal) || k.EndsWith("edited", StringComparison.Ordinal)).Should().Be(2);
+    }
+
+    [Fact]
+    public void The_world_stays_compact_a_chain_and_a_wide_folder_within_a_few_kilometres()
+    {
+        // Compactness (AERIAL-02): flying between neighbours takes seconds. The farthest child of any place is within
+        // 1.2 km of it, and the whole sample world within 4 km of its centre.
+        var t = Sample(deeper: true).Build();
+        var m = WorldLayout.Compute(t);
+        foreach (var i in m.Islands.Values.Where(i => i.ParentId >= 0))
+        {
+            Vector2.Distance(i.Center, m.Islands[i.ParentId].Center).Should().BeLessThan(1200f, $"{t.FullPath(i.Id)} is near its parent");
+        }
+
+        m.Islands.Values.Max(i => i.Center.Length()).Should().BeLessThan(4000f);
     }
 
     [Fact]
