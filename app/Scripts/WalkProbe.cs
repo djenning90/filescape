@@ -539,8 +539,14 @@ public partial class WalkProbe : ProbeBase
             await Key(Godot.Key.T);
             await WaitGuide();
             await Seconds(0.3);
-            Check(App.Relocations == reloc + 1 && App.Locomotion == Locomotion.Walking && (App.LastLandingNote ?? "").Contains("arrival", StringComparison.Ordinal) && MathF.Abs(App.Rig.CameraPosition.DistanceTo(ToGd(Place.Arrival.Eye))) < 0.2f,
-                $"landing above a vista guides you to the arrival point and says why: {App.LastLandingNote}");
+            // Since the aerial world (AERIAL-03/FLY-05): over open space you may instead land in the nearest place (it says so).
+            await Until(() => !App.InTransition && !App.GuidedGlide && !App.LandingInProgress && App.Locomotion == Locomotion.Walking, 10);
+            await Seconds(0.3);
+            var atArrival = App.Relocations == reloc + 1 && (App.LastLandingNote ?? "").Contains("arrival", StringComparison.Ordinal) && MathF.Abs(App.Rig.CameraPosition.DistanceTo(ToGd(Place.Arrival.Eye))) < 0.2f;
+            var inNearest = (App.LastLandingNote ?? "").StartsWith("Landing in", StringComparison.Ordinal) && W.Grounded;
+            Check(App.Locomotion == Locomotion.Walking && (atArrival || inNearest),
+                $"landing above a vista lands you safely and says where: {App.LastLandingNote}");
+            if (inNearest) { await Key(Godot.Key.Backspace); await WaitPlace(); }
         }
 
         // ---- 18. Modal UI and focus (WALK-09)

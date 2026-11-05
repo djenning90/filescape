@@ -39,6 +39,7 @@ function Client-Click($h, [int]$x, [int]$y) {
 }
 $script:Vk['Ctrl'] = 0x11; $script:Vk['Space'] = 0x20; $script:Vk['T'] = 0x54; $script:Vk['H'] = 0x48; $script:Vk['L'] = 0x4C
 $script:Vk['Esc'] = 0x1B; $script:Vk['G'] = 0x47; $script:Vk['Backspace'] = 0x08; $script:Vk['U'] = 0x55; $script:Vk['F4'] = 0x73
+$script:Vk['J'] = 0x4A; $script:Vk['K'] = 0x4B; $script:Vk['C'] = 0x43; $script:Vk['R'] = 0x52
 $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
 $scaleArg = '--ui-scale=' + $UiScale.ToString([System.Globalization.CultureInfo]::InvariantCulture)
@@ -167,11 +168,15 @@ Check (-not (State).locationsOpen) "Esc closes Locations"
 
 # Through a junction with real keys: select it on the Destinations list, G, then Backspace back through it.
 Key-Down 'Ctrl'; Key-Down 'Home'; Start-Sleep -Milliseconds 80; Key-Up 'Home'; Key-Up 'Ctrl'; Wait-Settled 1200
-for ($row = 0; $row -lt 12; $row++) {
-  Client-Click $w 90 (239 + 23 * $row); Start-Sleep -Milliseconds 700
-  if ((State).selectedName -eq 'to-shared-library') { break }
-}
-Check ((State).selectedName -eq 'to-shared-library') "clicked the to-shared-library row (selected=$((State).selectedName))"
+# Destinations is an on-demand drawer (VIEW-03): J opens it with its filter focused; type "shared" with real keys, then
+# click the first row (its centre comes from the state file) and close the drawer with Esc.
+Hold-Key 'J' 80; Start-Sleep -Milliseconds 400
+foreach ($k in 'S', 'H', 'A', 'R', 'E', 'D') { Hold-Key $k 40; Start-Sleep -Milliseconds 60 }
+Start-Sleep -Milliseconds 400
+$s = State
+Client-Click $w $s.destRow0[0] $s.destRow0[1]; Start-Sleep -Milliseconds 900
+Hold-Key 'Esc' 80; Start-Sleep -Milliseconds 400
+Check ((State).selectedName -eq 'to-shared-library' -and -not (State).destinationsOpen) "typed 'shared' in Destinations and clicked the to-shared-library row (selected=$((State).selectedName))"
 Center-Cursor $w
 Hold-Key 'G' 80; Wait-Settled 1500
 $s = State
