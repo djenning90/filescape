@@ -66,6 +66,8 @@ public static class WalkFixture
         var unicode = Dir(m, root, "Café Notes – 東京");
         File(m, unicode, "résumé.txt", 3_100);
         Dir(m, root, "empty-room");
+        var longName = Dir(m, root, "a folder with a deliberately long descriptive name for label testing 2026");
+        File(m, longName, "note.txt", 400);
         var dot = Dir(m, root, ".config");
         File(m, dot, "settings.json", 700);
         var hidden = Dir(m, root, "hidden-cache");

@@ -300,7 +300,7 @@ public partial class Main
         Perf.MarkRelayout(LastComposeMs + LastPlaceBuildMs);
         if (rebuildOnly) _threshold.Follow(_place, _rig.CameraPosition.ToNumerics());
         else _threshold.Reset(_place, _rig.CameraPosition.ToNumerics(), _now);
-        _placeWorld.UpdateSigns(_rig.CameraPosition);
+        _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
         UpdatePlaceHud();
         UpdateInspector(); // listing states change under the selection too (found: a drive stayed "not listed yet" after failing)
     }
@@ -572,7 +572,7 @@ public partial class Main
         if (_now - _lastSignUpdate > 0.2)
         {
             _lastSignUpdate = _now; // sorting every sign by distance each frame would be wasteful in wide folders
-            _placeWorld.UpdateSigns(_rig.CameraPosition);
+            _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
         }
 
         PlaceBox(_selectionBox, _selection.Selected, 1f);

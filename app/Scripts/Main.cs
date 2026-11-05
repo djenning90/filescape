@@ -724,7 +724,7 @@ public partial class Main : Node3D
             switch (@event)
             {
                 case InputEventMouseMotion motion:
-                    PlaceLook(motion.Relative);
+                    PlaceLook(motion.ScreenRelative); // physical pixels: look speed must not depend on the UI scale
                     GetViewport().SetInputAsHandled();
                     break;
                 case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when _locomotion == Locomotion.Flying:
@@ -750,7 +750,7 @@ public partial class Main : Node3D
         switch (@event)
         {
             case InputEventMouseMotion motion:
-                if (_transition == null) _rig.Look(motion.Relative);
+                if (_transition == null) _rig.Look(motion.ScreenRelative);
                 GetViewport().SetInputAsHandled();
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
@@ -886,17 +886,17 @@ public partial class Main : Node3D
         if (_experience == Experience.Places)
         {
             // In a place you stand somewhere: dragging turns your head (no orbit, no pan).
-            if (_pressButton == MouseButton.Left) PlaceLook(mm.Relative, CameraRig.LookSensitivity * 1.4f);
+            if (_pressButton == MouseButton.Left) PlaceLook(mm.ScreenRelative, CameraRig.LookSensitivity * 1.4f);
             return;
         }
 
         if (_pressButton == MouseButton.Left)
         {
-            _rig.Orbit(-mm.Relative.X * CameraRig.OrbitYawSensitivity, -mm.Relative.Y * CameraRig.OrbitPitchSensitivity);
+            _rig.Orbit(-mm.ScreenRelative.X * CameraRig.OrbitYawSensitivity, -mm.ScreenRelative.Y * CameraRig.OrbitPitchSensitivity);
         }
         else if (_pressButton == MouseButton.Middle)
         {
-            _rig.PanPixels(mm.Relative, GetViewport().GetVisibleRect().Size.Y);
+            _rig.PanPixels(mm.Relative, GetViewport().GetVisibleRect().Size.Y); // viewport units: the content follows the cursor
         }
     }
 

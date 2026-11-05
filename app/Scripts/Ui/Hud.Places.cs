@@ -20,6 +20,7 @@ public partial class Hud
 
     private PanelContainer _placePanel = null!;
     private HBoxContainer _crumbs = null!;
+    private ScrollContainer _crumbScroll = null!;
     private Label _placeSummary = null!;
     private Button _upButton = null!, _rootButton = null!;
     private PanelContainer _destPanel = null!;
@@ -51,9 +52,13 @@ public partial class Hud
         var here = new Label { Text = "You are in ", VerticalAlignment = VerticalAlignment.Center };
         here.AddThemeColorOverride("font_color", new Color(0.65f, 0.75f, 0.9f));
         row.AddChild(here);
-        _crumbs = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, ClipContents = true };
+        // The breadcrumb scrolls (without a bar) rather than widening the panel, so the place bar never runs into the
+        // inspector at higher UI scales; it is kept scrolled to its end, the current folder.
+        _crumbScroll = new ScrollContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.ShowNever, VerticalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        row.AddChild(_crumbScroll);
+        _crumbs = new HBoxContainer();
         _crumbs.AddThemeConstantOverride("separation", 0);
-        row.AddChild(_crumbs);
+        _crumbScroll.AddChild(_crumbs);
         _upButton = MakeButton("▲ Up (U)", () => UpRequested?.Invoke(), "Go up to the parent folder (U or PgUp), arriving in front of the gate you came from.");
         _rootButton = MakeButton("⌂ Root", () => RootRequested?.Invoke(), "Back to the folder you chose to explore (Ctrl+Home).");
         row.AddChild(_upButton);

@@ -194,7 +194,8 @@ public partial class Hud : CanvasLayer
 
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _sourcePanel = new PanelContainer();
-        _sourceBadge = new Label { Text = "No data", VerticalAlignment = VerticalAlignment.Center };
+        // The badge may be cut short (full text in its tooltip) so the top bar never grows past the window at 125 % UI scale.
+        _sourceBadge = new Label { Text = "No data", VerticalAlignment = VerticalAlignment.Center, ClipText = true, CustomMinimumSize = new Vector2(90, 0), TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         _sourceBadge.AddThemeFontSizeOverride("font_size", 14);
         _sourcePanel.AddChild(_sourceBadge);
         row.AddChild(_sourcePanel);
@@ -364,17 +365,32 @@ public partial class Hud : CanvasLayer
             _toastPanel.Visible = false;
         }
 
-        // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it (VISI-01).
+        // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it, and
+        // Destinations stops above the legend; the hint sits between the legend and the inspector (VISI-01). All in
+        // viewport units, so it holds at any UI scale (checked at 1.0 and 1.25).
         if (_placePanel.Visible)
         {
+            _crumbScroll.ScrollHorizontal = 1 << 30; // clamped to the end: the current folder stays visible
             var bottom = _placePanel.Position.Y + _placePanel.Size.Y;
             _destPanel.OffsetTop = bottom + 8;
-            _destPanel.OffsetBottom = _destPanel.OffsetTop + 280;
+            var legendTop = _legendPanel.Visible ? _legendPanel.Position.Y : GetViewport().GetVisibleRect().Size.Y;
+            _destPanel.OffsetBottom = Mathf.Max(_destPanel.OffsetTop + 120, Mathf.Min(_destPanel.OffsetTop + 280, legendTop - 8));
             _flyPanel.OffsetTop = bottom + 8;
             _ascentPanel.OffsetTop = bottom + 52;
             _notePanel.OffsetTop = bottom + 96;
             _problemPanel.OffsetTop = bottom + 8;
         }
+
+        if (_hintPanel.Visible)
+        {
+            var vp = GetViewport().GetVisibleRect().Size;
+            var left = _legendPanel.Visible ? _legendPanel.Position.X + _legendPanel.Size.X + 10 : 10;
+            var right = _inspector.Visible ? _inspector.Position.X - 10 : vp.X - 10;
+            var room = Mathf.Max(200, right - left);
+            _hintLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _hintLabel.CustomMinimumSize = new Vector2(Mathf.Min(room - 24, _hintLabel.GetThemeFont("font").GetStringSize(_hintLabel.Text, HorizontalAlignment.Left, -1, 14).X + 4), 0);
+            _hintPanel.Size = _hintPanel.GetCombinedMinimumSize();
+            _hintPanel.Position = new Vector2(left + (room - _hintPanel.Size.X) / 2, vp.Y - _hintPanel.Size.Y - 14);        }
     }
 
     public void SetSource(string text, bool live, string tooltip)

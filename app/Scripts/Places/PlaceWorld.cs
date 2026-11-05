@@ -128,6 +128,7 @@ public partial class PlaceWorld : Node3D
         foreach (var n in _transient) n.QueueFree();
         _transient.Clear();
         _nearHide.Clear();
+        _plaqueName = _plaqueSummary = null;
         foreach (var s in _signs) s.Visible = false;
         _managed.Clear();
         GateSigns.Clear();
@@ -196,10 +197,12 @@ public partial class PlaceWorld : Node3D
         // The folder's name is a plaque at eye level in front of the landmark, facing the way you arrive.
         var plaque = new Vector3(0, 0, c.Landmark.Radius * 2.9f);
         // Sized for a walker (eye 1.75 m): readable from the arrival terrace, hidden when you stand next to it.
-        var nameSign = Sign(LandmarkSign, plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
+        var nameSign = Sign(PlaceText.Fit(LandmarkSign, 34), plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
         var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.15f, 0), 0.0042f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
         _nearHide[nameSign] = 6.5f;
         _nearHide[summarySign] = 6.5f;
+        _plaqueName = nameSign;
+        _plaqueSummary = summarySign;
         // Lights scatter in volumetric fog as glowing spheres; gate lights must not, the landmark only a little.
         var light = new OmniLight3D { LightColor = accent, LightEnergy = 3.2f, OmniRange = 26, Position = new Vector3(0, 3.5f, 0), LightSpecular = 0.1f, ShadowEnabled = false, LightVolumetricFogEnergy = 0.15f };
         AddChild(light);
@@ -242,7 +245,7 @@ public partial class PlaceWorld : Node3D
             var signScale = singleRing ? Mathf.Clamp(g.Position.Length() / 30f, 1f, 1.8f) : 1f;
             // Alternate sign heights so neighbouring names never print over each other.
             var stagger = (c.Gates.Count > 6 && (gateIndex++ & 1) == 1) ? 1.7f : 0f;
-            var label = Sign(child.Name + "\n" + PlaceText.GateSubtitle(tree, child, g), Gd(g.Position) + new Vector3(0, g.Height + 0.5f + stagger + g.Tier * 0.25f, 0), 0.014f * signScale, col.Lightened(0.45f), singleRing ? 200 : 55, 1);
+            var label = Sign(PlaceText.Fit(child.Name, 26) + "\n" + PlaceText.GateSubtitle(tree, child, g), Gd(g.Position) + new Vector3(0, g.Height + 0.5f + stagger + g.Tier * 0.25f, 0), 0.014f * signScale, col.Lightened(0.45f), singleRing ? 200 : 55, 1);
             GateSigns[g.TargetId] = label;
             if (singleRing)
             {
@@ -375,7 +378,7 @@ public partial class PlaceWorld : Node3D
         {
             case PlaceKind.Project:
             {
-                sign("⚙ SOFTWARE PROJECT", plaque + new Vector3(0, 3.35f, 0), 0.0062f, new Color(0.55f, 1f, 0.85f), 1e9f, 0);
+                sign("⚙ SOFTWARE PROJECT", plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0062f, new Color(0.55f, 1f, 0.85f), 1e9f, 0);
                 var coreColor = new Color(0.45f, 1f, 0.8f);
                 foreach (var f in c.Files.Where(f => f.Core))
                 {
@@ -390,7 +393,7 @@ public partial class PlaceWorld : Node3D
             }
 
             case PlaceKind.Hub:
-                sign("LOCATIONS · every drive and Linux distribution is a gate", plaque + new Vector3(0, 3.35f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                sign("LOCATIONS · every drive and Linux distribution is a gate", plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
                 for (var i = 0; i < 3; i++)
                 {
                     var m = new MeshInstance3D
@@ -408,7 +411,7 @@ public partial class PlaceWorld : Node3D
             case PlaceKind.LocationRoot:
                 var folder = tree[c.FolderId];
                 var text = folder.Location == LocationKind.Wsl ? $"WSL · LINUX · {folder.Name} · names are case-sensitive" : $"{c.Kind.Label.ToUpperInvariant()} · {folder.Name}";
-                sign(text, plaque + new Vector3(0, 3.35f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                sign(text, plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
                 break;
         }
     }
@@ -451,27 +454,41 @@ public partial class PlaceWorld : Node3D
         foreach (var (label, _, _) in _managed)
         {
             if (!label.Visible || label.Modulate.A < 0.3f) continue;
-            var aabb = label.GetAabb();
-            var xf = label.GlobalTransform;
-            if (camera.IsPositionBehind(xf.Origin)) continue;
-            // Billboarded signs face the camera: project the centre and the box's half-extent at that depth.
-            var centre = xf * aabb.GetCenter();
-            var right = camera.GlobalTransform.Basis.X * aabb.Size.X * 0.5f;
-            var up = Vector3.Up * aabb.Size.Y * 0.5f;
-            var c = camera.UnprojectPosition(centre);
-            var dx = (camera.UnprojectPosition(centre + right) - c).Length();
-            var dy = (camera.UnprojectPosition(centre + up) - c).Length();
-            yield return new Rect2(c.X - dx, c.Y - dy, dx * 2, dy * 2);
+            if (SignRect(label, camera) is { } r) yield return r;
         }
+    }
+
+    /// <summary>A sign's approximate screen rectangle in viewport pixels, or null when it is behind the camera.</summary>
+    private static Rect2? SignRect(Label3D label, Camera3D camera)
+    {
+        var aabb = label.GetAabb();
+        var xf = label.GlobalTransform;
+        if (camera.IsPositionBehind(xf.Origin)) return null;
+        // Billboarded signs face the camera: project the centre and the box's half-extents at that depth.
+        var centre = xf * aabb.GetCenter();
+        var right = camera.GlobalTransform.Basis.X * aabb.Size.X * 0.5f * xf.Basis.Scale.X;
+        var up = Vector3.Up * aabb.Size.Y * 0.5f * xf.Basis.Scale.Y;
+        var c = camera.UnprojectPosition(centre);
+        var dx = (camera.UnprojectPosition(centre + right) - c).Length();
+        var dy = (camera.UnprojectPosition(centre + up) - c).Length();
+        return new Rect2(c.X - dx, c.Y - dy, dx * 2, dy * 2);
     }
 
     /// <summary>Signs that hide when the camera is closer than this (horizontally): they would fill the view.</summary>
     private readonly Dictionary<Label3D, float> _nearHide = [];
+    private Label3D? _plaqueName, _plaqueSummary;
 
-    /// <summary>Distance-managed signs (PLACE-05): far gate names hide; at most <paramref name="maxVisible"/> managed signs show.</summary>
-    public void UpdateSigns(Vector3 camera, int maxVisible = 70)
+    /// <summary>
+    /// Sign management (PLACE-05, VISI-01): far gate names hide; at most <paramref name="maxVisible"/> show; signs are
+    /// placed in priority order (the place's identity first, then the nearest) and one that would overlap an already
+    /// shown sign, or any HUD panel (<paramref name="hudRects"/>, viewport pixels), is hidden — text under a panel
+    /// only reads faintly through it and competes with the HUD.
+    /// </summary>
+    public void UpdateSigns(Camera3D cam, IReadOnlyList<Rect2>? hudRects = null, int maxVisible = 70)
     {
+        var camera = cam.GlobalPosition;
         var shown = 0;
+        var placed = new List<Rect2>();
         var overview = camera.Y > 14f || new Vector2(camera.X, camera.Z).Length() > _ringRadius + 4f;
         foreach (var (label, range, priority) in _managed
                      .Select(m => (m.Label, m.Range, m.Priority, D: m.Label.GlobalPosition.DistanceTo(camera)))
@@ -485,8 +502,25 @@ public partial class PlaceWorld : Node3D
                 visible = flat > near;
                 label.Modulate = label.Modulate with { A = Mathf.Clamp((flat - near) / 4f, 0, 1) };
             }
+
+            if (visible && SignRect(label, cam) is { } rect)
+            {
+                var clash = false;
+                foreach (var p in placed) clash |= p.Intersects(rect);
+                if (hudRects != null) foreach (var h in hudRects) clash |= h.Intersects(rect);
+                visible = !clash;
+                if (visible) placed.Add(rect);
+            }
+
             label.Visible = visible;
             if (visible) shown++;
+        }
+
+        // The summary line belongs to the name: without the name (hidden near or under the HUD) it would read as orphaned.
+        if (_plaqueName is { Visible: false } && _plaqueSummary is { Visible: true })
+        {
+            _plaqueSummary.Visible = false;
+            shown--;
         }
 
         VisibleSigns = shown;
@@ -686,4 +720,8 @@ public static class PlaceText
     };
 
     public static string Short(string name) => name.Length <= 14 ? name : name[..13] + "…";
+
+    /// <summary>Shortens a long name for a sign, keeping its start and end (the full name is in Destinations and the inspector).</summary>
+    public static string Fit(string name, int max) =>
+        name.Length <= max ? name : string.Concat(name.AsSpan(0, max - max / 3 - 1), "…", name.AsSpan(name.Length - max / 3));
 }

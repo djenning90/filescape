@@ -153,6 +153,18 @@ public partial class WalkProbe : ProbeBase
         var onHud = rects.Count(r => hud.Any(h => h.Intersects(r)));
         var off = rects.Count(r => !vp.Encloses(r));
         Check(overlaps == 0 && onHud == 0 && off == 0, $"labels at {where}: {rects.Count} shown, {overlaps} overlapping, {onHud} on the HUD, {off} off screen");
+
+        // In-world signs too (2026-11-05 correction): none drawn under a HUD panel or over another sign.
+        var signs = App.PlaceWorld.VisibleSignRects(App.Rig.Camera).ToList();
+        var signOverlaps = 0;
+        for (var i = 0; i < signs.Count; i++)
+        {
+            for (var j = i + 1; j < signs.Count; j++) if (signs[i].Intersects(signs[j])) signOverlaps++;
+        }
+
+        var signsOnHud = signs.Count(r => hud.Any(h => h.Intersects(r)));
+        var signsOverLabels = signs.Count(r => rects.Any(l => l.Intersects(r)));
+        Check(signOverlaps == 0 && signsOnHud == 0 && signsOverLabels == 0, $"world signs at {where}: {signs.Count} shown, {signOverlaps} overlapping, {signsOnHud} under the HUD, {signsOverLabels} under overlay labels");
     }
 
     private async Task Journey()

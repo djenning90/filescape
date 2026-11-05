@@ -100,8 +100,15 @@ public abstract partial class ProbeBase : Node
     protected static void Motion(Vector2 relative) =>
         Inject(new InputEventMouseMotion { Relative = relative, ScreenRelative = relative });
 
-    protected async Task Click(Vector2 at)
+    /// <summary>
+    /// UI rectangles (Control.GetGlobalRect) are in viewport units; injected events are in window pixels, which the
+    /// window divides by its content scale. Converting here keeps clicks on target at any UI scale (found at 125 %).
+    /// </summary>
+    protected Vector2 ToWindow(Vector2 viewportPoint) => viewportPoint * GetWindow().ContentScaleFactor;
+
+    protected async Task Click(Vector2 uiPoint)
     {
+        var at = ToWindow(uiPoint);
         Inject(new InputEventMouseMotion { Position = at, GlobalPosition = at });
         await Frames(1);
         Mouse(MouseButton.Left, true, at);
