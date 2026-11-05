@@ -293,7 +293,7 @@ public partial class Main
         else _threshold.Reset(_place, _rig.CameraPosition.ToNumerics(), _now);
         _placeWorld.UpdateSigns(_rig.CameraPosition);
         UpdatePlaceHud();
-        if (_selection.Selected < 0) UpdateInspector();
+        UpdateInspector(); // listing states change under the selection too (found: a drive stayed "not listed yet" after failing)
     }
 
     /// <summary>Puts the user at a pose: instantly (travel, first frame), or by a glide that ends on foot (Home, WALK-08).</summary>
