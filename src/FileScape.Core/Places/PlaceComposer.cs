@@ -2,10 +2,16 @@ using System.Numerics;
 using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
+using FileScape.Core.Units;
 
 namespace FileScape.Core.Places;
 
-/// <summary>Spatial parameters of the futuristic plaza composition (AD-14). Units are roughly metres.</summary>
+/// <summary>
+/// Spatial parameters of the futuristic plaza composition (AD-14). Places world space: 1 world unit = 1 m, Y up; plain
+/// float lengths here are metres, angles named "…Deg" are place angles in degrees clockwise from north (−Z)
+/// (docs/units.md). File tower heights come from <see cref="SizeScale"/> — a visual encoding of byte counts, expressed
+/// in metres but not a physical size of anything.
+/// </summary>
 public sealed record PlaceParams
 {
     /// <summary>Centre spacing of file towers; with the footprint this leaves ≈ 1.15 m alleys a walker fits through (WALK-05).</summary>
@@ -63,10 +69,11 @@ public sealed record PlaceParams
     public float TerraceHalfWidth { get; init; } = 2.3f;
 
     public float TerraceHalfDepth { get; init; } = 2.5f;
-    public float ArrivalLookPitch { get; init; } = -6f;
+    /// <summary>Looking slightly down from the terrace, so the avenue, landmark and gates all fit the arrival view.</summary>
+    public Degrees ArrivalLookPitch { get; init; } = Degrees.Of(-6f);
 
-    /// <summary>Eye height above the supporting surface (WALK-01).</summary>
-    public float EyeHeight { get; init; } = 1.75f;
+    /// <summary>Eye height above the supporting surface for composed poses (WALK-01); the walker's own value, so the two never differ.</summary>
+    public Meters EyeHeight { get; init; } = WalkParams.Default.EyeHeight;
 
     /// <summary>The overlook (JUMP-02): in the free sector between the file quarters and the gates.</summary>
     public float OverlookAngleDeg { get; init; } = 261f;

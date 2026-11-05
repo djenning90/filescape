@@ -2,6 +2,7 @@ using System.Numerics;
 using FileScape.Core.Interaction;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
+using FileScape.Core.Units;
 
 namespace FileScape.Core.Places;
 
@@ -158,8 +159,11 @@ public sealed record Landmark(Vector3 Base, float Height, float Radius, PlaceIde
 /// </summary>
 public sealed record Overlook(Vector3 Top, float AngleDeg, float HalfSize, Vector2 RampFoot, IReadOnlyList<Vector2> JumpBlocks);
 
-/// <summary>A camera pose: eye position, yaw (0 looks north, -Z) and look pitch (negative looks down), in degrees.</summary>
-public readonly record struct PlacePose(Vector3 Eye, float Yaw, float LookPitch);
+/// <summary>
+/// A camera pose: the eye in world space (metres), the yaw (CameraMath convention: 0 looks north, −Z; positive turns
+/// left) and the look pitch (negative looks down).
+/// </summary>
+public readonly record struct PlacePose(Vector3 Eye, Degrees Yaw, Degrees LookPitch);
 
 /// <summary>
 /// The full description of one folder's place, independent of any renderer. Positions are in the place's own frame:
@@ -214,21 +218,21 @@ public sealed class PlaceComposition
     public PlacePose ReturnPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, -4, p);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, Degrees.Of(-4), p);
     }
 
     /// <summary>Where to stand to look at a gate before going through it (destination list, PLACE-06).</summary>
     public PlacePose ApproachPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, -3, p);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, Degrees.Of(-3), p);
     }
 
     /// <summary>A pose standing on the ground at a point (eye 1.75 m above the support there, WALK-01).</summary>
-    public PlacePose Standing(Vector3 at, float angleDeg, float lookPitch, PlaceParams p)
+    public PlacePose Standing(Vector3 at, float angleFromNorthDeg, Degrees lookPitch, PlaceParams p)
     {
         var ground = Terrain.SupportHeight(new Vector2(at.X, at.Z), 0.3f, 0, 0.45f);
-        return PlaceGeometry.FacingPose(at with { Y = ground }, angleDeg, p.EyeHeight, lookPitch);
+        return PlaceGeometry.FacingPose(at with { Y = ground }, angleFromNorthDeg, p.EyeHeight, lookPitch);
     }
 }
 
@@ -264,10 +268,15 @@ public static class PlaceGeometry
     }
 
     /// <summary>The camera yaw (CameraMath convention: 0 looks -Z, positive turns left) that looks along an angle.</summary>
-    public static float YawFor(float angleDeg) => -angleDeg;
+    /// <summary>
+    /// Converts a place angle (clockwise from north, as gates use) to a camera yaw (counter-clockwise, CameraMath): the
+    /// two conventions differ only in sign. This is the one place where they meet.
+    /// </summary>
+    public static Degrees YawFor(float angleFromNorthDeg) => Degrees.Of(-angleFromNorthDeg);
 
-    public static PlacePose FacingPose(Vector3 ground, float angleDeg, float eyeHeight, float lookPitch) =>
-        new(ground with { Y = ground.Y + eyeHeight }, YawFor(angleDeg), lookPitch);
+    /// <summary>A pose standing at <paramref name="ground"/> (world, metres), looking along a place angle.</summary>
+    public static PlacePose FacingPose(Vector3 ground, float angleFromNorthDeg, Meters eyeHeight, Degrees lookPitch) =>
+        new(ground with { Y = ground.Y + eyeHeight.Value }, YawFor(angleFromNorthDeg), lookPitch);
 
     /// <summary>The axis-aligned bounds of a w×d×h block centred at <paramref name="baseCenter"/>, rotated to face <paramref name="angleDeg"/>.</summary>
     public static Box RotatedBounds(Vector3 baseCenter, float angleDeg, float width, float depth, float height)

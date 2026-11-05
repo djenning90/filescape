@@ -4,6 +4,7 @@ using FileScape.Core.Layout;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Scanning;
+using FileScape.Core.Units;
 
 namespace FileScape.Core.Tests;
 
@@ -257,7 +258,7 @@ public class PlaceTests
         c.Gates.Should().BeEmpty();
         c.Files.Should().BeEmpty();
         c.ParentGate.Should().BeNull("the root has no way up");
-        c.Arrival.Eye.Y.Should().BeApproximately(P.TerraceTop + P.EyeHeight, 1e-4f);
+        c.Arrival.Eye.Y.Should().BeApproximately(P.TerraceTop + P.EyeHeight.Value, 1e-4f);
 
         var filesOnly = Spec.WithFiles("files-only", 12).Build();
         var f = PlaceComposer.Compose(filesOnly, 0);
@@ -319,7 +320,7 @@ public class PlaceTests
         c.ParentGate.Should().NotBeNull();
         c.ParentGate!.TargetId.Should().Be(0);
         c.ParentGate.Position.Z.Should().BeGreaterThan(c.Arrival.Eye.Z, "the way back is behind you on arrival");
-        c.Arrival.Yaw.Should().Be(0, "arrival faces the child gates (north)");
+        c.Arrival.Yaw.Should().Be(Degrees.Zero, "arrival faces the child gates (north)");
         c.ParentVista!.FolderId.Should().Be(0);
         c.ParentVista.Beacons.Should().NotContain(b => b.Id == photos, "the parent's preview omits the place you are in");
     }
@@ -341,17 +342,17 @@ public class PlaceTests
     {
         var (c, g) = OneGate();
         var t = new ThresholdTracker();
-        t.Reset(c, c.Arrival.Eye, 0);
-        t.Update(Along(g, -6), 2).Should().BeNull();
-        t.Update(Along(g, -1), 2.1).Should().BeNull();
-        t.Update(Along(g, 0.5f), 2.2).Should().Be(g);
+        t.Reset(c, c.Arrival.Eye, TimeSpan.Zero);
+        t.Update(Along(g, -6), TimeSpan.FromSeconds(2)).Should().BeNull();
+        t.Update(Along(g, -1), TimeSpan.FromSeconds(2.1)).Should().BeNull();
+        t.Update(Along(g, 0.5f), TimeSpan.FromSeconds(2.2)).Should().Be(g);
         // Hovering on the boundary afterwards cannot re-trigger without going 2 u back inside.
-        t.Update(Along(g, -0.6f), 2.3).Should().BeNull();
-        t.Update(Along(g, 0.4f), 2.4).Should().BeNull();
-        t.Update(Along(g, -0.5f), 2.5).Should().BeNull();
-        t.Update(Along(g, 0.6f), 2.6).Should().BeNull();
-        t.Update(Along(g, -2.5f), 2.7).Should().BeNull();
-        t.Update(Along(g, 0.6f), 2.8).Should().Be(g, "re-armed after a deliberate step back inside");
+        t.Update(Along(g, -0.6f), TimeSpan.FromSeconds(2.3)).Should().BeNull();
+        t.Update(Along(g, 0.4f), TimeSpan.FromSeconds(2.4)).Should().BeNull();
+        t.Update(Along(g, -0.5f), TimeSpan.FromSeconds(2.5)).Should().BeNull();
+        t.Update(Along(g, 0.6f), TimeSpan.FromSeconds(2.6)).Should().BeNull();
+        t.Update(Along(g, -2.5f), TimeSpan.FromSeconds(2.7)).Should().BeNull();
+        t.Update(Along(g, 0.6f), TimeSpan.FromSeconds(2.8)).Should().Be(g, "re-armed after a deliberate step back inside");
     }
 
     [Fact]
@@ -359,15 +360,15 @@ public class PlaceTests
     {
         var (c, g) = OneGate();
         var t = new ThresholdTracker();
-        t.Reset(c, Along(g, -5), 0);
-        t.Update(Along(g, 1), 0.5).Should().BeNull("cooldown after arrival");
-        t.Reset(c, Along(g, -5), 0);
-        t.Update(Along(g, -1, lateral: g.Width), 2).Should().BeNull();
-        t.Update(Along(g, 1, lateral: g.Width), 2.1).Should().BeNull("beside the gate, not through it");
-        t.Update(Along(g, -3, height: g.Height + 1), 2.2);
-        t.Update(Along(g, 1, height: g.Height + 1), 2.3).Should().BeNull("flying above the lintel escapes the place without travelling");
-        t.Update(Along(g, 3), 2.4);
-        t.Update(Along(g, -3), 2.5).Should().BeNull("walking inward through a gate is not travel");
+        t.Reset(c, Along(g, -5), TimeSpan.Zero);
+        t.Update(Along(g, 1), TimeSpan.FromSeconds(0.5)).Should().BeNull("cooldown after arrival");
+        t.Reset(c, Along(g, -5), TimeSpan.Zero);
+        t.Update(Along(g, -1, lateral: g.Width), TimeSpan.FromSeconds(2)).Should().BeNull();
+        t.Update(Along(g, 1, lateral: g.Width), TimeSpan.FromSeconds(2.1)).Should().BeNull("beside the gate, not through it");
+        t.Update(Along(g, -3, height: g.Height + 1), TimeSpan.FromSeconds(2.2));
+        t.Update(Along(g, 1, height: g.Height + 1), TimeSpan.FromSeconds(2.3)).Should().BeNull("flying above the lintel escapes the place without travelling");
+        t.Update(Along(g, 3), TimeSpan.FromSeconds(2.4));
+        t.Update(Along(g, -3), TimeSpan.FromSeconds(2.5)).Should().BeNull("walking inward through a gate is not travel");
         ThresholdTracker.Crosses(g with { State = ListingState.Link, Followable = false }, Along(g, -1), Along(g, 1)).Should().BeFalse("a link that cannot be followed is not a way through");
         ThresholdTracker.Crosses(g with { State = ListingState.Link, Followable = true }, Along(g, -1), Along(g, 1)).Should().BeTrue("a followable link is entered on purpose by walking through it (LINK-02)");
     }
@@ -378,11 +379,11 @@ public class PlaceTests
     {
         var (c, g) = OneGate();
         var t = new ThresholdTracker();
-        t.Reset(c, Along(g, -5), 0);
-        t.Update(Along(g, -1), 2, facing: -g.Outward).Should().BeNull();
-        t.Update(Along(g, 1), 2.1, facing: -g.Outward).Should().BeNull("walking backwards through a gate is not deliberate travel");
-        t.Update(Along(g, -3), 2.2, facing: g.Outward);
-        t.Update(Along(g, 1), 2.3, facing: g.Outward).Should().Be(g, "facing through the gate counts");
+        t.Reset(c, Along(g, -5), TimeSpan.Zero);
+        t.Update(Along(g, -1), TimeSpan.FromSeconds(2), facing: -g.Outward).Should().BeNull();
+        t.Update(Along(g, 1), TimeSpan.FromSeconds(2.1), facing: -g.Outward).Should().BeNull("walking backwards through a gate is not deliberate travel");
+        t.Update(Along(g, -3), TimeSpan.FromSeconds(2.2), facing: g.Outward);
+        t.Update(Along(g, 1), TimeSpan.FromSeconds(2.3), facing: g.Outward).Should().Be(g, "facing through the gate counts");
     }
 
     [Fact]
@@ -391,10 +392,10 @@ public class PlaceTests
         var tree = Modest();
         var c = PlaceComposer.Compose(tree, tree.Find("Code").Id);
         var t = new ThresholdTracker();
-        t.Reset(c, c.Arrival.Eye, 0);
+        t.Reset(c, c.Arrival.Eye, TimeSpan.Zero);
         var pg = c.ParentGate!;
-        t.Update(Along(pg, -1), 2).Should().BeNull();
-        t.Update(Along(pg, 1), 2.1).Should().Be(pg);
+        t.Update(Along(pg, -1), TimeSpan.FromSeconds(2)).Should().BeNull();
+        t.Update(Along(pg, 1), TimeSpan.FromSeconds(2.1)).Should().Be(pg);
         pg.IsParent.Should().BeTrue();
     }
 
@@ -443,7 +444,7 @@ public class PlaceTests
         var back = c.ReturnPose(gate.TargetId, P);
         var forward = CameraMath.HorizontalForward(back.Yaw);
         Vector3.Dot(forward, -gate.Outward).Should().BeGreaterThan(0.99f, "returning faces into the parent, the gate behind you");
-        ThresholdTracker.Depth(gate, back.Eye).Should().BeLessThan(-ThresholdTracker.ArmDepth, "you arrive inside, so the gate is armed but not crossed");
+        ThresholdTracker.Depth(gate, back.Eye).Should().BeLessThan(-ThresholdTracker.ArmDepth.Value, "you arrive inside, so the gate is armed but not crossed");
         var approach = c.ApproachPose(gate.TargetId, P);
         Vector3.Dot(CameraMath.HorizontalForward(approach.Yaw), gate.Outward).Should().BeGreaterThan(0.99f);
     }

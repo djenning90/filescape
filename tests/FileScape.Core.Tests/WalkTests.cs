@@ -1,5 +1,6 @@
 using System.Numerics;
 using FileScape.Core.Places;
+using FileScape.Core.Units;
 
 namespace FileScape.Core.Tests;
 
@@ -8,6 +9,9 @@ public class WalkTests
 {
     private static readonly PlaceParams P = PlaceParams.Default;
     private static readonly WalkParams W = WalkParams.Default;
+    private static readonly TimeSpan Frame60 = Durations.FromSeconds(1 / 60.0), Frame120 = Durations.FromSeconds(1 / 120.0);
+
+    private static Degrees Deg(float degrees) => Degrees.Of(degrees);
 
     private static PlaceComposition Sample(int dirs = 6, int files = 40)
     {
@@ -20,9 +24,9 @@ public class WalkTests
 
     private static Vector2 Xz(Vector3 v) => new(v.X, v.Z);
 
-    private static void Run(Walker w, PlaceTerrain t, WalkInput input, float seconds, float dt = 1 / 60f)
+    private static void Run(Walker w, PlaceTerrain t, WalkInput input, float seconds, double frameSeconds = 1 / 60.0)
     {
-        for (var e = 0f; e < seconds; e += dt) w.Update(t, input, dt);
+        for (var e = 0.0; e < seconds; e += frameSeconds) w.Update(t, input, Durations.FromSeconds(frameSeconds));
     }
 
     [Fact]
@@ -31,21 +35,21 @@ public class WalkTests
         var c = Sample();
         var w = new Walker();
         w.TeleportToEye(c.Terrain, c.Arrival.Eye, c.Arrival.Yaw, c.Arrival.LookPitch);
-        w.Support.Should().BeApproximately(P.TerraceTop, 1e-3f);
-        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight, 1e-3f);
+        w.Support.Value.Should().BeApproximately(P.TerraceTop, 1e-3f);
+        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight.Value, 1e-3f);
         w.Eye.Y.Should().BeApproximately(c.Arrival.Eye.Y, 1e-3f, "the arrival pose stands on the terrace");
 
-        w.Teleport(c.Terrain, new Vector3(-6, 0, -6), 0, 0);
+        w.Teleport(c.Terrain, new Vector3(-6, 0, -6), Deg(0), Deg(0));
         w.Feet.Y.Should().Be(0);
-        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight, 1e-3f);
+        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight.Value, 1e-3f);
 
         var wide = Spec.WithDirs("wide", 120).Build();
         var cw = PlaceComposer.Compose(wide, 0, P);
         var tier = cw.Tiers[2];
         var onTier = PlaceGeometry.Direction(0) * tier.Radius + PlaceGeometry.Direction(90) * 4;
-        w.Teleport(cw.Terrain, onTier with { Y = 5 }, 0, 0);
-        w.Support.Should().BeApproximately(tier.Rise, 1e-3f);
-        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight, 1e-3f);
+        w.Teleport(cw.Terrain, onTier with { Y = 5 }, Deg(0), Deg(0));
+        w.Support.Value.Should().BeApproximately(tier.Rise, 1e-3f);
+        (w.Eye.Y - w.Feet.Y).Should().BeApproximately(W.EyeHeight.Value, 1e-3f);
     }
 
     [Theory]
@@ -56,13 +60,13 @@ public class WalkTests
     {
         var t = PlaceTerrain.Flat;
         var w = new Walker();
-        w.Teleport(t, Vector3.Zero, 30, pitch);
+        w.Teleport(t, Vector3.Zero, Deg(30), Deg(pitch));
         Run(w, t, new WalkInput(1, 0, 0, false, false), 2f);
         var dist = Xz(w.Feet).Length();
-        dist.Should().BeInRange(W.WalkSpeed * 2 * 0.9f, W.WalkSpeed * 2 * 1.0f);
+        dist.Should().BeInRange(W.WalkSpeed.Value * 2 * 0.9f, W.WalkSpeed.Value * 2 * 1.0f);
         w.Feet.Y.Should().Be(0, "looking down never pushes into the ground");
         var dir = Vector2.Normalize(Xz(w.Feet));
-        var fwd = Interaction.CameraMath.HorizontalForward(30);
+        var fwd = Interaction.CameraMath.HorizontalForward(Deg(30));
         Vector2.Dot(dir, new Vector2(fwd.X, fwd.Z)).Should().BeGreaterThan(0.9999f);
     }
 
@@ -72,7 +76,7 @@ public class WalkTests
         float Distance(float dt, float fwd, float strafe)
         {
             var w = new Walker();
-            w.Teleport(PlaceTerrain.Flat, Vector3.Zero, 0, 0);
+            w.Teleport(PlaceTerrain.Flat, Vector3.Zero, Deg(0), Deg(0));
             Run(w, PlaceTerrain.Flat, new WalkInput(fwd, strafe, 0, false, false), 3f, dt);
             return Xz(w.Feet).Length();
         }
@@ -88,13 +92,13 @@ public class WalkTests
     {
         var t = PlaceTerrain.Flat;
         var w = new Walker();
-        w.Teleport(t, Vector3.Zero, 0, 0);
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         var time = 0f;
-        while (w.HorizontalVelocity.Length() < 0.9f * W.WalkSpeed && time < 2) { w.Update(t, new WalkInput(1, 0, 0, false, false), 1 / 120f); time += 1 / 120f; }
+        while (w.HorizontalVelocity.Length() < 0.9f * W.WalkSpeed.Value && time < 2) { w.Update(t, new WalkInput(1, 0, 0, false, false), Frame120); time += 1 / 120f; }
         time.Should().BeLessThanOrEqualTo(0.25f);
         Run(w, t, new WalkInput(1, 0, 0, false, false), 1f);
         time = 0;
-        while (w.HorizontalVelocity.Length() > 0.05f * W.WalkSpeed && time < 2) { w.Update(t, WalkInput.None, 1 / 120f); time += 1 / 120f; }
+        while (w.HorizontalVelocity.Length() > 0.05f * W.WalkSpeed.Value && time < 2) { w.Update(t, WalkInput.None, Frame120); time += 1 / 120f; }
         time.Should().BeLessThanOrEqualTo(0.25f);
     }
 
@@ -103,9 +107,9 @@ public class WalkTests
     {
         var t = PlaceTerrain.Flat;
         var w = new Walker();
-        w.Teleport(t, Vector3.Zero, 0, 0);
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         Run(w, t, new WalkInput(1, 0, 1, false, false), 1.5f); // Up + Right
-        w.Yaw.Should().BeApproximately(-W.TurnRate * 1.5f, 3f);
+        w.Yaw.Value.Should().BeApproximately(-W.TurnRate.Value * 1.5f, 3f);
         Xz(w.Feet).Length().Should().BeGreaterThan(3f);
         w.Feet.X.Should().BeGreaterThan(0.5f, "turning right curves to the east (+X)");
     }
@@ -116,20 +120,20 @@ public class WalkTests
         var c = Sample();
         var w = new Walker();
         var front = Xz(c.Arrival.Eye) - new Vector2(0, P.TerraceHalfDepth + 4.5f);
-        w.Teleport(c.Terrain, new Vector3(front.X, 0, front.Y), 180, 0); // facing south, towards the terrace
-        for (var i = 0; i < 600 && w.Feet.Z < c.Arrival.Eye.Z; i++) w.Update(c.Terrain, new WalkInput(1, 0, 0, false, false), 1 / 60f);
-        w.Support.Should().BeApproximately(P.TerraceTop, 1e-3f, "the stairs lead up onto the terrace");
+        w.Teleport(c.Terrain, new Vector3(front.X, 0, front.Y), Deg(180), Deg(0)); // facing south, towards the terrace
+        for (var i = 0; i < 600 && w.Feet.Z < c.Arrival.Eye.Z; i++) w.Update(c.Terrain, new WalkInput(1, 0, 0, false, false), Frame60);
+        w.Support.Value.Should().BeApproximately(P.TerraceTop, 1e-3f, "the stairs lead up onto the terrace");
         w.Jumps.Should().Be(0);
 
-        w.SetGaze(0, 0);
+        w.SetGaze(Deg(0), Deg(0));
         var airborneFrames = 0;
         for (var i = 0; i < 150; i++)
         {
-            w.Update(c.Terrain, new WalkInput(1, 0, 0, false, false), 1 / 60f);
+            w.Update(c.Terrain, new WalkInput(1, 0, 0, false, false), Frame60);
             if (!w.Grounded) airborneFrames++;
         }
 
-        w.Support.Should().Be(0);
+        w.Support.Value.Should().Be(0);
         airborneFrames.Should().BeLessThan(3, "walking down stairs stays on the ground");
     }
 
@@ -143,10 +147,10 @@ public class WalkTests
         var dir = Vector2.Normalize(ramp.End - ramp.Start);
         var start = ramp.Start - dir * 1.5f;
         var yaw = -PlaceTerrain.PlaceAngle(dir); // CameraMath yaw for a place angle
-        w.Teleport(c.Terrain, new Vector3(start.X, 0, start.Y), yaw, -20);
+        w.Teleport(c.Terrain, new Vector3(start.X, 0, start.Y), Deg(yaw), Deg(-20));
         var length = Vector2.Distance(ramp.Start, ramp.End) + 2.5f;
-        Run(w, c.Terrain, new WalkInput(1, 0, 0, false, false), length / W.WalkSpeed * 1.25f);
-        w.Support.Should().BeApproximately(P.OverlookTop, 1e-3f);
+        Run(w, c.Terrain, new WalkInput(1, 0, 0, false, false), length / W.WalkSpeed.Value * 1.25f);
+        w.Support.Value.Should().BeApproximately(P.OverlookTop, 1e-3f);
         w.Jumps.Should().Be(0);
     }
 
@@ -156,10 +160,10 @@ public class WalkTests
         var box = new TerrainBox(new Vector2(0, -3), new Vector2(0.6f, 3f), 0, 0, 10, TerrainKind.Tower);
         var t = new PlaceTerrain([box], [], [], 60);
         var w = new Walker();
-        w.Teleport(t, new Vector3(-2, 0, -0.5f), 0, 0);
-        w.Look(-45, 0); // heading north-east, into the tower's west face
+        w.Teleport(t, new Vector3(-2, 0, -0.5f), Deg(0), Deg(0));
+        w.Look(Deg(-45), Deg(0)); // heading north-east, into the tower's west face
         Run(w, t, new WalkInput(1, 0, 0, false, false), 2f);
-        box.Overlaps(Xz(w.Feet), W.Radius - 0.01f).Should().BeFalse("never inside a solid");
+        box.Overlaps(Xz(w.Feet), W.Radius.Value - 0.01f).Should().BeFalse("never inside a solid");
         (-w.Feet.Z).Should().BeGreaterThan(3f, "the walker slid north along the face instead of stopping");
     }
 
@@ -168,13 +172,13 @@ public class WalkTests
     {
         var c = Sample(files: 400);
         var gap = P.FileCell - P.FileFootprint;
-        gap.Should().BeGreaterThan(2 * W.Radius + 0.4f);
+        gap.Should().BeGreaterThan(2 * W.Radius.Value + 0.4f);
         // Walk straight south down a column gap of the densest quarter.
         var t = new PlaceTerrain([
             new TerrainBox(new Vector2(-P.FileCell / 2, 0), new Vector2(P.FileFootprint / 2, 20), 0, 0, 8, TerrainKind.Tower),
             new TerrainBox(new Vector2(P.FileCell / 2, 0), new Vector2(P.FileFootprint / 2, 20), 0, 0, 8, TerrainKind.Tower)], [], [], 60);
         var w = new Walker();
-        w.Teleport(t, new Vector3(0, 0, -25), 180, 0);
+        w.Teleport(t, new Vector3(0, 0, -25), Deg(180), Deg(0));
         Run(w, t, new WalkInput(1, 0, 0, false, false), 12f);
         w.Feet.Z.Should().BeGreaterThan(20f);
         c.Files.Count.Should().Be(400);
@@ -185,7 +189,7 @@ public class WalkTests
     {
         var c = Sample();
         var w = new Walker();
-        w.Teleport(c.Terrain, new Vector3(0, 0, -5), 70, 0);
+        w.Teleport(c.Terrain, new Vector3(0, 0, -5), Deg(70), Deg(0));
         Run(w, c.Terrain, new WalkInput(1, 0, 0, true, false), 20f);
         Xz(w.Feet).Length().Should().BeLessThanOrEqualTo(c.Terrain.BoundaryRadius);
         w.IsLost.Should().BeFalse();
@@ -196,22 +200,22 @@ public class WalkTests
     {
         var t = PlaceTerrain.Flat;
         var w = new Walker();
-        w.Teleport(t, Vector3.Zero, 0, 0);
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         var apex = 0f;
-        w.Update(t, new WalkInput(0, 0, 0, false, true), 1 / 60f);
-        for (var i = 0; i < 120; i++) { w.Update(t, WalkInput.None, 1 / 60f); apex = MathF.Max(apex, w.Feet.Y); }
+        w.Update(t, new WalkInput(0, 0, 0, false, true), Frame60);
+        for (var i = 0; i < 120; i++) { w.Update(t, WalkInput.None, Frame60); apex = MathF.Max(apex, w.Feet.Y); }
         apex.Should().BeInRange(0.75f, 0.85f);
         w.Grounded.Should().BeTrue();
 
         // A running jump carries forward.
-        w.Teleport(t, Vector3.Zero, 0, 0);
+        w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         Run(w, t, new WalkInput(1, 0, 0, true, false), 1f);
         var takeoff = Xz(w.Feet);
-        w.Update(t, new WalkInput(1, 0, 0, true, true), 1 / 60f);
+        w.Update(t, new WalkInput(1, 0, 0, true, true), Frame60);
         var landed = false;
         for (var i = 0; i < 120 && !landed; i++)
         {
-            w.Update(t, new WalkInput(0, 0, 0, false, false), 1 / 60f);
+            w.Update(t, new WalkInput(0, 0, 0, false, false), Frame60);
             landed = w.Grounded;
         }
 
@@ -224,22 +228,22 @@ public class WalkTests
         var ledge = new TerrainBox(new Vector2(0, 0), new Vector2(3, 3), 0, 0, 2, TerrainKind.Platform);
         var t = new PlaceTerrain([ledge], [], [], 60);
         var w = new Walker();
-        w.Teleport(t, new Vector3(0, 5, 2.0f), 180, 0); // on the platform, facing south (+Z) towards its edge
-        w.Support.Should().Be(2);
+        w.Teleport(t, new Vector3(0, 5, 2.0f), Deg(180), Deg(0)); // on the platform, facing south (+Z) towards its edge
+        w.Support.Value.Should().Be(2);
         // Walk off the edge, then press jump 0.08 s after leaving it.
-        for (var i = 0; i < 120 && w.Grounded; i++) w.Update(t, new WalkInput(1, 0, 0, false, false), 1 / 120f);
+        for (var i = 0; i < 120 && w.Grounded; i++) w.Update(t, new WalkInput(1, 0, 0, false, false), Frame120);
         w.Grounded.Should().BeFalse();
-        for (var i = 0; i < 9; i++) w.Update(t, new WalkInput(1, 0, 0, false, false), 1 / 120f);
-        w.Update(t, new WalkInput(1, 0, 0, false, true), 1 / 120f);
+        for (var i = 0; i < 9; i++) w.Update(t, new WalkInput(1, 0, 0, false, false), Frame120);
+        w.Update(t, new WalkInput(1, 0, 0, false, true), Frame120);
         w.Jumps.Should().Be(1, "coyote time lets a late jump count");
 
         // Jump buffer: press shortly before landing.
         var flat = PlaceTerrain.Flat;
-        w.Teleport(flat, Vector3.Zero, 0, 0);
-        w.Update(flat, new WalkInput(0, 0, 0, false, true), 1 / 120f);
-        while (!(w.VerticalVelocity < 0 && w.Feet.Y < 0.12f)) w.Update(flat, WalkInput.None, 1 / 120f);
-        w.Update(flat, new WalkInput(0, 0, 0, false, true), 1 / 120f);
-        for (var i = 0; i < 30; i++) w.Update(flat, WalkInput.None, 1 / 120f);
+        w.Teleport(flat, Vector3.Zero, Deg(0), Deg(0));
+        w.Update(flat, new WalkInput(0, 0, 0, false, true), Frame120);
+        while (!(w.VerticalVelocity.Value < 0 && w.Feet.Y < 0.12f)) w.Update(flat, WalkInput.None, Frame120);
+        w.Update(flat, new WalkInput(0, 0, 0, false, true), Frame120);
+        for (var i = 0; i < 30; i++) w.Update(flat, WalkInput.None, Frame120);
         w.Jumps.Should().Be(3, "a jump pressed just before landing happens on landing (the second jump on flat ground)");
     }
 
@@ -256,7 +260,7 @@ public class WalkTests
         // Start on the ground in line with the blocks; for each, walk at it and jump once near its face.
         var along = Vector2.Normalize(stops[1] - stops[0]);
         var start = stops[0] - along * 4f;
-        w.Teleport(t, new Vector3(start.X, 0, start.Y), 0, 0);
+        w.Teleport(t, new Vector3(start.X, 0, start.Y), Deg(0), Deg(0));
         for (var k = 0; k < stops.Length; k++)
         {
             var jumped = false;
@@ -264,14 +268,14 @@ public class WalkTests
             for (var i = 0; i < 400 && !(jumped && w.Grounded && Vector2.Distance(Xz(w.Feet), stops[k]) < 0.6f); i++)
             {
                 var to = stops[k] - Xz(w.Feet);
-                w.SetGaze(-PlaceTerrain.PlaceAngle(Vector2.Normalize(to)), 0);
+                w.SetGaze(Deg(-PlaceTerrain.PlaceAngle(Vector2.Normalize(to))), Deg(0));
                 var jump = !jumped && target.Closest(Xz(w.Feet)).Distance < 1.0f;
                 jumped |= jump;
-                w.Update(t, new WalkInput(to.Length() > 0.3f ? 1 : 0, 0, 0, false, jump), 1 / 120f);
+                w.Update(t, new WalkInput(to.Length() > 0.3f ? 1 : 0, 0, 0, false, jump), Frame120);
             }
 
-            for (var i = 0; i < 60; i++) w.Update(t, WalkInput.None, 1 / 120f);
-            w.Support.Should().BeApproximately(heights[k], 0.01f, $"jump {k + 1} lands on its block");
+            for (var i = 0; i < 60; i++) w.Update(t, WalkInput.None, Frame120);
+            w.Support.Value.Should().BeApproximately(heights[k], 0.01f, $"jump {k + 1} lands on its block");
         }
 
         w.Jumps.Should().Be(3);
@@ -296,8 +300,8 @@ public class WalkTests
         {
             if (heights.TryGetValue((i, j), out var h)) return float.IsNaN(h) ? null : h;
             var p = new Vector2(i * cell, j * cell);
-            var s = t.SupportHeight(p, W.Radius, 100, 0);
-            var ok = p.Length() < t.BoundaryRadius - W.Radius && t.IsClear(p, W.Radius, s, W.BodyHeight);
+            var s = t.SupportHeight(p, W.Radius.Value, 100, 0);
+            var ok = p.Length() < t.BoundaryRadius - W.Radius.Value && t.IsClear(p, W.Radius.Value, s, W.BodyHeight.Value);
             heights[(i, j)] = ok ? s : float.NaN;
             return ok ? s : null;
         }
@@ -315,7 +319,7 @@ public class WalkTests
             {
                 var k = (i + di, j + dj);
                 if (Math.Abs(k.Item1) > n || Math.Abs(k.Item2) > n || seen.Contains(k)) continue;
-                if (Height(k.Item1, k.Item2) is not { } nh || nh > h + W.StepHeight) continue;
+                if (Height(k.Item1, k.Item2) is not { } nh || nh > h + W.StepHeight.Value) continue;
                 seen.Add(k);
                 queue.Enqueue(k);
             }
@@ -332,7 +336,7 @@ public class WalkTests
     {
         var t = new PlaceTerrain([], [], [], 60);
         var w = new Walker();
-        w.Teleport(t, new Vector3(0, -40, 0), 0, 0); // below the ground: support is 0, so it stands at 0
+        w.Teleport(t, new Vector3(0, -40, 0), Deg(0), Deg(0)); // below the ground: support is 0, so it stands at 0
         w.Feet.Y.Should().Be(0);
         w.IsLost.Should().BeFalse();
     }

@@ -116,6 +116,9 @@ public readonly record struct TerrainRamp(Vector2 Start, Vector2 End, float Half
 public readonly record struct TerrainRing(float Inner, float Outer, float Top, float StartDeg, float EndDeg);
 
 /// <summary>
+/// Units (docs/units.md): Places world space, metres, Y up; a footprint's (x, z) is a <see cref="Vector2"/> whose Y
+/// component is world Z. Angles named "…Deg" are place angles, clockwise from north (−Z). Geometry stays in plain floats
+/// here because every value is a length in the same space and the inner loops run per walker sub-step.
 /// The walkable ground of one place (AD-16, WALK-05): the plaza floor at height 0 inside <see cref="BoundaryRadius"/>,
 /// plus boxes (structures, platforms, steps), ramps and tier rings. Only structures that matter for walking are here;
 /// signs, beacons, floor lines and lintels are deliberately absent, so they never snag anyone.

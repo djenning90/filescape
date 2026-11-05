@@ -1,6 +1,7 @@
 using System.Numerics;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
+using FileScape.Core.Units;
 
 namespace FileScape.Core.Places;
 
@@ -192,24 +193,35 @@ public sealed class PlaceNavigator
 /// </summary>
 public sealed class ThresholdTracker
 {
-    public const float ArmDepth = 2f;
-    public const double CooldownSeconds = 1.0;
+    /// <summary>How far inside a gate's plane the camera must have been before crossing it counts (hysteresis).</summary>
+    public static readonly Meters ArmDepth = Meters.Of(2f);
 
-    /// <summary>The minimum cosine between the view direction and the gate's outward direction (≈ 72°).</summary>
-    public const float MinFacing = 0.3f;
+    /// <summary>No crossing counts this long after arriving, so standing on a boundary cannot flicker between places.</summary>
+    public static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The minimum cosine (dimensionless) between the horizontal view direction and the gate's outward direction:
+    /// 0.3 ≈ facing within 72° of straight through. Walking backwards through a gate never travels.
+    /// </summary>
+    public const float MinFacingCosine = 0.3f;
 
     private readonly HashSet<Gate> _armed = [];
     private PlaceComposition? _place;
-    private double _readyAt;
+
+    /// <summary>The app-clock time from which crossings count again.</summary>
+    private TimeSpan _readyAt;
+
+    /// <summary>The previous camera position (world, metres), to detect a crossing between frames.</summary>
     private Vector3? _last;
 
     /// <summary>Starts watching a new place. Gates the camera is already well inside of are armed immediately.</summary>
-    public void Reset(PlaceComposition place, Vector3 camera, double now)
+    /// <param name="now">The app clock (time since start).</param>
+    public void Reset(PlaceComposition place, Vector3 camera, TimeSpan now)
     {
         _place = place;
         _armed.Clear();
         _last = camera;
-        _readyAt = now + CooldownSeconds;
+        _readyAt = now + Cooldown;
         Arm(camera);
     }
 
@@ -226,7 +238,7 @@ public sealed class ThresholdTracker
     /// Returns the gate crossed between the previous and this camera position, or null. <paramref name="facing"/> is
     /// the horizontal view direction; when given, a crossing counts only if the camera faces through the gate.
     /// </summary>
-    public Gate? Update(Vector3 camera, double now, Vector3? facing = null)
+    public Gate? Update(Vector3 camera, TimeSpan now, Vector3? facing = null)
     {
         if (_place == null)
         {
@@ -240,7 +252,7 @@ public sealed class ThresholdTracker
         {
             foreach (var g in Gates(_place))
             {
-                if (_armed.Contains(g) && Crosses(g, last, camera) && (facing is not { } f || Vector3.Dot(f, g.Outward) >= MinFacing))
+                if (_armed.Contains(g) && Crosses(g, last, camera) && (facing is not { } f || Vector3.Dot(f, g.Outward) >= MinFacingCosine))
                 {
                     crossed = g;
                     break;
@@ -261,7 +273,7 @@ public sealed class ThresholdTracker
     {
         foreach (var g in Gates(_place!))
         {
-            if (Depth(g, camera) <= -ArmDepth)
+            if (Depth(g, camera) <= -ArmDepth.Value)
             {
                 _armed.Add(g);
             }
@@ -271,7 +283,7 @@ public sealed class ThresholdTracker
     private static IEnumerable<Gate> Gates(PlaceComposition place) =>
         place.ParentGate is { } pg ? place.Gates.Append(pg) : place.Gates;
 
-    /// <summary>Signed distance of a point from the gate plane; negative inside the place.</summary>
+    /// <summary>Signed distance (metres) of a point from the gate plane; negative inside the place, positive beyond it.</summary>
     public static float Depth(Gate g, Vector3 point) => Vector3.Dot(point - g.Position, g.Outward);
 
     public static bool Crosses(Gate g, Vector3 from, Vector3 to)

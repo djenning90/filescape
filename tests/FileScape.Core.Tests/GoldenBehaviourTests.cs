@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using FileScape.Core.Interaction;
 using FileScape.Core.Places;
+using FileScape.Core.Units;
 using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
@@ -24,13 +25,13 @@ public class GoldenBehaviourTests(ITestOutputHelper output)
         var marks = new List<(Vector3, float, float, int, int, Vector3)>();
         void Run(WalkInput input, int frames)
         {
-            for (var i = 0; i < frames; i++) w.Update(place.Terrain, input, 1 / 60f);
-            marks.Add((w.Feet, w.Yaw, w.LookPitch, w.Jumps, w.Landings, w.Eye));
+            for (var i = 0; i < frames; i++) w.Update(place.Terrain, input, Durations.FromSeconds(1 / 60.0));
+            marks.Add((w.Feet, w.Yaw.Value, w.LookPitch.Value, w.Jumps, w.Landings, w.Eye));
         }
 
         Run(new WalkInput(1, 0, 0, false, false), 90);          // down the terrace stairs
         Run(new WalkInput(1, 0, 0.6f, false, false), 40);       // walking curve
-        w.Look(-12, -30);
+        w.Look(Degrees.Of(-12), Degrees.Of(-30));
         Run(new WalkInput(1, 0, 0, true, true), 1);             // running jump
         Run(new WalkInput(1, 0.5f, 0, true, false), 50);        // air steering and landing
         Run(new WalkInput(0, -1, 0, false, false), 45);         // strafe
@@ -75,13 +76,13 @@ public class GoldenBehaviourTests(ITestOutputHelper output)
     [Fact]
     public void Camera_math_matches_the_pre_refactor_numbers()
     {
-        var f = CameraMath.Forward(30, -20);
-        var fly = CameraMath.FlyDelta(new Vector3(0.5f, 0.2f, 1), 30, -20, 7, 0.016f);
-        var ground = CameraMath.GroundDelta(new Vector3(1, 0, 1), -45, 12, 0.5f);
-        var orbit = CameraMath.OrbitPosition(new Vector3(3, 1, -2), 210, -35, 25);
-        var target = CameraMath.TargetFromPose(orbit, 210, -35, 25);
+        var f = CameraMath.Forward(Degrees.Of(30), Degrees.Of(-20));
+        var fly = CameraMath.FlyDelta(new Vector3(0.5f, 0.2f, 1), Degrees.Of(30), Degrees.Of(-20), 7, TimeSpan.FromSeconds(0.016));
+        var ground = CameraMath.GroundDelta(new Vector3(1, 0, 1), Degrees.Of(-45), 12, TimeSpan.FromSeconds(0.5));
+        var orbit = CameraMath.OrbitPosition(new Vector3(3, 1, -2), Degrees.Of(210), Degrees.Of(-35), 25);
+        var target = CameraMath.TargetFromPose(orbit, Degrees.Of(210), Degrees.Of(-35), 25);
         float[] values = [f.X, f.Y, f.Z, fly.X, fly.Y, fly.Z, ground.X, ground.Y, ground.Z, orbit.X, orbit.Y, orbit.Z, target.X, target.Y, target.Z,
-            CameraMath.StepFlySpeed(10, 2.5f), CameraMath.InitialFlySpeed(37), CameraMath.MaxOrbitLookPitchAboveGround(3, 10, 0.45f)];
+            CameraMath.StepFlySpeed(10, 2.5f), CameraMath.InitialFlySpeed(37), CameraMath.MaxOrbitLookPitchAboveGround(3, 10, 0.45f).Value];
         output.WriteLine(string.Join(", ", values.Select(v => v.ToString("R", CultureInfo.InvariantCulture) + "f")));
         float[] expected = [-0.4698463f, -0.34202015f, -0.81379765f, -0.0038415946f, -0.014812119f, -0.11094973f, 6f, 0f, 0f, -7.2394037f, 15.339413f, -19.735157f, 3f, 1f, -2f, 17.46928f, 22.2f, 14.773584f];
         for (var i = 0; i < values.Length; i++) values[i].Should().BeApproximately(expected[i], 1e-5f * MathF.Max(1, MathF.Abs(expected[i])), $"value {i}");

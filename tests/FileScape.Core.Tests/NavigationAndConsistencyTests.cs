@@ -1,5 +1,6 @@
 using System.Numerics;
 using FileScape.Core.Interaction;
+using FileScape.Core.Units;
 using FileScape.Core.Layout;
 using FileScape.Core.Model;
 using FileScape.Core.Scanning;
@@ -17,9 +18,9 @@ public class NavigationAndConsistencyTests
     [Fact]
     public void Diagonal_movement_is_not_faster_than_straight_movement()
     {
-        var straight = CameraMath.GroundDelta(new Vector3(0, 0, 1), 30, 10, 0.5f).Length();
-        var diagonal = CameraMath.GroundDelta(new Vector3(1, 0, 1), 30, 10, 0.5f).Length();
-        var threeWay = CameraMath.FlyDelta(new Vector3(1, 1, 1), 30, -20, 10, 0.5f).Length();
+        var straight = CameraMath.GroundDelta(new Vector3(0, 0, 1), Degrees.Of(30), 10, TimeSpan.FromSeconds(0.5)).Length();
+        var diagonal = CameraMath.GroundDelta(new Vector3(1, 0, 1), Degrees.Of(30), 10, TimeSpan.FromSeconds(0.5)).Length();
+        var threeWay = CameraMath.FlyDelta(new Vector3(1, 1, 1), Degrees.Of(30), Degrees.Of(-20), 10, TimeSpan.FromSeconds(0.5)).Length();
         diagonal.Should().BeApproximately(straight, Eps);
         threeWay.Should().BeApproximately(straight, Eps);
         straight.Should().BeApproximately(5f, Eps, "speed × dt, independent of frame rate");
@@ -28,24 +29,24 @@ public class NavigationAndConsistencyTests
     [Fact]
     public void Ground_movement_ignores_pitch_and_fly_movement_follows_the_view()
     {
-        var ground = CameraMath.GroundDelta(new Vector3(0, 0, 1), 0, 1, 1);
+        var ground = CameraMath.GroundDelta(new Vector3(0, 0, 1), Degrees.Zero, 1, TimeSpan.FromSeconds(1));
         ground.Should().Be(new Vector3(0, 0, -1) with { X = ground.X });
         ground.X.Should().BeApproximately(0, Eps);
 
-        var fly = CameraMath.FlyDelta(new Vector3(0, 0, 1), 0, -30, 1, 1);
+        var fly = CameraMath.FlyDelta(new Vector3(0, 0, 1), Degrees.Zero, Degrees.Of(-30), 1, TimeSpan.FromSeconds(1));
         fly.Y.Should().BeApproximately(-0.5f, Eps, "looking 30° down, forward descends");
         fly.Z.Should().BeApproximately(-MathF.Cos(MathF.PI / 6), Eps);
 
-        var strafe = CameraMath.FlyDelta(new Vector3(1, 0, 0), 90, -30, 1, 1);
+        var strafe = CameraMath.FlyDelta(new Vector3(1, 0, 0), Degrees.Of(90), Degrees.Of(-30), 1, TimeSpan.FromSeconds(1));
         strafe.Y.Should().BeApproximately(0, Eps, "strafe stays horizontal");
-        var up = CameraMath.FlyDelta(new Vector3(0, 1, 0), 45, -30, 1, 1);
+        var up = CameraMath.FlyDelta(new Vector3(0, 1, 0), Degrees.Of(45), Degrees.Of(-30), 1, TimeSpan.FromSeconds(1));
         up.Should().Be(Vector3.UnitY, "Q/E are world-vertical");
     }
 
     [Fact]
     public void Right_is_perpendicular_to_forward_and_horizontal()
     {
-        foreach (var yaw in new[] { 0f, 37f, 90f, 200f, -75f })
+        foreach (var yaw in new[] { 0f, 37f, 90f, 200f, -75f }.Select(Degrees.Of))
         {
             Vector3.Dot(CameraMath.Right(yaw), CameraMath.HorizontalForward(yaw)).Should().BeApproximately(0, Eps);
             CameraMath.Right(yaw).Y.Should().Be(0);
@@ -55,10 +56,10 @@ public class NavigationAndConsistencyTests
     [Fact]
     public void Pitch_is_limited_short_of_vertical_so_the_view_never_flips()
     {
-        CameraMath.ClampLookPitch(400).Should().Be(CameraMath.MaxLookPitch);
-        CameraMath.ClampLookPitch(-400).Should().Be(CameraMath.MinLookPitch);
-        CameraMath.MaxLookPitch.Should().BeLessThan(90);
-        CameraMath.Forward(0, CameraMath.MaxLookPitch).Y.Should().BeLessThan(1f);
+        CameraMath.ClampLookPitch(Degrees.Of(400)).Should().Be(CameraMath.MaxLookPitch);
+        CameraMath.ClampLookPitch(Degrees.Of(-400)).Should().Be(CameraMath.MinLookPitch);
+        CameraMath.MaxLookPitch.Should().BeLessThan(Degrees.Of(90));
+        CameraMath.Forward(Degrees.Zero, CameraMath.MaxLookPitch).Y.Should().BeLessThan(1f);
     }
 
     [Fact]
@@ -66,8 +67,8 @@ public class NavigationAndConsistencyTests
     {
         CameraMath.StepFlySpeed(10, 1).Should().BeApproximately(12.5f, Eps);
         CameraMath.StepFlySpeed(10, -1).Should().BeApproximately(8f, Eps);
-        CameraMath.StepFlySpeed(10, 1000).Should().Be(CameraMath.MaxFlySpeed);
-        CameraMath.StepFlySpeed(10, -1000).Should().Be(CameraMath.MinFlySpeed);
+        CameraMath.StepFlySpeed(10, 1000).Should().Be(CameraMath.MaxFlySpeedWorldUnitsPerSecond);
+        CameraMath.StepFlySpeed(10, -1000).Should().Be(CameraMath.MinFlySpeedWorldUnitsPerSecond);
         CameraMath.StepFlySpeed(10, 2).Should().BeApproximately(CameraMath.StepFlySpeed(CameraMath.StepFlySpeed(10, 1), 1), Eps,
             "one event worth two notches (fast or high-resolution wheel) equals two single notches");
         CameraMath.StepFlySpeed(10, 0.5f).Should().BeInRange(10.5f, 11.5f, "fractional touchpad scrolling adjusts proportionally");
@@ -79,9 +80,10 @@ public class NavigationAndConsistencyTests
     [InlineData(0f, -30f, 40f)]
     [InlineData(123f, 20f, 7.5f)]
     [InlineData(-60f, -84f, 900f)]
-    public void Pose_round_trips_between_orbit_and_fly_exactly(float yaw, float pitch, float distance)
+    public void Pose_round_trips_between_orbit_and_fly_exactly(float yawDegrees, float pitchDegrees, float distance)
     {
         var target = new Vector3(12, 3, -40);
+        var (yaw, pitch) = (Degrees.Of(yawDegrees), Degrees.Of(pitchDegrees));
         var position = CameraMath.OrbitPosition(target, yaw, pitch, distance);
         var back = CameraMath.TargetFromPose(position, yaw, pitch, distance);
         Vector3.Distance(back, target).Should().BeLessThan(1e-3f * MathF.Max(1, distance));
@@ -90,11 +92,11 @@ public class NavigationAndConsistencyTests
     [Fact]
     public void Orbit_pitch_limit_keeps_the_camera_above_ground()
     {
-        var limit = CameraMath.MaxOrbitLookPitchAboveGround(targetHeight: 0, distance: 50, minCameraHeight: 0.4f);
-        var pos = CameraMath.OrbitPosition(new Vector3(0, 0, 0), 0, limit, 50);
+        var limit = CameraMath.MaxOrbitLookPitchAboveGround(targetHeight: 0, distanceWorldUnits: 50, minCameraHeight: 0.4f);
+        var pos = CameraMath.OrbitPosition(new Vector3(0, 0, 0), Degrees.Zero, limit, 50);
         pos.Y.Should().BeApproximately(0.4f, 1e-3f);
-        limit.Should().BeLessThan(0, "with the target on the ground, the camera must look down");
-        CameraMath.MaxOrbitLookPitchAboveGround(targetHeight: 100, distance: 10, minCameraHeight: 0.4f)
+        limit.Should().BeLessThan(Degrees.Zero, "with the target on the ground, the camera must look down");
+        CameraMath.MaxOrbitLookPitchAboveGround(targetHeight: 100, distanceWorldUnits: 10, minCameraHeight: 0.4f)
             .Should().Be(CameraMath.MaxLookPitch, "a high target allows looking up");
     }
 
