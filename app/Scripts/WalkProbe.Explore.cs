@@ -57,6 +57,23 @@ public partial class WalkProbe
         Check(!App.Hud.DestinationsOpen && NVector3.Distance(feet, W.Feet) < 0.01f, "Esc closes it; typing never moved you");
         App.Hud.DestinationFilter.Text = ""; // [direct] clear for later steps
 
+        // Pick with the mouse after filtering: the keyboard comes back (Esc closes the drawer), the gate is selected.
+        await Key(Godot.Key.J);
+        await TypeText("shared");
+        await Frames(3);
+        await Click(App.Hud.DestinationItemRect(0).GetCenter());
+        await Frames(10);
+        var focusAfterClick = App.GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "none";
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+        var picked = App.Selection.Selected >= 0 ? Tree[App.Selection.Selected].Name : "-";
+        Check(!App.Hud.DestinationsOpen && picked == "to-shared-library", $"filter 'shared', click the row, Esc: drawer closed, {picked} selected (focus after the click: {focusAfterClick})");
+        App.Hud.DestinationFilter.Text = "";
+        await WaitGuide();
+        App.ProbePlaceUser(Place.Arrival); // [direct] back to the arrival pose
+        App.Selection.Select(-1);
+        await Frames(5);
+
         // ---- 3. Higher jump: a held jump peaks over 1.1 m, a tap is a short hop (JUMP-04, injected Space)
         var apexHeld = await JumpApex(holdSeconds: 0.6);
         var apexTap = await JumpApex(holdSeconds: 0.03);

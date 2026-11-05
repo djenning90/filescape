@@ -175,6 +175,9 @@ foreach ($k in 'S', 'H', 'A', 'R', 'E', 'D') { Hold-Key $k 40; Start-Sleep -Mill
 Start-Sleep -Milliseconds 400
 $s = State
 Client-Click $w $s.destRow0[0] $s.destRow0[1]; Start-Sleep -Milliseconds 900
+# Back to the scene before Esc, as a user would: resting on the row shows its tooltip (the full path), and the first
+# Esc then only closes that tooltip (seen with real input on f4cb33fe17ec: the drawer stayed open).
+Center-Cursor $w; Start-Sleep -Milliseconds 300
 Hold-Key 'Esc' 80; Start-Sleep -Milliseconds 400
 Check ((State).selectedName -eq 'to-shared-library' -and -not (State).destinationsOpen) "typed 'shared' in Destinations and clicked the to-shared-library row (selected=$((State).selectedName))"
 Center-Cursor $w
