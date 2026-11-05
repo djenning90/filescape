@@ -1,4 +1,5 @@
 using FileScape.App.Places;
+using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Units;
@@ -248,7 +249,14 @@ public partial class Main
             }
         }
 
-        StartGuideFrame(new Aabb(min, max - min), Degrees.Of(52), _rig.Yaw, 0.85f, Locomotion.Flying);
+        // The top of the window holds the toolbar and place bar: extend the framed box ahead (screen-up) by a third, so
+        // the neighbourhood sits in the clear middle and lower part of the view (checked at UI 1.0 and 1.25).
+        var ahead = CameraMath.HorizontalForward(_rig.Yaw);
+        var depth = Mathf.Max(max.X - min.X, max.Z - min.Z) * 0.35f;
+        var far = new GVector3(ahead.X, 0, ahead.Z) * depth;
+        min = min.Min(min + far).Min(max + far);
+        max = max.Max(min + far).Max(max + far);
+        StartGuideFrame(new Aabb(min, max - min), Degrees.Of(55), _rig.Yaw, 0.95f, Locomotion.Flying);
     }
 
     /// <summary>The status line while the aerial world is shown (scope and what to do), or null.</summary>
@@ -258,6 +266,6 @@ public partial class Main
         var unlisted = 0;
         foreach (var i in _worldMap.Islands.Values) if (Listing.IsUnknown(Listing.Of(_tree[i.Id]))) unlisted++;
         var more = _worldMap.Truncated > 0 ? $" · {_worldMap.Truncated:N0} deeper folders not drawn" : "";
-        return $"Aerial view · {_worldMap.Islands.Count:N0} known places ({unlisted:N0} not listed yet){more} · fly over one and press T to land there · click one, then G to go · B frames this neighbourhood";
+        return $"Aerial view · {_worldMap.Islands.Count:N0} known places, {unlisted:N0} not listed yet{more} · T over a place lands there · click one + G flies there";
     }
 }

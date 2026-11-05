@@ -155,3 +155,34 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   - *Natural name order* in Places only; the maps keep the tree's order.
 - **Found and fixed on the way:** a walker touching a tall solid counted it as support and was snapped onto its top (seen at 30 m/s against a pillar, and in a running jump into a tower).
 - **Revisit when:** DJ has played this build (KD-20/KD-22): speeds, the default look direction, the stand-off of upward arrivals, and whether plates or the chip carry identification better.
+
+## AD-24 Familiar file icons from original SVG, rasterized at start (2026-11-06)
+
+- **Problem:** DJ found the colour key unintuitive; a file's type should be recognisable without memorising a palette.
+- **Decision:** a small set of original type silhouettes (`Visual/FileIcons`), written as SVG paths in code and rasterized by Godot's built-in SVG rasterizer (`Image.LoadSvgFromString`) into one atlas at start-up. No third-party artwork, no import pipeline, no new dependency. In the world they are badges on the plaza-facing side of each tower (fading out by 46 m so distant towers stay clean) and above category signs; in the HUD they lead signs, Destinations rows and the inspector card. Colour stays as atmosphere. `FileIcons.For(node)` is the single place a node's appearance is decided — where a bounded preview provider (thumbnails, first pages, KD-15) would plug in.
+- **Alternatives:** emoji glyphs (inconsistent across fonts, not restrained); licensed icon sets (licence review, new assets); per-extension icons (too many shapes for a glance).
+- **Revisit when:** previews are added, or DJ wants more specific icons (spreadsheets vs documents, photos vs drawings).
+
+## AD-25 Destination names in screen space, shortened rather than hidden (2026-11-06)
+
+- **Problem:** overhead Label3D gate signs were placed by priority and hidden whenever they collided with another sign or a HUD panel, so most gates were anonymous until approached (DJ: "too many destination names are hidden"). Earlier work had favoured complete names and collision suppression.
+- **Decision:** a screen-space `SignLayer` names every gate in view (and every place from the air): focused first, then nearest; names shortened with a middle ellipsis by distance; detail lines for the nearest four; a colliding sign tries higher, lower and sideways slots with a leader line before being dropped; never over the HUD or another sign; at most 40. The overhead 3D gate signs were removed; eye-level plates stay for close range. A shortened visible name beats an invisible complete one; the full name is in the chip, the card and Destinations.
+- **Alternatives:** larger or more staggered 3D signs (still collide, perspective-dependent size); show all names (unreadable in wide places).
+- **Revisit when:** DJ finds signs too busy (a density setting), or VR/curved worlds need signs in 3D again.
+
+## AD-26 The aerial world: a world layout, place frames and bounded discovery (2026-11-06)
+
+- **Problem:** flight showed only the current place; DJ wants flight to explore the larger filesystem world, without silently scanning drives or faking a skyline.
+- **Decision:**
+  - *Layout:* `WorldLayout` places every known folder on a world plane as an island. Children lie ahead of their place (its north, away from its parent) over 160° in natural gate order; each subtree is summarised by a rectangle in its own frame (across and ahead — descendants are always ahead, so only the island itself is behind), and children are packed by the angle their rectangles need; a wide place's empty folders share wedges, near to far. The world's centre is the tree's root (This computer, or the scanned root). Deterministic; a discovery re-arranges only the children of the discovered folder's ancestors; sizes rounded in 1.4× steps.
+  - *Frames:* every place has a `PlaceFrame` (world centre and north). The aerial world is drawn in the current place's local frame (a floating origin), so the place you are in never moves and stays full-detail exactly on its island. Travel from the air converts the camera between frames.
+  - *Discovery:* only what is known is drawn; unlisted folders are veiled "not listed yet" islands. Flying near unlisted places inside the arrival folder or below a visited place lists them (`WorldExplorer.Reveal`, ≤ 4/s, never a location root); everything else waits until you go there. Bounded tree mode shows the whole scanned tree.
+  - *Travel:* G or double-click on an island flies there (arriving above it); T over an island lands in it; history and identity as for any place change. Vistas (symbolic) remain the walking view; above 14 m they give way to the islands.
+- **Alternatives tried and rejected:** a disc per subtree centred on its child (a chain of six single folders reached 25 km; B framed from 19.5 km); equal angular slots per child (stable but pushed big subtrees kilometres out); aligning islands exactly with gate directions (infeasible without overlaps beyond one level).
+- **Revisit when:** places become planetoids (frames become 3D, `docs/planetoid-feasibility.md`), the explored world exceeds 4,000 places regularly (aggregate distant regions), or DJ wants islands to match their gates' directions.
+
+## AD-27 Flight controls: level movement, explicit vertical keys, walking-only levelling (2026-11-06)
+
+- **Problem:** DJ: automatic levelling made flight frustrating ("I want to look down from above"); vertical flight "feels wrong" (no cause given). Observation (recorded, not confirmed as the cause): W moved along the gaze, so looking down to see the place made W dive and looking up made it climb; the only vertical keys were E/Space and Q.
+- **Decision:** levelling after a mouse look applies on foot only; in flight the chosen pitch stays. Flight W/S/A/D move level along the heading whatever the gaze; E or Space climb, Q or C descend (C added); speed scales with height above the ground (1×–30×); T rises 16 m and settles the gaze at −35° once; landing levels the gaze. A Settings option restores "W flies where you look". The flight chip lists the controls.
+- **Revisit when:** DJ has flown it — if "wrong" persists, the next suspects are vertical speed (0.8 × flight speed) and the take-off rise.

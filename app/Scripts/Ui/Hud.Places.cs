@@ -104,10 +104,12 @@ public partial class Hud
         help.AddThemeColorOverride("font_color", new Color(0.6f, 0.68f, 0.82f));
         dv.AddChild(help);
 
+        // The aerial chip sits at the bottom (the top already holds the toolbar, place bar and flight chip).
         _ascentPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
-        _ascentPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+        _ascentPanel.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
         _ascentPanel.GrowHorizontal = Control.GrowDirection.Both;
-        _ascentPanel.OffsetTop = 240;
+        _ascentPanel.GrowVertical = Control.GrowDirection.Begin;
+        _ascentPanel.OffsetBottom = -14;
         _ascentLabel = new Label { HorizontalAlignment = HorizontalAlignment.Center };
         _ascentLabel.AddThemeFontSizeOverride("font_size", 14);
         _ascentLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.92f, 1f));

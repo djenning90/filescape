@@ -489,7 +489,7 @@ public partial class Hud : CanvasLayer
             var vpW = GetViewport().GetVisibleRect().Size.X;
             _placePanel.OffsetRight = -Mathf.Max(390, vpW - 10 - 1000);
             _flyPanel.OffsetTop = bottom + 8;
-            _ascentPanel.OffsetTop = bottom + 52;
+            if (_ascentPanel.Visible && _hintPanel.Visible) DismissHint(); // one bottom line at a time
             _notePanel.OffsetTop = bottom + 96;
             _problemPanel.OffsetTop = bottom + 8;
         }

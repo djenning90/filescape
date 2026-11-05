@@ -62,6 +62,26 @@ FileScape.Core                                             app/
 - **Walking (AD-16):** `PlaceComposer` produces `PlaceTerrain` with the place; `Walker` integrates input at 120 Hz sub-steps; the app copies the eye pose into `CameraRig.SetPose`. Flight and landing live in `Main.Walk`; glides use the rig's orbit easing and hand back to walking or flight when they settle.
 - **Identity (AD-20):** `PlaceKinds` classifies from names only; the composer uses it for the project core, `PlaceWorld` for dressing; it never affects listing state or the world style.
 
+Exploration pass (2026-11-06, AD-24..27):
+
+```
+FileScape.Core                                             app/
+┌───────────────────────────────────────────────────┐      ┌─────────────────────────────────────────────────┐
+│ Places/WorldLayout  known folders → islands on a   │─────▶│ Main.Aerial: when (flying ∧ > 14 m) show the     │
+│   world plane; PlaceFrame (centre, north)          │      │   aerial world; layout throttled; Reveal nearby; │
+│ Scanning/WorldExplorer.Reveal (list from the air,  │◀─────│   pick islands; G/T travel converts frames       │
+│   never a location root)                           │      │ Places/AerialWorld  islands, roads, link arcs    │
+│ Places/Walker  jump arc (hang, hop), head clearance│      │ Ui/SignLayer  screen-space names (gates, places) │
+│ Experiments/Planetoids  chart + traveller (isolated)│     │ Visual/FileIcons  SVG → atlas (badges, HUD)      │
+└───────────────────────────────────────────────────┘      │ Ui/Hud  key, Destinations drawer, inspector card │
+                                                           │ Experiments/PlanetoidExperiment (--experiment)   │
+                                                           └─────────────────────────────────────────────────┘
+```
+
+- **Two views of the same world:** walking keeps the local, progressive place (vistas are symbolic previews); flight above 14 m shows the explored world as islands. Both read the same `FsTree`; the current place is drawn once, full-detail, at its island (floating origin, `docs/units.md`).
+- **Names:** gates and places are named by `SignLayer` (screen space); `PlaceWorld` keeps in-world plates, the plaque and category signs; `LabelLayer` names files near you.
+- **File appearance:** `FileIcons.For(node)` decides a node's silhouette — the extension point for a future preview provider (thumbnails, first pages) fed by a separate, bounded reader, never by the scan.
+
 Units, coordinates and quantity types: `docs/units.md` (Places: 1 world unit = 1 m; maps: abstract layout units; `FileScape.Core.Units`).
 
 Responsibilities:

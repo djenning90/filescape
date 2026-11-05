@@ -116,9 +116,26 @@ public partial class WalkProbe
         // ---- 7. Go to another place from the air: click its island, then G (AERIAL-03)
         var journeys = Find(root, "Journeys");
         await Until(() => App.Aerial.Labels.Any(l => l.Id == journeys), 3);
-        var anchor = App.Aerial.Labels.First(l => l.Id == journeys).Anchor;
-        var groundAt = new Vector3(anchor.X, 0.2f, anchor.Z);
-        await Click(App.Rig.Camera.UnprojectPosition(groundAt));
+        // A point on the island that is on screen and not under a HUD panel (as a user would click).
+        var island = App.WorldMap!.Islands[journeys];
+        var centre = App.Aerial.Frame.ToLocal(island.Center);
+        var vp = App.GetViewport().GetVisibleRect();
+        var blocked = App.Hud.BlockingRects.ToList();
+        var target2 = new Vector2(-1, -1);
+        foreach (var (dx, dz) in new[] { (0f, 0f), (0.5f, 0f), (-0.5f, 0f), (0f, 0.5f), (0f, -0.5f), (0.35f, 0.35f), (-0.35f, -0.35f) })
+        {
+            var p = new Vector3(centre.X + dx * island.Radius, 0.2f, centre.Y + dz * island.Radius);
+            if (App.Rig.Camera.IsPositionBehind(p)) continue;
+            var sp = App.Rig.Camera.UnprojectPosition(p);
+            if (vp.HasPoint(sp) && !blocked.Any(r => r.HasPoint(sp)) && !App.Signs.ShownRects.Any(r => r.HasPoint(sp)))
+            {
+                target2 = sp;
+                break;
+            }
+        }
+
+        Check(target2.X >= 0, "Journeys' island is in view, clear of the HUD");
+        await Click(target2);
         await Frames(3);
         Check(App.Selection.Selected == journeys && App.Navigator.Current == root, "clicking an island selects that folder; nothing moves");
         Check(App.Hud.InspectorVisible && App.Hud.InspectorTitle.Contains("Journeys", StringComparison.Ordinal), $"the inspector card names it ({App.Hud.InspectorTitle}: {App.Hud.InspectorBrief})");

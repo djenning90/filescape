@@ -97,6 +97,7 @@ public partial class AerialWorld : Node3D
             {
                 // The place you are in is drawn in full by PlaceWorld; from the air a gold beacon marks it.
                 veils.Add(new Vector3(2.4f, 0, 0), new Vector3(0, 160, 0), new Vector3(0, 0, 2.4f), new Vector3(0, 80, 0), new Color(1f, 0.85f, 0.4f, 0.9f), new Color(0, 0, 0, 0));
+                _labels.Add(new SignCandidate(island.Id, new Vector3(0, 30, 0), $"You are here · {tree.DisplayName(island.Id)}", "", new Color(1f, 0.88f, 0.5f), FileIcons.For(n), Focus: true));
                 continue;
             }
 
