@@ -1,0 +1,2 @@
+case,quality,frames,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,gpu_mean_ms,instances,tree_nodes
+wayfarer-walk,High,805,6.98,6.90,7.90,8.55,32.00,6.05,234,148

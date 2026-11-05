@@ -1,0 +1,11 @@
+[12:04:42.355] walk-perf probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[12:04:46.756] perf arrival-eye-3.35 High: mean=7.05 p95=7.87 gpu=6.19 ms
+[12:04:49.870] perf plaza-eye-1.75 High: mean=7.06 p95=7.95 gpu=6.10 ms
+[12:04:52.983] perf plaza-eye-4.6 High: mean=7.18 p95=8.01 gpu=6.24 ms
+[12:04:56.093] perf eye-1.75-no-ssr High: mean=5.92 p95=6.76 gpu=5.03 ms
+[12:04:59.199] perf eye-1.75-no-volfog High: mean=6.47 p95=7.27 gpu=5.66 ms
+[12:05:02.308] perf eye-1.75-no-glow High: mean=6.56 p95=7.25 gpu=5.68 ms
+[12:05:05.413] perf eye-1.75-no-ssao High: mean=6.62 p95=7.59 gpu=5.84 ms
+[12:05:08.524] perf eye-1.75-no-place-geometry High: mean=5.79 p95=6.58 gpu=4.96 ms
+[12:05:11.636] perf eye-1.75-low Low: mean=2.40 p95=2.94 gpu=1.84 ms
+[12:05:11.672] done failures=0

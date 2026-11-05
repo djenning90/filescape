@@ -1,0 +1,90 @@
+[11:59:41.278] walk probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1.25
+[11:59:42.548] arrival root C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer
+[11:59:42.548] PASS arrives on foot (walking is the default)
+[11:59:42.549] PASS eye is 1.75 m above the support (got 1.75 on support 1.60)
+[11:59:42.549] PASS breadcrumb runs from This computer to Wayfarer (This computer › C:\ › Users › David › AppData › Local › Temp › FileScape-fixtures › walk-20261105-043048-b5a7d4 › Wayfarer)
+[11:59:42.549] PASS the landmark plaque names the place
+[11:59:42.715] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/01-arrival-on-foot.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=-
+[11:59:43.075] PASS labels at arrival: 1 shown, 0 overlapping, 0 on the HUD, 0 off screen
+[11:59:43.075] PASS world signs at arrival: 7 shown, 0 overlapping, 0 under the HUD, 0 under overlay labels
+[11:59:43.490] PASS right-drag right/left turns the heading (36.0°)
+[11:59:43.490] PASS right-drag down lowers the gaze (-20.4°)
+[11:59:43.491] PASS releasing the right button releases the cursor
+[11:59:45.225] PASS Up arrow walks off the terrace down the stairs without jumping (support 0.00)
+[11:59:45.225] PASS walked 5.9 m
+[11:59:45.393] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/02-plaza-at-eye-level.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=-
+[11:59:45.759] PASS looking sharply down (-84 deg)
+[11:59:49.395] PASS walking while looking down is as fast and stays on the ground (4.19 m/s vs 4.16 m/s level)
+[11:59:49.581] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/03-looking-down-while-walking.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=-
+[11:59:50.613] PASS Up + Left walks a curve (turned 139°, moved 3.6 m)
+[11:59:52.414] PASS W+D is not faster than W (4.20 vs 4.16 m/s)
+[11:59:53.667] PASS Space jumps about 0.8 m and lands (apex 0.80 m)
+[11:59:57.035] PASS the ramp leads up to the overlook without jumping (support 2.40)
+[11:59:57.258] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/04-overlook.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=-
+[12:00:00.504] PASS the jump blocks lead onto the overlook with three jumps (3/3)
+[12:00:01.623] PASS Home returns to the arrival point on foot
+[12:00:02.740] PASS clicking Photos in Destinations walks you up to its gate
+[12:00:06.093] PASS walking through the Photos gate enters Photos
+[12:00:06.093] PASS arrival in the child is on foot
+[12:00:06.278] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/05-child-entered.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer\Photos selected=Photos
+[12:00:07.227] PASS U returns in front of the Photos gate with Photos selected
+[12:00:07.227] PASS to-shared-library is identified as a junction
+[12:00:07.227] PASS its gate is a connection that can be entered
+[12:00:08.528] PASS approach the link's gate
+[12:00:11.881] PASS walking through the link's gate travels
+[12:00:11.881] PASS arrived at the link's real destination outside the root (C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Shared Library)
+[12:00:11.882] PASS the HUD names the connection used: ⇢ You came through the junction “to-shared-library” in Wayfarer. Backspace returns through it; ▲ Up goes to this folder's real parent.
+[12:00:11.882] PASS the breadcrumb is the physical location (This computer › C:\ › Users › David › AppData › Local › Temp › FileScape-fixtures › walk-20261105-043048-b5a7d4 › Shared Library)
+[12:00:12.028] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/06-arrived-through-a-link.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Shared Library selected=to-shared-library
+[12:00:12.382] PASS labels at the link's destination with the link selected: 0 shown, 0 overlapping, 0 on the HUD, 0 off screen
+[12:00:12.382] PASS world signs at the link's destination with the link selected: 4 shown, 0 overlapping, 0 under the HUD, 0 under overlay labels
+[12:00:13.516] PASS Backspace returns through the link, in front of its gate, with the link selected
+[12:00:13.672] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/07-back-through-the-link.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=to-shared-library
+[12:00:13.705] PASS a loop link says it leads back here: “back-to-wayfarer” leads back to Wayfarer — where you already are (a loop).
+[12:00:17.152] PASS two links reach the same Photos place
+[12:00:17.152] PASS …and the HUD says so: ⇢ You came through the junction “also-photos” in Wayfarer · also reached by 1 other link. Backspace returns through it; ▲ Up goes to this folder's real parent.
+[12:00:17.152] PASS no duplicate sub-world was built (120 → 120 nodes)
+[12:00:18.521] PASS a broken link is reported as broken and does not travel
+[12:00:18.521] PASS a broken link's gate cannot be walked through
+[12:00:18.521] PASS problems are aggregated: ⚠ 2 here need attention ▸
+[12:00:18.666] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/08-problems-and-links.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=broken-link
+[12:00:18.667] PASS hidden/system folders are hidden by default (2) while dot-names stay visible
+[12:00:18.754] PASS H shows them (13 → 15 gates)
+[12:00:18.754] PASS visibility changes nothing else (selection, place, history, totals)
+[12:00:21.147] PASS lighthouse is recognised as a software project (manifest Lighthouse.csproj, manifest Lighthouse.sln, readme README.md, .git (version control))
+[12:00:21.147] PASS its README and manifests form the project core
+[12:00:21.310] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/09-project-place.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer\Projects\lighthouse selected=lighthouse
+[12:00:21.662] PASS labels at the project place: 0 shown, 0 overlapping, 0 on the HUD, 0 off screen
+[12:00:21.662] PASS world signs at the project place: 5 shown, 0 overlapping, 0 under the HUD, 0 under overlay labels
+[12:00:22.794] PASS a README without a manifest stays an ordinary folder
+[12:00:25.057] PASS U from the arrival root goes on to its parent, listed on arrival (walk-20261105-043048-b5a7d4)
+[12:00:25.194] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/10-above-the-arrival-root.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4 selected=Wayfarer
+[12:00:26.226] PASS Ctrl+Home returns to the arrival root
+[12:00:26.343] PASS Ctrl+L opens Go to path with the field focused
+[12:00:26.911] PASS keys go to the focused path field and do not move you
+[12:00:28.062] PASS arrived in the WSL folder (\\wsl.localhost\Ubuntu-24.04\tmp\filescape-wsl-fixtures\wsl-20261105-094515; last error: This junction is broken: its target “C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\gone” does not exist.)
+[12:00:28.062] PASS breadcrumb: This computer › Ubuntu-24.04 › tmp › filescape-wsl-fixtures › wsl-20261105-094515
+[12:00:28.062] PASS Notes and notes are two separate gates (case-sensitive)
+[12:00:28.063] PASS a Linux symlink is identified and marked as not followable through Windows
+[12:00:28.221] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/11-wsl-arrival.png current=\\wsl.localhost\Ubuntu-24.04\tmp\filescape-wsl-fixtures\wsl-20261105-094515 selected=Wayfarer
+[12:00:28.579] PASS labels at the WSL folder: 0 shown, 0 overlapping, 0 on the HUD, 0 off screen
+[12:00:28.579] PASS world signs at the WSL folder: 6 shown, 0 overlapping, 0 under the HUD, 0 under overlay labels
+[12:00:28.696] PASS L opens Locations (7 rows)
+[12:00:29.846] PASS the hub is a place with a gate per location (5)
+[12:00:29.847] PASS drives and WSL distributions are both there
+[12:00:30.005] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/12-locations-hub.png current= selected=Ubuntu-24.04
+[12:00:30.364] PASS labels at the hub: 0 shown, 0 overlapping, 0 on the HUD, 0 off screen
+[12:00:30.364] PASS world signs at the hub: 2 shown, 0 overlapping, 0 under the HUD, 0 under overlay labels
+[12:00:31.667] PASS entering D:\ (no media) shows it as unavailable: The device is not ready. : 'D:\'
+[12:00:31.667] PASS the UI did not freeze while Windows answered (worst frame 23 ms)
+[12:00:31.801] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/13-unavailable-drive.png current=D:\ selected=D:\
+[12:00:36.704] PASS T takes off: a continuous rise of 3.5 m over 1285 ms (largest frame step 0.30 m), chip and pressed button
+[12:00:39.401] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/14-flying.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=D:\
+[12:00:41.423] PASS T lands on a valid surface below, not inside anything (support 0.00)
+[12:00:41.589] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-05-corrections/final/walk-1.25/15-landed.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-043048-b5a7d4\Wayfarer selected=D:\
+[12:00:42.941] PASS landing above a vista guides you to the arrival point and says why: There is no walkable ground below here (that is a distant view, outside this place), so you are landing at the arrival point.
+[12:00:43.625] PASS with Locations open, the arrow keys do not walk
+[12:00:43.709] PASS Esc closes Locations
+[12:00:43.710] PASS HUD rectangles are known to labels and picking
+[12:00:49.833] perf wayfarer-walk High: frames=805 mean=6.96 p95=7.95 p99=8.78 max=21.69 gpu=6.06 instances=234
+[12:00:49.833] done failures=0

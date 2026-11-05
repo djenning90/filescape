@@ -1,0 +1,42 @@
+== (a) process check fails
+fs.sh: exporting to C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042212-290239
+fs.sh: smoke launch OK ([11:22:51.577] smoke ok build=dbf2bc1a5f5f+3-uncommitted 2026-11-05T04:22:46Z)
+fs.sh: could not determine which FileScape processes run; not promoting. Verified build: C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042212-290239\FileScape.exe
+exit=6
+staging-20261105-042212-290239
+== (b) normal
+fs.sh: exporting to C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042251-291839
+fs.sh: smoke launch OK ([11:23:19.963] smoke ok build=dbf2bc1a5f5f+3-uncommitted 2026-11-05T04:23:16Z)
+fs.sh: export OK -> C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\build\FileScape.exe (dbf2bc1a5f5f+3-uncommitted 2026-11-05T04:23:16Z)
+exit=0
+build
+staging-20261105-042212-290239
+== (c) normal again keeps previous
+fs.sh: exporting to C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042320-292838
+fs.sh: smoke launch OK ([11:23:34.740] smoke ok build=dbf2bc1a5f5f+4-uncommitted 2026-11-05T04:23:32Z)
+fs.sh: previous build kept as C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\previous-20261105-042320-292838
+fs.sh: export OK -> C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\build\FileScape.exe (dbf2bc1a5f5f+4-uncommitted 2026-11-05T04:23:32Z)
+exit=0
+build
+previous-20261105-042320-292838
+staging-20261105-042212-290239
+== (d) running from build
+fs.sh: exporting to C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042335-293519
+fs.sh: smoke launch OK ([11:23:48.318] smoke ok build=dbf2bc1a5f5f+4-uncommitted 2026-11-05T04:23:44Z)
+fs.sh: FileScape is running from C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\build; not replacing it. Verified build: C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042335-293519\FileScape.exe (run 'tools/fs.sh export' again after closing FileScape, or use it directly).
+exit=4
+build
+previous-20261105-042320-292838
+staging-20261105-042212-290239
+staging-20261105-042335-293519
+== builds
+build: complete dbf2bc1a5f5f+4-uncommitted 2026-11-05T04:23:32Z
+staging-20261105-042212-290239: complete dbf2bc1a5f5f+3-uncommitted 2026-11-05T04:22:46Z
+staging-20261105-042335-293519: complete dbf2bc1a5f5f+4-uncommitted 2026-11-05T04:23:44Z
+previous-20261105-042320-292838: complete dbf2bc1a5f5f+3-uncommitted 2026-11-05T04:23:16Z
+running: 
+== prune (keeps newest previous, deletes others)
+deleted: C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042212-290239
+deleted: C:\Users\David\AppData\Local\Temp\fs-export-test\AppData\Local\FileScape\staging-20261105-042335-293519
+build
+previous-20261105-042320-292838

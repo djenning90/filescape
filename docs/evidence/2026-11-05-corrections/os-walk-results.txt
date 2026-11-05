@@ -1,0 +1,18 @@
+﻿PASS OS arrives on foot in Wayfarer (locomotion=Walking, feetY=1.6)
+PASS OS Up arrow walks off the terrace and down the stairs (5.9 m, feetY 0)
+PASS OS Left arrow turns in place (turned 74 deg)
+PASS OS Up+Right walks a curve (turned 108 deg, moved 3.2 m)
+PASS OS Space jumps and lands (jumps 0 -> 1)
+PASS OS A steps sideways without turning
+PASS OS right-hold captures the mouse to look; release frees it (yaw -34 -> -70, pitch -6 -> -20)
+PASS OS T takes off (3.5 m up)
+PASS OS T again lands on foot (feetY 0)
+PASS OS Alt-Tab while walking: focus lost, nothing held or captured
+PASS OS after returning, you stand still (no stuck key)
+PASS OS H shows hidden and system items
+PASS OS L opens Locations; the arrow keys do not walk while it is open
+PASS OS Esc closes Locations
+PASS OS clicked the to-shared-library row (selected=to-shared-library)
+PASS OS G follows the junction to Shared Library (via link 28)
+PASS OS Backspace returns through it, with the link selected
+done failures=0

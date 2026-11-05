@@ -1,8 +1,22 @@
 # Implementation status
 
-Last updated: 2026-11-05, after the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-05 (afternoon), after the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Correction and units pass (2026-11-05, afternoon)
+
+Independent review (ChatGPT: Windows tests 125 passed, 12 skipped — the WSL check skipped for want of `FILESCAPE_WSL_FIXTURE`) asked for six corrections; DJ asked for a units refactor. **Delivered artifact:** `C:\Users\David\AppData\Local\FileScape\build\FileScape.exe`, build **`2dc4ae8c3234`** (clean tree, hashes in `build-info.txt` beside it and in Help).
+
+- **Safe, verified delivery (AD-21).** `fs.sh export` now stages into a unique `staging-*`, verifies files, records identity and hashes, smoke-launches the staged exe, fails closed when it cannot tell which FileScape runs, refuses to replace a running build, promotes by renaming and keeps `previous-*`; `builds`/`prune-builds` added. Failure paths exercised against a throwaway base. **The damaged build:** its directory was removed by the 11:14 promotion (the old export's `rm -rf build`), so it could not be inspected further; `build\FileScape.exe` has existed continuously since 11:14 (verified at the start of this pass). Why the reviewer did not find it is not established.
+- **Link failures by probing (LINK-06).** `ProbeTarget`/`ClassifyFailure` replace `Exists` checks; Windows tests cover denied (deny ACE), unavailable (a subst drive removed after the junction was made) and broken targets with Retry recovering after each cause is fixed.
+- **Entry limit (FS-08/FS-10).** Listings are capped by the remaining budget at dispatch and on apply; cut folders are "partly listed" with the reason and "Start fresh here"; a reserve keeps requested destinations reachable; tested with a 40-entry budget on a 300-entry folder. The limit bounds the tree; transient buffering ≤ concurrent listings × remaining budget.
+- **Whole-tree reference restored (AD-22).** "Bounded tree scan (whole-tree reference)" alongside "Connected world (explore on demand)", from Locations or `--scan=tree`.
+- **Readability (VISI-01).** World signs are hidden under HUD panels and when overlapping another sign; long names shortened on signs; checked at UI scale 1.0 and 1.25 (DJ's scaling), which also exposed and fixed HUD overlaps (breadcrumb, Destinations/legend, hint, badge) and a real defect: **mouse look slowed to 1/1.25 at 125 %** (Godot's scaled `Relative`; now `ScreenRelative`).
+- **WSL scope stated precisely (AD-18, LINK-09 unmet).** The tested access route and each call's result are recorded; following Linux symlinks remains unmet, with a half-day investigation proposed (KD-17).
+- **Units (docs/units.md).** `FileScape.Core.Units` (Meters, MetersPerSecond, MetersPerSecondSquared, Degrees, DegreesPerSecond, PerSecond) and `TimeSpan` for durations; camera math, walker, thresholds, poses, camera rig, flight, transitions and frame-loop timing converted; conventions documented (Places metres vs map layout units, two angle conventions and their single bridge, viewport units vs physical pixels). Golden numbers captured before the refactor still hold; no new allocations; the typed arithmetic costs ≈ 0.3 µs per walker frame. Found on the way: `TimeSpan.FromSeconds` truncates (1/60 s → 166,666 ticks) and a 120 Hz integrator then lags one step — computed seconds now go through `Durations.FromSeconds` (rounding).
+
+**Verification on the installed build:** Windows tests **136 passed + 12 skipped** (POSIX-only), WSL **133 + 15** (Windows-only), the live WSL test passing with a valid fixture; walking journey 71/0 at UI 1.0 and 1.25; real-input probe 17/17; Places journey 52/0 (connected) and 51/0 (bounded tree); scan scenario, map navigation and map journey 0 failures. **Performance (local session again):** walking 6.98 ms mean, p95 7.9, p99 8.6 (High, 1600×900); stationary 7.05 ms High, 2.40 ms Low; Places during a 50k scan p99 11.9 ms — consistent with 2026-11-04, confirming that the morning's 3× slowdown was machine state (KD-16).
 
 ## Walking world pass (2026-11-05)
 
@@ -173,12 +187,12 @@ Other measurements:
 - **KD-13 Isolated ~30 ms frames when a right-drag starts** in the walking measurements (p99 stays ≈ 8 ms). Not investigated.
 - **KD-14 (partly resolved 2026-11-05)** The Places HUD and the walking journey were exercised at UI scale 1.25 (DJ's Windows scaling): panel overlaps, the breadcrumb and mouse-look scaling were fixed. Not exercised: other scales, other window sizes; `tools/os-places-probe.ps1` still assumes 1.0.
 - **KD-14 (original) Places HUD at DPI scale > 1 not exercised** (automation forces `--ui-scale=1`; the OS probe's Destinations coordinates assume it).
-- **KD-16 Measurements on 2026-11-05 are machine-state dominated** (remote session; yesterday's build 3× slower today). Re-measure on a local console session before comparing with 2026-11-04.
+- **KD-16 (resolved)** The morning's measurements were machine-state dominated (remote session); re-measured in the afternoon on the installed build: walking 6.98 ms mean, p99 8.6 ms (High), in line with 2026-11-04.
 - **KD-17 Following Linux symlinks in WSL is unmet (LINK-09).** What was tested is in AD-18. Smallest bounded investigation proposed (≈ half a day, no new architecture): (1) repeat the probe through `\\wsl$` and read the link's extended attributes (`NtQueryEaFile`) and `GetFileInformationByHandleEx` classes, in case the 9P server exposes the target as metadata; (2) if not, time an explicit, per-link, on-demand `wsl.exe -d <distro> --exec readlink -- <linux path>` with a timeout, on a running and a stopped distribution, with Unicode and spaces — invoked only when the user follows a Linux link, no service or background process; (3) write up the result as a go/no-go for LINK-09.
 - **KD-18 Not exercised:** a stopped WSL distribution (entering one would start it), Windows directory symlinks and mounted volumes (creating them needs Developer Mode/admin), a link to a denied or unavailable target, the "Not a project" button and Retry by automation, DPI scaling above 1.0 for the new HUD parts, the C:\ root in evidence runs (privacy).
 - **KD-19 The maps show the explored world.** With live data the Classic/District maps lay out the hub, the arrival folder's ancestor chain and whatever has been listed; arrows in the maps still strafe (NAV-07).
 - **KD-20 Movement feel is untuned by a human:** speeds (walk 4.2, run 8.4 m/s), turn rate 120°/s, jump 0.83 m, flight 10 m/s, look sensitivity are my choices, consistent and measured, not DJ's.
-- **KD-21 Cosmetic:** the identity banner over a drive's landmark touches the plaque name (D:\ screenshot); landing can face you straight at the landmark from close by; frame-time spikes of 40–80 ms remain in walking runs today (machine state not separated).
+- **KD-21 Cosmetic:** the identity-banner overlap was fixed (it now sits above the name's height); landing can still face you straight at the landmark from close by; frame-time spikes of 40–80 ms remain in walking runs today (machine state not separated).
 - **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
 
 ## Provisional decisions to confirm with DJ
@@ -186,6 +200,8 @@ Other measurements:
 Godot (AD-01), the Fishbone default (AD-08), the log height scale (AD-07), click = select-only (FSN approached on click), and D3D12 as the default driver (KD-01, AD-11).
 
 ## Next useful iteration (recommended, 2026-11-05)
+
+0. (After the correction pass) DJ tries the installed build `2dc4ae8c3234`; the half-day WSL symlink investigation (KD-17) if Linux links matter to DJ; type `PlaceParams`/terrain lengths if they become a source of mistakes (docs/units.md lists them as deliberate primitives).
 
 1. **DJ walks it:** arrival on foot, the stairs, ←/→ turning (the changed arrows), Space, the overlook, T flight and landing; then a junction, Backspace, Locations, a pasted WSL path. Tune speeds, turn rate, jump and flight to DJ's hands (KD-20).
 2. **Re-measure performance on a local session** (KD-16) and, if walking views are costly, add a cheaper "walking" quality between High and Low.

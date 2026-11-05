@@ -1,0 +1,4 @@
+Allocation and time per call, Release, same workload (src: scratch benchmark; old = 8eb8a48, new = 45504a4 + cached durations)
+400-tower terrain: old walker 1375.8 B/frame 3.01 us; new 1483.4 B/frame 3.24 us (trajectory differs: rounded vs truncated frame durations)
+empty terrain:    old walker 672.0 B/frame 1.65 us; new 672.0 B/frame 1.94-2.01 us
+camera math FlyDelta: old 0 B/call 66 ns; new 0 B/call 82-87 ns
