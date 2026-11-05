@@ -252,6 +252,14 @@ public partial class PlacesProbe : Node
             Check(Place.IsWide && Place.Gates.Count == 240, F($"wide-hall: 240 gates on {Place.Tiers.Count} tiers"));
             Check(_main.PlaceWorld.VisibleSigns <= 70, F($"at most 70 managed signs visible at arrival ({_main.PlaceWorld.VisibleSigns} of {_main.PlaceWorld.SignCount})"));
             Check(_main.Hud.DestinationCount == 241, F($"Destinations lists all 240 folders plus the way up ({_main.Hud.DestinationCount})"));
+            await Frames(3);
+            // LABEL-01 in a wide place: many gates named at once (shortened when far), none overlapping or under the HUD.
+            var named = _main.Signs.ShownIds.Count;
+            var rects = _main.Signs.ShownRects;
+            var clear = true;
+            for (var i = 0; i < rects.Count; i++) for (var j = i + 1; j < rects.Count; j++) clear &= !rects[i].Intersects(rects[j]);
+            clear &= rects.All(r => !_main.Hud.BlockingRects.Any(h => h.Intersects(r)));
+            Check(named >= 12 && clear, F($"wide-hall: {named} of {_main.Signs.InView} gates in view are named at once, without overlaps ({string.Join(", ", _main.Signs.ShownText.Values.Take(8))}…)"));
             await Shot("wide-arrival");
             await Key(Godot.Key.B);
             await Settle();

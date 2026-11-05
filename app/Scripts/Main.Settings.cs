@@ -39,7 +39,8 @@ public partial class Main
         var v = _hud.ReverseVerticalRect.GetCenter() * scale;
         var lv = _hud.LevelViewRect.GetCenter() * scale;
         return System.FormattableString.Invariant($"\"reverseH\":{(_prefs.ReverseLookHorizontal ? "true" : "false")},\"reverseV\":{(_prefs.ReverseLookVertical ? "true" : "false")},\"levelView\":{(_prefs.LevelViewOnRelease ? "true" : "false")},\"walkSpeed\":{_prefs.WalkSpeed.Value:0.##},\"runSpeed\":{_prefs.RunSpeed.Value:0.##},") +
-            System.FormattableString.Invariant($"\"settingsOpen\":{(_hud.SettingsVisible ? "true" : "false")},\"settingsH\":[{h.X:0},{h.Y:0}],\"settingsV\":[{v.X:0},{v.Y:0}],\"settingsLevel\":[{lv.X:0},{lv.Y:0}],\"uiScale\":{scale:0.##},\"gateChip\":\"{JsonEscape(_hud.GateChipText)}\",\"prefsFile\":\"{JsonEscape(_prefsPath ?? "")}\"");
+            System.FormattableString.Invariant($"\"settingsOpen\":{(_hud.SettingsVisible ? "true" : "false")},\"settingsH\":[{h.X:0},{h.Y:0}],\"settingsV\":[{v.X:0},{v.Y:0}],\"settingsLevel\":[{lv.X:0},{lv.Y:0}],\"uiScale\":{scale:0.##},\"gateChip\":\"{JsonEscape(_hud.GateChipText)}\",\"prefsFile\":\"{JsonEscape(_prefsPath ?? "")}\",") +
+            System.FormattableString.Invariant($"\"destinationsOpen\":{(_hud.DestinationsOpen ? "true" : "false")},\"legendVisible\":{(_hud.LegendVisible ? "true" : "false")},\"aerialShown\":{(_aerialShown ? "true" : "false")},\"altitude\":{(_place != null ? CameraAltitude : 0):0.##},\"signsNamed\":{_signs.ShownIds.Count},\"islands\":{(_aerialShown ? _aerial.IslandCount : 0)}");
     }
 
     /// <summary>Applies and saves new preferences (the Settings panel; probes use it only to set up a case).</summary>

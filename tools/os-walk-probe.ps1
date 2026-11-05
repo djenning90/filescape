@@ -110,16 +110,37 @@ Check (-not $a.settingsOpen -and -not $s.reverseH -and $s.reverseV -and ($s.yaw 
 $saved = if (Test-Path $prefs) { Get-Content $prefs -Raw | ConvertFrom-Json } else { $null }
 Check ($saved -ne $null -and -not $saved.reverseLookHorizontal -and $saved.reverseLookVertical) "the change is saved to the probe's own preferences file ($prefs)"
 
-# Flight: T rises, T lands on foot.
+# Panels on demand with real keys (VIEW-01/03): nothing open by default; J opens Destinations, Esc closes; K shows the key.
+$s = State
+Check (-not $s.destinationsOpen -and -not $s.legendVisible -and $s.signsNamed -ge 4) "default view: no Destinations drawer, no key; $($s.signsNamed) gates named on screen"
+Hold-Key 'J' 80; Start-Sleep -Milliseconds 400
 $a = State
-Hold-Key 'T' 80; Start-Sleep -Milliseconds 1300
+Hold-Key 'Esc' 80; Start-Sleep -Milliseconds 400
 $s = State
-Check ($s.locomotion -eq 'Flying' -and ($s.pos[1] - $a.pos[1]) -gt 3) "T takes off ($([math]::Round($s.pos[1] - $a.pos[1], 1)) m up)"
+Check ($a.destinationsOpen -and -not $s.destinationsOpen) "real J opens Destinations, real Esc closes it"
+Hold-Key 'K' 80; Start-Sleep -Milliseconds 300
+$a = State
+Hold-Key 'K' 80; Start-Sleep -Milliseconds 300
+$s = State
+Check ($a.legendVisible -and -not $s.legendVisible) "real K shows and hides the key"
+
+# Flight: T rises to a downward view; E and Q change height, W flies level whatever the gaze (FLY-03/04); the aerial world shows.
+$a = State
+Hold-Key 'T' 80; Start-Sleep -Milliseconds 2500
+$s = State
+Check ($s.locomotion -eq 'Flying' -and ($s.pos[1] - $a.pos[1]) -gt 12 -and $s.lookPitch -lt -25 -and $s.aerialShown) "T takes off ($([math]::Round($s.pos[1] - $a.pos[1], 1)) m up, looking down $([math]::Round($s.lookPitch)) deg, aerial world: $($s.islands) places)"
 Save-WindowShot $w (Join-Path $Out 'os-02-flying.png')
-Hold-Key 'E' 800; Start-Sleep -Milliseconds 200
-Hold-Key 'T' 80; Wait-Settled 1500
+$a = State
+Hold-Key 'E' 600; Start-Sleep -Milliseconds 300
+$b = State
+Hold-Key 'Q' 600; Start-Sleep -Milliseconds 300
+$c = State
+Hold-Key 'W' 600; Start-Sleep -Milliseconds 300
+$d = State
+Check ((($b.pos[1] - $a.pos[1]) -gt 2) -and (($c.pos[1] - $b.pos[1]) -lt -2) -and ([math]::Abs($d.pos[1] - $c.pos[1]) -lt 0.5) -and ((Dist $c.pos $d.pos) -gt 3)) "real keys in flight: E +$([math]::Round($b.pos[1] - $a.pos[1], 1)) m, Q $([math]::Round($c.pos[1] - $b.pos[1], 1)) m, W looking down moved $([math]::Round((Dist $c.pos $d.pos), 1)) m level ($([math]::Round($d.pos[1] - $c.pos[1], 2)) m)"
+Hold-Key 'T' 80; Wait-Settled 2500
 $s = State
-Check ($s.locomotion -eq 'Walking' -and $s.grounded -and -not $s.landing) "T again lands on foot (feetY $($s.feetY))"
+Check ($s.locomotion -eq 'Walking' -and $s.grounded -and -not $s.landing -and [math]::Abs($s.lookPitch) -lt 3) "T again lands on foot, view level again (feetY $($s.feetY), pitch $([math]::Round($s.lookPitch, 1)))"
 
 # Alt-Tab while walking: nothing held; still afterwards. (No mouse button is involved: a stray button release in
 # whichever window gains focus could open a context menu there.)

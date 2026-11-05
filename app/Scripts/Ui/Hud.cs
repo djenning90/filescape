@@ -383,21 +383,22 @@ public partial class Hud : CanvasLayer
             CustomMinimumSize = new Vector2(560, 0),
             Text =
                 "[b]Places[/b] (the default view: you are [i]inside[/i] a folder, on foot)\n" +
-                "Files stand around you as glass towers, grouped by type. Each child folder is a [b]gate[/b] with its name;\n" +
-                "    beyond it you see a preview of that place. [b]Walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back.\n" +
-                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways\n" +
-                "    hold [b]right mouse[/b] to look and steer    [b]Space[/b] jump    hold [b]Shift[/b] run (walk 8 m/s, run 16 m/s by default)\n" +
-                "    [b]F4[/b] or [b]⚙ Settings[/b]: mouse-look direction (left/right and up/down separately), levelling and walking speeds, saved for next time.\n" +
-                "    Letting go of the mouse after looking eases the view back to level (the direction you turned to is kept; Settings can turn this off).\n" +
-                "    Going [b]up[/b] (the ▲ gate or U) arrives facing the next ▲ gate: keep walking forward to keep going up.\n" +
-                "    Stairs and ramps are walked; the [b]overlook[/b] (ramp, or jump the blocks) shows this folder's summary.\n" +
-                "[b]Flight[/b]   [b]T[/b] or the ✈ button: rise and fly (look with right mouse, W A S D along the view, [b]E[/b]/[b]Space[/b] up, [b]Q[/b] down,\n" +
-                "    wheel = speed); [b]T[/b] again lands you safely on foot.   [b]B[/b] rises above the place in flight.\n" +
+                "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
+                "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
+                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways    hold [b]Shift[/b] run\n" +
+                "    hold [b]right mouse[/b] (or left-drag) to look; letting go levels the view (on foot only)    [b]Space[/b] jump: hold for a high jump, tap for a hop\n" +
+                "[b]Flight[/b]   [b]T[/b]: rise 16 m and look down across the place; [b]T[/b] again lands you safely on foot (the view levels)\n" +
+                "    [b]W A S D[/b] fly level (looking down never makes you dive)    [b]E[/b] / [b]Space[/b] up    [b]Q[/b] / [b]C[/b] down    [b]wheel[/b] speed (faster the higher you are)\n" +
+                "    the view stays where you leave it    [b]B[/b] aerial view: this place, its parent and its child places from above\n" +
+                "[b]The aerial world[/b]   Above 14 m every folder you know is an island: roads lead to child folders, cyan arcs are links,\n" +
+                "    a warm ring marks places you have visited, a gold beacon where you are. Fly over one and press [b]T[/b] to land there,\n" +
+                "    or click it and press [b]G[/b] to fly there. Places near you inside the folder you opened are listed as you fly;\n" +
+                "    others stay \"not listed yet\" until you go there (nothing scans a drive). Distances between places are symbolic.\n" +
+                "[b]Panels on demand[/b]   [b]J[/b] Destinations (type to filter, ↑↓ Enter)    [b]K[/b] key (colours and heights)    [b]F4[/b] settings    [b]Esc[/b] closes\n" +
                 "[b]G[/b]  go into the selected folder or link      [b]U[/b] / [b]PgUp[/b]  up to the parent      [b]Backspace[/b]  back (also back through a link)\n" +
                 "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the arrival root      [b]M[/b]  map      [b]Tab[/b]  next view\n" +
                 "[b]L[/b]  locations (drives, WSL)      [b]Ctrl+L[/b]  go to a typed or pasted path      [b]H[/b]  show / hide hidden and system items\n" +
-                "Places are separate spaces linked by gates; distances between them are symbolic. The maps show the explored world.\n" +
-                "Selecting something never moves you: [b]click[/b] inspects, travel is always deliberate. Jumping never opens or runs anything.\n\n" +
+                "Selecting something never moves you: [b]click[/b] inspects (a card with Details ▸), travel is always deliberate.\n\n" +
                 "[b]Moving around in the maps (Classic FSN, District)[/b]\n" +
                 "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +
                 "[b]Hold right mouse[/b]  fly: look around with the mouse while W A S D / arrows move you\n" +
@@ -410,7 +411,7 @@ public partial class Hud : CanvasLayer
                 "[b]Esc[/b]  parent directory (in Places: back to the folder itself)      [b]Backspace[/b]  previous selection (Places: previous place)\n" +
                 "[b]Enter[/b]  open with Windows (asks first for programs, links and cloud files)\n" +
                 "[b]Tab[/b]  cycle Places / Classic FSN / District (the selection stays)\n" +
-                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats      [b]F4[/b]  settings\n\n" +
+                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats      [b]F4[/b]  settings      [b]K[/b]  key\n\n" +
                 "Right-drag used to pan; pan is now on the middle button.\n" +
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
         };
