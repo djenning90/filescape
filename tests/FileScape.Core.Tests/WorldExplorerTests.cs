@@ -226,6 +226,24 @@ public sealed class WorldExplorerTests : IDisposable
     }
 
     [PosixFact]
+    public void Revealing_lists_a_folder_from_the_air_but_never_a_location_root()
+    {
+        // AERIAL-04: the aerial world may list a folder it shows (the app limits which); a drive or distribution is
+        // never opened that way.
+        using var h = new Harness(Arrival);
+        var arrival = h.Await(WorldExplorer.ArrivalTicket).NodeId;
+        var parent = h.Tree[arrival].ParentId;
+        var locationRoot = h.Tree.Root.Children.Single();
+        h.Pump(() => h.Idle);
+        h.Tree[locationRoot].ScanState.Should().NotBe(DirScanState.Complete);
+        h.Explorer.Reveal(locationRoot);
+        h.Explorer.Reveal(parent);
+        h.Pump(() => h.Idle && h.Tree[parent].ScanState == DirScanState.Complete);
+        h.Tree[parent].Children.Select(c => h.Tree[c].Name).Should().Contain("outside");
+        h.Tree[locationRoot].ScanState.Should().NotBe(DirScanState.Complete, "a location root is never revealed from the air");
+    }
+
+    [PosixFact]
     public void A_slow_listing_does_not_block_another_place()
     {
         using var gate = new ManualResetEventSlim(false);

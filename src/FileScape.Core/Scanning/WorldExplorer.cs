@@ -110,6 +110,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     private abstract record Request;
     private sealed record GoToRequest(int Ticket, string Path) : Request;
     private sealed record VisitRequest(int Id) : Request;
+    private sealed record RevealRequest(int Id) : Request;
     private sealed record FollowRequest(int Ticket, int LinkId) : Request;
     private sealed record RetryRequest(int Id) : Request;
     private sealed record CancelBackgroundRequest : Request;
@@ -165,6 +166,13 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     /// <summary>The user is in this folder: list it now, then its child folders (gate states, vistas).</summary>
     public void Visit(int dirId) => Post(new VisitRequest(dirId));
+
+    /// <summary>
+    /// Lists a folder for the aerial world (AERIAL-04) without counting it as visited: queued behind listings the user
+    /// is waiting for, never for a location root (no drive or distribution is opened from the air), and only once. The
+    /// caller decides which folders may be revealed (the app limits it to the arrival subtree and visited places).
+    /// </summary>
+    public void Reveal(int dirId) => Post(new RevealRequest(dirId));
 
     /// <summary>Follows a link deliberately (LINK-02). The reply carries the destination id, or why not.</summary>
     public int FollowLink(int linkId)
@@ -292,6 +300,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 else if (d.State == DirState.Listed) Prefetch(d);
                 break;
             case VisitRequest:
+                break;
+            case RevealRequest rv when rv.Id != 0 && !_roots.ContainsValue(rv.Id) && _dirs.TryGetValue(rv.Id, out var d):
+                if (d.State == DirState.Unlisted && !d.Retry) Enqueue(d, Priority.Prefetch);
+                break;
+            case RevealRequest:
                 break;
             case FollowRequest f:
                 Follow(f.Ticket, f.LinkId);
