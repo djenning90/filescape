@@ -205,6 +205,8 @@ public partial class PlaceWorld : Node3D
         AddChild(light);
         _transient.Add(light);
 
+        BuildIdentity(tree, c, accent, plaque, towers, gates, (t, at, px, col, rng, pri) => Sign(t, at, px, col, rng, pri));
+
         if (c.State is not (ListingState.Open or ListingState.Empty))
         {
             Sign($"Contents {Listing.Describe(c.State)}", plaque + new Vector3(0, 1.3f, 1.5f), 0.009f, StateColor(c.State), 1e9f, 0);
@@ -353,6 +355,56 @@ public partial class PlaceWorld : Node3D
         Emit("spires", spires, _spire, _vistaSpire, false);
         InstanceCount = towers.Count + gates.Count + portals.Count + beacons.Count + streets.Count + spires.Count;
         for (var i = signIndex; i < _signs.Count; i++) _signs[i].Visible = false;
+    }
+
+    /// <summary>
+    /// Identity dressing (AD-20, IDENT-02): a banner over the landmark naming what kind of place this is, the project
+    /// core's plinths and role labels, and the hub's halo of rings. Style stays futuristic; state stays in the gates.
+    /// </summary>
+    private void BuildIdentity(FsTree tree, PlaceComposition c, Color accent, Vector3 plaque, InstanceBatch towers, InstanceBatch gates,
+        Func<string, Vector3, float, Color, float, int, Label3D> sign)
+    {
+        var lm = c.Landmark;
+        switch (c.Kind.Kind)
+        {
+            case PlaceKind.Project:
+            {
+                sign("⚙ SOFTWARE PROJECT", plaque + new Vector3(0, 3.35f, 0), 0.0062f, new Color(0.55f, 1f, 0.85f), 1e9f, 0);
+                var coreColor = new Color(0.45f, 1f, 0.8f);
+                foreach (var f in c.Files.Where(f => f.Core))
+                {
+                    var b = f.Box;
+                    // A lit plinth under each core file, and its role.
+                    gates.Add(new Vector3(2.1f, 0, 0), new Vector3(0, 0.14f, 0), new Vector3(0, 0, 2.1f), new Vector3(b.Center.X, 0.07f, b.Center.Z), coreColor * 0.9f, new Color(2.1f, 0.14f, 2.1f, 0));
+                    var role = PlaceKinds.IsReadme(tree[f.Id].Name) ? "README · start here" : "manifest";
+                    sign($"{tree[f.Id].Name}\n{role}", new Vector3(b.Center.X, b.Max.Y + 0.6f, b.Center.Z), 0.0048f, coreColor, 45, 1);
+                }
+
+                break;
+            }
+
+            case PlaceKind.Hub:
+                sign("LOCATIONS · every drive and Linux distribution is a gate", plaque + new Vector3(0, 3.35f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                for (var i = 0; i < 3; i++)
+                {
+                    var m = new MeshInstance3D
+                    {
+                        Mesh = new TorusMesh { InnerRadius = 3.2f + i * 1.6f, OuterRadius = 3.32f + i * 1.6f, Rings = 96 },
+                        Position = new Vector3(0, 4.5f + i * 2.4f, 0),
+                        MaterialOverride = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = accent * (1.6f - i * 0.3f) },
+                        CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                    };
+                    AddChild(m);
+                    _transient.Add(m);
+                }
+
+                break;
+            case PlaceKind.LocationRoot:
+                var folder = tree[c.FolderId];
+                var text = folder.Location == LocationKind.Wsl ? $"WSL · LINUX · {folder.Name} · names are case-sensitive" : $"{c.Kind.Label.ToUpperInvariant()} · {folder.Name}";
+                sign(text, plaque + new Vector3(0, 3.35f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                break;
+        }
     }
 
     /// <summary>A terrain box (oriented like gates: width along the tangent, depth along the outward direction).</summary>
@@ -568,6 +620,12 @@ public static class PlaceText
     public static string GateSubtitle(FsTree tree, FsNode child, Gate g)
     {
         var state = g.State;
+        if (child.Location != LocationKind.None)
+        {
+            var kind = child.Location switch { LocationKind.Wsl => "WSL · Linux", LocationKind.Drive => "Windows drive", LocationKind.Network => "network", _ => "volume" };
+            return state is ListingState.Open or ListingState.Empty ? kind : $"{kind} · {Listing.Describe(state)}";
+        }
+
         if (state == ListingState.Link) return LinkShort(tree, child);
         if (Listing.IsUnknown(state) && state != ListingState.Partial) return Listing.Describe(state);
         if (state == ListingState.Empty) return "empty";

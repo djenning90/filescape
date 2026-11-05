@@ -56,24 +56,30 @@ public partial class PlacesProbe : Node
     }
 
     private FsTree Tree => _main.Tree!;
+
+    /// <summary>The arrival root: node 0 for synthetic data, a node under "This computer" for live data (AD-17).</summary>
+    private int R => _main.Navigator.Root;
+
+    private bool ScanSettled => _main.Session is { } s && !s.HasPendingBatches && (s.IsFinished || (_main.Explorer != null && s.Snapshot().Idle));
     private PlaceComposition Place => _main.Place!;
 
     private async Task Run()
     {
-        while (_main.Session is { IsFinished: false } || _main.Session!.HasPendingBatches || _main.Place == null || _main.Place.TreeVersion != _main.Tree!.Version)
+        // Live data is explored on demand (AD-17): wait until the explorer is idle rather than "finished".
+        while (!ScanSettled || _main.Place == null || _main.AwaitingArrival || _main.Place.TreeVersion != _main.Tree!.Version)
         {
             await Frames(1);
         }
 
         await Frames(30);
-        var p = _main.Session.Snapshot();
+        var p = _main.Session!.Snapshot();
         Log($"scan state={p.State} nodes={p.Nodes} dirs={p.Directories} files={p.Files} links={p.Links} problems={p.Problems} elapsed={p.Elapsed.TotalMilliseconds:0}ms source={Tree.Source.RootDisplayPath}");
 
         // ---------------------------------------------------- arrival and identity (PLACE-02, 03)
-        var root = Tree.Root;
-        var rootName = Tree.DisplayName(0);
+        var root = Tree[R];
+        var rootName = Tree.DisplayName(R);
         Check(_main.Experience == Experience.Places, "the app starts in Places");
-        Check(_main.Navigator.Current == 0, "arrival: the current folder is the chosen root");
+        Check(_main.Navigator.Current == R, "arrival: the current folder is the chosen root");
         Check(_main.Hud.BreadcrumbNames.LastOrDefault() == rootName, F($"breadcrumb ends with the root name: {string.Join(" › ", _main.Hud.BreadcrumbNames)}"));
         Check(_main.PlaceWorld.LandmarkSign == rootName, F($"the landmark sign names the folder: '{_main.PlaceWorld.LandmarkSign}'"));
         Check(AtPose(Place.Arrival), F($"camera is at the arrival point {Place.Arrival.Eye}"));
@@ -88,11 +94,11 @@ public partial class PlacesProbe : Node
         var centre = vp / 2;
         Mouse(MouseButton.Right, true, centre);
         await Frames(2);
-        Check(_main.Rig.IsFlying, "right-hold starts look/fly in Places");
+        Check(_main.PlaceLookCaptured && Input.MouseMode == Input.MouseModeEnum.Captured, "right-hold captures the mouse to look around (WALK-03)");
         for (var i = 0; i < 30; i++) { Motion(new Vector2(50, 0)); await Frames(1); }
         Mouse(MouseButton.Right, false, centre);
         await Frames(3);
-        Check(!_main.Rig.IsFlying && _main.Navigator.Current == 0, F($"turned {30 * 50 * CameraRig.LookSensitivity:0}° with the mouse; still in the root place"));
+        Check(!_main.Rig.IsFlying && _main.Navigator.Current == R, F($"turned {30 * 50 * CameraRig.LookSensitivity:0}° with the mouse; still in the root place"));
         await Shot("looking-back-toward-the-way-in");
         await Key(Godot.Key.Home);
         await Settle();
@@ -102,7 +108,7 @@ public partial class PlacesProbe : Node
         var file = await ClickVisibleFile();
         if (file >= 0)
         {
-            Check(_main.Selection.Selected == file && _main.Navigator.Current == 0, F($"clicking a tower selects {Tree[file].Name}; the current folder stays {rootName}"));
+            Check(_main.Selection.Selected == file && _main.Navigator.Current == R, F($"clicking a tower selects {Tree[file].Name}; the current folder stays {rootName}"));
             Check(_main.Hud.BreadcrumbNames.LastOrDefault() == rootName, "breadcrumb unchanged after selecting a file");
             await Shot("file-selected");
         }
@@ -116,7 +122,7 @@ public partial class PlacesProbe : Node
         var targetName = Tree[target.TargetId].Name;
         await ClickDestination(target.TargetId);
         await Settle();
-        Check(_main.Selection.Selected == target.TargetId && _main.Navigator.Current == 0, F($"clicking '{targetName}' in Destinations selects it and walks up to its gate without travelling"));
+        Check(_main.Selection.Selected == target.TargetId && _main.Navigator.Current == R, F($"clicking '{targetName}' in Destinations selects it and walks up to its gate without travelling"));
         await Shot("approaching-a-gate");
         var crossed = await WalkUntilTransition(Godot.Key.W, 6);
         Check(crossed, F($"holding W walks through the '{targetName}' gate and starts the threshold transition"));
@@ -124,9 +130,10 @@ public partial class PlacesProbe : Node
         await Shot("threshold-transition");
         await WaitTransition();
         Check(_main.Navigator.Current == target.TargetId, F($"arrived in {targetName}"));
-        Check(_main.Hud.BreadcrumbNames.SequenceEqual([rootName, targetName]), F($"breadcrumb: {string.Join(" › ", _main.Hud.BreadcrumbNames)}"));
+        // Since 2026-11-05 the breadcrumb is the physical path from This computer (AD-17); it ends root › child.
+        Check(_main.Hud.BreadcrumbNames.TakeLast(2).SequenceEqual([rootName, targetName]), F($"breadcrumb: {string.Join(" › ", _main.Hud.BreadcrumbNames)}"));
         Check(_main.PlaceWorld.LandmarkSign == targetName, "the new landmark names the child");
-        Check(Place.ParentGate?.TargetId == 0, "the way back up (parent gate) is behind the arrival point");
+        Check(Place.ParentGate?.TargetId == R, "the way back up (parent gate) is behind the arrival point");
         Check(AtPose(Place.Arrival), "the camera is at the child's arrival point");
         Check(_main.CompletedTransitions == 1, F($"exactly one place change ({_main.CompletedTransitions})"));
         await Settle();
@@ -154,7 +161,7 @@ public partial class PlacesProbe : Node
         await Frames(3);
         Check(_main.InTransition, "U starts the way back");
         await WaitTransition();
-        Check(_main.Navigator.Current == 0, "U returns to the parent");
+        Check(_main.Navigator.Current == R, "U returns to the parent");
         Check(_main.Selection.Selected == target.TargetId, F($"the child you came from ({targetName}) is selected after returning"));
         var gateBack = Place.GateFor(target.TargetId)!;
         var depth = ThresholdTracker.Depth(gateBack, _main.Rig.CameraPosition.ToNumerics());
@@ -180,14 +187,15 @@ public partial class PlacesProbe : Node
                 await WaitTransition();
             }
 
-            Check(_main.Hud.BreadcrumbNames.Count == 7, F($"G five times descends the chain: {string.Join(" › ", _main.Hud.BreadcrumbNames)}"));
+            var fromRoot = _main.Hud.BreadcrumbNames.SkipWhile(n => n != rootName).ToList();
+            Check(fromRoot.Count == 7 && fromRoot[^1] == "level-05", F($"G five times descends the chain: {string.Join(" › ", fromRoot)}"));
             await Settle();
             await Shot("deep-chain");
             await Settle();
             await KeyCombo(Godot.Key.Home, ctrl: true);
             await Frames(3);
             await WaitTransition();
-            Check(_main.Navigator.Current == 0 && AtPose(Place.Arrival), "Ctrl+Home (injected) returns to the chosen root's arrival point");
+            Check(_main.Navigator.Current == R && AtPose(Place.Arrival), "Ctrl+Home (injected) returns to the chosen root's arrival point");
         }
 
         // ---------------------------------------------------- ascent and maps (PLACE-10, 15)
@@ -204,7 +212,7 @@ public partial class PlacesProbe : Node
         await Settle();
         Check(_main.Experience == Experience.District, "Tab cycles to District");
         await Shot("district-you-are-here");
-        var docs = Tree.Nodes.FirstOrDefault(n => n.Name == "Documents" && n.ParentId == 0);
+        var docs = Tree.Nodes.FirstOrDefault(n => n.Name == "Documents" && n.ParentId == R);
         if (docs != null)
         {
             _main.Select(docs.Id, fly: true);
@@ -254,27 +262,32 @@ public partial class PlacesProbe : Node
             await Shot("locked");
         });
 
-        var link = Tree.Nodes.FirstOrDefault(n => n.ParentId == 0 && n.Kind == NodeKind.Link);
+        var link = Tree.Nodes.FirstOrDefault(n => n.ParentId == R && n.Kind == NodeKind.Link);
         if (link != null)
         {
+            // Revised 2026-11-05 (LINK-02): a junction is a connection followed on purpose; Back returns through it.
             var before = _main.CompletedTransitions;
-            Check(Place.GateFor(link.Id) is { State: ListingState.Link }, "the junction is a sealed gate");
+            Check(Place.GateFor(link.Id) is { IsLink: true, CanEnter: true }, "the junction is a link gate that can be entered");
             await DoubleClickDestination(link.Id);
-            await Frames(20);
-            Check(_main.CompletedTransitions == before && _main.Navigator.Current == 0, "double-clicking a link gate does not travel (links are not followed)");
+            for (var i = 0; i < 300 && (_main.CompletedTransitions == before || _main.InTransition); i++) await Frames(1);
+            Check(_main.CompletedTransitions == before + 1 && Tree.DisplayName(_main.Navigator.Current) == "Documents" && _main.Navigator.CurrentVia == link.Id, "double-clicking the junction follows it to Documents");
+            await Key(Godot.Key.Backspace);
+            await WaitTransition();
+            await Settle();
+            Check(_main.Navigator.Current == R && _main.Selection.Selected == link.Id, "Backspace returns through the junction to its gate");
         }
 
         var unknownVsEmpty = Place.Gates.Where(g => g.State is ListingState.Empty or ListingState.Denied).Select(g => _main.PlaceWorld.GateSigns[g.TargetId].Text.Split('\n').Last()).Distinct().Count();
         Check(unknownVsEmpty == 2, "empty and access-denied gates carry different signs");
 
         // ---------------------------------------------------- inspector and real metadata (PLACE-13)
-        var readme = Tree.Nodes.FirstOrDefault(n => n.ParentId == 0 && n.Name == "readme.txt");
+        var readme = Tree.Nodes.FirstOrDefault(n => n.ParentId == R && n.Name == "readme.txt");
         if (readme != null)
         {
             _main.Select(readme.Id);
             await Frames(3);
             Log("[direct] selected readme.txt (set-up)");
-            Check(_main.Navigator.Current == 0, "selecting does not move you");
+            Check(_main.Navigator.Current == R, "selecting does not move you");
         }
 
         await PerfWalk("root");
@@ -326,10 +339,31 @@ public partial class PlacesProbe : Node
         Log(F($"scan finished state={p.State} nodes={p.Nodes} elapsed={p.Elapsed.TotalSeconds:0.0}s"));
         Log(F($"perf places-during-scan: frames={a.Count} mean={a.Mean:0.00} p50={a.P50:0.00} p95={a.P95:0.00} p99={a.P99:0.00} max={a.Max:0.00}; recompositions={r.Count} mean={r.Mean:0.0}ms max={r.Max:0.0}ms; layout_computed={_main.Layout != null}"));
         _perf.Append(CultureInfo.InvariantCulture, $"places-during-scan,{_main.Quality},{a.Count},{a.Mean:0.00},{a.P50:0.00},{a.P95:0.00},{a.P99:0.00},{a.Max:0.00},,{_main.InstanceCount},{Place.Gates.Count},{Place.Files.Count},{Tree.Count},{r.Mean:0.0},{r.Max:0.0}\n");
-        Check(sawPending, "gates of folders not yet listed showed as pending ('scanning…') during the scan");
-        Check(r.Count > 0, F($"the place recomposed {r.Count} times as its neighbourhood filled in"));
         Check(a.P99 < 50, F($"p99 frame time during the scan {a.P99:0.0} ms < 50 ms (H3)"));
         await Shot("scan-finished");
+        var recompositions = r.Count;
+        if (!sawPending || recompositions == 0)
+        {
+            // Instrument robustness (2026-11-05): on a slower start the first place can appear after its neighbourhood is
+            // already complete, leaving nothing pending to observe. Observe it on a deliberately slow stream instead.
+            Log($"the first place appeared after its neighbourhood was complete (pending seen={sawPending}, recompositions={recompositions}); re-checking on a 300 nodes/s stream");
+            _main.StartScan(new SyntheticTreeSource { TargetNodes = 50_000, NodesPerSecond = 300 });
+            Log("[direct] started a slow synthetic scan (set-up)");
+            var ts = Time.GetTicksMsec();
+            while ((_main.Place == null || _main.Place.Gates.Count == 0) && Time.GetTicksMsec() - ts < 20_000) await Frames(1);
+            sawPending |= Place.Gates.Any(g => g.State == ListingState.Pending);
+            var firstSig = Place.Signature;
+            var builds = _main.LastPlaceBuildMs;
+            var before = Time.GetTicksMsec();
+            _main.Perf.StartRecording();
+            while (Time.GetTicksMsec() - before < 4_000 && Place.Signature == firstSig) await Frames(1);
+            await Frames(30);
+            recompositions = _main.Perf.StopRecording().Count(x => x.RelayoutMs > 0);
+            sawPending |= Place.Gates.Any(g => g.State == ListingState.Pending);
+        }
+
+        Check(sawPending, "gates of folders not yet listed showed as pending ('scanning…') during the scan");
+        Check(recompositions > 0, F($"the place recomposed {recompositions} times as its neighbourhood filled in"));
 
         // Cancel a second scan part-way: unlisted children must read "not scanned", not "empty".
         _main.StartScan(new SyntheticTreeSource { TargetNodes = 50_000, NodesPerSecond = 2_000 });
@@ -370,7 +404,7 @@ public partial class PlacesProbe : Node
     /// </summary>
     private async Task Tour()
     {
-        while (_main.Session is { IsFinished: false } || _main.Place == null) await Frames(1);
+        while (!ScanSettled || _main.Place == null || _main.AwaitingArrival) await Frames(1);
         _main.Hud.DismissHint();
         await Frames(60);
         var mid = _main.GetViewport().GetVisibleRect().Size / 2;
@@ -385,7 +419,7 @@ public partial class PlacesProbe : Node
         await Look(-6, 30);
         await Look(6, 60);
         await Look(-6, 30);
-        var photos = Tree.Nodes.FirstOrDefault(n => n.ParentId == 0 && n.Name == "Photos") ?? Tree[Place.Gates[0].TargetId];
+        var photos = Tree.Nodes.FirstOrDefault(n => n.ParentId == R && n.Name == "Photos") ?? Tree[Place.Gates[0].TargetId];
         await ClickDestination(photos.Id);
         await Frames(60);
         Key1(Godot.Key.W, true);
@@ -413,7 +447,7 @@ public partial class PlacesProbe : Node
     /// <summary>Renders the same view with one element or effect removed at a time (artefact isolation).</summary>
     private async Task Diagnose()
     {
-        while (_main.Session is { IsFinished: false } || _main.Place == null) await Frames(1);
+        while (!ScanSettled || _main.Place == null || _main.AwaitingArrival) await Frames(1);
         var gate = Place.Gates.First(g => g.State == ListingState.Open && Tree[g.TargetId].DirectDirCount > 0);
         var pose = Place.ApproachPose(gate.TargetId, PlaceParams.Default);
         _main.Rig.SetPose(ToGd(pose.Eye), pose.Yaw, pose.LookPitch, 12);
@@ -451,7 +485,7 @@ public partial class PlacesProbe : Node
 
     private async Task Case(string name, string label, Func<Task> body)
     {
-        var node = Tree.Nodes.FirstOrDefault(n => n.ParentId == 0 && n.Name == name);
+        var node = Tree.Nodes.FirstOrDefault(n => n.ParentId == R && n.Name == name);
         if (node == null)
         {
             Check(false, $"fixture has {name}");
