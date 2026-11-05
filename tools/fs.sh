@@ -60,19 +60,30 @@ case "$cmd" in
     G="$(find_godot_dir)"
     "$G/Godot_v4.7.2-stable_mono_win64.exe" --editor --path "$APP_W" >/dev/null 2>&1 & ;;
   export)
+    # Export into a staging folder first and replace the build only when it is complete and not running. On
+    # 2026-11-05 a direct export deleted the unlocked files of a build DJ had open (the files were restored); never again.
     G="$(find_godot_dir)"
     OUT_W="$(win_env LOCALAPPDATA)\\FileScape\\build"
     OUT="$(wslpath "$OUT_W")"
-    rm -rf "$OUT"; mkdir -p "$OUT"
+    STAGE_W="$OUT_W-staging"
+    STAGE="$(wslpath "$STAGE_W")"
+    rm -rf "$STAGE"; mkdir -p "$STAGE"
     set +e
-    "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --headless --path "$APP_W" --export-release "Windows Desktop" "$OUT_W\\FileScape.exe"
+    "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --headless --path "$APP_W" --export-release "Windows Desktop" "$STAGE_W\\FileScape.exe"
     code=$?
     set -e
     # Godot can report success while producing an incomplete export (e.g. no .NET assemblies), so check the files.
     if [[ $code -ne 0 ]]; then echo "fs.sh: Godot export exited with $code" >&2; exit $code; fi
-    if [[ ! -f "$OUT/FileScape.exe" || ! -f "$OUT/data_FileScape.App_windows_x86_64/FileScape.App.dll" || ! -f "$OUT/data_FileScape.App_windows_x86_64/FileScape.Core.dll" ]]; then
-      echo "fs.sh: export incomplete: FileScape.exe or its .NET assemblies are missing in $OUT_W" >&2; exit 3
+    if [[ ! -f "$STAGE/FileScape.exe" || ! -f "$STAGE/data_FileScape.App_windows_x86_64/FileScape.App.dll" || ! -f "$STAGE/data_FileScape.App_windows_x86_64/FileScape.Core.dll" ]]; then
+      echo "fs.sh: export incomplete: FileScape.exe or its .NET assemblies are missing in $STAGE_W" >&2; exit 3
     fi
+    running="$( (cd /mnt/c && powershell.exe -NoProfile -Command "(Get-Process FileScape -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '$OUT_W*' }).Id") | tr -d '\r' )"
+    if [[ -n "$running" ]]; then
+      echo "fs.sh: FileScape is running from $OUT_W (pid $running); the new export is complete in $STAGE_W. Close FileScape and run 'tools/fs.sh export' again (or use the staged build)." >&2
+      exit 4
+    fi
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
     echo "fs.sh: export OK -> $OUT_W\\FileScape.exe" ;;
   *)
     sed -n '2,13p' "$0"; exit 2 ;;
