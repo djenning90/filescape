@@ -14,6 +14,9 @@ namespace FileScape.App;
 public sealed record CommandLine
 {
     public string? Root { get; init; }
+
+    /// <summary>--scan=tree: scan --root as a bounded tree (whole-tree reference) instead of the connected world.</summary>
+    public bool BoundedTree { get; init; }
     public int? SyntheticNodes { get; init; }
     public int? SyntheticRate { get; init; }
     public int? Visualization { get; init; }
@@ -45,6 +48,7 @@ public sealed record CommandLine
         return new CommandLine
         {
             Root = Get("root"),
+            BoundedTree = Get("scan") == "tree",
             SyntheticNodes = Get("synthetic") is { } s ? int.Parse(s, CultureInfo.InvariantCulture) : null,
             SyntheticRate = Get("synthetic-rate") is { } r ? int.Parse(r, CultureInfo.InvariantCulture) : null,
             Visualization = Get("vis") switch { "district" => 1, "classic" => 0, _ => null },

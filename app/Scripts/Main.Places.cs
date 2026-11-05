@@ -42,6 +42,7 @@ public partial class Main
     private MeshInstance3D _hereRing = null!;
     private double _now, _lastSignUpdate;
     private int _transitions;
+    private bool _mapNoteShown;
 
     public PlaceNavigator Navigator => _nav;
     public PlaceComposition? Place => _place;
@@ -109,6 +110,9 @@ public partial class Main
         _hud.RetryRequested += RetrySelection;
         _hud.OrdinaryOverrideToggled += ToggleOrdinaryOverride;
         _hud.ProblemChosen += ApproachDestination;
+        _hud.StartFreshRequested += StartFreshHere;
+        _hud.ScanTreeRequested += ScanHereAsTree;
+        _hud.ScanPathAsTreeRequested += OnScanPathAsTree;
     }
 
     // ------------------------------------------------------------------ experience switching (AD-15)
@@ -120,6 +124,11 @@ public partial class Main
         _experience = e;
         if (e != Experience.Places) _visIndex = e == Experience.Classic ? 0 : 1;
         ApplyExperience(frame: true, from);
+        if (e != Experience.Places && _explorer != null && !_mapNoteShown)
+        {
+            _mapNoteShown = true;
+            _hud.Toast("This map shows the explored world (what you have visited). For the whole tree of one folder: Locations (L) › Scan this folder as a tree.", null, 8);
+        }
     }
 
     /// <summary>Map index (0 Classic, 1 District) → that map experience. Kept for the reference-view scripts.</summary>

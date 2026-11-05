@@ -16,6 +16,22 @@ public partial class Hud
     public event Action? RetryRequested;
     public event Action? OrdinaryOverrideToggled;
     public event Action<int>? ProblemChosen;
+    public event Action? StartFreshRequested;
+    public event Action? ScanTreeRequested;
+    public event Action<string>? ScanPathAsTreeRequested;
+
+    private Label _modeLabel = null!;
+    private string _mode = "";
+
+    public string ModeText => _mode;
+
+    /// <summary>Names the mode in Locations and in the source badge tooltip (connected world vs bounded tree scan).</summary>
+    public void SetMode(string mode, bool live)
+    {
+        _mode = mode;
+        _modeLabel.Text = $"Mode: {mode}";
+        if (live) _sourcePanel.TooltipText = $"{mode}. " + _sourcePanel.TooltipText;
+    }
 
     private PanelContainer _locPanel = null!;
     private ItemList _locList = null!;
@@ -100,8 +116,17 @@ public partial class Hud
         _pathEdit = new LineEdit { PlaceholderText = "Type or paste a path, then Enter", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _pathEdit.TextSubmitted += t => PathSubmitted?.Invoke(t);
         row.AddChild(_pathEdit);
-        row.AddChild(MakeButton("Go", () => PathSubmitted?.Invoke(_pathEdit.Text), "Go to this path."));
+        row.AddChild(MakeButton("Go", () => PathSubmitted?.Invoke(_pathEdit.Text), "Go to this path in the connected world (listed when you arrive)."));
+        row.AddChild(MakeButton("Scan as tree", () => ScanPathAsTreeRequested?.Invoke(_pathEdit.Text), "Bounded tree scan (whole-tree reference): scan this folder completely, links not followed, so the maps show its whole tree."));
         row.AddChild(MakeButton("Close (Esc)", HideLocations, "Close without going anywhere."));
+        var modes = new HBoxContainer();
+        v.AddChild(modes);
+        _modeLabel = new Label { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _modeLabel.AddThemeFontSizeOverride("font_size", 12);
+        _modeLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        modes.AddChild(_modeLabel);
+        modes.AddChild(MakeButton("Scan this folder as a tree", () => ScanTreeRequested?.Invoke(), "Bounded tree scan of the folder you are in: the Classic FSN and District maps then show its whole tree (the original reference behaviour)."));
+        modes.AddChild(MakeButton("Start fresh here", () => StartFreshRequested?.Invoke(), "Explore the connected world again from the folder you are in, with a new entry budget (use it when the entry limit has been reached)."));
         _locPanel.GuiInput += e =>
         {
             if (e is InputEventKey { Pressed: true, Keycode: Key.Escape })
@@ -159,7 +184,7 @@ public partial class Hud
             _locList.SetItemTooltip(i, tip);
         }
 
-        if (rows.Count == 0) _locList.AddItem("(sample data: type a path below to explore your own folders)", selectable: false);
+        if (rows.Count == 0) _locList.AddItem("(no locations hub in this mode — type a path: Go explores the connected world, Scan as tree makes a bounded tree)", selectable: false);
         _locPanel.Visible = true;
         if (focusPath || rows.Count == 0) _pathEdit.GrabFocus();
         else _locList.GrabFocus();

@@ -36,6 +36,57 @@ public partial class Main
         StartScan(new WorldExplorer(path, options));
     }
 
+    /// <summary>
+    /// The whole-tree reference mode (2026-11-05 correction, DJ: keep the previous whole-tree visualization): one chosen
+    /// folder scanned completely in the background with the original policy (links shown, never followed), so the
+    /// Classic FSN and District maps show that whole tree. Broad places ask first (FS-12). No hub, no link travel.
+    /// </summary>
+    public void StartBoundedTree(string path, bool confirmBroad = true)
+    {
+        var normalized = Locations.Normalize(path, Locations.DefaultWslDistribution(), OperatingSystem.IsWindows()) ?? path;
+        if (confirmBroad && Locations.IsBroad(normalized))
+        {
+            Confirm($"“{normalized}” is a broad place (a drive, a profile, a distribution root or a cloud folder).\n\nA bounded tree scan lists everything below it (metadata only, up to {ScanSession.DefaultMaxNodes:N0} entries), which can take a long time.\nThe connected world lists only what you visit.\n\nScan it as a bounded tree anyway?",
+                () => StartScan(new DirectoryScanner(normalized)));
+            return;
+        }
+
+        StartScan(new DirectoryScanner(normalized));
+    }
+
+    /// <summary>The current mode, as named in the UI and docs.</summary>
+    public string ModeName => _explorer != null ? "Connected world (explore on demand)" : _tree?.Source.IsLive == true ? "Bounded tree scan (whole-tree reference)" : "Sample data";
+
+    private void StartFreshHere()
+    {
+        _hud.HideLocations();
+        if (_tree == null || !_tree.Source.IsLive || _tree.Count == 0) return;
+        var path = _tree.FullPath(_nav.Current);
+        if (string.IsNullOrEmpty(path)) return;
+        StartLive(path);
+    }
+
+    private void ScanHereAsTree()
+    {
+        _hud.HideLocations();
+        if (_tree == null || _tree.Count == 0) return;
+        var path = _tree.FullPath(_nav.Current);
+        if (string.IsNullOrEmpty(path) || !_tree.Source.IsLive)
+        {
+            _hud.Toast("Choose a real folder first (Open folder… or a path in Locations).");
+            return;
+        }
+
+        StartBoundedTree(path);
+    }
+
+    private void OnScanPathAsTree(string text)
+    {
+        _hud.HideLocations();
+        if (string.IsNullOrWhiteSpace(text)) return;
+        StartBoundedTree(text);
+    }
+
     /// <summary>Called after StartScan: remember the explorer and wait for the arrival folder.</summary>
     private void OnSourceStarted(IScanSource source)
     {
@@ -45,6 +96,7 @@ public partial class Main
         _awaitingArrival = _explorer?.ArrivalPath != null;
         _followCaption = null;
         _hud.SetLocationsAvailable(_explorer != null);
+        _hud.SetMode(ModeName, _tree?.Source.IsLive == true);
     }
 
     private void HandleReplies(ScanBatch batch)

@@ -208,6 +208,7 @@ public partial class PlacesProbe : Node
         Check(_main.Experience is Experience.Classic or Experience.District, "M switches to the whole-filesystem map");
         Check(_main.HereMarkerVisible && _main.HereMarkerText.EndsWith(Tree.DisplayName(_main.Navigator.Current), StringComparison.Ordinal), F($"the map marks the current folder: '{_main.HereMarkerText}'"));
         await Shot("map-you-are-here");
+        if (_main.Explorer == null) Check(_main.Layout != null && _main.Layout.Count == Tree.Count, F($"bounded tree scan: the map lays out the whole tree ({_main.Layout?.Count} of {Tree.Count} nodes)"));
         await Key(Godot.Key.Tab);
         await Settle();
         Check(_main.Experience == Experience.District, "Tab cycles to District");
@@ -266,7 +267,16 @@ public partial class PlacesProbe : Node
         if (link != null)
         {
             // Revised 2026-11-05 (LINK-02): a junction is a connection followed on purpose; Back returns through it.
+            // In the bounded tree scan (reference mode) links are shown but not followed, as originally.
             var before = _main.CompletedTransitions;
+            if (_main.Explorer == null)
+            {
+                await DoubleClickDestination(link.Id);
+                await Frames(20);
+                Check(_main.CompletedTransitions == before && _main.Navigator.Current == R, "bounded tree scan: double-clicking the junction does not travel (links are not followed in this mode)");
+                goto linkDone;
+            }
+
             Check(Place.GateFor(link.Id) is { IsLink: true, CanEnter: true }, "the junction is a link gate that can be entered");
             await DoubleClickDestination(link.Id);
             for (var i = 0; i < 300 && (_main.CompletedTransitions == before || _main.InTransition); i++) await Frames(1);
@@ -275,6 +285,7 @@ public partial class PlacesProbe : Node
             await WaitTransition();
             await Settle();
             Check(_main.Navigator.Current == R && _main.Selection.Selected == link.Id, "Backspace returns through the junction to its gate");
+        linkDone:;
         }
 
         var unknownVsEmpty = Place.Gates.Where(g => g.State is ListingState.Empty or ListingState.Denied).Select(g => _main.PlaceWorld.GateSigns[g.TargetId].Text.Split('\n').Last()).Distinct().Count();

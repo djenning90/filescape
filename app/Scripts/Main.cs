@@ -114,7 +114,8 @@ public partial class Main : Node3D
 
         if (args.Root is { } root)
         {
-            StartLive(root);
+            if (args.BoundedTree) StartBoundedTree(root, confirmBroad: false);
+            else StartLive(root);
         }
         else
         {
@@ -1236,6 +1237,7 @@ public partial class Main : Node3D
                 ? $" · waiting on Windows for {p.CurrentOperationDuration.TotalSeconds:0.0}s: {p.CurrentPath}"
                 : "";
             var problemsText = p.Problems > 0 ? $" · {p.Problems:N0} folders could not be listed" : "";
+            if (p.LimitReached) problemsText += $" · ENTRY LIMIT ({p.MaxNodes:N0}) reached: some folders are partly listed — Locations › Start fresh here";
             var head = p.Idle && waiting.Length == 0 ? "Exploring on demand" : "Listing…";
             _hud.SetStatus($"{head} · {listed}{problemsText}{bg}{waiting}", p.Idle ? 1 : 0.5, p.BackgroundActive, p.Problems > 0 ? new Color(1f, 0.85f, 0.6f) : new Color(0.7f, 0.95f, 0.8f));
             return;
