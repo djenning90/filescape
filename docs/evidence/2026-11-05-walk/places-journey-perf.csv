@@ -1,0 +1,5 @@
+case,quality,frames,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,gpu_mean_ms,instances,gates,files,tree_nodes,compose_ms,build_ms
+wide-hall,High,335,16.39,16.85,22.19,24.13,51.00,13.05,2252,240,0,1726,2.6,7.6
+many-files,High,351,15.80,15.99,21.65,23.73,47.62,12.00,923,2,800,1726,1.8,2.5
+root,High,335,16.74,16.64,23.39,30.48,37.17,13.09,236,11,6,1726,0.7,2.3
+root,Low,659,7.06,6.88,12.60,14.14,42.94,3.34,236,11,6,1726,0.7,2.3
