@@ -197,7 +197,7 @@ public partial class PlaceWorld : Node3D
         var plaque = new Vector3(0, 0, c.Landmark.Radius * 2.9f);
         // Sized for a walker (eye 1.75 m): readable from the arrival terrace, hidden when you stand next to it.
         var nameSign = Sign(LandmarkSign, plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
-        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.1f, 0), 0.0052f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
+        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 2.15f, 0), 0.0042f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
         _nearHide[nameSign] = 6.5f;
         _nearHide[summarySign] = 6.5f;
         // Lights scatter in volumetric fog as glowing spheres; gate lights must not, the landmark only a little.
@@ -315,8 +315,11 @@ public partial class PlaceWorld : Node3D
         var od = Gd(PlaceGeometry.Direction(ov.AngleDeg));
         var panelAt = Gd(ov.Top) + od * (ov.HalfSize - 0.35f) + new Vector3(0, 1.75f, 0);
         var faceYaw = Mathf.Atan2(-od.X, -od.Z);
-        var ovTitle = Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, 0.5f, 0), 0.005f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
-        var ovText = Sign(PlaceText.OverlookText(tree, folder, c), panelAt, 0.0034f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
+        // Bottom-aligned text grows upwards from its anchor: the title goes above the summary's full height.
+        var summary = PlaceText.OverlookText(tree, folder, c);
+        var lines = summary.Count(ch => ch == '\n') + 1;
+        var ovText = Sign(summary, panelAt, 0.0034f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
+        var ovTitle = Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, lines * 64 * 0.0034f * 1.3f + 0.12f, 0), 0.005f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
         _nearHide[ovTitle] = 2.2f; // readable from the top of the ramp; out of the way at the rail
         _nearHide[ovText] = 2.2f;
         var rampSign = ov.RampFoot + System.Numerics.Vector2.Normalize(new System.Numerics.Vector2(ov.Top.X, ov.Top.Z) - ov.RampFoot) * 2.2f;

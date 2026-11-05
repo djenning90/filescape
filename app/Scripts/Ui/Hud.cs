@@ -79,7 +79,8 @@ public partial class Hud : CanvasLayer
             AllowSystemFallback = true,
         };
         var theme = new Theme { DefaultFont = font, DefaultFontSize = 15 };
-        var panel = Panel(new Color(0.035f, 0.045f, 0.075f, 0.86f), new Color(0.35f, 0.5f, 0.85f, 0.35f));
+        // Opaque enough that bright in-world signs behind a panel do not read through it (VISI-01, 2026-11-05: 0.86 → 0.93).
+        var panel = Panel(new Color(0.035f, 0.045f, 0.075f, 0.93f), new Color(0.35f, 0.5f, 0.85f, 0.35f));
         theme.SetStylebox("panel", "PanelContainer", panel);
         var btn = Panel(new Color(0.1f, 0.13f, 0.2f, 0.95f), new Color(0.4f, 0.55f, 0.9f, 0.45f), 4, 8, 5);
         var btnHover = Panel(new Color(0.16f, 0.21f, 0.33f, 1f), new Color(0.55f, 0.75f, 1f, 0.8f), 4, 8, 5);
