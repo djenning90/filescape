@@ -190,7 +190,15 @@ public partial class Main
         bool Ok(NVector2 q, out float support)
         {
             support = t.SupportHeight(q, w.Radius, 1000, 0);
-            return q.Length() < t.BoundaryRadius - w.Radius - 0.2f && support + w.EyeHeight <= eyeY + 0.5f && t.IsClear(q, w.Radius, support, w.BodyHeight);
+            if (q.Length() >= t.BoundaryRadius - w.Radius - 0.2f || support + w.EyeHeight > eyeY + 0.5f || !t.IsClear(q, w.Radius, support, w.BodyHeight)) return false;
+            // Land on ground, terraces, stairs, the overlook — not on the roof of a file tower, the landmark or a pillar.
+            foreach (var i in t.BoxesNear(q, w.Radius))
+            {
+                var b = t.Boxes[i];
+                if (b.Kind is TerrainKind.Tower or TerrainKind.Landmark or TerrainKind.Pillar && b.Top > w.StepHeight && b.Overlaps(q, w.Radius)) return false;
+            }
+
+            return true;
         }
 
         if (Ok(p, out _)) return p;

@@ -11,7 +11,8 @@ public sealed record WalkParams
     /// <summary>The walker's head clearance: structures whose underside is higher than this above the feet never block.</summary>
     public float BodyHeight { get; init; } = 1.85f;
 
-    public float Radius { get; init; } = 0.3f;
+    /// <summary>Body radius: also how close the eye gets to a wall (0.35 m keeps tower faces from filling the view).</summary>
+    public float Radius { get; init; } = 0.35f;
     public float StepHeight { get; init; } = 0.45f;
     public float WalkSpeed { get; init; } = 4.2f;
     public float RunSpeed { get; init; } = 8.4f;

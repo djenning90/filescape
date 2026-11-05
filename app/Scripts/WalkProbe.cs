@@ -31,6 +31,7 @@ public partial class WalkProbe : ProbeBase
         await Seconds(1.0);
         if (Mode == "walk-look") await LookAround();
         else if (Mode == "walk-perf") await PerfIsolation();
+        else if (Mode == "walk-tour") await Tour();
         else await Journey();
     }
 
@@ -456,6 +457,115 @@ public partial class WalkProbe : ProbeBase
 
         // ---- 19. Performance while walking (no scan running)
         await PerfWalk("wayfarer-walk");
+    }
+
+    /// <summary>Holds keys for a number of frames (the movie writer runs at a fixed frame rate, so time is frames).</summary>
+    private async Task HoldFrames(int frames, params Godot.Key[] keys)
+    {
+        foreach (var k in keys) Key1(k, true);
+        await Frames(frames);
+        foreach (var k in keys) Key1(k, false);
+        await Frames(1);
+    }
+
+    private async Task LookFrames(Vector2 perFrame, int frames)
+    {
+        var centre = App.GetViewport().GetVisibleRect().Size / 2;
+        Mouse(MouseButton.Right, true, centre);
+        await Frames(1);
+        for (var i = 0; i < frames; i++) { Motion(perFrame); await Frames(1); }
+        Mouse(MouseButton.Right, false, centre);
+        await Frames(1);
+    }
+
+    /// <summary>
+    /// A short guided recording at eye level (--write-movie … --fixed-fps 30): arrival, the plaza, the overlook by its
+    /// ramp and a jump down, a junction to another place and back, WSL by a typed path, take-off and a safe landing.
+    /// Steps marked [direct] only frame the shot.
+    /// </summary>
+    private async Task Tour()
+    {
+        var root = App.Navigator.Root;
+        App.SetLabelsVisible(true);
+        await Frames(45);
+        await LookFrames(new Vector2(-3, 0), 40);
+        await LookFrames(new Vector2(3, 0), 40);
+        await HoldFrames(75, Godot.Key.Up); // down the stairs and along the clear avenue
+        await HoldFrames(22, Godot.Key.Up, Godot.Key.Left);
+        await HoldFrames(30, Godot.Key.Up, Godot.Key.Right);
+        await Frames(15);
+
+        // The overlook: up the ramp, look out over the plaza, jump down.
+        var ov = Place.Overlook;
+        var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - ov.RampFoot);
+        var start = ov.RampFoot - axis * 2.5f;
+        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), -PlaceTerrain.PlaceAngle(axis), -4)); // [direct]
+        await Frames(10);
+        await HoldFrames(80, Godot.Key.W);
+        await LookFrames(new Vector2(-6, 0.4f), 30);
+        await Frames(30);
+        await LookFrames(new Vector2(-6, -0.4f), 30);
+        Key1(Godot.Key.W, true);
+        await Frames(8);
+        Key1(Godot.Key.Space, true);
+        await Frames(2);
+        Key1(Godot.Key.Space, false);
+        await Frames(30);
+        Key1(Godot.Key.W, false);
+        await Frames(20);
+
+        // Through the junction to the Shared Library, and back.
+        var link = Tree[root].Children.FirstOrDefault(c => Tree[c].Name == "to-shared-library", -1);
+        if (link >= 0 && Place.GateFor(link) is { } g)
+        {
+            var approach = Place.ApproachPose(link, PlaceParams.Default);
+            App.ProbePlaceUser(approach); // [direct]
+            App.Selection.Select(link);
+            await Frames(30);
+            await HoldFrames(70, Godot.Key.W);
+            for (var i = 0; i < 120 && (App.InTransition || App.PendingRequests > 0); i++) await Frames(1);
+            await Frames(40);
+            await LookFrames(new Vector2(4, 0), 30);
+            await Frames(30);
+            await Key(Godot.Key.Backspace);
+            for (var i = 0; i < 120 && App.InTransition; i++) await Frames(1);
+            await Frames(45);
+        }
+
+        // WSL by a typed path.
+        var wsl = System.Environment.GetEnvironmentVariable("FILESCAPE_WSL_FIXTURE");
+        if (!string.IsNullOrEmpty(wsl))
+        {
+            await KeyCombo(Godot.Key.L, ctrl: true);
+            await Frames(10);
+            await TypeText(wsl);
+            await Frames(20);
+            Key1(Godot.Key.Enter, true);
+            await Frames(2);
+            Key1(Godot.Key.Enter, false);
+            for (var i = 0; i < 600 && !(App.Place != null && !App.InTransition && App.PendingRequests == 0 && Tree.FullPath(App.Navigator.Current).Equals(wsl, StringComparison.OrdinalIgnoreCase)); i++) await Frames(1);
+            await Frames(30);
+            await HoldFrames(45, Godot.Key.Up);
+            await LookFrames(new Vector2(-3, 0), 40);
+            await Frames(20);
+            await KeyCombo(Godot.Key.Home, ctrl: true);
+            for (var i = 0; i < 120 && App.InTransition; i++) await Frames(1);
+            await Frames(30);
+        }
+
+        // Flight: take off, fly a little, land on foot.
+        await HoldFrames(30, Godot.Key.Up);
+        await Key(Godot.Key.T);
+        await Frames(50);
+        await HoldFrames(40, Godot.Key.E);
+        await LookFrames(new Vector2(0, 2f), 20);
+        await HoldFrames(45, Godot.Key.W);
+        await Frames(15);
+        await Key(Godot.Key.T);
+        for (var i = 0; i < 150 && (App.LandingInProgress || App.GuidedGlide); i++) await Frames(1);
+        await LookFrames(new Vector2(0, -2f), 20);
+        await Frames(45);
+        Log($"tour done: locomotion={App.Locomotion} current={Tree.FullPath(App.Navigator.Current)}");
     }
 
     /// <summary>Stationary frame cost at the same spot, varying eye height, quality and one effect at a time.</summary>

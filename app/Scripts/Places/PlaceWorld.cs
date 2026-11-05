@@ -315,9 +315,12 @@ public partial class PlaceWorld : Node3D
         var od = Gd(PlaceGeometry.Direction(ov.AngleDeg));
         var panelAt = Gd(ov.Top) + od * (ov.HalfSize - 0.35f) + new Vector3(0, 1.75f, 0);
         var faceYaw = Mathf.Atan2(-od.X, -od.Z);
-        Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, 0.55f, 0), 0.006f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
-        Sign(PlaceText.OverlookText(tree, folder, c), panelAt, 0.0042f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
-        Sign("▲ overlook · ramp", Gd(new System.Numerics.Vector3(ov.RampFoot.X, 0, ov.RampFoot.Y)) + new Vector3(0, 1.1f, 0), 0.004f, accent.Lightened(0.4f), 22, 2);
+        var ovTitle = Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, 0.5f, 0), 0.005f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
+        var ovText = Sign(PlaceText.OverlookText(tree, folder, c), panelAt, 0.0034f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
+        _nearHide[ovTitle] = 2.2f; // readable from the top of the ramp; out of the way at the rail
+        _nearHide[ovText] = 2.2f;
+        var rampSign = ov.RampFoot + System.Numerics.Vector2.Normalize(new System.Numerics.Vector2(ov.Top.X, ov.Top.Z) - ov.RampFoot) * 2.2f;
+        Sign("▲ overlook", new Vector3(rampSign.X, 1.5f, rampSign.Y), 0.004f, accent.Lightened(0.4f), 22, 2);
 
         // ---- the way back (PLACE-07)
         if (c.ParentGate is { } pg)
