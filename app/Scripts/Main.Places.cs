@@ -43,7 +43,10 @@ public partial class Main
 
     private readonly PlaceNavigator _nav = new();
     private readonly ThresholdTracker _threshold = new();
-    private readonly PlaceParams _placeParams = PlaceParams.Default;
+    private PlaceParams _placeParams = PlaceParams.Default;
+
+    /// <summary>The place layout in use: compact by default, <c>--layout=spacious</c> for the previous one (PLACE-14, KD-28).</summary>
+    public PlaceParams PlaceParams => _placeParams;
     private PlaceWorld _placeWorld = null!;
     private PlaceComposition? _place;
     private Experience _experience = Experience.Places;
@@ -250,7 +253,8 @@ public partial class Main
     private static IReadOnlyList<(Color, string)> PlaceLegend()
     {
         var list = Palette.Category.Select(kv => (kv.Value, PlaceText.CategoryName(kv.Key))).ToList();
-        list.Add((PlacePalette.Pending, "gate: scanning…"));
+        list.Add((PlacePalette.Pending, "gate: queued to be listed"));
+        list.Add((PlacePalette.Listing, "gate: listing now…"));
         list.Add((PlacePalette.NotScanned, "gate: not scanned"));
         list.Add((PlacePalette.Denied, "gate: access denied"));
         list.Add((PlacePalette.Link, "⇢ link: a connection (walk in to follow)"));

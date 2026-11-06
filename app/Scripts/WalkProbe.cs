@@ -903,7 +903,7 @@ public partial class WalkProbe : ProbeBase
         var link = Tree[root].Children.FirstOrDefault(c => Tree[c].Name == "to-shared-library", -1);
         if (link >= 0 && Place.GateFor(link) is { } g)
         {
-            var approach = Place.ApproachPose(link, PlaceParams.Default);
+            var approach = Place.ApproachPose(link, App.PlaceParams);
             App.ProbePlaceUser(approach); // [direct]
             App.Selection.Select(link);
             await Frames(30);
@@ -991,6 +991,7 @@ public partial class WalkProbe : ProbeBase
 
     private async Task PerfWalk(string label)
     {
+        if (!ProbeTier.Measure(label, Log)) return;
         await Seconds(0.5);
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         App.Perf.StartRecording();

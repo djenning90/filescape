@@ -74,8 +74,11 @@ public class UsabilityPassTests
     [Fact]
     public void Default_speeds_are_twice_as_fast_and_the_fastest_allowed_cannot_pass_a_pillar()
     {
-        WalkParams.Default.WalkSpeed.Should().Be(MetersPerSecond.Of(8f));
-        WalkParams.Default.RunSpeed.Should().Be(MetersPerSecond.Of(16f));
+        // Changed 2026-11-06 (KD-28, PLACE-14): 8 / 16 m/s became 5.5 / 11 m/s with the compact places, whose nearest
+        // gate is ≈ 18 m away instead of ≈ 45 m. The old pair is kept as the comparison value; running stays twice walking.
+        WalkParams.Default.WalkSpeed.Should().Be(MetersPerSecond.Of(5.5f));
+        WalkParams.Default.RunSpeed.Should().Be(MetersPerSecond.Of(11f));
+        WalkParams.PreviousDefaultSpeeds.Should().Be((8f, 16f));
         // One 120 Hz sub-step at the fastest allowed speed moves less than the body radius.
         (Preferences.MaxSpeed.Value / WalkParams.Default.SubStepsPerSecond).Should().BeLessThan(WalkParams.Default.Radius.Value);
 

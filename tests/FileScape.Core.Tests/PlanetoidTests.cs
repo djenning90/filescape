@@ -1,5 +1,6 @@
 using System.Numerics;
 using FileScape.Core.Experiments;
+using FileScape.Core.Interaction;
 using FileScape.Core.Places;
 using FileScape.Core.Units;
 
@@ -41,7 +42,8 @@ public class PlanetoidTests
     {
         var b = Body(Vector3.Zero);
         var terrain = new PlaceTerrain([], [], [], b.Radius * 2.9f); // walkable to ≈ 166° from the pole
-        var t = new PlanetoidTraveller([b], [terrain]);
+        // An explicit 8 m/s (the geometry is the point here, not the default speed, which changed to 5.5 m/s in KD-28).
+        var t = new PlanetoidTraveller([b], [terrain], WalkParams.Default with { WalkSpeed = MetersPerSecond.Of(8f), RunSpeed = MetersPerSecond.Of(16f) });
         t.PlaceOn(0, Vector2.Zero, Degrees.Zero);
         for (var i = 0; i < 60 * 8; i++) t.Update(new WalkInput(1, 0, 0, false, false), Frame);
         var p = t.Position;

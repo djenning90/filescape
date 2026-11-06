@@ -50,6 +50,9 @@ public sealed record CommandLine
     /// <summary>--test-list-delay-ms=N (SHUT-01 instrument): every live listing first blocks its worker for N ms, uncancellably, like a stalled share.</summary>
     public int? TestListDelayMs { get; init; }
 
+    /// <summary>--layout=spacious: the place layout before 2026-11-06, for comparison (KD-28). Default: compact.</summary>
+    public bool SpaciousLayout { get; init; }
+
     public static CommandLine Parse(string[] args)
     {
         var map = args.Select(a => a.TrimStart('-').Split('=', 2)).ToDictionary(p => p[0], p => p.Length > 1 ? p[1] : "", StringComparer.OrdinalIgnoreCase);
@@ -80,6 +83,7 @@ public sealed record CommandLine
             PreferencesFile = Get("prefs"),
             Experiment = Get("experiment"),
             TestHold = Get("test-hold"),
+            SpaciousLayout = Get("layout") == "spacious",
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
         };
     }

@@ -50,6 +50,7 @@ public partial class PlacesProbe : Node
             Check(false, $"probe threw {ex}");
         }
 
+        ProbeTier.WaitForSaves();
         Log($"done failures={_failures}");
         System.IO.File.WriteAllText(System.IO.Path.Combine(_out, $"{_mode}.log"), _log.ToString());
         System.IO.File.WriteAllText(System.IO.Path.Combine(_out, $"{_mode}-perf.csv"), _perf.ToString());
@@ -483,7 +484,7 @@ public partial class PlacesProbe : Node
     {
         while (!ScanSettled || _main.Place == null || _main.AwaitingArrival) await Frames(1);
         var gate = Place.Gates.First(g => g.State == ListingState.Open && Tree[g.TargetId].DirectDirCount > 0);
-        var pose = Place.ApproachPose(gate.TargetId, PlaceParams.Default);
+        var pose = Place.ApproachPose(gate.TargetId, _main.PlaceParams);
         _main.Rig.SetPose(ToGd(pose.Eye), pose.Yaw, pose.LookPitch, 12);
         _main.Hud.Visible = false;
         _main.SetLabelsVisible(false);
@@ -651,6 +652,13 @@ public partial class PlacesProbe : Node
     private async Task PerfWalk(string label)
     {
         await Settle();
+        if (!ProbeTier.Measure(label, Log))
+        {
+            await Key(Godot.Key.Home); // the same end state as after a measurement
+            await Settle();
+            return;
+        }
+
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled); // measure frame cost, not the display's refresh
         _main.Perf.StartRecording();
         foreach (var (k, s) in new[] { (Godot.Key.W, 1.2), (Godot.Key.A, 0.8), (Godot.Key.S, 1.2), (Godot.Key.D, 0.8) })
@@ -740,7 +748,7 @@ public partial class PlacesProbe : Node
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var img = _main.GetViewport().GetTexture().GetImage();
         var path = $"{_out}/{++_shot:D2}-{name}.png";
-        img.SavePng(path);
+        ProbeTier.SaveAsync(img, path);
         Log($"screenshot {path} current={Tree.FullPath(_main.Navigator.Current)} selected={(_main.Selection.Selected >= 0 ? Tree[_main.Selection.Selected].Name : "-")}");
     }
 

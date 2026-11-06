@@ -62,6 +62,13 @@ public sealed record PlaceParams
     /// </summary>
     public float ArrivalSetback { get; init; } = 6f;
 
+    /// <summary>
+    /// The way back (▲ gate) stands on the gate ring, at <see cref="MinGateRadius"/>, with the file quarters continuing
+    /// beside and beyond it, instead of at the outer edge of the files. The arrival terrace then sits among the files,
+    /// a few metres in front of the way back, rather than beyond them all (PLACE-14).
+    /// </summary>
+    public bool ParentGateOnRing { get; init; }
+
     /// <summary>The arrival terrace's floor height; the eye is <see cref="EyeHeight"/> above it.</summary>
     public float TerraceTop { get; init; } = 1.6f;
 
@@ -81,11 +88,50 @@ public sealed record PlaceParams
     public float OverlookRadius { get; init; } = 16f;
     public float OverlookTop { get; init; } = 2.4f;
     public float OverlookHalfSize { get; init; } = 2.5f;
+
+    /// <summary>Length of the overlook's walking ramp (it runs inward from the platform, so it must end clear of the landmark).</summary>
+    public float OverlookRampLength { get; init; } = 7.5f;
     public float ReturnStandOff { get; init; } = 7f;
     public float ApproachStandOff { get; init; } = 9f;
     public SizeScale Scale { get; init; } = SizeScale.Place;
 
-    public static readonly PlaceParams Default = new();
+    /// <summary>
+    /// The layout before 2026-11-06 (KD-28 comparison): gates at least 24 m out, outer tiers from 40 m, vistas 70 m beyond
+    /// the gates. Kept for comparison (<c>--layout=spacious</c>); with it DJ found the walks long enough to need 8–16 m/s.
+    /// </summary>
+    public static readonly PlaceParams Spacious = new();
+
+    /// <summary>
+    /// PLACE-14 (AD-34): the intimate, human-scale layout. Gates stand 14 m from the landmark (a 16–20 m walk from the
+    /// arrival terrace instead of 30–36 m), 6.5 m apart and a little lower, so the ring reads as a set of doorways around
+    /// a square; tiers start at 24 m; the overlook and file quarters move in; vistas sit 46 m beyond their gates, close
+    /// enough to read as the next place rather than the horizon. Tower alleys (WALK-05), the corridor, gate clearance and
+    /// the step height are unchanged, so every route keeps its clearance.
+    /// </summary>
+    public static readonly PlaceParams Compact = new()
+    {
+        FileInnerRadius = 6f,
+        GateWidth = 4.4f,
+        GateHeight = 6f,
+        GateSpacing = 6.5f,
+        MinGateRadius = 14f,
+        FirstTierRadius = 24f,
+        TierGap = 9f,
+        VistaDistance = 46f,
+        ParentVistaDistance = 40f,
+        ArrivalSetback = 7f,
+        ParentGateOnRing = true,
+        CorridorHalfWidth = 3f,
+        OverlookRadius = 12f,
+        OverlookRampLength = 6f,
+        OverlookAngleDeg = 262f,
+        GateHalfSpanDeg = 70f,
+        FileHalfSpanDeg = 55f,
+        ReturnStandOff = 5f,
+        ApproachStandOff = 6.5f,
+    };
+
+    public static readonly PlaceParams Default = Compact;
 }
 
 /// <summary>
@@ -134,7 +180,9 @@ public static class PlaceComposer
         float[] coreAngles = [148, 212, 136, 224, 124, 236];
         for (var i = 0; i < core.Count && i < coreAngles.Length; i++)
         {
-            var c = PlaceGeometry.Direction(coreAngles[i]) * 6.2f;
+            // Beside the avenue, clear of the corridor whatever its width (6.2 m out at the spacious corridor).
+            var coreRadius = MathF.Max(6.2f, (p.CorridorHalfWidth + p.FileFootprint / 2 + 0.25f) / MathF.Sin(32f * MathF.PI / 180f));
+            var c = PlaceGeometry.Direction(coreAngles[i]) * coreRadius;
             files.Add(new PlacedFile(core[i], Box.FromBase(c, p.FileFootprint, p.Scale.Height(tree[core[i]].Size), p.FileFootprint), FileCategories.Of(tree[core[i]].Name), Core: true));
         }
         var (gates, tiers) = ComposeGates(tree, childIds, p);
@@ -166,7 +214,7 @@ public static class PlaceComposer
 
         Gate? parentGate = null;
         Vista? parentVista = null;
-        var southReach = MathF.Max(fileRadius + 5f, p.MinGateRadius);
+        var southReach = p.ParentGateOnRing ? p.MinGateRadius : MathF.Max(fileRadius + 5f, p.MinGateRadius);
         if (!folder.IsRoot)
         {
             var pos = PlaceGeometry.Direction(180) * southReach;
@@ -531,7 +579,7 @@ public static class PlaceComposer
         boxes.Add(new TerrainBox(Xz(oc), new Vector2(h, h), p.OverlookAngleDeg, 0, top0, TerrainKind.Platform));
         boxes.Add(new TerrainBox(Xz(oc + oDir * (h - 0.08f)), new Vector2(h, 0.08f), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
         boxes.Add(new TerrainBox(Xz(oc + oTan * (h - 0.08f)), new Vector2(0.08f, h), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
-        var rampStart = oc - oDir * (h + 7.5f);
+        var rampStart = oc - oDir * (h + p.OverlookRampLength);
         var rampEnd = oc - oDir * h;
         ramps.Add(new TerrainRamp(Xz(rampStart), Xz(rampEnd), 1.25f, 0, top0));
         var b1 = oc - oDir * (h + 4.2f) - oTan * 2.35f; // low block, further in
@@ -542,7 +590,10 @@ public static class PlaceComposer
 
         foreach (var tier in tiers.Where(x => x.Rise > 0))
         {
-            rings.Add(new TerrainRing(tier.Radius - 3.5f, tier.Radius + 3.5f, tier.Rise, tier.StartDeg - 4, tier.EndDeg + 4));
+            // Rings meet their neighbours (half the tier gap each way), so every tier is a step up from the one inside
+            // it; narrower rings left ground-level gaps that a third tier could not be climbed from (found 2026-11-06).
+            var half = MathF.Max(3.5f, p.TierGap / 2);
+            rings.Add(new TerrainRing(tier.Radius - half, tier.Radius + half, tier.Rise, tier.StartDeg - 4, tier.EndDeg + 4));
         }
 
         var reach = MathF.Max(p.MinGateRadius, p.OverlookRadius + h + 2);

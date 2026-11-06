@@ -29,14 +29,18 @@ public sealed record WalkParams
     public Meters StepHeight { get; init; } = Meters.Of(0.45f);
 
     /// <summary>
-    /// Walking speed (W). 8 m/s, a fast run in human terms, because places are large (the nearest child gate is ≈ 45 m
-    /// from the arrival point) and DJ found 4.2 m/s too slow (KD-20, 2026-11-05 evening). The user can change it
-    /// (Settings: Interaction.Preferences, 2–30 m/s).
+    /// Walking speed (W): 5.5 m/s, a brisk jog. Until 2026-11-06 it was 8 m/s because places were large (the nearest
+    /// child gate ≈ 45 m from the arrival point; DJ found 4.2 m/s too slow there, KD-20). The compact layout (PLACE-14)
+    /// brings the nearest gate to ≈ 18 m, so ordinary walking can be comfortable again (KD-28). The user can change it
+    /// (Settings: Interaction.Preferences, 2–30 m/s); saved speeds are never overwritten.
     /// </summary>
-    public MetersPerSecond WalkSpeed { get; init; } = MetersPerSecond.Of(8f);
+    public MetersPerSecond WalkSpeed { get; init; } = MetersPerSecond.Of(5.5f);
 
-    /// <summary>Speed while Shift is held: twice the walking speed (was 8.4 m/s).</summary>
-    public MetersPerSecond RunSpeed { get; init; } = MetersPerSecond.Of(16f);
+    /// <summary>Speed while Shift is held: twice the walking speed, for purposeful running (was 16 m/s).</summary>
+    public MetersPerSecond RunSpeed { get; init; } = MetersPerSecond.Of(11f);
+
+    /// <summary>The defaults before the compact layout (8 / 16 m/s): a saved file with exactly these is offered the new ones.</summary>
+    public static readonly (float Walk, float Run) PreviousDefaultSpeeds = (8f, 16f);
 
     /// <summary>
     /// How quickly horizontal velocity follows the input on the ground (exponential smoothing, <see cref="PerSecond"/>):

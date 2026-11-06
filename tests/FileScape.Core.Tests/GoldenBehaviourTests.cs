@@ -28,7 +28,8 @@ public class GoldenBehaviourTests(ITestOutputHelper output)
         var s = Spec.WithFiles("Golden", 40);
         for (var i = 0; i < 6; i++) s.Dir(new Spec($"dir-{i}").File("a.txt"));
         var tree = new Spec("parent").Dir(s).Build();
-        var place = PlaceComposer.Compose(tree, tree.Root.Children[0]);
+        // The layout the numbers were captured in (the default became Compact on 2026-11-06, KD-28): this test guards the walker.
+        var place = PlaceComposer.Compose(tree, tree.Root.Children[0], PlaceParams.Spacious);
         var w = new Walker(TraversalTests.Before); // the speeds the golden numbers were captured with (4.2 / 8.4 m/s)
         w.TeleportToEye(place.Terrain, place.Arrival.Eye, place.Arrival.Yaw, place.Arrival.LookPitch);
         var marks = new List<(Vector3, float, float, int, int, Vector3)>();
