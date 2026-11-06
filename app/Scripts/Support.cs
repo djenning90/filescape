@@ -41,6 +41,15 @@ public sealed record CommandLine
     /// <summary>--experiment=planetoids: the isolated planetoid traversal experiment (PLANET-02) instead of FileScape.</summary>
     public string? Experiment { get; init; }
 
+    /// <summary>
+    /// --test-hold=dialog|fly|listing (SHUT-01 instrument): after start-up, put the app into that state and stay there
+    /// (no automation, no quit) so an outside probe can close the window and time the exit.
+    /// </summary>
+    public string? TestHold { get; init; }
+
+    /// <summary>--test-list-delay-ms=N (SHUT-01 instrument): every live listing first blocks its worker for N ms, uncancellably, like a stalled share.</summary>
+    public int? TestListDelayMs { get; init; }
+
     public static CommandLine Parse(string[] args)
     {
         var map = args.Select(a => a.TrimStart('-').Split('=', 2)).ToDictionary(p => p[0], p => p.Length > 1 ? p[1] : "", StringComparer.OrdinalIgnoreCase);
@@ -70,6 +79,8 @@ public sealed record CommandLine
             StressDistrictOnly = Get("district-only") != null,
             PreferencesFile = Get("prefs"),
             Experiment = Get("experiment"),
+            TestHold = Get("test-hold"),
+            TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
         };
     }
 }

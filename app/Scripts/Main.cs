@@ -112,6 +112,7 @@ public partial class Main : Node3D
 
     public override void _Ready()
     {
+        ConsoleLaunch.Detect();
         InputBindings.Register();
         var args = CommandLine.Parse(OS.GetCmdlineUserArgs());
         var dpiScale = Mathf.Clamp(DisplayServer.ScreenGetDpi() / 96f, 1f, 3f);
@@ -131,6 +132,7 @@ public partial class Main : Node3D
             return;
         }
 
+        _testListDelayMs = args.TestListDelayMs ?? 0;
         BuildScene();
         LoadPreferences(args);
         _quality = args.Quality ?? Quality.High;
@@ -174,6 +176,45 @@ public partial class Main : Node3D
         {
             var automation = new Automation(this, script, args.OutputDirectory ?? OS.GetUserDataDir(), args);
             AddChild(automation);
+        }
+
+        if (args.TestHold is { } hold) GetTree().CreateTimer(4.0).Timeout += () => EnterTestHold(hold);
+    }
+
+    private int _testListDelayMs;
+    private bool _closing;
+
+    /// <summary>
+    /// SHUT-01 (AD-28): orderly shutdown. Stops accepting input and per-frame work, cancels scanning and discovery
+    /// (the explorer's coordinator stops before its next unit of work), and never waits for outstanding filesystem
+    /// calls: listings in flight run on background threads and are abandoned, so a stalled share cannot hold the exit.
+    /// </summary>
+    private void BeginShutdown(string why)
+    {
+        if (_closing) return;
+        _closing = true;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var progress = _session?.Snapshot();
+        _session?.Dispose();
+        if (progress is { } p)
+        {
+            GD.Print($"[exit] scanning cancelled ({p.State}, {p.PendingDirectories} folders pending{(p.CurrentPath != null ? $", abandoned listing of {p.CurrentPath}" : "")})");
+        }
+
+        ConsoleLaunch.ReportExit(why == "window closed" ? 0 : -1, why, sw.Elapsed);
+    }
+
+    /// <summary>SHUT-01 instrument: enters a state and stays there, for an outside close-and-time probe.</summary>
+    private void EnterTestHold(string hold)
+    {
+        GD.Print($"[test-hold] {hold}");
+        switch (hold)
+        {
+            case "dialog": ShowFolderDialog(); break;
+            case "fly": TakeOff(); break;
+            case "reveal" when _tree != null && _nav.Current >= 0:
+                GD.Print($"[test-hold] {_shell.RevealInExplorer(_tree.FullPath(_nav.Current)).Message}");
+                break;
         }
     }
 
@@ -346,6 +387,7 @@ public partial class Main : Node3D
 
     public override void _Process(double delta)
     {
+        if (_closing) return; // SHUT-01: no new work once closing has begun
         if (_experimentOnly) return;
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
@@ -728,6 +770,7 @@ public partial class Main : Node3D
 
     public override void _Input(InputEvent @event)
     {
+        if (_closing) return;
         if (_experimentOnly) return;
         // Releases first, whoever has focus.
         if (@event is InputEventKey { Pressed: false } up)
@@ -1383,9 +1426,13 @@ public partial class Main : Node3D
 
     public override void _Notification(int what)
     {
-        if (what == NotificationWMCloseRequest || what == NotificationPredelete)
+        if (what == NotificationWMCloseRequest)
         {
-            _session?.Dispose();
+            BeginShutdown("window closed");
+        }
+        else if (what == NotificationPredelete)
+        {
+            BeginShutdown("quit");
         }
         else if (what is (int)NotificationApplicationFocusOut or (int)NotificationWMWindowFocusOut)
         {

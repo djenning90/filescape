@@ -267,6 +267,37 @@ public sealed class WorldExplorerTests : IDisposable
         h.Pump(() => h.Tree[b].ScanState == DirScanState.Complete, 5);
     }
 
+    /// <summary>SHUT-01: closing never waits for an outstanding filesystem call; the coordinator stops at once.</summary>
+    [PosixFact]
+    public void Closing_stops_the_explorer_without_waiting_for_a_stalled_listing()
+    {
+        using var gate = new ManualResetEventSlim(false);
+        var slow = Path.Combine(Arrival, "b");
+        var h = new Harness(Arrival, new WorldExplorer.Options
+        {
+            Locations = [new LocationSeed("/", "/", LocationKind.Volume, true)],
+            Background = false,
+            BeforeEnumerate = p => { if (p == slow) gate.Wait(TimeSpan.FromSeconds(30)); },
+        });
+        try
+        {
+            var arrival = h.Await(WorldExplorer.ArrivalTicket).NodeId;
+            h.Pump(() => h.Tree[arrival].ScanState == DirScanState.Complete);
+            h.Explorer.Visit(h.Child(arrival, "b"));
+            h.Pump(() => h.Session.Snapshot().CurrentPath == slow, 5);
+            var sw = Stopwatch.StartNew();
+            h.Session.Dispose();
+            sw.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(100), "Dispose only requests cancellation");
+            h.Session.WaitForExit(TimeSpan.FromSeconds(2)).Should().BeTrue("the coordinator does not await the stalled listing");
+            h.Session.State.Should().Be(ScanState.Cancelled);
+        }
+        finally
+        {
+            gate.Set();
+            h.Explorer.Dispose();
+        }
+    }
+
     [PosixFact]
     public void Cancelling_the_background_marks_queued_folders_and_keeps_on_demand_listing()
     {

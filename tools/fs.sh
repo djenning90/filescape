@@ -7,6 +7,8 @@
 #   tools/fs.sh editor           open the Godot editor on the project
 #   tools/fs.sh export           export to a fresh staging dir, verify (files, hashes, a smoke launch), then promote it to
 #                                %LOCALAPPDATA%\FileScape\build, keeping the previous build as previous-<stamp>
+#   tools/fs.sh stage            the same export, verification and smoke launch into a fresh staging dir, never promoted
+#                                (for verification runs while DJ uses the installed build)
 #   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
 #   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
 #   tools/fs.sh which            print the discovered tools
@@ -63,7 +65,7 @@ check_base() {
 
 verify_build() {
   local d="$1" data="$1/data_FileScape.App_windows_x86_64" f
-  for f in "$d/FileScape.exe" "$data/FileScape.App.dll" "$data/FileScape.Core.dll" "$data/GodotSharp.dll" \
+  for f in "$d/FileScape.exe" "$d/FileScape.console.exe" "$data/FileScape.App.dll" "$data/FileScape.Core.dll" "$data/GodotSharp.dll" \
            "$data/FileScape.App.runtimeconfig.json" "$data/FileScape.App.deps.json" "$data/System.Private.CoreLib.dll"; do
     [[ -s "$f" ]] || { echo "fs.sh: missing or empty: $f" >&2; return 1; }
   done
@@ -83,6 +85,7 @@ write_build_info() {
     echo "uncommitted_paths $dirty"
     echo "files $(find "$data" -maxdepth 1 -type f | wc -l)"
     echo "sha256 FileScape.exe $(sha256sum "$d/FileScape.exe" | cut -d' ' -f1)"
+    echo "sha256 FileScape.console.exe $(sha256sum "$d/FileScape.console.exe" | cut -d" " -f1)"
     echo "sha256 FileScape.App.dll $(sha256sum "$data/FileScape.App.dll" | cut -d' ' -f1)"
     echo "sha256 FileScape.Core.dll $(sha256sum "$data/FileScape.Core.dll" | cut -d' ' -f1)"
   } > "$d/build-info.txt"
@@ -131,7 +134,7 @@ case "$cmd" in
   editor)
     G="$(find_godot_dir)"
     "$G/Godot_v4.7.2-stable_mono_win64.exe" --editor --path "$APP_W" >/dev/null 2>&1 & ;;
-  export)
+  export|stage)
     # Safe delivery (2026-11-05, see docs/windows-workflow.md "Exporting and delivering a build"):
     #  1. resolve and sanity-check every path before touching anything;
     #  2. export into a NEW, unique staging directory (never reused, never deleted by this command);
@@ -154,6 +157,7 @@ case "$cmd" in
     verify_build "$STAGE" || { echo "fs.sh: export incomplete in $STAGE_W (left for inspection)" >&2; exit 3; }
     write_build_info "$STAGE"
     smoke_build "$STAGE_W" "$STAGE" || { echo "fs.sh: the staged build did not pass the smoke launch; not promoted ($STAGE_W)" >&2; exit 5; }
+    if [[ "$cmd" == stage ]]; then echo "fs.sh: stage OK (not promoted) -> $STAGE_W\\FileScape.exe ($(grep '^build ' "$STAGE/build-info.txt" | cut -d' ' -f2-))"; exit 0; fi
     running="$(running_paths)" || { echo "fs.sh: could not determine which FileScape processes run; not promoting. Verified build: $STAGE_W\\FileScape.exe" >&2; exit 6; }
     if grep -qiF "$OUT_W\\" <<<"$running"; then
       echo "fs.sh: FileScape is running from $OUT_W; not replacing it. Verified build: $STAGE_W\\FileScape.exe (run 'tools/fs.sh export' again after closing FileScape, or use it directly)." >&2

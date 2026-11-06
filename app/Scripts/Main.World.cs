@@ -32,7 +32,13 @@ public partial class Main
     /// <summary>Starts exploring the live filesystem with <paramref name="path"/> as the arrival root.</summary>
     public void StartLive(string path)
     {
-        var options = new WorldExplorer.Options { DefaultDistribution = Locations.DefaultWslDistribution() };
+        var delay = _testListDelayMs;
+        var options = new WorldExplorer.Options
+        {
+            DefaultDistribution = Locations.DefaultWslDistribution(),
+            // SHUT-01 instrument only: an uncancellable stall before each listing, like an unresponsive share.
+            BeforeEnumerate = delay > 0 ? _ => Thread.Sleep(delay) : null,
+        };
         StartScan(new WorldExplorer(path, options));
     }
 
