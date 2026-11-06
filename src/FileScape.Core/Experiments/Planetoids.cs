@@ -15,7 +15,13 @@ namespace FileScape.Core.Experiments;
 /// <param name="PoleNorth">Unit tangent at the pole: the place's north (chart −Z).</param>
 public sealed record Planetoid(Vector3 Center, float Radius, float SurfaceGravity, Vector3 Pole, Vector3 PoleNorth)
 {
-    private Vector3 PoleEast => Vector3.Normalize(Vector3.Cross(PoleNorth, Pole)) * -1f;
+    /// <summary>
+    /// The chart's east at the pole: north × up, so (east, up, north) has the place's own handedness (x east, z south,
+    /// y up: east × north = up). Until 2026-11-06 this had the opposite sign, which mirrored every chart on the sphere
+    /// (round trips still agreed, so the tests did not notice); fixed with
+    /// <c>PlanetoidTests.The_chart_keeps_its_handedness_on_the_sphere</c>.
+    /// </summary>
+    private Vector3 PoleEast => Vector3.Normalize(Vector3.Cross(PoleNorth, Pole));
 
     /// <summary>
     /// Chart → world: the azimuthal-equidistant map from the pole. A place's flat local coordinates (x east, z south, y
@@ -56,7 +62,7 @@ public sealed record Planetoid(Vector3 Center, float Radius, float SurfaceGravit
         const float e = 0.05f;
         var ahead = ToWorld(chart + new Vector2(0, -e)) - p;
         var north = Vector3.Normalize(ahead - up * Vector3.Dot(ahead, up));
-        var east = Vector3.Normalize(Vector3.Cross(north, up)) * -1f;
+        var east = Vector3.Normalize(Vector3.Cross(north, up));
         return (up, north, east);
     }
 
@@ -99,6 +105,44 @@ public sealed class PlanetoidTraveller
     public Vector3 FlightVelocity { get; private set; }
     public int Transfers { get; private set; }
 
+    /// <summary>Seconds since the last launch (while flying), or the duration of the last completed transfer.</summary>
+    public float FlightSeconds { get; private set; }
+
+    /// <summary>True during a guided transfer (<see cref="LaunchGuided"/>), as opposed to free flight under gravity.</summary>
+    public bool Guided => _arc != null;
+
+    /// <summary>0 at departure, 1 at touchdown, during a guided transfer.</summary>
+    public float GuidedProgress => _arc == null ? 0 : Math.Clamp(_arcT / _arc.Duration, 0, 1);
+
+    private sealed record Arc(Vector3 From, Vector3 Control, Vector3 To, int Target, Vector2 TargetChart, float Duration);
+
+    private Arc? _arc;
+    private float _arcT;
+
+    /// <summary>
+    /// PLANET-03: an energetic, readable transfer instead of the literal slow ballistic arc. The traveller follows a
+    /// quadratic arc from here to <paramref name="targetChart"/> on <paramref name="target"/>, raised away from both
+    /// bodies, in <paramref name="seconds"/> (default: 1.4–2.6 s by distance). Parametrised linearly, the arc's speed is
+    /// highest at departure and arrival and lowest at the top: a burst off the pad, a moment of hang to see where you
+    /// are going, and a decisive landing. Touchdown lands walking in the target's chart, facing along the arc.
+    /// </summary>
+    public void LaunchGuided(int target, Vector2 targetChart, float? seconds = null)
+    {
+        if (Body < 0) return;
+        var from = Position + Up * 0.2f;
+        var to = _bodies[target].ToWorld(targetChart);
+        var dist = Vector3.Distance(from, to);
+        var lift = Vector3.Normalize(Up + Vector3.Normalize(to - _bodies[target].Center));
+        if (!float.IsFinite(lift.X)) lift = Up;
+        var control = (from + to) / 2 + lift * dist * 0.42f;
+        var duration = seconds ?? Math.Clamp(0.9f + dist / 140f, 1.4f, 2.6f);
+        _arc = new Arc(from, control, to, target, targetChart, duration);
+        _arcT = 0;
+        FlightSeconds = 0;
+        FlightPosition = from;
+        FlightVelocity = (control - from) * 2 / duration;
+        Body = -1;
+    }
     public void PlaceOn(int body, Vector2 chart, Degrees heading)
     {
         Body = body;
@@ -138,6 +182,30 @@ public sealed class PlanetoidTraveller
         if (Body >= 0)
         {
             _walker.Update(_terrains[Body], input, dt);
+            return;
+        }
+
+        FlightSeconds += dt.ToSecondsF();
+        if (_arc is { } arc)
+        {
+            _arcT += dt.ToSecondsF();
+            var u = Math.Clamp(_arcT / arc.Duration, 0, 1);
+            var a = Vector3.Lerp(arc.From, arc.Control, u);
+            var b = Vector3.Lerp(arc.Control, arc.To, u);
+            FlightPosition = Vector3.Lerp(a, b, u);
+            FlightVelocity = (b - a) * 2 / arc.Duration;
+            if (u >= 1)
+            {
+                var body = _bodies[arc.Target];
+                var (_, north, east) = body.FrameAt(arc.TargetChart);
+                var along = new Vector2(Vector3.Dot(FlightVelocity, east), -Vector3.Dot(FlightVelocity, north));
+                var heading = along.LengthSquared() > 1e-4f ? Degrees.Of(-PlaceTerrain.PlaceAngle(Vector2.Normalize(along))) : _walker.Yaw;
+                Body = arc.Target;
+                _walker.Teleport(_terrains[arc.Target], new Vector3(arc.TargetChart.X, 0, arc.TargetChart.Y), heading, Degrees.Zero);
+                Transfers++;
+                _arc = null;
+            }
+
             return;
         }
 
