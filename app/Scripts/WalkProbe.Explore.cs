@@ -302,6 +302,7 @@ public partial class WalkProbe
 
     private async Task PerfFly(string label)
     {
+        if (!ProbeTier.Measure(label, Log)) return;
         await Seconds(0.5);
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         App.Perf.StartRecording();

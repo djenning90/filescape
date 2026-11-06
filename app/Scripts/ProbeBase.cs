@@ -39,6 +39,7 @@ public abstract partial class ProbeBase : Node
             Check(false, $"probe threw {ex}");
         }
 
+        ProbeTier.WaitForSaves();
         Log($"done failures={Failures}");
         System.IO.File.WriteAllText(System.IO.Path.Combine(Out, $"{Mode}.log"), LogText.ToString());
         Finish();
@@ -150,7 +151,7 @@ public abstract partial class ProbeBase : Node
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var img = App.GetViewport().GetTexture().GetImage();
         var path = $"{Out}/{++_shot:D2}-{name}.png";
-        img.SavePng(path);
+        ProbeTier.SaveAsync(img, path);
         var tree = App.Tree;
         Log($"screenshot {path} current={(tree != null && tree.Count > 0 ? tree.FullPath(App.Navigator.Current) : "-")} selected={(tree != null && App.Selection.Selected >= 0 ? tree[App.Selection.Selected].Name : "-")}");
     }

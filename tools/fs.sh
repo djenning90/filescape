@@ -9,6 +9,7 @@
 #                                %LOCALAPPDATA%\FileScape\build, keeping the previous build as previous-<stamp>
 #   tools/fs.sh stage            the same export, verification and smoke launch into a fresh staging dir, never promoted
 #                                (for verification runs while DJ uses the installed build)
+#   tools/fs.sh check TIER       verification tiers: fast | smoke | full | release (tools/verify.sh; timings in its summary)
 #   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
 #   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
 #   tools/fs.sh which            print the discovered tools
@@ -167,6 +168,8 @@ case "$cmd" in
     mv "$STAGE" "$OUT"
     verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
     echo "fs.sh: export OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
+  check)
+    exec "$REPO/tools/verify.sh" "$@" ;;
   builds)
     BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"; check_base "$BASE"
     for d in "$BASE"/build "$BASE"/staging-* "$BASE"/previous-*; do
@@ -187,5 +190,5 @@ case "$cmd" in
       rm -rf -- "$d"; echo "deleted: $dw"
     done ;;
   *)
-    sed -n '2,13p' "$0"; exit 2 ;;
+    sed -n '2,17p' "$0"; exit 2 ;;
 esac
