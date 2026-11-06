@@ -134,6 +134,7 @@ public partial class Main : Node3D
 
         _testListDelayMs = args.TestListDelayMs ?? 0;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
+        if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
         BuildScene();
         LoadPreferences(args);
         _quality = args.Quality ?? Quality.High;

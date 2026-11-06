@@ -35,6 +35,7 @@ public partial class WalkProbe : ProbeBase
         else if (Mode == "walk-tour") await Tour();
         else if (Mode == "walk-explore") await Explore();
         else if (Mode == "walk-project") await ProjectJourney();
+        else if (Mode == "walk-aerial-limit") await AerialLimitJourney();
         else await Journey();
     }
 

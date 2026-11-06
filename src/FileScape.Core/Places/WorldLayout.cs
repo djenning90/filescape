@@ -66,6 +66,12 @@ public sealed class WorldMap
 
     public required int TreeVersion { get; init; }
 
+    /// <summary>The place the layout was asked to keep (AERIAL-07), or −1.</summary>
+    public int Focus { get; init; } = -1;
+
+    /// <summary>Whether the focus is laid out (false only when its way down alone exceeds the limit, or there is none).</summary>
+    public bool FocusShown => Focus >= 0 && Islands.ContainsKey(Focus);
+
     public bool Contains(int id) => Islands.ContainsKey(id);
 
     /// <summary>The frame of a place: its world centre and north (AERIAL-02, docs/units.md "World and place frames").</summary>
@@ -136,12 +142,20 @@ public readonly record struct PlaceFrame(Vector2 Center, float NorthDeg)
 /// </summary>
 public static class WorldLayout
 {
-    public static WorldMap Compute(FsTree tree, Func<FsNode, bool>? include = null, WorldLayoutParams? parameters = null)
+    /// <param name="focus">
+    /// The place the user is in (AERIAL-07): under <see cref="WorldLayoutParams.MaxIslands"/> its whole ancestry, itself
+    /// and its own child folders are laid out first, wherever breadth-first order would put them, so the aerial view
+    /// always shows where you are and where you can go. Only when the way down to it alone exceeds the limit is it left
+    /// out (<see cref="WorldMap.FocusShown"/> is then false and the app must not rely on its island). −1: no focus.
+    /// </param>
+    public static WorldMap Compute(FsTree tree, Func<FsNode, bool>? include = null, WorldLayoutParams? parameters = null, int focus = -1)
     {
         var p = parameters ?? WorldLayoutParams.Default;
         include ??= _ => true;
         var root = tree.Root.Id;
-        // Breadth-first: the nearest levels first, so a size limit drops the deepest folders.
+        var reserved = Reserve(tree, include, root, focus, p.MaxIslands);
+        var reservedLeft = reserved.Count;
+        // Breadth-first: the nearest levels first, so a size limit drops the deepest folders, except the reserved focus.
         var kids = new Dictionary<int, List<int>>();
         var order = new List<int> { root };
         var hidden = new Dictionary<int, int>();
@@ -155,7 +169,11 @@ public static class WorldLayout
             {
                 var n = tree[c];
                 if (!n.IsDirectory || !include(n)) continue;
-                if (order.Count >= p.MaxIslands)
+                if (reserved.Contains(c))
+                {
+                    reservedLeft--;
+                }
+                else if (order.Count + reservedLeft >= p.MaxIslands)
                 {
                     truncated += 1 + n.SubtreeDirCount; // it and the folders known below it
                     hidden[id] = hidden.GetValueOrDefault(id) + 1;
@@ -297,7 +315,36 @@ public static class WorldLayout
             }
         }
 
-        return new WorldMap { Islands = islands, LinkEdges = links, RootId = root, Truncated = truncated, TreeVersion = tree.Version };
+        return new WorldMap { Islands = islands, LinkEdges = links, RootId = root, Truncated = truncated, TreeVersion = tree.Version, Focus = focus };
+    }
+
+    /// <summary>
+    /// The folders reserved for the focus: its ancestry below the root, itself, then its own child folders (up to half the room the
+    /// limit leaves, in name order). Empty when there is no focus, when it cannot be reached (an ancestor is
+    /// excluded) or when the way down alone does not fit.
+    /// </summary>
+    private static HashSet<int> Reserve(FsTree tree, Func<FsNode, bool> include, int root, int focus, int limit)
+    {
+        var set = new HashSet<int>();
+        if (focus < 0 || !tree.Contains(focus)) return set;
+        var chain = new List<int>();
+        for (var id = focus; id != root; id = tree[id].ParentId)
+        {
+            if (id < 0 || !tree[id].IsDirectory || !include(tree[id])) return set; // not reachable under this filter
+            chain.Add(id);
+        }
+
+        if (chain.Count + 1 > limit) return set; // the way down alone exceeds the limit: the focus cannot be shown
+        set.UnionWith(chain);
+        // At most half of what is left, so the breadth-first neighbourhood (siblings, the parent's other folders) keeps room.
+        var room = (limit - 1 - chain.Count) / 2;
+        foreach (var c in tree[focus].Children.Where(c => tree[c].IsDirectory && include(tree[c])).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c))
+        {
+            if (room-- <= 0) break;
+            set.Add(c);
+        }
+
+        return set;
     }
 
     /// <summary>

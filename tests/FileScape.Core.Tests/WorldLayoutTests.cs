@@ -141,6 +141,60 @@ public class WorldLayoutTests
     }
 
     [Fact]
+    public void Under_a_small_limit_the_current_place_its_ancestry_and_its_folders_are_kept()
+    {
+        // AERIAL-07: the current place is deep in Chain, far outside the first 20 folders breadth-first.
+        var t = Sample().Build();
+        var limit = WorldLayoutParams.Default with { MaxIslands = 20 };
+        var here = t.Find("level-05").Id;
+        var below = t.Find("level-06").Id;
+        WorldLayout.Compute(t, parameters: limit).Contains(here).Should().BeFalse("premise: breadth-first alone drops it");
+
+        var m = WorldLayout.Compute(t, parameters: limit, focus: here);
+        m.FocusShown.Should().BeTrue();
+        m.Islands.Count.Should().BeLessThanOrEqualTo(20, "the display budget still holds");
+        foreach (var a in t.Ancestors(here)) m.Contains(a).Should().BeTrue($"{t.FullPath(a)} (the way down) is laid out");
+        m.Contains(below).Should().BeTrue("the current place's own folders are shown: where you can go");
+        m.Islands[here].ParentId.Should().Be(t[here].ParentId);
+        m.Islands[here].Depth.Should().Be(6);
+        m.Truncated.Should().Be(t.Nodes.Count(n => n.IsDirectory) - m.Islands.Count, "what was left out is still counted");
+        m.Contains(t.Find("Documents").Id).Should().BeTrue("the nearest levels keep the rest of the budget");
+        m.Contains(t.Find("Wide").Id).Should().BeTrue();
+        foreach (var a in m.Islands.Values)
+        {
+            foreach (var b in m.Islands.Values)
+            {
+                if (a.Id < b.Id) Vector2.Distance(a.Center, b.Center).Should().BeGreaterThan(a.Radius + b.Radius - 0.01f, $"{t.FullPath(a.Id)} and {t.FullPath(b.Id)} do not overlap");
+            }
+        }
+
+        WorldLayout.Compute(t, parameters: limit, focus: here).Islands.Keys.Should().BeEquivalentTo(m.Islands.Keys, "deterministic");
+    }
+
+    [Fact]
+    public void A_wide_current_place_keeps_room_for_its_neighbourhood()
+    {
+        var t = Sample().Build();
+        var wide = t.Find("Wide").Id;
+        var m = WorldLayout.Compute(t, parameters: WorldLayoutParams.Default with { MaxIslands = 20 }, focus: wide);
+        m.Islands.Count.Should().Be(20);
+        m.Islands.Values.Count(i => i.ParentId == wide).Should().BeGreaterThanOrEqualTo(9, "about half the room for its own folders");
+        t.Root.Children.Where(c => t[c].IsDirectory).All(m.Contains).Should().BeTrue("its siblings still appear");
+    }
+
+    [Fact]
+    public void When_even_the_way_down_exceeds_the_limit_the_focus_is_reported_missing_not_faked()
+    {
+        var t = Sample().Build();
+        var here = t.Find("level-05").Id;
+        var m = WorldLayout.Compute(t, parameters: WorldLayoutParams.Default with { MaxIslands = 5 }, focus: here);
+        m.Islands.Count.Should().BeLessThanOrEqualTo(5);
+        m.FocusShown.Should().BeFalse("seven places are needed to reach it; the app must recover without its island");
+        m.Contains(here).Should().BeFalse();
+        m.FrameOf(here).Should().Be(PlaceFrame.Identity);
+    }
+
+    [Fact]
     public void Unknown_folders_are_small_veiled_islands_and_large_folders_get_room()
     {
         var unknown = new Spec("not-yet") { State = DirScanState.Pending };

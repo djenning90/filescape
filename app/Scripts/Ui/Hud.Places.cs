@@ -294,6 +294,8 @@ public partial class Hud
 
     public bool AscentChipVisible => _ascentPanel.Visible;
 
+    public string AscentChipText => _ascentPanel.Visible ? _ascentLabel.Text : "";
+
     public void SetTransition(float fade, string? caption)
     {
         _fade.Visible = fade > 0.001f;

@@ -256,12 +256,22 @@ public partial class Main
     /// beyond the boundary) or inside a structure, the nearest clear ground nearby is used, else the arrival point —
     /// and the user is told why.
     /// </summary>
+    /// <summary>The last time landing could not use the aerial world (AERIAL-07), for probes; null if never.</summary>
+    public string? LastAerialRecovery { get; private set; }
+
     public void Land()
     {
         if (_locomotion != Locomotion.Flying || _place == null) return;
         _riseRemaining = Meters.Zero;
         _takeOffPitch = null;
-        if (_aerialShown && _worldMap != null && _tree != null)
+        if (_aerialShown && _worldMap != null && _tree != null && !_worldMap.Contains(_nav.Current))
+        {
+            // AERIAL-07 recovery: the current place has no island (beyond the display budget), so there is no world frame
+            // to say what lies below. Land here, in this place, as without the aerial view.
+            LastAerialRecovery = $"{_tree.FullPath(_nav.Current)} has no island in the aerial world: landed in this place";
+            GD.Print("[aerial] " + LastAerialRecovery);
+        }
+        else if (_aerialShown && _worldMap != null && _tree != null)
         {
             // From the air (AERIAL-03): over another place, land in it; over open space far from here, land in the
             // nearest place (at its arrival point if there is no ground below). Over this place, land here.
@@ -269,7 +279,7 @@ public partial class Main
             var under = _worldMap.IslandAt(xz, 1.0f);
             if (under < 0)
             {
-                var here = _worldMap.Islands[_nav.Current];
+                var here = _worldMap.Islands[_nav.Current]; // laid out: checked above
                 if (System.Numerics.Vector2.Distance(xz, here.Center) > here.Radius + 15f)
                 {
                     under = _worldMap.Islands.Values.MinBy(i => System.Numerics.Vector2.Distance(xz, i.Center) - i.Radius)!.Id;

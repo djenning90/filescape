@@ -82,6 +82,7 @@ public partial class Main
         {
             _aerialShown = want;
             _aerial.Visible = want;
+            _aerialUnavailable = false;
             _placeWorld.SetVistasVisible(!want);
             if (!want && _experience == Experience.Places) PlaceAtmosphere.SetAerial(_world, 0, _quality);
         }
@@ -90,6 +91,16 @@ public partial class Main
         PlaceAtmosphere.SetAerial(_world, Mathf.Clamp((CameraAltitude - AerialAltitude) / 40f, 0, 1), _quality);
         EnsureWorldMap(force: false);
         if (_worldMap == null) return;
+        if (AerialAvailable == _aerialUnavailable)
+        {
+            // Never draw the world in a made-up frame: without the current place's island the place stays as it is, with
+            // its vistas, and the chip says why (AERIAL-07).
+            _aerialUnavailable = !AerialAvailable;
+            _aerial.Visible = !_aerialUnavailable;
+            _placeWorld.SetVistasVisible(_aerialUnavailable);
+        }
+
+        if (_aerialUnavailable) return;
         if (_worldMap != _aerialBuiltMap || _aerialBuiltFor != _nav.Current || _aerialBuiltSelected != _selection.Selected)
         {
             _aerial.Build(_tree, _worldMap, _nav.Current, _visitedPlaces, _selection.Selected, ShowInPlaces);
@@ -106,7 +117,8 @@ public partial class Main
     private void EnsureWorldMap(bool force)
     {
         if (_tree == null) return;
-        if (_worldMap != null && _worldMap.TreeVersion == _tree.Version && _worldMap.Contains(_nav.Current)) return;
+        // Current when made for this tree and this place (if the place could not be laid out, recomputing will not help).
+        if (_worldMap != null && _worldMap.TreeVersion == _tree.Version && _worldMap.Focus == _nav.Current) return;
         if (!force && _worldMap != null && _now - _lastWorldLayout < WorldLayoutInterval) return;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         // The way to where you are is always in the world, even through a hidden folder (AppData is hidden on Windows).
@@ -115,12 +127,26 @@ public partial class Main
         foreach (var a in _tree.Ancestors(_nav.Root)) _onTheWay.Add(a);
         _onTheWay.Add(_nav.Current);
         _onTheWay.Add(_nav.Root);
-        _worldMap = WorldLayout.Compute(_tree, n => ShowInPlaces(n) || _onTheWay.Contains(n.Id));
+        // AERIAL-07: the current place, its ancestry and its folders are kept under the display budget.
+        _worldMap = WorldLayout.Compute(_tree, n => ShowInPlaces(n) || _onTheWay.Contains(n.Id), _worldLayoutParams, focus: _nav.Current);
+        if (!_worldMap.FocusShown) GD.Print($"[aerial] {_tree.FullPath(_nav.Current)} is beyond the aerial display budget ({_worldLayoutParams.MaxIslands:N0} places): aerial view unavailable here");
         _lastWorldLayout = _now;
         LastWorldLayoutMs = sw.Elapsed.TotalMilliseconds;
     }
 
     public double LastWorldLayoutMs { get; private set; }
+
+    private WorldLayoutParams _worldLayoutParams = WorldLayoutParams.Default;
+    private bool _aerialUnavailable;
+
+    /// <summary>The aerial layout parameters in use (a small budget only with --test-max-islands).</summary>
+    public WorldLayoutParams WorldLayoutParameters => _worldLayoutParams;
+
+    /// <summary>Whether the aerial view is up but cannot be drawn around the current place (AERIAL-07), for probes.</summary>
+    public bool AerialUnavailableHere => _aerialShown && _aerialUnavailable;
+
+    /// <summary>Whether the aerial world can be drawn around the current place (AERIAL-07): false only past the budget.</summary>
+    private bool AerialAvailable => _worldMap != null && _worldMap.Contains(_nav.Current);
 
     private readonly HashSet<int> _onTheWay = [];
 
@@ -174,7 +200,7 @@ public partial class Main
     /// <summary>The island under a screen point while the aerial world is shown, else −1.</summary>
     private int PickIsland(Vector2 screen)
     {
-        if (!_aerialShown || _worldMap == null) return -1;
+        if (!_aerialShown || _worldMap == null || !AerialAvailable) return -1;
         var origin = _rig.Camera.ProjectRayOrigin(screen);
         var dir = _rig.Camera.ProjectRayNormal(screen);
         if (dir.Y > -1e-3f) return -1;
@@ -198,7 +224,7 @@ public partial class Main
     /// </summary>
     public bool AerialTravelTo(int id, bool land)
     {
-        if (_tree == null || _worldMap == null || !_worldMap.Contains(id) || id == _nav.Current || _transition != null) return false;
+        if (_tree == null || _worldMap == null || !_worldMap.Contains(id) || !AerialAvailable || id == _nav.Current || _transition != null) return false;
         var (xz, yaw) = WorldCamera();
         _aerialTravel = new AerialTravel(id, xz, _rig.CameraPosition.Y, yaw, _rig.LookPitch, land);
         if (_nav.GoTo(_tree, id)) return true;
@@ -263,6 +289,7 @@ public partial class Main
     private string? AerialChip()
     {
         if (!_aerialShown || _worldMap == null || _tree == null) return null;
+        if (!AerialAvailable) return $"Aerial view unavailable here: this place is deeper than the {_worldLayoutParams.MaxIslands:N0} places the aerial world can show · T lands here";
         var unlisted = 0;
         foreach (var i in _worldMap.Islands.Values) if (Listing.IsUnknown(Listing.Of(_tree[i.Id]))) unlisted++;
         var more = _worldMap.Truncated > 0 ? $" · {_worldMap.Truncated:N0} deeper folders not drawn" : "";
