@@ -54,9 +54,9 @@ public sealed class Spec
     }
 
     /// <summary>Builds the tree breadth first, as the scanner emits it (directories, then files, by name).</summary>
-    public FsTree Build()
+    public FsTree Build(DataSourceInfo? source = null)
     {
-        var tree = new FsTree(new DataSourceInfo(DataOrigin.Synthetic, "synthetic://test", "test"));
+        var tree = new FsTree(source ?? new DataSourceInfo(DataOrigin.Synthetic, "synthetic://test", "test"));
         var batch = new ScanBatch();
         var queue = new Queue<(Spec Spec, int Id, int Depth)>();
         batch.NewNodes.Add(new NodeRecord(0, -1, Name, NodeKind.Directory, Flags, 0, 0, null, null, null, 0, State));

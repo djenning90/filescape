@@ -157,7 +157,7 @@ public partial class Main
         var id = ProjectTarget();
         if (id < 0 || !_tree[id].IsDirectory || _tree[id].IsHub) return;
         var path = _tree.FullPath(id);
-        var pinned = !_prefs.Pins.Contains(path, StringComparer.OrdinalIgnoreCase);
+        var pinned = !_prefs.IsPinned(path);
         SetPreferences(_prefs.WithPin(path, pinned));
         InvalidateProminence();
         _hud.Toast(pinned ? $"★ Pinned {_tree.DisplayName(id)}: it stands out wherever it appears." : $"Unpinned {_tree.DisplayName(id)}.");

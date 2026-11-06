@@ -39,15 +39,16 @@ public sealed class ProminenceContext
     public static readonly ProminenceContext Empty = new();
 
     /// <summary>Full paths the user pinned.</summary>
-    public IReadOnlySet<string> Pins { get; init; } = new HashSet<string>();
+    public IReadOnlySet<string> Pins { get; init; } = new HashSet<string>(PathIdentity.Comparer);
 
     /// <summary>Platform known folders: full path → name (e.g. Downloads), as resolved by the OS.</summary>
-    public IReadOnlyDictionary<string, string> KnownFolders { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> KnownFolders { get; init; } = new Dictionary<string, string>(PathIdentity.Comparer);
 
     /// <summary>Folders the user said are not projects (IDENT-03); they get no project prominence either.</summary>
     public IReadOnlySet<int> NotProjects { get; init; } = new HashSet<int>();
 
-    public static StringComparer PathComparer => StringComparer.OrdinalIgnoreCase;
+    /// <summary>Path identity for pins and known folders (PROM-05): platform-aware, see <see cref="PathIdentity"/>.</summary>
+    public static StringComparer PathComparer => PathIdentity.Comparer;
 }
 
 /// <summary>

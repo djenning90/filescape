@@ -84,6 +84,88 @@ public sealed class ProminenceAndProjectTests : IDisposable
         Preferences.FromJson("{\"version\":1}", out _).Pins.Should().BeEmpty("older files have no pins");
     }
 
+    // PROM-05 (AD-36): pin identity follows the platform. Linux folders differing only in case are different folders.
+    private const string Wsl = @"\\wsl.localhost\Ubuntu-24.04\home\dj";
+
+    [Theory]
+    [InlineData(Wsl + @"\Notes", Wsl + @"\notes", false)]
+    [InlineData("/home/dj/Notes", "/home/dj/notes", false)]
+    [InlineData(@"C:\Work\Notes", @"c:\work\notes", true)]
+    [InlineData(@"\\server\share\Notes", @"\\SERVER\share\notes", true)]
+    [InlineData(Wsl + @"\Notes", @"\\wsl$\Ubuntu-24.04\home\dj\Notes", true)]
+    [InlineData(Wsl + @"\Notes", @"\\WSL.LOCALHOST\ubuntu-24.04\home\dj\Notes", true)]
+    [InlineData(Wsl + @"\Notes", @"\\wsl$\Ubuntu-24.04\home\dj\notes", false)]
+    [InlineData(Wsl + @"\Notes", Wsl + @"\Notes\", true)]
+    [InlineData(Wsl + @"\Notes", @"\\wsl.localhost\Debian\home\dj\Notes", false)]
+    [InlineData(@"C:\", @"c:\", true)]
+    public void Path_identity_is_platform_aware(string a, string b, bool same)
+    {
+        PathIdentity.Same(a, b).Should().Be(same);
+        PathIdentity.Comparer.Equals(a, b).Should().Be(same);
+        if (same) PathIdentity.Comparer.GetHashCode(a).Should().Be(PathIdentity.Comparer.GetHashCode(b));
+    }
+
+    [Fact]
+    public void Linux_folders_differing_only_in_case_are_pinned_independently_through_save_and_reload()
+    {
+        var upper = Wsl + @"\Notes";
+        var lower = Wsl + @"\notes";
+        var p = Preferences.Default.WithPin(upper, true).WithPin(lower, true);
+        p.Pins.Should().Equal(upper, lower);
+        p.IsPinned(upper).Should().BeTrue();
+        p.IsPinned(lower).Should().BeTrue();
+
+        var back = Preferences.FromJson(p.ToJson(), out var problem);
+        problem.Should().BeNull();
+        back.Pins.Should().Equal([upper, lower], "reloading must not merge Notes and notes");
+
+        var unpinned = back.WithPin(lower, false);
+        unpinned.Pins.Should().Equal([upper], "unpinning notes leaves Notes pinned");
+        unpinned.IsPinned(lower).Should().BeFalse();
+        Preferences.FromJson(unpinned.ToJson(), out _).Pins.Should().Equal(upper);
+
+        var posix = Preferences.Default.WithPin("/home/dj/Notes", true).WithPin("/home/dj/notes", true);
+        Preferences.FromJson(posix.ToJson(), out _).Pins.Should().Equal("/home/dj/Notes", "/home/dj/notes");
+    }
+
+    [Fact]
+    public void Wsl_aliases_are_one_pin_stored_in_the_canonical_spelling()
+    {
+        var alias = @"\\wsl$\Ubuntu-24.04\home\dj\Notes";
+        var p = Preferences.Default.WithPin(alias, true).WithPin(Wsl + @"\Notes\", true);
+        p.Pins.Should().Equal([Wsl + @"\Notes"], "the legacy route and a trailing separator name the same folder");
+        p.IsPinned(alias).Should().BeTrue();
+        p.WithPin(alias, false).Pins.Should().BeEmpty("unpinning through the alias unpins it");
+
+        // A file written by hand (or by an older build) with both spellings loads as one pin, plus the distinct case.
+        var json = "{\"version\":1,\"pins\":[\"" + (alias + "\",\"" + Wsl + @"\Notes" + "\",\"" + Wsl + @"\notes").Replace(@"\", @"\\") + "\"]}";
+        Preferences.FromJson(json, out var problem).Pins.Should().Equal(Wsl + @"\Notes", Wsl + @"\notes");
+        problem.Should().BeNull();
+
+        // Windows keeps its usual behaviour: one folder whatever the case.
+        Preferences.Default.WithPin(@"C:\Work\Notes", true).WithPin(@"c:\work\NOTES", true).Pins.Should().Equal(@"C:\Work\Notes");
+        Preferences.Default.WithPin(@"C:\Work\Notes", true).WithPin(@"c:\work\NOTES", false).Pins.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Prominence_shows_only_the_pinned_one_of_two_linux_folders_differing_in_case()
+    {
+        var tree = new Spec("dj").Dir(new Spec("Notes")).Dir(new Spec("notes")).Build(new FileScape.Core.Model.DataSourceInfo(FileScape.Core.Model.DataOrigin.LiveFilesystem, Wsl, "test"));
+        var upper = tree.Find("Notes").Id;
+        var lower = tree.Root.Children.Single(c => tree[c].Name == "notes");
+        tree.FullPath(upper).Should().Be(Wsl + @"\Notes");
+        tree.FullPath(lower).Should().Be(Wsl + @"\notes");
+
+        var prefs = Preferences.Default.WithPin(tree.FullPath(upper), true);
+        var ctx = Ctx([.. prefs.Pins]);
+        Prominence.For(tree, upper, ctx).Kind.Should().Be(ProminenceKind.Pinned);
+        Prominence.For(tree, lower, ctx).IsProminent.Should().BeFalse("notes was never pinned");
+
+        // Through the legacy alias the same folder is recognised.
+        Prominence.ByPath(@"\\wsl$\Ubuntu-24.04\home\dj\Notes", ctx)!.Kind.Should().Be(ProminenceKind.Pinned);
+        Prominence.ByPath(@"\\wsl$\Ubuntu-24.04\home\dj\notes", ctx).Should().BeNull();
+    }
+
     [Fact]
     public void A_readme_is_shown_as_inert_text()
     {

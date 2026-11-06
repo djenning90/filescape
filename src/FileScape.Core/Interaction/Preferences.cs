@@ -47,13 +47,20 @@ public sealed record Preferences
 
     public override int GetHashCode() => HashCode.Combine(ReverseLookHorizontal, ReverseLookVertical, LevelViewOnRelease, FlyAlongGaze, WalkSpeed, RunSpeed, Pins.Count);
 
-    /// <summary>Returns these preferences with <paramref name="path"/> pinned or unpinned (order kept, no duplicates).</summary>
+    /// <summary>
+    /// Returns these preferences with <paramref name="path"/> pinned or unpinned (order kept, no duplicates). Paths are
+    /// matched by <see cref="PathIdentity"/>: case-sensitive for Linux and WSL paths, not for Windows paths; a WSL alias
+    /// (<c>\\wsl$\</c>) is stored as <c>\\wsl.localhost\</c>.
+    /// </summary>
     public Preferences WithPin(string path, bool pinned) => this with
     {
         Pins = pinned
-            ? Pins.Contains(path, StringComparer.OrdinalIgnoreCase) ? Pins : [.. Pins, path]
-            : Pins.Where(p => !p.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList(),
+            ? Pins.Contains(path, PathIdentity.Comparer) ? Pins : [.. Pins, PathIdentity.Normalize(path)]
+            : Pins.Where(p => !PathIdentity.Same(p, path)).ToList(),
     };
+
+    /// <summary>Whether <paramref name="path"/> is pinned (by <see cref="PathIdentity"/>).</summary>
+    public bool IsPinned(string path) => Pins.Contains(path, PathIdentity.Comparer);
 
     /// <summary>Walking speed on foot (W). The default is <see cref="WalkParams.Default"/>'s.</summary>
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
@@ -133,7 +140,7 @@ public sealed record Preferences
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
             if (o["pins"] is JsonArray pins)
             {
-                p = p with { Pins = pins.OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var t) ? t : null).OfType<string>().Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
+                p = p with { Pins = pins.OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var t) ? t : null).OfType<string>().Where(t => t.Length > 0).Select(PathIdentity.Normalize).Distinct(PathIdentity.Comparer).ToList() };
             }
         }
         catch (JsonException e)
