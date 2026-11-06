@@ -36,6 +36,25 @@ public sealed record Preferences
     /// </summary>
     public bool FlyAlongGaze { get; init; }
 
+    /// <summary>PROM-03: folders the user pinned (full paths). Pinned destinations stand out everywhere they appear.</summary>
+    public IReadOnlyList<string> Pins { get; init; } = [];
+
+    /// <summary>Value equality including the pins (a record compares lists by reference).</summary>
+    public bool Equals(Preferences? other) =>
+        other is not null && ReverseLookHorizontal == other.ReverseLookHorizontal && ReverseLookVertical == other.ReverseLookVertical
+        && LevelViewOnRelease == other.LevelViewOnRelease && FlyAlongGaze == other.FlyAlongGaze && WalkSpeed == other.WalkSpeed
+        && RunSpeed == other.RunSpeed && Pins.SequenceEqual(other.Pins);
+
+    public override int GetHashCode() => HashCode.Combine(ReverseLookHorizontal, ReverseLookVertical, LevelViewOnRelease, FlyAlongGaze, WalkSpeed, RunSpeed, Pins.Count);
+
+    /// <summary>Returns these preferences with <paramref name="path"/> pinned or unpinned (order kept, no duplicates).</summary>
+    public Preferences WithPin(string path, bool pinned) => this with
+    {
+        Pins = pinned
+            ? Pins.Contains(path, StringComparer.OrdinalIgnoreCase) ? Pins : [.. Pins, path]
+            : Pins.Where(p => !p.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList(),
+    };
+
     /// <summary>Walking speed on foot (W). The default is <see cref="WalkParams.Default"/>'s.</summary>
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
 
@@ -86,6 +105,7 @@ public sealed record Preferences
             ["flyAlongGaze"] = FlyAlongGaze,
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
+            ["pins"] = new JsonArray([.. Pins.Select(x => (JsonNode)JsonValue.Create(x)!)]),
         };
         return o.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
@@ -111,6 +131,10 @@ public sealed record Preferences
             if (Bool("flyAlongGaze") is { } fg) p = p with { FlyAlongGaze = fg };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
+            if (o["pins"] is JsonArray pins)
+            {
+                p = p with { Pins = pins.OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var t) ? t : null).OfType<string>().Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
+            }
         }
         catch (JsonException e)
         {
@@ -146,5 +170,5 @@ public sealed record Preferences
     }
 
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s");
+        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned");
 }
