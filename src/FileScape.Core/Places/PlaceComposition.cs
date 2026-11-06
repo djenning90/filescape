@@ -44,6 +44,9 @@ public enum ListingState
 
     /// <summary>Its volume, share or distribution could not be reached.</summary>
     Unavailable,
+
+    /// <summary>Being listed right now (LIST-03); <see cref="Pending"/> is queued.</summary>
+    Listing,
 }
 
 public static class Listing
@@ -58,6 +61,7 @@ public static class Listing
         return n.ScanState switch
         {
             DirScanState.Pending => ListingState.Pending,
+            DirScanState.Listing => ListingState.Listing,
             DirScanState.Cancelled or DirScanState.NotTraversed => ListingState.NotScanned,
             DirScanState.Failed => ListingState.Failed,
             DirScanState.Unlisted => ListingState.Unlisted,
@@ -73,7 +77,8 @@ public static class Listing
     {
         ListingState.Open => "",
         ListingState.Empty => "empty",
-        ListingState.Pending => "scanning…",
+        ListingState.Pending => "queued",
+        ListingState.Listing => "listing now…",
         ListingState.Partial => "partly listed",
         ListingState.NotScanned => "not scanned",
         ListingState.Denied => "access denied",

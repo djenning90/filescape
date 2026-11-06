@@ -103,7 +103,7 @@ public partial class AerialWorld : Node3D
 
             var style = state switch
             {
-                ListingState.Pending => 1,
+                ListingState.Pending or ListingState.Listing => 1,
                 ListingState.Denied or ListingState.Unavailable or ListingState.Failed => 2,
                 _ when Listing.IsUnknown(state) && state != ListingState.Partial => 4,
                 _ => 0,

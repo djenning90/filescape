@@ -36,6 +36,12 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         /// <summary>At most this many child folders of a visited place are listed ahead (gate states, vistas).</summary>
         public int PrefetchLimit { get; init; } = 200;
 
+        /// <summary>
+        /// LIST-01: at most this many further folders (the child folders of the current place's destinations) are listed
+        /// per visited place, one at a time and only when nothing the user is waiting for is queued.
+        /// </summary>
+        public int ContextLimit { get; init; } = 48;
+
         public string? DefaultDistribution { get; init; }
 
         /// <summary>
@@ -51,7 +57,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     private enum DirState { Unlisted, Queued, Listing, Listed, Failed }
 
-    private enum Priority { Urgent, Prefetch, Background }
+    private enum Priority { Urgent, Prefetch, Context, Background }
 
     private sealed class Dir
     {
@@ -65,6 +71,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public bool Prefetched;
         public bool Retry;
         public int Depth;
+        public int Parent = -1;
+        public int ContextLeft;
+        public bool Held;
         public Priority Priority = Priority.Background;
     }
 
@@ -132,7 +141,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     private readonly Dictionary<int, Dir> _dirs = [];
     private readonly Dictionary<int, LinkEntry> _links = [];
     private readonly Dictionary<string, int> _roots = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Queue<Dir> _urgent = new(), _prefetch = new(), _background = new();
+    private readonly Queue<Dir> _urgent = new(), _prefetch = new(), _context = new(), _background = new();
     private readonly List<Inflight> _inflight = [];
     private readonly List<PathJob> _jobs = [];
     private readonly List<(Task<ResolveResult> Task, LinkEntry Link)> _resolving = [];
@@ -247,7 +256,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     private void ReportProgress()
     {
-        _ctx.Pending = _urgent.Count + _prefetch.Count + _background.Count + _inflight.Count;
+        _ctx.Pending = _urgent.Count + _prefetch.Count + _context.Count + _background.Count + _inflight.Count;
         _ctx.BackgroundActive = !_backgroundCancelled && (_background.Count > 0 || _inflight.Any(i => i.Dir.Background));
         _ctx.Idle = _ctx.Pending == 0 && _jobs.Count == 0 && _resolving.Count == 0;
         if (_inflight.Count == 0)
@@ -295,9 +304,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 StartJob(new PathJob { Ticket = g.Ticket, Path = g.Path });
                 break;
             case VisitRequest v when _dirs.TryGetValue(v.Id, out var d):
-                d.Visited = true;
+                MarkVisited(d);
                 if (d.State is DirState.Unlisted or DirState.Queued || (d.State == DirState.Failed && d.Retry)) Enqueue(d, Priority.Urgent);
                 else if (d.State == DirState.Listed) Prefetch(d);
+                // The way back is a destination too: list a parent known only as a stub on the way (LIST-01).
+                if (d.Parent > 0 && _dirs.TryGetValue(d.Parent, out var up) && up.State == DirState.Unlisted && !up.Retry) Ahead(up, Priority.Prefetch, ListAheadKind.Destination);
                 break;
             case VisitRequest:
                 break;
@@ -359,10 +370,51 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         foreach (var id in d.Children.Values.OrderBy(i => i))
         {
             if (n >= _o.PrefetchLimit) break;
-            if (_dirs.TryGetValue(id, out var c) && c.State == DirState.Unlisted && !c.Retry)
+            if (_dirs.TryGetValue(id, out var c) && c.State == DirState.Unlisted && !c.Retry && Ahead(c, Priority.Prefetch, ListAheadKind.Destination))
             {
-                Enqueue(c, Priority.Prefetch);
                 n++;
+            }
+        }
+    }
+
+    /// <summary>A visited place gets its own budget of further context once (LIST-01).</summary>
+    private void MarkVisited(Dir d)
+    {
+        if (!d.Visited) d.ContextLeft = _o.ContextLimit;
+        d.Visited = true;
+    }
+
+    /// <summary>Queues a folder to be listed ahead of the user unless <see cref="ListAhead"/> refuses it (then says why, once).</summary>
+    private bool Ahead(Dir c, Priority p, ListAheadKind kind)
+    {
+        if (ListAhead.Refusal(c.Path, kind) is { } why)
+        {
+            if (!c.Held)
+            {
+                c.Held = true;
+                _batch.DirectoryUpdates.Add(new DirectoryUpdate(c.Id, DirScanState.Unlisted, Error: why));
+            }
+
+            return false;
+        }
+
+        Enqueue(c, p);
+        return true;
+    }
+
+    /// <summary>
+    /// LIST-01: after a destination of a visited place is listed, its own child folders become further context, within
+    /// the visited place's budget, so the next step's gates and the horizon show real states instead of "not listed yet".
+    /// </summary>
+    private void QueueContext(Dir listed)
+    {
+        if (listed.Priority != Priority.Prefetch || listed.Parent <= 0 || !_dirs.TryGetValue(listed.Parent, out var visited) || !visited.Visited) return;
+        foreach (var id in listed.Children.Values.OrderBy(i => i))
+        {
+            if (visited.ContextLeft <= 0) return;
+            if (_dirs.TryGetValue(id, out var c) && c.State == DirState.Unlisted && !c.Retry && Ahead(c, Priority.Context, ListAheadKind.Context))
+            {
+                visited.ContextLeft--;
             }
         }
     }
@@ -394,6 +446,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
             }
 
             d.State = DirState.Listing;
+            if (d.Priority != Priority.Background) _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, DirScanState.Listing));
             var path = d.Path;
             var hook = _o.BeforeEnumerate;
             var id = d.Id;
@@ -405,8 +458,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     private Dir? Next()
     {
-        foreach (var q in new[] { _urgent, _prefetch, _background })
+        // Further context waits for idle time: nothing the user is waiting for queued or in flight, one at a time.
+        var contextAllowed = _inflight.All(i => i.Dir.Priority is Priority.Background) && !HasQueued(_urgent) && !HasQueued(_prefetch);
+        foreach (var q in new[] { _urgent, _prefetch, _context, _background })
         {
+            if (q == _context && !contextAllowed) continue;
             while (q.TryDequeue(out var d))
             {
                 if (d.State == DirState.Queued) return d;
@@ -415,6 +471,8 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
         return null;
     }
+
+    private static bool HasQueued(Queue<Dir> q) => q.Any(d => d.State == DirState.Queued);
 
     private void CompleteListings()
     {
@@ -476,6 +534,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         d.Retry = false;
         _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, state, add, error, clear, SortChildren: hadChildren && created > 0));
         if (d.Visited) Prefetch(d);
+        QueueContext(d);
     }
 
     private void AddEntry(Dir parent, Entry e)
@@ -485,7 +544,8 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         if (e.Kind == NodeKind.Directory)
         {
             state = (e.Flags & NodeFlags.CloudNotTraversed) != 0 ? DirScanState.NotTraversed : DirScanState.Unlisted;
-            if (state == DirScanState.Unlisted && parent.Background && !_backgroundCancelled)
+            if (state == DirScanState.Unlisted && parent.Background && !_backgroundCancelled
+                && ListAhead.Refusal(Path.Join(parent.Path, e.Name), ListAheadKind.Background) == null)
             {
                 state = DirScanState.Pending;
                 queueBackground = true;
@@ -503,6 +563,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 CaseSensitive = parent.CaseSensitive,
                 Children = new(parent.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase),
                 Background = queueBackground,
+                Parent = parent.Id,
                 State = state == DirScanState.NotTraversed ? DirState.Listed : DirState.Unlisted,
                 Depth = parent.Depth + 1,
             };
@@ -771,7 +832,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 d.Background = true;
             }
 
-            if (job.Visit) d.Visited = true;
+            if (job.Visit) MarkVisited(d);
             if (d.State is DirState.Unlisted) Enqueue(d, Priority.Urgent);
             else if (d.State == DirState.Listed && d.Visited) Prefetch(d);
         }
@@ -850,7 +911,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         {
             if (_dirs.TryGetValue(link.Info.TargetId, out var d))
             {
-                d.Visited = true;
+                MarkVisited(d);
                 if (d.State == DirState.Unlisted) Enqueue(d, Priority.Urgent);
             }
 

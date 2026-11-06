@@ -157,6 +157,9 @@ public enum DirScanState : byte
 
     /// <summary>Known to exist but not listed yet: it is listed when visited (on-demand exploration, AD-17).</summary>
     Unlisted,
+
+    /// <summary>Being listed right now (LIST-03: distinct from queued).</summary>
+    Listing,
 }
 
 /// <summary>

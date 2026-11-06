@@ -18,6 +18,9 @@ public static class PlacePalette
     public static readonly Color Link = new(0.2f, 0.95f, 1f);
     public static readonly Color Up = new(0.92f, 0.95f, 1f);
     public static readonly Color Unlisted = new(0.62f, 0.68f, 0.86f);
+
+    /// <summary>Being listed right now: brighter than queued (LIST-03).</summary>
+    public static readonly Color Listing = new(1f, 0.92f, 0.55f);
     public static readonly Color Unavailable = new(0.62f, 0.6f, 0.66f);
     public static readonly Color LinkBlocked = new(0.35f, 0.55f, 0.6f);
 
@@ -27,6 +30,7 @@ public static class PlacePalette
     public static Color For(ListingState state, PlaceIdentity id) => state switch
     {
         ListingState.Pending => Pending,
+        ListingState.Listing => Listing,
         ListingState.NotScanned => NotScanned,
         ListingState.Denied => Denied,
         ListingState.Failed => Failed,
@@ -41,7 +45,7 @@ public static class PlacePalette
     /// <summary>Gate shader style bits: 1 pulse (pending), 2 hatched (cannot be passed), 4 dim (empty).</summary>
     public static float Style(ListingState state) => state switch
     {
-        ListingState.Pending => 1,
+        ListingState.Pending or ListingState.Listing => 1,
         ListingState.Unavailable => 2 + 4,
         ListingState.Empty => 4,
         _ => 0,
