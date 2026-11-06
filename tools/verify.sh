@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # FileScape verification tiers (TEST-01, AD-29; see docs/windows-workflow.md "Verification tiers").
 #   tools/fs.sh check fast      ~1 min   app build + Core tests (Windows and WSL). Every commit.
-#   tools/fs.sh check smoke     ~2 min   fast + a staged export + the short end-to-end journey (walk-explore, UI 1.0).
+#   tools/fs.sh check smoke     ~3 min   fast + a staged export + the short end-to-end journeys (walk-explore, and
+#                                        hub → project → README/editor), UI 1.0.
 #   tools/fs.sh check full      ~8 min   smoke + every functional journey (assertions only; measurement segments
 #                                        are logged as SKIP) at UI 1.0, and the HUD-sensitive journeys at UI 1.25.
 #   tools/fs.sh check release   ~16 min  full, with measurements, plus walk at 1.25, walk-perf, real OS input at 1.0
@@ -10,6 +11,7 @@
 # Journeys run one at a time: they share the screen, focus and GPU, and their timing checks must not contend.
 # A summary with each step's duration and PASS/FAIL counts is written to <out>\summary.txt and printed.
 set -uo pipefail
+main() {
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TIER="${1:-}"; shift || true
 case "$TIER" in fast|smoke|full|release) ;; *) sed -n '2,10p' "$0"; exit 2 ;; esac
@@ -61,10 +63,10 @@ journey() {
   local d; d=$(printf '%.1f' "$(echo "$(date +%s.%N) - $s" | bc)")
   local f="$OUT/$name/$logname"
   local p=0 x=0 k=0
-  if [[ -f "$f" ]]; then p=$(grep -c ' PASS ' "$f"); x=$(grep -c ' FAIL ' "$f"); k=$(grep -c ' SKIP ' "$f"); else x=1; fi
+  if [[ -f "$f" ]]; then p=$(grep -cE '(^| )PASS ' "$f"); x=$(grep -cE '(^| )FAIL ' "$f"); k=$(grep -cE '(^| )SKIP ' "$f"); else x=1; fi
   [[ $code -ne 0 || $x -gt 0 ]] && FAILS=$((FAILS + 1))
   printf '%-28s %7ss  exit %-3s %3s PASS %2s FAIL %2s SKIP\n' "$name" "$d" "$code" "$p" "$x" "$k" | tee -a "$SUM"
-  [[ -f "$f" ]] && grep ' FAIL ' "$f" | head -5 | sed 's/^/    /' | tee -a "$SUM"
+  [[ -f "$f" ]] && grep -E '(^| )FAIL ' "$f" | head -5 | sed 's/^/    /' | tee -a "$SUM"
 }
 
 log "FileScape check $TIER  $(date -u +%FT%TZ)  commit $(git -C "$REPO" rev-parse --short=12 HEAD)$( [[ -n "$(git -C "$REPO" status --porcelain)" ]] && echo ' (uncommitted changes)')"
@@ -87,6 +89,7 @@ if [[ "$TIER" != fast ]]; then
   [[ "$TIER" == release ]] && F=()
 
   journey explore-ui1.0 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1 "${F[@]}"
+  journey project-ui1.0 walk-project.log 300 --automate=walk-project --root=hub "--project-root=$W\\Projects" --ui-scale=1 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
@@ -122,3 +125,6 @@ fi
 log "$(printf '%-28s %7ss' TOTAL "$(( $(date +%s) - T0 ))")  failing steps: $FAILS"
 [[ -d /mnt/c/Users/David/AppData/Roaming/FileScape ]] && log "note: %APPDATA%\\FileScape exists (DJ's preferences; probes never read or write it)"
 exit $(( FAILS > 0 ? 1 : 0 ))
+}
+# Bash reads a script as it runs; wrapping the body in main() means an edit during a run cannot change the run.
+main "$@"

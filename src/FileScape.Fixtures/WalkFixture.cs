@@ -35,7 +35,8 @@ public static class WalkFixture
         var project = Dir(m, Dir(m, root, "Projects"), "lighthouse");
         File(m, project, "Lighthouse.csproj", 1_800);
         File(m, project, "Lighthouse.sln", 2_400);
-        File(m, project, "README.md", 6_100);
+        // Real text (2026-11-06, DEV-02): the README is read on request, so it must be text, with markup FileScape must not apply.
+        FixtureBuilder.WriteFile(m, Path.Combine(project, "README.md"), System.Text.Encoding.UTF8.GetBytes(LighthouseReadme));
         File(m, project, "LICENSE", 1_070);
         File(m, project, ".gitignore", 310);
         var git = Dir(m, project, ".git");
@@ -116,6 +117,21 @@ public static class WalkFixture
     }
 
     private static string Dir(FixtureManifest m, string parent, string name) => FixtureBuilder.MakeDir(m, parent, name);
+
+    /// <summary>The lighthouse project's README: headings, a list, a link, an image, code and markup that must stay inert.</summary>
+    public const string LighthouseReadme = """
+        # Lighthouse
+
+        A small **fixture** project for FileScape's project journey.
+
+        - Builds with `dotnet build Lighthouse.sln`
+        - See [the guide](https://example.invalid/guide) and ![the logo](https://example.invalid/logo.png)
+        - [color=red]This markup must stay text[/color]
+
+        ```
+        echo "FileScape never runs this"
+        ```
+        """;
 
     private static void File(FixtureManifest m, string dir, string name, long size)
     {

@@ -34,6 +34,7 @@ public partial class WalkProbe : ProbeBase
         else if (Mode == "walk-perf") await PerfIsolation();
         else if (Mode == "walk-tour") await Tour();
         else if (Mode == "walk-explore") await Explore();
+        else if (Mode == "walk-project") await ProjectJourney();
         else await Journey();
     }
 

@@ -1283,6 +1283,16 @@ public partial class Main : Node3D
         _hud.Toast(r.Message, r.WasMock ? new Color(1f, 0.85f, 0.45f) : r.Succeeded ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f), 6);
     }
 
+    /// <summary>Probe access: whether a confirmation is showing, and its text; cancelling it runs nothing.</summary>
+    public bool ConfirmShowing => _confirm?.Visible == true;
+    public string ConfirmText => _confirm?.DialogText ?? "";
+
+    public void ProbeCancelConfirm()
+    {
+        _pendingConfirm = null;
+        _confirm.Hide();
+    }
+
     public void Confirm(string text, Action onOk)
     {
         ReleaseAllInput();

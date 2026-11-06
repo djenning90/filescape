@@ -66,6 +66,9 @@ public partial class Hud
 
     public bool ReadmeVisible => _readmePanel.Visible;
 
+    /// <summary>Probe access: the same as clicking the card's editor button <paramref name="index"/>.</summary>
+    public void ProbeRequestEditor(int index) => EditorRequested?.Invoke(index);
+
     /// <summary>Test and probe access: the README text as shown (BBCode stripped by the label).</summary>
     public string ReadmeShownText => _readmeText.GetParsedText();
 
@@ -74,7 +77,7 @@ public partial class Hud
         _readmePanel = new PanelContainer { Visible = false };
         _readmePanel.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         _readmePanel.OffsetLeft = 120; _readmePanel.OffsetRight = -120; _readmePanel.OffsetTop = 80; _readmePanel.OffsetBottom = -60;
-        var style = new StyleBoxFlat { BgColor = new Color(0.06f, 0.07f, 0.11f, 0.97f), BorderColor = new Color(0.4f, 0.48f, 0.7f), ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 12, ContentMarginBottom = 12 };
+        var style = new StyleBoxFlat { BgColor = new Color(0.06f, 0.07f, 0.11f, 1f), BorderColor = new Color(0.4f, 0.48f, 0.7f), ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 12, ContentMarginBottom = 12 };
         style.SetBorderWidthAll(1);
         style.SetCornerRadiusAll(6);
         _readmePanel.AddThemeStyleboxOverride("panel", style);

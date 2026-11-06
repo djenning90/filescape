@@ -92,7 +92,7 @@ public partial class Main
         if (string.IsNullOrWhiteSpace(text)) return;
         if (LocationRequest.Parse(text) is { IsHub: true })
         {
-            GoToHub();
+            _hud.Toast($"{WorldExplorer.HubName} (This PC) is the hub of all locations, not a folder: it cannot be scanned as one tree. Choose a folder, or Go there instead.");
             return;
         }
 
@@ -314,6 +314,12 @@ public partial class Main
     {
         _hud.HideLocations();
         if (string.IsNullOrWhiteSpace(text)) return;
+        if (LocationRequest.Parse(text) is { IsHub: true })
+        {
+            GoToHub(); // LOC-06: This PC and its aliases are the hub, never a path
+            return;
+        }
+
         if (_explorer == null)
         {
             // From sample data: start exploring the live filesystem at that path.

@@ -45,6 +45,8 @@ public partial class Hud
     private ItemList _problemList = null!;
 
     public bool LocationsVisible => _locPanel.Visible;
+
+    public string LocationRowText(int index) => index < _locList.ItemCount ? _locList.GetItemText(index) : "";
     public bool ProblemsVisible => _problemPanel.Visible;
     public string ConnectionText => _connection.Visible ? _connection.Text : "";
     public string NoteText => _notePanel.Visible ? _note.Text : "";
@@ -187,7 +189,11 @@ public partial class Hud
 
         if (rows.Count == 0) _locList.AddItem("(no locations in this mode — type a path: Go explores the connected world, Scan as tree makes a bounded tree)", selectable: false);
         _locPanel.Visible = true;
-        if (focusPath || rows.Count == 0) _pathEdit.GrabFocus();
+        if (focusPath || rows.Count == 0)
+        {
+            _pathEdit.GrabFocus();
+            _pathEdit.SelectAll(); // like an address bar: typing replaces the last path (found by the project journey)
+        }
         else _locList.GrabFocus();
     }
 
