@@ -46,6 +46,27 @@ Engine arguments go before `--`, for example `--rendering-driver d3d12`.
 
 Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create|delete <dir>|delete-all`. It only creates under `%TEMP%\FileScape-fixtures` by default, and refuses to delete anything without its marker file.
 
+## Verification tiers (2026-11-06, AD-29)
+
+| Command | Takes | Runs | When |
+|---|---|---|---|
+| `tools/fs.sh check fast` | ≈ 0.5 min | app build, Core tests on Windows and WSL | every change |
+| `tools/fs.sh check smoke` | ≈ 2.5 min | fast + `fs.sh stage` + walk-explore and the hub → project journey (UI 1.0, functional) | before a commit that touches the app |
+| `tools/fs.sh check full` | ≈ 9 min | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids at 1.0; explore and places at 1.25 (functional) | before handing a build over |
+| `tools/fs.sh check release` | ≈ 17 min | full with measurements, walk at 1.25, walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recording | evidence for a report |
+
+- **Output:** each run writes `%LOCALAPPDATA%\FileScape\evidence\checks\<tier>-<stamp>\summary.txt`, with every step's seconds, its exit code, and its PASS/FAIL/SKIP counts.
+- **Functional tier (`--tier=functional`):** keeps every assertion. It leaves out measurement-only frame recordings and logs each one as `SKIP perf …`, so a functional run is visibly not a performance run.
+- **Reusing a build:** `--exe=<staged FileScape.exe>` reuses a build, and `fs.sh stage` makes one without installing it.
+- **No parallel journeys:** journeys share the screen, focus and GPU, and their speed checks must not contend, so they run one at a time.
+
+## Launching and closing (AD-28)
+
+- **`FileScape.exe`** is a window program: cmd and PowerShell return to their prompt at once. If it was started from a terminal, its log lines appear *after* that prompt. When the window closes, press Enter for a fresh prompt; FileScape says so in the console.
+- **`FileScape.console.exe`** (same folder, same arguments) waits until the window closes, shows the log and returns the exit code. Use it from a terminal.
+- **From WSL**, either one waits, because WSL interop waits for the Windows process.
+- **The hub:** `--root=hub` (or `--root="This PC"`) starts at This computer.
+
 ## Quirks found and how they are handled
 
 1. **Shared tree, two hosts.** WSL and Windows builds would clobber each other's `obj/project.assets.json` (different absolute paths). `Directory.Build.props` sends Windows builds to `obj.win/` and `bin.win/`, and excludes both hosts' generated sources from compilation.

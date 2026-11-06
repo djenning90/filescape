@@ -630,7 +630,8 @@ public partial class PlacesProbe : Node
         await ClickDestination(id, close: false);
         var index = _main.Hud.DestinationIds().ToList().IndexOf(id);
         var at = _main.Hud.DestinationItemRect(index).GetCenter();
-        Inject(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, DoubleClick = true, Position = at, GlobalPosition = at, ButtonMask = MouseButtonMask.Left });
+        var win = at * GetWindow().ContentScaleFactor; // window pixels, as in Mouse (found at UI scale 1.25)
+        Inject(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, DoubleClick = true, Position = win, GlobalPosition = win, ButtonMask = MouseButtonMask.Left });
         await Frames(2);
         Mouse(MouseButton.Left, false, at);
         await Frames(3);

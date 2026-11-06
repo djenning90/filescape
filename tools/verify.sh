@@ -109,7 +109,7 @@ if [[ "$TIER" == release ]]; then
   journey walk-ui1.25 walk.log 420 --automate=walk "--root=$W" --ui-scale=1.25 --tier=functional
   journey walk-perf walk-perf.log 200 --automate=walk-perf "--root=$W" --ui-scale=1
   grep -h 'perf ' "$OUT/walk-perf/walk-perf.log" 2>/dev/null | sed 's/^/    /' | tee -a "$SUM"
-  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$OUT/tools/"
+  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$OUT/tools/"
   for sc in 1 1.25; do
     s=$(date +%s)
     timeout 360 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier" > "$OUT/os-ui$sc.out" 2>&1

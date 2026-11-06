@@ -186,3 +186,102 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Problem:** DJ: automatic levelling made flight frustrating ("I want to look down from above"); vertical flight "feels wrong" (no cause given). Observation (recorded, not confirmed as the cause): W moved along the gaze, so looking down to see the place made W dive and looking up made it climb; the only vertical keys were E/Space and Q.
 - **Decision:** levelling after a mouse look applies on foot only; in flight the chosen pitch stays. Flight W/S/A/D move level along the heading whatever the gaze; E or Space climb, Q or C descend (C added); speed scales with height above the ground (1×–30×); T rises 16 m and settles the gaze at −35° once; landing levels the gaze. A Settings option restores "W flies where you look". The flight chip lists the controls.
 - **Revisit when:** DJ has flown it — if "wrong" persists, the next suspects are vertical speed (0.8 × flight speed) and the take-off rise.
+
+## AD-28 Closing: an orderly shutdown and a synchronous console launcher (2026-11-06)
+
+- **Problem:** DJ: after closing FileScape with the window's X, "the launching command does not return to the OS prompt until Ctrl-C".
+- **Findings (demonstrated):**
+  - Every route, closed in each state below, returned within 0.2 s (process) or 1.2 s (WSL wrapper):
+    - routes: the installed exe from PowerShell and from WSL, `tools/fs.sh run` (Godot's console wrapper), and the Godot GUI binary;
+    - states: idle, listing a WSL folder, WSL `/proc` and `/sys`, flight, the native folder picker open, a listing stalled for 120 s, and after Reveal in Explorer.
+  - `FileScape.exe` is a GUI-subsystem program. From PowerShell the next command ran 0.01 s after launch, and Godot then printed its log into the same console after the prompt. Closing the window therefore left no new prompt, which looks exactly like a command that never returned. This is the **likely cause (provisional)**; DJ's exact route is not confirmed.
+- **Decision:**
+  - *Orderly shutdown:* on close, FileScape stops input and per-frame work and cancels scanning. Listings in flight are abandoned on background threads and never awaited. It prints `[exit] … exit code 0, shutdown 1 ms`.
+  - *Synchronous launcher:* `FileScape.console.exe` (Godot's console wrapper, now exported in release) waits for the window, relays the log and returns the exit code (PowerShell returned 0.8 s after close, `$LASTEXITCODE` 0).
+  - *Console notice:* when `FileScape.exe` itself writes into an interactive console that did not wait, it says so at start and at exit.
+  - *Child processes:* editors are started with `ShellExecuteEx`, which does not inherit FileScape's console or pipes.
+  - *Kept as it is:* no launcher is made to detach.
+- **Revisit when:** DJ names the launch route that hung, if it differs from these.
+
+## AD-29 Verification tiers (2026-11-06)
+
+- **Problem:** the functional suite felt close to an hour.
+- **Measured before:**
+
+  | Run | Time |
+  |---|---|
+  | Previous sequence on one build, without real OS input or recording | 570 s |
+  | Previous evidence pass, including real input and the recording | ≈ 14–17 min |
+
+  - Per journey: walk 92 s × 2 scales, explore 50 s × 2, places 70 s × 2, navigation 42 s, walk-perf 30 s, planetoids 33 s, tests 19 s.
+  - Fixed waits are 13 s per walking journey, so they are not the cost. The cost is journeys repeated at both UI scales, measurement segments and screenshot encoding on the main thread, plus repeated full passes and exports during iteration.
+- **Decision:** `tools/fs.sh check fast | smoke | full | release` (`tools/verify.sh`):
+  - The functional tier keeps every assertion and leaves out measurement-only segments, logging each as `SKIP perf …`.
+  - Screenshots are encoded on worker threads.
+  - Only the journeys whose HUD geometry depends on scale repeat at 1.25.
+  - Performance, real OS input and the recording are release-only.
+  - `fs.sh stage` exports and verifies without installing.
+  - Journeys run one at a time, because they share the screen, focus and the timing checks.
+- **Revisit when:** a tier exceeds its budget, or a check moves between tiers.
+
+## AD-30 This PC is the hub: an explicit location request (2026-11-06)
+
+- **Problem:** choosing This PC in the native folder picker shows "You can't open this location using this program". This PC is a shell location with no filesystem path.
+- **Decision:**
+  - `LocationRequest` maps This PC, This computer, Computer, My Computer, its CLSID and `shell:` forms, and `hub` to the hub; it never invents a path.
+  - Open… (Ctrl+O, L) opens the in-app chooser with ⌂ This computer first; Browse… opens the native picker for folders.
+  - Go to path and `--root=hub` accept the same names.
+- **Revisit when:** a native picker can return shell locations safely.
+
+## AD-31 Listing ahead, bounded (2026-11-06)
+
+- **Decision:** priorities are, in order:
+  1. a requested destination;
+  2. the current place;
+  3. its destinations and the way back (a parent known only as a stub);
+  4. further context — the destinations' own folders — up to 48 per visited place, one at a time, only when nothing else is queued or in flight;
+  5. background traversal.
+- **Never listed ahead:**
+  - Linux `/proc`, `/sys`, `/dev`, `/run`, `/mnt`, `/media`, `/snap` and `/lost+found` (each has its reason in the gate note; it is listed one level when entered);
+  - network shares, as context or background;
+  - the hub's locations;
+  - cloud placeholders (as before).
+- **States:** gates show *queued* and *listing now…* separately; unlisted and failed states keep their wording and Retry.
+- **Revisit when:** context should follow the gaze or recent travel.
+
+## AD-32 Explainable prominence (2026-11-06)
+
+- **Decision:** destinations stand out only for a stated reason, from what is already known:
+  - pins (P, saved in preferences);
+  - Windows known folders as the OS reports them;
+  - Linux homes by their standard paths;
+  - project evidence from names, or a folder whose listed children include projects.
+- **How it shows:** a mark and colour on the sign (named first when space is short), a light above the gate, the mark on Destinations rows, and the reason on the card. Order and access never change. "Not a project" also removes the project mark; nothing is listed to find candidates.
+- **Revisit when:** DJ wants recent places or user-defined categories.
+
+## AD-33 Project actions: README as inert text, editors by platform, always asked (2026-11-06)
+
+- **README:** read only on request (R or the card), at most 256 KB / 4,000 lines, refused when binary. Markdown is converted after escaping every `[`. Links stay text, images become their alt text, HTML is shown as written; nothing is fetched or run.
+- **Editors (all confirmed first):**
+  - a Windows solution opens with its own association;
+  - a Windows folder opens in VS Code if installed;
+  - a WSL project opens in VS Code's WSL remote if VS Code is installed, never through a Windows association;
+  - otherwise the card says no editor was found.
+- **Build or deploy scripts:** never run.
+
+## AD-34 Compact places (2026-11-06)
+
+- **Problem:** places too large, so walking needed 8–16 m/s.
+- **Decision:** `PlaceParams.Compact` is the default, and `--layout=spacious` keeps the previous layout for comparison.
+  - The way back stands on the gate ring at 14 m, and the arrival terrace sits among the files, 1 m east of the avenue.
+  - Gates are 14 m out, 6.5 m apart and 6 m tall; tiers start at 24 m, 9 m apart; vistas are 46 m beyond.
+  - Speeds are 5.5 / 11 m/s. Saved speeds are kept; a notice and Suggested speeds offer the change.
+  - Tier rings now meet: a third tier was unreachable in both layouts.
+- **Measured:** typical gates 27–30 m away (5.2–5.7 s walking) instead of 47–48 m (6.0–6.1 s at 8 m/s); four Ups in a row 15.7 s instead of 19.7 s. The wide place's farthest tier is 5–8 % slower walking (13.3 s against 12.3 s), and 6.8 s running.
+- **Revisit when:** DJ has walked it.
+
+## AD-35 The horizon: silhouettes and haze (2026-11-06)
+
+- **Decision:** beyond each vista, one more level is drawn as dark silhouettes, at most 3 per vista beacon, sized by subtree. Everything deeper in that direction is one band of haze whose size and brightness follow its count. Unknown places are pale veils.
+- **Limits:** at most 220 marks, no labels, hidden from the air. Fog is thinner (volumetric 0.011 → 0.0078) so the band reads as shape.
+- **Revisit when:** DJ judges the depth.

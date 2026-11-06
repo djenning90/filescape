@@ -29,6 +29,42 @@ Screenshots are in `docs/evidence/2026-11-06-explore/` (`planetoid-*.png`).
 - Picking, labels or rendering of a full place on a sphere.
 - Performance with real places.
 
+## Update 2026-11-06: corrections, a real folder-place, a fast transfer
+
+**Handedness (corrected, demonstrated).**
+- **The defect:** the chart's east at the pole was computed with the wrong sign, so every chart was mirrored on the sphere: chart +x came out at world −X, and a clockwise ring of gates read anticlockwise.
+- **Why no test caught it:** round trips agreed (the mirror is consistent), and the walker felt right, so the existing tests could not see it.
+- **The fix:** east = north × up, so east × north = up, the place's own handedness.
+- **The test:** `The_chart_keeps_its_handedness_on_the_sphere` fails on the old code (east = −0.9999 X) and passes now.
+
+**Distortion (measured).**
+- Across distances shrink by sin φ / φ: `Distances_across_shrink_by_sin_phi_over_phi` checks it at 10, 28 and 40 m on a 40 m body.
+- The experiment's place reaches 24 m on a 48 m world, about 29° from the pole, where across distances are 94–100 % of the chart's.
+- **Cap:** walkable content is kept within about 35° of the pole. Beyond about 60° the mismatch exceeds 10 %.
+- **Seam:** the antipode is a singular point of the chart; the terrain boundary keeps walkers far from it.
+
+**Flat collision is not universally correct on a sphere.**
+- Collision runs in the chart, so it matches the drawn boxes only to the chart's accuracy.
+- Along the radius from the pole it is exact; across, a box's drawn footprint is narrower than its collision footprint by the factor above (≤ 6 % in the experiment).
+- Larger places need the cap, several charts, or footprint correction.
+
+**A real folder-place on a curved world (PLANET-04, demonstrated in the experiment).**
+- "Orchard", an original small folder built in memory, is composed by the unchanged `PlaceComposer` (compact layout) and drawn on the teal world: every terrain box is placed in the local tangent frame, and gates carry their names.
+- `--automate=planetoids` checks:
+  - walking (6 m; feet at r = 48.00 m; never inside a structure);
+  - a jump (apex 1.20 m);
+  - looking up 30° in first person (view·up = 0.500, no roll);
+  - picking a gate pillar and a file tower by marching the world ray and testing in the chart.
+- Screenshots are in `docs/evidence/2026-11-06-iter/`.
+
+**Transfer (PLANET-03, demonstrated).**
+- The slowest ballistic arc took **13.56 s**. The guided arc (`LaunchGuided`: quadratic, raised away from both worlds, linear in time) takes **2.23 s**.
+- Its speed is highest leaving and arriving and lowest at the top, so it reads as a burst, a moment to see the target, and a decisive landing in the target's chart exactly where aimed.
+- The chase camera pulls back and widens a little in flight and dips on landing; it never shakes or cuts.
+- The physical free flight remains in Core for comparison.
+
+**Still open:** camera frames for flight between bodies in the product, aerial layout in 3D, and how place size maps to body size.
+
 ## System by system
 
 | System | Today | On planetoids | Verdict |

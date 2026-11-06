@@ -208,6 +208,30 @@ DJ's assessment of build `e03dd62adb62`: the place concept and circular gates wo
 
 **Future direction (recorded):** photo collections, document collections and previews, financial collections (only from strong evidence), temporary workspaces, more world styles, long jumps/special movement, Explorer's virtual namespaces (This PC libraries, network neighbourhood, shell folders).
 
+## Iteration: reliable operation, faster verification, intimate places (2026-11-06)
+
+Status words: **Demonstrated**, **Provisional**, **Failed**, **Unknown** (see docs/development-methodology.md).
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| SHUT-01 | Closing the window ends FileScape promptly in any state, never waiting on filesystem calls. | Process exits ≤ 1 s after WM_CLOSE when idle, listing, in flight, picker open, a listing stalled 120 s, after Explorer reveal; `[exit]` line with code. | Demonstrated (AD-28) |
+| SHUT-02 | A documented launch route waits for the window and returns to the prompt with the exit code. | `FileScape.console.exe` from PowerShell and WSL returns ≤ 1.2 s after close with code 0. | Demonstrated; DJ's own route Unknown |
+| TEST-01 | Verification tiers with measured times; full runs remain available. | `fs.sh check fast/smoke/full/release`; nothing silently skipped (SKIP lines); summary with per-step times. | Demonstrated (AD-29) |
+| LOC-06 | This PC leads to the This computer hub; no path is invented. | Chooser lists ⌂ This computer first; "This PC" typed goes to the hub; `--root=hub`. | Demonstrated |
+| LIST-01 | Nearby unlisted places make progress, in priority order, bounded. | A cold fixture: destinations and the way back are listed; context ≤ budget; nothing deeper. | Demonstrated (Core) |
+| LIST-02 | No crawl of special or remote filesystems. | /proc, /sys, /dev, /run, /mnt, /media, /snap never listed ahead (reason shown); shares get no context. | Demonstrated (Core, /proc live on Linux) |
+| LIST-03 | Queued, listing, unlisted and failed are distinct. | `queued` / `listing now…` / `not listed yet` / failure text; Retry kept. | Demonstrated (Core); visual Provisional |
+| PROM-01 | Destinations stand out for stated reasons only. | Pins, OS known folders, Linux homes, project evidence; reason text. | Demonstrated (Core, app journey) |
+| PROM-02 | Prominence marks, never reorders or hides. | Sign mark and priority, gate light, Destinations mark; order unchanged. | Demonstrated |
+| PROM-03 | Pins are explicit and correctable. | P toggles; saved in preferences; Not a project removes the project mark. | Demonstrated |
+| DEV-01 | A project place is recognised with its evidence. | Card and sign show manifest/readme evidence. | Demonstrated |
+| DEV-02 | README on request, bounded, inert. | ≤ 256 KB/4,000 lines; markup escaped; links text; images alt text; binary refused. | Demonstrated |
+| DEV-03 | Open in an existing editor, platform-aware, confirmed. | Windows .sln association; VS Code; VS Code WSL remote for WSL; never Windows association for WSL; asks first. | Demonstrated up to the confirmation; launching not exercised (it would open DJ's editor) |
+| PLACE-14 | Compact, human-scale places; previous layout comparable. | Typical gates ≤ 30 m from arrival; walking time ≤ 1.1 × spacious at 8 m/s; every gate reachable; `--layout=spacious`. | Demonstrated (Core); feel Unknown |
+| HORIZON-01..03 | Silhouettes beyond the vistas, haze for depth, unknown veiled. | Core marks; bounded; hidden from the air. | Demonstrated (Core); look Provisional |
+| PLANET-03 | A fast, readable transfer. | ≤ 2.7 s and < ½ the ballistic arc; lands walking where aimed. | Demonstrated (2.23 s vs 13.56 s) |
+| PLANET-04 | A real folder-place on a curved body: walk, look, jump, pick, transfer. | Composed place on the sphere; checks pass in the experiment; chart handedness fixed and tested. | Demonstrated (experiment only) |
+
 ## Deliberate file actions (FILE)
 
 | ID | Requirement | Status |

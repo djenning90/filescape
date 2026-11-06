@@ -5,7 +5,7 @@ Explore a real Windows filesystem as a place. A Godot 4.7 .NET app over a shared
 - **Places** (default): you are *inside* a folder, **on foot**. Its files stand around you as glass towers in type quarters, every child folder is a named gate you walk through, and beyond each gate a vista previews the next place. Places are separate spaces linked by gates (docs/decisions.md AD-14); since 2026-11-05 you walk them (AD-16), flight is a mode you switch on, and the world is connected: links lead where they point, and drives and WSL distributions are reachable from a hub (AD-17, AD-18).
 - **Classic FSN** and **District**: the whole-tree reference maps from the first prototype (FSN-inspired landscape, futuristic city). They mark where you are in Places.
 
-**Status (2026-11-05):** see `docs/implementation-status.md` for what is demonstrated, provisional and unknown. Movement feel and the looks await DJ's hands-on judgement.
+**Status (2026-11-06):** see `docs/implementation-status.md` for what is demonstrated, provisional and unknown. Movement feel and the looks await DJ's hands-on judgement.
 
 ## Try it
 
@@ -15,7 +15,16 @@ Prerequisites (already set up on DJ's laptop; details in `docs/windows-workflow.
 
 **Two modes** (AD-22): **Connected world** (default: start anywhere, everything listed when you visit it, links followed, drives and WSL in Locations) and **Bounded tree scan** (the original whole-tree reference: one folder scanned completely, links not followed, the Classic FSN and District maps show its whole tree). In Locations (L) use **Go** for the first, **Scan as tree** / **Scan this folder as a tree** for the second; from the command line `--scan=tree --root=…`.
 
-It starts in **Places** on synthetic sample data (amber badge). Click **Open folder…**, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
+**Launching (2026-11-06):**
+
+| Command | What it does |
+|---|---|
+| `FileScape.exe -- --root=hub` | Starts at **This computer** (This PC): every drive and WSL distribution as a gate, nothing listed until you go in. |
+| `FileScape.console.exe …` | From a terminal: the same, but it waits for the window and returns to the prompt with the exit code. `FileScape.exe` returns at once, and its log lands after the prompt. |
+| `FileScape.exe -- --layout=spacious` | The pre-compact layout, for comparison. |
+| `FileScape.exe -- --experiment=planetoids` | The isolated planetoid experiment. |
+
+It starts in **Places** on synthetic sample data (amber badge). Click **Open…** (Ctrl+O) and choose **⌂ This computer**, a drive, a path or Browse…, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Projects are marked ⚙: **R** reads the README, and the card offers your editors. Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
 
 Test trees (deterministic, in `%TEMP%\FileScape-fixtures`, safe to delete with `… delete <dir>`):
 - `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create-walk` → **Wayfarer**: a software project, junctions (outside the root, a loop, two routes, a broken one), a denied folder, hidden/system folders, a Unicode name.
@@ -49,7 +58,7 @@ tools/fs.sh test                                        # tests with Windows dot
 
 | To… | Do this (Places) |
 |---|---|
-| Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run (walk 8 m/s, run 16 m/s; adjustable in Settings) |
+| Walk | **↑ / ↓** forward / back · **← / →** turn (*changed: arrows used to step sideways*) · **W A S D** walk and step sideways · hold **Shift** to run (walk 5.5 m/s, run 11 m/s in the compact places; adjustable in Settings) · **P** pin · **R** README |
 | Look and steer | **hold the right mouse button** and move the mouse (left/right turns your heading, up/down your gaze) · or **left-drag**. Direction: **⚙ Settings / F4** reverses left/right and up/down separately (default: both reversed — moving the mouse right turns you left, down looks up). On foot, letting go eases the view back to level (heading kept; Settings can turn it off); in flight the view stays where you leave it |
 | Jump | **Space**: hold for a high jump (≈ 1.2 m), tap for a hop (never opens or runs anything) |
 | Fly | **T** or the ✈ button: rise 16 m and look down · **W A S D** fly level along your heading (whatever the gaze) · **E / Space** up · **Q / C** down · **wheel** speed (and faster the higher you are) · **Shift** ×3 · **B** aerial view of the neighbourhood · **T** again lands on foot — over another place you land in it; far from everything, in the nearest place. Settings: "W flies where you look" restores the old flight |

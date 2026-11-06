@@ -1,8 +1,113 @@
 # Implementation status
 
-Last updated: 2026-11-06, after the exploration pass (commits `91df1c2`…HEAD); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-06, after the reliability/compact-places iteration (commits `3c838d7`…HEAD); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Iteration: reliable operation, faster verification, intimate places, purposeful exploration (2026-11-06)
+
+**DJ's feedback, from use.**
+- **Working, and kept:** doorway names, the looks, and the planetoid direction.
+- **Asked for:**
+  - closing must end the launch command;
+  - verification felt close to an hour;
+  - This PC gave "You can't open this location";
+  - "not listed yet" places did not progress;
+  - projects and everyday places were hard to find;
+  - places felt too large, forcing implausible speeds;
+  - the horizon felt too close;
+  - planet transfers were too slow and passive.
+
+**Earlier reviews.** No outstanding aerial or planetoid review corrections from ChatGPT were found in the repository or its history; the last recorded ChatGPT review (six corrections) was delivered on 2026-11-05 (above). The planetoid handedness and distortion findings named in the brief were established and resolved here.
+
+Requirements: SHUT-01/02, TEST-01, LOC-06, LIST-01..03, PROM-01..03, DEV-01..03, PLACE-14, HORIZON-01..03, PLANET-03/04. Decisions: AD-28..35. Evidence: `docs/evidence/2026-11-06-iter/`.
+
+RELEASE-RESULTS
+
+### Closing (SHUT-01/02, AD-28)
+
+- **Reproduction** (instrument: `close-mine.ps1` sends WM_CLOSE only to the instance started with a unique marker): no hang was reproduced.
+  - **Routes:** PowerShell, WSL interop, `tools/fs.sh run`, and the Godot GUI binary.
+  - **States:** idle, a WSL listing, `/proc`, `/sys`, flight, the native picker open, a listing stalled for 120 s (`--test-list-delay-ms`), and after Reveal in Explorer.
+  - **Result:** each process exited 0.2 s after close, and each wrapper returned within 1.2 s.
+- **Likely cause (provisional):** `FileScape.exe` is a GUI program. PowerShell runs its next command 0.01 s after launch, then Godot's log lines print after the prompt, so closing leaves no fresh prompt.
+- **Fix:**
+  - orderly shutdown with an `[exit]` report;
+  - `FileScape.console.exe` as the waiting launcher (PowerShell returned 0.8 s after close, exit code 0);
+  - a console notice from `FileScape.exe`;
+  - editors started without inheriting handles.
+
+### Verification time (TEST-01, AD-29)
+
+The previous sequence, run on one build without real input or the recording, took **570 s**:
+
+| Step | Time |
+|---|---|
+| Tests | 19 s |
+| Walk, 100% and 125% | 92 s each |
+| Explore, 100% and 125% | 51 s and 49 s |
+| Places, connected and tree | 70 s and 69 s |
+| Scan | 6 s |
+| Navigation | 42 s |
+| Map journey | 16 s |
+| Walk performance | 30 s |
+| Planetoids | 33 s |
+
+The new tiers are in `docs/windows-workflow.md`; their measured times are below.
+
+### This PC (LOC-06, AD-30)
+
+- **Open… (Ctrl+O, L)** is the in-app chooser, with **⌂ This computer** first; Browse… opens the Windows picker.
+- **Go to path** accepts "This PC" and its aliases.
+- **`--root=hub`** starts at the hub.
+- **Bugs caught by the new journey and fixed:**
+  - the hub check had first landed in "Scan as tree";
+  - Ctrl+L kept the previous text.
+
+### Listing ahead (LIST-01..03, AD-31)
+
+- **Order:** the way back and destinations first, then up to 48 further folders per visit in idle time, one at a time.
+- **Never ahead:** `/proc`, `/sys`, `/dev`, `/run`, `/mnt` and others, each with its reason as the gate's note; no context on shares.
+- **States:** queued and listing-now are separate.
+- **Evidence (Core):** a cold fixture shows every place starting unlisted, the context bound, and `/proc` entered with nothing listed ahead.
+- **Not shown in the app:** progress over time on a slow share.
+
+### Prominence and projects (PROM, DEV, AD-32/33)
+
+- **Marks:** ⌂ homes (Linux `/home`, user homes, the Windows profile), ◆ known folders (Downloads, Pictures… as Windows reports them), ⚙ projects and folders of projects, ★ pins (P).
+- **Where they show:** sign priority, a gate light, Destinations rows and the card; nothing is reordered.
+- **Project actions:** R reads the README as inert text; the card offers the editors this computer has, and always asks first.
+- **Journey evidence (`--automate=walk-project`):** hub → Ctrl+O chooser → "This PC" → Projects (lighthouse ⚙, notes-only unmarked) → into lighthouse → README → editor confirmation, cancelled → pin and unpin → Open… → This computer → Backspace.
+- **Not demonstrated:** launching an editor, which would open DJ's editor. Detecting VS Code on this machine is not reported.
+
+### Compact places (PLACE-14, AD-34)
+
+Measured in Core with the real walker, compact at 5.5 / 11 m/s against spacious at 8 m/s:
+
+| Journey | Spacious at 8 m/s | Compact walking | Compact running |
+|---|---|---|---|
+| Typical place, nearest gate | 48 m, 6.1 s | 27 m, 5.2 s | 2.8 s |
+| Typical place, farthest gate | 47 m, 6.0 s | 30 m, 5.7 s | 2.9 s |
+| Wide place, nearest gate | 58 m, 7.4 s | 32 m, 6.1 s | 3.2 s |
+| Wide place, farthest tier | 97 m, 12.3 s | 72 m, 13.3 s | 6.8 s |
+| Four Ups in a row | 19.7 s | 15.7 s | — |
+
+- **Way back:** 7.8 m (was 6.9 m).
+- **Screenshots:** eye-level shots of ordinary, wide, empty and project places in both layouts are in `layout/`.
+- **Tests pinned to the old layout:** the historical traversal and golden-walk tests now name `PlaceParams.Spacious`, because they guard earlier claims.
+- **Changed expectation:** the default-speed test expects the new 5.5 / 11 m/s.
+- **Fix in both layouts:** tier rings were too narrow, so a third tier was unreachable.
+
+### Horizon (HORIZON-01..03, AD-35)
+
+Silhouettes stand one level beyond the vista beacons, haze shows deeper counts, and unknown places are veiled. The marks are bounded at 220 and hidden from the air; fog is a little thinner. The look is for DJ to judge.
+
+### Planetoids (PLANET-03/04)
+
+- **Handedness:** a mirrored chart was found and fixed, with a test.
+- **Distortion:** stated and tested.
+- **Orchard:** a composed folder-place on a 48 m world, with walking, jumping, looking, picking and a guided transfer.
+- **Transfer time:** **2.23 s** against **13.56 s** on the ballistic arc.
 
 ## Exploration pass: a readable world, an unobstructed view, flight that explores (2026-11-06)
 
