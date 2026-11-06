@@ -69,6 +69,12 @@ public sealed record PlaceParams
     /// </summary>
     public bool ParentGateOnRing { get; init; }
 
+    /// <summary>
+    /// Metres east of the avenue's centre line for the arrival terrace, so a close landmark does not sit in the middle of
+    /// the arrival view hiding the gates behind it (compact layout: the landmark is ≈ 7 m ahead).
+    /// </summary>
+    public float ArrivalSideOffset { get; init; }
+
     /// <summary>The arrival terrace's floor height; the eye is <see cref="EyeHeight"/> above it.</summary>
     public float TerraceTop { get; init; } = 1.6f;
 
@@ -121,6 +127,9 @@ public sealed record PlaceParams
         ParentVistaDistance = 40f,
         ArrivalSetback = 7f,
         ParentGateOnRing = true,
+        ArrivalSideOffset = 1f,
+        TerraceHalfWidth = 1.8f,
+        LandmarkRadius = 0.5f,
         CorridorHalfWidth = 3f,
         OverlookRadius = 12f,
         OverlookRampLength = 6f,
@@ -235,7 +244,7 @@ public static class PlaceComposer
             bounds = bounds.Union(new Box(v.Center - new Vector3(v.Radius, 0, v.Radius), v.Center + new Vector3(v.Radius, v.LandmarkHeight, v.Radius)));
         }
 
-        var arrivalGround = PlaceGeometry.Direction(180) * (southReach - p.ArrivalSetback);
+        var arrivalGround = PlaceGeometry.Direction(180) * (southReach - p.ArrivalSetback) + new Vector3(p.ArrivalSideOffset, 0, 0);
         var (terrain, overlook) = ComposeTerrain(files, gates, tiers, parentGate, landmark, arrivalGround, p);
 
         return new PlaceComposition
