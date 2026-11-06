@@ -285,3 +285,20 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Decision:** beyond each vista, one more level is drawn as dark silhouettes, at most 3 per vista beacon, sized by subtree. Everything deeper in that direction is one band of haze whose size and brightness follow its count. Unknown places are pale veils.
 - **Limits:** at most 220 marks, no labels, hidden from the air. Fog is thinner (volumetric 0.011 → 0.0078) so the band reads as shape.
 - **Revisit when:** DJ judges the depth.
+
+## AD-36 Pin identity is platform-aware (2026-11-06, follow-up)
+
+- **Context:** pins and known folders were matched without case everywhere, so on Linux and in WSL `Notes` and `notes` (two folders) were one pin: pinning the second did nothing, unpinning either removed both, and reloading merged them.
+- **Decision:** `PathIdentity` decides when two paths are one folder. Linux paths (POSIX, and the Linux part of `\\wsl.localhost\Distro\…`) compare exactly; Windows paths (drives, shares) without case, as Windows does by default. `\\wsl$\` is an alias of `\\wsl.localhost\`, the distribution name matches without case, and a trailing separator is ignored. Pins are stored in the canonical spelling with the case the user saw. Used by `Preferences.WithPin`/`IsPinned`, preference loading, `TogglePin` and `ProminenceContext`.
+- **Limit:** NTFS per-directory case sensitivity (`fsutil file setCaseSensitiveInfo`) is not detected; such folders compare as Windows usually does.
+
+## AD-37 Verification steps are judged on exit and on a usable result (2026-11-06, follow-up)
+
+- **Context:** `verify.sh` ignored the exit codes of the real-input and recording commands. Its real-input count could never pass (`grep -c` with no match exits 1, so the count became "0 1"). A journey that exited 0 with an empty or assertion-free log passed: the full run of `be3c673` reported the planetoid step as passing with 0 assertions.
+- **Decision:** one judge (`tools/verify-lib.sh`) for every probe step: non-zero exit (timeouts named), missing or empty result file, a file without PASS/FAIL lines, or any FAIL fails the step, with the reason in the summary. A recording needs exit 0 and a non-empty video. `fs.sh check harness` exercises every path with test doubles in ~3 s, so the harness can be checked without running a suite.
+
+## AD-38 The aerial world reserves the current place (2026-11-06, follow-up)
+
+- **Context:** the layout truncated breadth-first at `MaxIslands` without regard to where you are, and landing looked up the current place's island unconditionally. Deep in a large explored world, the current place could be missing: the aerial world was drawn in an identity frame, and landing over open space threw.
+- **Decision:** `WorldLayout.Compute(…, focus)` reserves the focus's ancestry, the focus and up to half the remaining budget for its own folders, then fills the rest breadth-first; the budget still holds. When the way down alone exceeds the budget, `FocusShown` is false and the app does not draw the aerial world, says so in the chip, ignores island picks and lands in the current place. `--test-max-islands=N` makes the case reachable in the exported app.
+

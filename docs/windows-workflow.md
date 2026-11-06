@@ -50,14 +50,18 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 
 | Command | Takes | Runs | When |
 |---|---|---|---|
+| `tools/fs.sh check harness` | ≈ 3 s | the harness's own judging, every pass/fail path with test doubles (nothing launched) | after changing `verify.sh` or `verify-lib.sh` |
 | `tools/fs.sh check fast` | ≈ 0.5 min | app build, Core tests on Windows and WSL | every change |
 | `tools/fs.sh check smoke` | ≈ 2.5 min | fast + `fs.sh stage` + walk-explore and the hub → project journey (UI 1.0, functional) | before a commit that touches the app |
-| `tools/fs.sh check full` | ≈ 9 min | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids at 1.0; explore and places at 1.25 (functional) | before handing a build over |
+| `tools/fs.sh check full` | ≈ 9 min | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids, aerial limit (budgets 24 and 8) at 1.0; explore and places at 1.25 (functional) | before handing a build over |
 | `tools/fs.sh check release` | ≈ 17 min | full with measurements, walk at 1.25, walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recording | evidence for a report |
 
 - **Output:** each run writes `%LOCALAPPDATA%\FileScape\evidence\checks\<tier>-<stamp>\summary.txt`, with every step's seconds, its exit code, and its PASS/FAIL/SKIP counts.
 - **Functional tier (`--tier=functional`):** keeps every assertion. It leaves out measurement-only frame recordings and logs each one as `SKIP perf …`, so a functional run is visibly not a performance run.
 - **Reusing a build:** `--exe=<staged FileScape.exe>` reuses a build, and `fs.sh stage` makes one without installing it.
+- **How a step is judged (AD-37, `tools/verify-lib.sh`):** it fails on a non-zero exit (a timeout is named), a missing or empty result file, a result file with no PASS/FAIL lines, or any FAIL; a recording fails without exit 0 and a non-empty video. The reason is printed on the step's line. A partial result file with passing lines never hides a crash or timeout.
+- **Real input, right-hold:** `tools/os-righthold-repeat.ps1 -Exe … -Root … -Out … [-Cycles 20] [-Launches 1] [-UiScale 1]` repeats the right-hold look check with per-cycle timing from the state file (`seq`, `appMs`, `lookBeganMs`, last long frame). It moves the mouse and takes focus; it closes only the process it started.
+- **Aerial budget:** `--test-max-islands=N --automate=walk-aerial-limit --root=<Wayfarer>` runs the aerial-limit journey with a small budget.
 - **No parallel journeys:** journeys share the screen, focus and GPU, and their speed checks must not contend, so they run one at a time.
 
 ## Launching and closing (AD-28)
