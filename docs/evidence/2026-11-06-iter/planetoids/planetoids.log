@@ -1,0 +1,17 @@
+start: body 0, chart feet <-6.119594E-07, 1.6, 7>, place Orchard with 5 gates, 12 files, boundary 24.0 m (≈ 29° of the 48 m world)
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\planetoids\01-curved-place-arrival.png
+PASS walking in the curved place: 8.5 m, feet on the sphere (r = 48.00 m), never inside a structure
+PASS jumping on the sphere: apex 1.20 m above the start, landed
+PASS looking up 30° in first person: view·up = 0.500 (sin 30° = 0.5), roll -0.000
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\planetoids\02-first-person-in-the-curved-place.png
+PASS picking a pillar on the sphere by its world ray: pillar Tools at 7.8 m
+PASS picking a tower on the sphere by its world ray: tower notes.md at 16.6 m
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\planetoids\03-picked-in-the-curved-place.png
+PASS reached the launch pad on foot
+PASS Space on the pad launches a guided transfer
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\planetoids\04-transfer-mid-arc.png
+screenshot C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\planetoids\05-landed-on-the-coral-world.png
+PASS you land walking on the coral world (r = 32.00 m, transfers 1)
+PASS transfer: 2.23 s guided against 13.56 s ballistic before
+transfer-timing before=13.56s after=2.23s
+done failures=0

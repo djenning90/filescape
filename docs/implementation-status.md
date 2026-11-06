@@ -22,7 +22,38 @@ Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** 
 
 Requirements: SHUT-01/02, TEST-01, LOC-06, LIST-01..03, PROM-01..03, DEV-01..03, PLACE-14, HORIZON-01..03, PLANET-03/04. Decisions: AD-28..35. Evidence: `docs/evidence/2026-11-06-iter/`.
 
-RELEASE-RESULTS
+**Build.** **`8c18e8e3f107`** (clean tree) is **installed** at `C:\Users\David\AppData\Local\FileScape\build\FileScape.exe`, next to `FileScape.console.exe`. No FileScape was running when it was exported. The previous build `77849d512a82` is kept as `previous-20261106-065052-486216`.
+
+**Verification** (summaries in `docs/evidence/2026-11-06-iter/checks/`):
+
+| Check | Result |
+|---|---|
+| Core tests, Windows | 217 passed, 18 skipped (POSIX-only tests) |
+| Core tests, WSL | 220 passed, 15 skipped (Windows-only tests) |
+| Release tier | 631 s |
+| Release tier failures | Places at 1.25 (fixed below), and real-input runs that failed in under a second because `verify.sh` did not copy the probe's helper script (instrument defect, fixed) |
+| Smoke tier on the installed build | 85 s, 0 failing steps (explore 29/0, hub → project 19/0) |
+| Real OS input on the installed build, UI 1.25 | 29/0 |
+| Real OS input on the installed build, UI 1.0 | 28/1 at first ("right-hold captures the mouse"), 29/0 on the rerun; the first failure is unconfirmed, possibly contention for the real mouse |
+| Places at 1.25 after the probe fixes | 0 failures |
+| Planetoids | 9/0 |
+| Recording | 199 MB |
+| Before/after transfer recordings | `%LOCALAPPDATA%\FileScape\evidence\2026-11-06-iter\final\planetoid-transfer-{before,after}.avi` |
+
+- **Places at UI 1.25 had never run before.** It failed the same way on the pre-compact build, because the Places probe injected unscaled clicks. These are instrument defects, fixed in two places.
+- **Performance, quiet machine (walk-perf):** plaza 6.92 ms mean, GPU 6.06 ms (previous pass 6.79 ms), so the horizon marks and thinner fog cost no measurable time. Low quality: 2.38 ms.
+
+**Verification time:**
+
+| Run | Before | Now |
+|---|---|---|
+| Functional suite | 570 s | `full`: 441 s of measured steps, with Places at 1.25 short-circuited by its then-defect; ≈ 490 s expected with it passing. It also covers more than before (the project journey and Places at 1.25), so the reduction here is modest. |
+| Smoke | — | 85–90 s |
+| Fast | — | ≈ 30 s |
+| Release, including real input and the recording | ≈ 14–17 min | 631 s, with the real-input runs short-circuited |
+
+- **What remains costly** is the journeys themselves (walk 88–92 s, places 50–70 s), run one at a time because they share the screen and focus.
+- **Repeats** of unchanged steps and exports were the hour DJ saw; the tiers and `fs.sh stage` (≈ 20 s) avoid them.
 
 ### Closing (SHUT-01/02, AD-28)
 

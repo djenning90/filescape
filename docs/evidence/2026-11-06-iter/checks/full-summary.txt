@@ -1,0 +1,26 @@
+FileScape check full  2026-11-06T06:13:17Z  commit be3c673ada0d
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\full-20261106-061317
+build                            6.7s  exit 0
+tests-windows                   16.1s  exit 0
+tests-wsl                        7.2s  exit 0
+    Passed!  - Failed:     0, Passed:   212, Skipped:    18, Total:   230, Duration: 4 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   215, Skipped:    15, Total:   230, Duration: 2 s - FileScape.Core.Tests.dll (net10.0)
+stage                           20.1s  exit 0
+build: be3c673ada0d 2026-11-06T06:14:04Z  (C:\Users\David\AppData\Local\FileScape\staging-20261106-061348-461130\FileScape.exe)
+explore-ui1.0                   44.0s  exit 0    29 PASS  0 FAIL  1 SKIP
+walk-ui1.0                      87.6s  exit 0   103 PASS  0 FAIL  1 SKIP
+places-connected                50.5s  exit 1    51 PASS  1 FAIL  4 SKIP
+    [13:16:23.015] FAIL found an unobstructed file tower to click
+places-tree                     49.1s  exit 1    50 PASS  1 FAIL  4 SKIP
+    [13:17:14.051] FAIL found an unobstructed file tower to click
+places-scan                      8.4s  exit 0     8 PASS  0 FAIL  0 SKIP
+navigation                      40.0s  exit 0    56 PASS  0 FAIL  0 SKIP
+map-journey                     17.5s  exit 0    15 PASS  0 FAIL  0 SKIP
+planetoids                      35.1s  exit 0     0 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  44.1s  exit 0    29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   14.5s  exit 1    14 PASS 13 FAIL  0 SKIP
+    [13:20:28.561] FAIL found an unobstructed file tower to click
+    [13:20:28.857] FAIL clicking 'many-files' in Destinations selects it and walks up to its gate without travelling
+    [13:20:34.898] FAIL holding W walks through the 'many-files' gate and starts the threshold transition
+    [13:20:35.166] FAIL arrived in many-files
+    [13:20:35.167] FAIL breadcrumb: This computer › C:\ › Users › David › AppData › Local › Temp › FileScape-fixtures › places-20261104-111359-0a3db4 › Atlas Studio

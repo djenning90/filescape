@@ -1,0 +1,15 @@
+os-ui1 76s PASS 28 FAIL 1
+os-ui1.25 70s PASS 29 FAIL 0
+36484664 /mnt/c/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/final/planetoid-transfer-after.avi
+60422286 /mnt/c/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/final/planetoid-transfer-before.avi
+transfer-timing before=13.56s after=2.23s
+done failures=0
+tests-windows                   17.3s  exit 0
+tests-wsl                        7.6s  exit 0
+    Passed!  - Failed:     0, Passed:   217, Skipped:    18, Total:   235, Duration: 5 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   220, Skipped:    15, Total:   235, Duration: 2 s - FileScape.Core.Tests.dll (net10.0)
+build: 8c18e8e3f107 2026-11-06T06:51:09Z  (C:\Users\David\AppData\Local\FileScape\build\FileScape.exe)
+explore-ui1.0                   46.1s  exit 0    29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    5.4s  exit 0    19 PASS  0 FAIL  0 SKIP
+TOTAL                             85s  failing steps: 0
+exit 0

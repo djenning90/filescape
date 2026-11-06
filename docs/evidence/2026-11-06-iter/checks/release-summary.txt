@@ -1,0 +1,38 @@
+FileScape check release  2026-11-06T06:38:48Z  commit ec2a80018071
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\release-20261106-063848
+build                            4.8s  exit 0
+tests-windows                   17.3s  exit 0
+tests-wsl                        7.7s  exit 0
+    Passed!  - Failed:     0, Passed:   217, Skipped:    18, Total:   235, Duration: 5 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   220, Skipped:    15, Total:   235, Duration: 2 s - FileScape.Core.Tests.dll (net10.0)
+stage                           23.6s  exit 0
+build: ec2a80018071+4-uncommitted 2026-11-06T06:39:38Z  (C:\Users\David\AppData\Local\FileScape\staging-20261106-063918-482512\FileScape.exe)
+explore-ui1.0                   48.9s  exit 0    29 PASS  0 FAIL  0 SKIP
+project-ui1.0                    7.5s  exit 0    19 PASS  0 FAIL  0 SKIP
+walk-ui1.0                      91.8s  exit 0   103 PASS  0 FAIL  0 SKIP
+places-connected                70.8s  exit 0    53 PASS  0 FAIL  0 SKIP
+places-tree                     49.3s  exit 0    52 PASS  0 FAIL  4 SKIP
+places-scan                      8.5s  exit 0     8 PASS  0 FAIL  0 SKIP
+navigation                      39.9s  exit 0    56 PASS  0 FAIL  0 SKIP
+map-journey                     17.7s  exit 0    15 PASS  0 FAIL  0 SKIP
+planetoids                      12.5s  exit 0     9 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  45.8s  exit 0    29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   10.3s  exit 1    28 PASS  2 FAIL  0 SKIP
+    [13:46:25.772] FAIL double-clicking a destination travels into it
+    [13:46:25.784] FAIL probe threw System.InvalidOperationException: Sequence contains more than one element
+walk-ui1.25                     87.5s  exit 0   103 PASS  0 FAIL  1 SKIP
+walk-perf                       30.6s  exit 0     0 PASS  0 FAIL  0 SKIP
+    [13:47:54.040] walk-perf probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+    [13:47:58.503] perf arrival-eye-3.35 High: mean=7.09 p95=7.96 gpu=6.22 ms
+    [13:48:01.611] perf plaza-eye-1.75 High: mean=6.92 p95=7.70 gpu=6.06 ms
+    [13:48:04.713] perf plaza-eye-4.6 High: mean=6.99 p95=7.85 gpu=6.15 ms
+    [13:48:07.818] perf eye-1.75-no-ssr High: mean=5.59 p95=6.62 gpu=4.87 ms
+    [13:48:10.921] perf eye-1.75-no-volfog High: mean=6.15 p95=6.99 gpu=5.39 ms
+    [13:48:14.027] perf eye-1.75-no-glow High: mean=6.29 p95=7.11 gpu=5.46 ms
+    [13:48:17.136] perf eye-1.75-no-ssao High: mean=6.44 p95=7.35 gpu=5.62 ms
+    [13:48:20.246] perf eye-1.75-no-place-geometry High: mean=5.66 p95=6.38 gpu=4.98 ms
+    [13:48:23.358] perf eye-1.75-low Low: mean=2.38 p95=2.87 gpu=1.81 ms
+os-ui1                             1s  real OS input     PASS  1 FAIL
+os-ui1.25                          0s  real OS input     PASS  1 FAIL
+recording                         55s  199382962 bytes
+TOTAL                            631s  failing steps: 3

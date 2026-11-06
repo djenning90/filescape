@@ -1,0 +1,31 @@
+﻿PASS OS arrives on foot in Wayfarer (locomotion=Walking, feetY=1.6)
+PASS OS Up arrow walks off the terrace and down the stairs (7.8 m, feetY 0)
+PASS OS Left arrow turns in place (turned 74 deg)
+PASS OS Up+Right walks a curve (turned 108 deg, moved 4.3 m)
+PASS OS Space jumps and lands (jumps 0 -> 1)
+PASS OS A steps sideways without turning
+PASS OS right-hold captures the mouse to look; release frees it
+PASS OS default (both reversed), real mouse right+down at UI 1.25: turns left and looks up (yaw -34 -> 2, pitch -6 -> 8.4 while held)
+PASS OS real release: the view is level again 0.7 s later (pitch 0), heading kept (2)
+PASS OS F4 opens Settings
+PASS OS after clicking the checkbox: right turns right, down still looks up (yaw 2 -> -34, pitch 0 -> 14.4)
+PASS OS the change is saved to the probe's own preferences file (C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-iter\final\os-ui1.25\preferences.json)
+PASS OS default view: no Destinations drawer, no key; 7 gates named on screen
+PASS OS real J opens Destinations, real Esc closes it
+PASS OS real K shows and hides the key
+PASS OS T takes off (16.0 m up, looking down -35 deg, aerial world: 43 places)
+PASS OS real keys in flight: E +6.6 m, Q -7.0 m, W looking down moved 6.9 m level (-0.05 m)
+PASS OS T again lands on foot, view level again (feetY 0, pitch 0)
+PASS OS Alt-Tab while walking: focus lost, nothing held or captured
+PASS OS after returning, you stand still (no stuck key)
+PASS OS H shows hidden and system items
+PASS OS L opens Locations; the arrow keys do not walk while it is open
+PASS OS Esc closes Locations
+PASS OS typed 'shared' in Destinations and clicked the to-shared-library row (selected=to-shared-library)
+PASS OS G follows the junction to Shared Library (via link 29)
+PASS OS Backspace returns through it, with the link selected
+PASS OS after a relaunch the saved look direction is in effect (H usual, V reversed)
+PASS OS U from Pier arrives in Harbour (Harbour)
+real W held from Harbour: Coast@3.3s, Journeys@7.4s, Wayfarer@11.2s
+PASS OS holding the real W key went up Coast, Journeys, Wayfarer without turning (12.4 s)
+done failures=0

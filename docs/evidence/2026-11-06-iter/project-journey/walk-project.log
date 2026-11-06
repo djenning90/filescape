@@ -1,0 +1,28 @@
+[13:32:32.234] walk-project probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[13:32:33.504] PASS --root=hub starts at This computer (5 locations as gates)
+[13:32:33.504] PASS the hub's locations are gates, and none is listed until entered (no drive is scanned)
+[13:32:33.538] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/01-hub-arrival.png current= selected=-
+[13:32:33.571] PASS Ctrl+O opens the chooser with “⌂  This computer  ·  all drives and WSL distributions (This PC)” first
+[13:32:33.602] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/02-open-chooser.png current= selected=-
+[13:32:33.899] PASS typing “This PC” in Go to path means the hub (no “can't open this location”)
+[13:32:34.814] PASS Go to path reaches C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects
+[13:32:34.815] PASS lighthouse is marked as a project once listed ahead: ⚙ Software project: manifest Lighthouse.csproj, manifest Lighthouse.sln, readme README.md.
+[13:32:34.815] PASS notes-only (a README, no manifest) is not marked
+[13:32:34.982] PASS its gate sign carries the mark (⚙ lighthouse, notes-only)
+[13:32:34.982] PASS its gate has a light (1 marked gates)
+[13:32:35.016] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/03-projects-marked.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects selected=-
+[13:32:35.829] PASS in the project place (Software project: manifest Lighthouse.csproj, manifest Lighthouse.sln, readme README.md, .git (version control))
+[13:32:35.866] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/04-project-place.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects\lighthouse selected=lighthouse
+[13:32:35.899] PASS R shows the README (C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects\lighthouse\README.md, 268 chars): “Lighthouse  A small fixture project for FileScape's project …”
+[13:32:35.931] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/05-project-readme.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects\lighthouse selected=lighthouse
+[13:32:36.012] PASS Esc closes the README
+[13:32:36.079] PASS editor options for a Windows project: Open Lighthouse.sln
+[13:32:36.115] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/06-project-card.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects\lighthouse selected=lighthouse
+[13:32:36.146] PASS choosing it asks first: “Open Lighthouse.sln?  Opens the solution with the app Windows associates with it (for example Visual Studio or Rider).”
+[13:32:36.181] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-iter/project-journey/07-editor-confirmation.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Projects\lighthouse selected=lighthouse
+[13:32:36.197] PASS cancelled: nothing was launched
+[13:32:36.328] PASS P pins the project (★)
+[13:32:36.461] PASS P again unpins it
+[13:32:37.310] PASS Open… → This computer returns to the hub
+[13:32:38.076] PASS Backspace returns to the project (history kept)
+[13:32:38.078] done failures=0

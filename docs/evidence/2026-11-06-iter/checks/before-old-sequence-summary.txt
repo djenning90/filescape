@@ -1,0 +1,25 @@
+tests-windows              12.7s
+tests-wsl                   6.5s
+walk-ui1.0                 91.6s
+explore-ui1.0              50.9s
+walk-ui1.25                92.3s
+explore-ui1.25             48.6s
+places-connected           70.0s
+places-tree                69.2s
+places-scan                 6.2s
+navigation                 42.1s
+map-journey                15.7s
+walk-perf                  30.8s
+planetoids                 33.3s
+TOTAL                       570s
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/explore-ui1.0/walk-explore.log 29 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/explore-ui1.25/walk-explore.log 29 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/map-journey/journey.log 15 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/navigation/navigation.log 56 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/places-connected/places.log 53 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/places-scan/places-scan.log 8 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/places-tree/places.log 52 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/planetoids/planetoids.log 0 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/walk-perf/walk-perf.log 0 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/walk-ui1.0/walk.log 103 PASS 0 FAIL
+/mnt/c/Users/David/AppData/Local/FileScape/evidence/checks/before-old-sequence/walk-ui1.25/walk.log 103 PASS 0 FAIL
