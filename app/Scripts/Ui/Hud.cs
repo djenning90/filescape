@@ -10,6 +10,7 @@ namespace FileScape.App.Ui;
 public partial class Hud : CanvasLayer
 {
     public event Action? OpenFolderRequested;
+    public event Action? OpenLocationRequested;
     public event Action? DemoRequested;
     public event Action? CancelRequested;
     /// <summary>0 = Places, 1 = Classic FSN, 2 = District (AD-15).</summary>
@@ -174,7 +175,7 @@ public partial class Hud : CanvasLayer
         title.AddThemeColorOverride("font_color", new Color(0.75f, 0.88f, 1f));
         row.AddChild(title);
         row.AddChild(new VSeparator());
-        row.AddChild(MakeButton("Open folder…", () => OpenFolderRequested?.Invoke(), "Choose a folder to scan (metadata only)."));
+        row.AddChild(MakeButton("Open…", () => OpenLocationRequested?.Invoke(), "Open a location (Ctrl+O): This computer (all drives and WSL distributions), a drive, a path, or browse for a folder."));
         row.AddChild(MakeButton("Sample data", () => DemoRequested?.Invoke(), "Load the deterministic synthetic tree (not your files)."));
         _cancel = MakeButton("Cancel scan", () => CancelRequested?.Invoke(), "Stop scanning. The part scanned so far stays explorable.");
         _cancel.Disabled = true;

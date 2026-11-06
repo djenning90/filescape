@@ -91,7 +91,7 @@ public partial class Hud
         var v = new VBoxContainer();
         v.AddThemeConstantOverride("separation", 6);
         _locPanel.AddChild(v);
-        var title = new Label { Text = "Locations" };
+        var title = new Label { Text = "Open a location" };
         title.AddThemeFontSizeOverride("font_size", 18);
         v.AddChild(title);
         _locList = new ItemList { CustomMinimumSize = new Vector2(600, 220), SelectMode = ItemList.SelectModeEnum.Single };
@@ -118,6 +118,7 @@ public partial class Hud
         row.AddChild(_pathEdit);
         row.AddChild(MakeButton("Go", () => PathSubmitted?.Invoke(_pathEdit.Text), "Go to this path in the connected world (listed when you arrive)."));
         row.AddChild(MakeButton("Scan as tree", () => ScanPathAsTreeRequested?.Invoke(_pathEdit.Text), "Bounded tree scan (whole-tree reference): scan this folder completely, links not followed, so the maps show its whole tree."));
+        row.AddChild(MakeButton("Browse…", () => { HideLocations(); OpenFolderRequested?.Invoke(); }, "Choose a folder with the Windows folder picker. (This PC cannot be picked there: it is not a folder. Choose ⌂ This computer above instead.)"));
         row.AddChild(MakeButton("Close (Esc)", HideLocations, "Close without going anywhere."));
         var modes = new HBoxContainer();
         v.AddChild(modes);
@@ -184,7 +185,7 @@ public partial class Hud
             _locList.SetItemTooltip(i, tip);
         }
 
-        if (rows.Count == 0) _locList.AddItem("(no locations hub in this mode — type a path: Go explores the connected world, Scan as tree makes a bounded tree)", selectable: false);
+        if (rows.Count == 0) _locList.AddItem("(no locations in this mode — type a path: Go explores the connected world, Scan as tree makes a bounded tree)", selectable: false);
         _locPanel.Visible = true;
         if (focusPath || rows.Count == 0) _pathEdit.GrabFocus();
         else _locList.GrabFocus();

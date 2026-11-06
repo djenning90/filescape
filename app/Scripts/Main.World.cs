@@ -30,7 +30,7 @@ public partial class Main
     public int PendingRequests => _pendingFollow.Count + _pendingGoTo.Count;
 
     /// <summary>Starts exploring the live filesystem with <paramref name="path"/> as the arrival root.</summary>
-    public void StartLive(string path)
+    public void StartLive(string? path)
     {
         var delay = _testListDelayMs;
         var options = new WorldExplorer.Options
@@ -90,6 +90,12 @@ public partial class Main
     {
         _hud.HideLocations();
         if (string.IsNullOrWhiteSpace(text)) return;
+        if (LocationRequest.Parse(text) is { IsHub: true })
+        {
+            GoToHub();
+            return;
+        }
+
         StartBoundedTree(text);
     }
 
@@ -244,8 +250,14 @@ public partial class Main
     private List<(int Id, string Text, string Tooltip)> LocationRows()
     {
         var rows = new List<(int, string, string)>();
-        if (_tree == null || _tree.Count == 0 || !_tree.Root.IsHub) return rows;
-        rows.Add((0, $"⌂  {WorldExplorer.HubName}  ·  all locations", "The hub: drives and WSL distributions as gates."));
+        if (_tree == null || _tree.Count == 0 || !_tree.Root.IsHub)
+        {
+            // Sample data or a bounded tree: the hub is still one choice away (LOC-06).
+            rows.Add((HubRow, $"⌂  {WorldExplorer.HubName}  ·  explore your computer: every drive and WSL distribution", "Starts the connected world at the hub (the place Windows calls This PC). Nothing is scanned until you go somewhere."));
+            return rows;
+        }
+
+        rows.Add((0, $"⌂  {WorldExplorer.HubName}  ·  all drives and WSL distributions (This PC)", "The hub: drives and WSL distributions as gates."));
         if (_nav.Root > 0) rows.Add((_nav.Root, $"★  Arrival: {_tree.DisplayName(_nav.Root)}", _tree.FullPath(_nav.Root)));
         foreach (var c in _tree.Root.Children)
         {
@@ -264,8 +276,33 @@ public partial class Main
         return rows;
     }
 
+    /// <summary>The Locations row that starts the connected world at the hub when there is none yet.</summary>
+    private const int HubRow = -2;
+
+    /// <summary>LOC-06: the hub, from anywhere: in the connected world travel there; otherwise start it there.</summary>
+    public void GoToHub()
+    {
+        _hud.HideLocations();
+        if (_explorer == null || _tree == null || _tree.Count == 0 || !_tree.Root.IsHub)
+        {
+            GD.Print("[world] starting the connected world at the hub");
+            StartLive(null);
+            return;
+        }
+
+        if (_experience != Experience.Places) SetExperience(Experience.Places);
+        if (_nav.Current == 0) _hud.Toast($"You are already at {WorldExplorer.HubName}.");
+        else _nav.GoTo(_tree, 0);
+    }
+
     private void OnLocationChosen(int id)
     {
+        if (id == HubRow || id == 0)
+        {
+            GoToHub();
+            return;
+        }
+
         _hud.HideLocations();
         if (_tree == null || !_tree.Contains(id)) return;
         if (_experience != Experience.Places) SetExperience(Experience.Places);

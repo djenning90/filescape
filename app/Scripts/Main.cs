@@ -133,6 +133,7 @@ public partial class Main : Node3D
         }
 
         _testListDelayMs = args.TestListDelayMs ?? 0;
+        if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         BuildScene();
         LoadPreferences(args);
         _quality = args.Quality ?? Quality.High;
@@ -144,7 +145,11 @@ public partial class Main : Node3D
         ApplyExperience(frame: false);
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
 
-        if (args.Root is { } root)
+        if (LocationRequest.Parse(args.Root) is { IsHub: true } && !args.BoundedTree)
+        {
+            StartLive(null); // --root=hub or --root="This PC": start at the hub (LOC-06)
+        }
+        else if (args.Root is { } root)
         {
             if (args.BoundedTree) StartBoundedTree(root, confirmBroad: false);
             else StartLive(root);
@@ -270,6 +275,7 @@ public partial class Main : Node3D
         AddChild(_hud);
 
         _hud.OpenFolderRequested += ShowFolderDialog;
+        _hud.OpenLocationRequested += ShowLocations;
         _hud.DemoRequested += () => StartScan(new SyntheticTreeSource());
         _hud.CancelRequested += CancelScan;
         _hud.ExperienceRequested += i => SetExperience((Experience)i);
@@ -367,6 +373,12 @@ public partial class Main : Node3D
 
     private void OnFolderChosen(string path)
     {
+        if (LocationRequest.Parse(path) is { IsHub: true })
+        {
+            GoToHub();
+            return;
+        }
+
         var full = System.IO.Path.GetFullPath(path);
         if (_explorer != null)
         {
@@ -1004,7 +1016,7 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
         else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
         else if (key.IsAction(InputBindings.Settings)) _hud.ToggleSettings();
-        else if (key.IsAction(InputBindings.OpenFolder)) ShowFolderDialog();
+        else if (key.IsAction(InputBindings.OpenFolder)) ShowLocations(); // the in-app chooser first (LOC-06); Browse… opens the picker
         else if (key.IsAction(InputBindings.FlightToggle)) ToggleFlight();
         else if (key.IsAction(InputBindings.HiddenToggle)) ToggleHiddenVisibility();
         else if (key.IsAction(InputBindings.GoToPath)) ShowGoToPath();
