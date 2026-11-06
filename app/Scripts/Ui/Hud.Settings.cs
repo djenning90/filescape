@@ -124,7 +124,8 @@ public partial class Hud
         _settingsNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
         v.AddChild(_settingsNote);
         var buttons = new HBoxContainer();
-        buttons.AddChild(MakeButton("Reset to defaults", () => PreferencesChanged?.Invoke(Preferences.Default), "Reverse both look directions, level the view on release; walk 8 m/s, run 16 m/s."));
+        buttons.AddChild(MakeButton("Reset to defaults", () => PreferencesChanged?.Invoke(Preferences.Default with { Pins = _shownPrefs.Pins }), "Reverse both look directions, level the view on release; walk 5.5 m/s, run 11 m/s. Pins are kept."));
+        buttons.AddChild(MakeButton("Suggested speeds", () => PreferencesChanged?.Invoke(_shownPrefs with { WalkSpeed = Preferences.Default.WalkSpeed, RunSpeed = Preferences.Default.RunSpeed }), "Walk 5.5 m/s, run 11 m/s: comfortable in the compact places (the old defaults, 8 / 16 m/s, suited the larger places)."));
         buttons.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         buttons.AddChild(MakeButton("Close (Esc)", () => _settingsPanel.Visible = false, "Close. Changes are already saved."));
         v.AddChild(buttons);

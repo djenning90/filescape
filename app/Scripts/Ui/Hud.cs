@@ -399,7 +399,11 @@ public partial class Hud : CanvasLayer
                 "[b]Panels on demand[/b]   [b]J[/b] Destinations (type to filter, ↑↓ Enter)    [b]K[/b] key (colours and heights)    [b]F4[/b] settings    [b]Esc[/b] closes\n" +
                 "[b]G[/b]  go into the selected folder or link      [b]U[/b] / [b]PgUp[/b]  up to the parent      [b]Backspace[/b]  back (also back through a link)\n" +
                 "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the arrival root      [b]M[/b]  map      [b]Tab[/b]  next view\n" +
-                "[b]L[/b]  locations (drives, WSL)      [b]Ctrl+L[/b]  go to a typed or pasted path      [b]H[/b]  show / hide hidden and system items\n" +
+                "[b]L[/b] or [b]Ctrl+O[/b]  open a location: [b]⌂ This computer[/b] (This PC: every drive and WSL distribution), a drive, Browse…      [b]Ctrl+L[/b]  type a path (\"This PC\" works)\n" +
+                "[b]H[/b]  show / hide hidden and system items      Gates marked [b]⌂[/b] home, [b]◆[/b] Downloads, Pictures…, [b]⚙[/b] projects, [b]★[/b] your pins (the card says why)\n" +
+                "[b]P[/b]  pin or unpin the selected folder (or the one you are in)      [b]R[/b]  read this project's README (as text; nothing is run or fetched)\n" +
+                "    A project's card offers the editors on this computer (a Windows solution's own app, VS Code, VS Code for WSL); FileScape asks first.\n" +
+                "    Gates show [b]queued[/b] or [b]listing now…[/b] while nearby places are listed ahead; /proc, /sys, /dev, /run and /mnt are never listed ahead.\n" +
                 "Selecting something never moves you: [b]click[/b] inspects (a card with Details ▸), travel is always deliberate.\n\n" +
                 "[b]Moving around in the maps (Classic FSN, District)[/b]\n" +
                 "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +

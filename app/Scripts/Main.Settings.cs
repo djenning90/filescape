@@ -1,3 +1,4 @@
+using FileScape.Core.Places;
 using FileScape.Core.Interaction;
 using Godot;
 
@@ -29,6 +30,13 @@ public partial class Main
         _hud.PreferencesChanged += p => SetPreferences(p);
         _hud.SettingsToggled += () => _hud.ToggleSettings();
         GD.Print($"[prefs] {_prefs.Describe()} ({_prefsPath ?? "not saved: automation"})");
+        if (_prefsPath != null && System.IO.File.Exists(_prefsPath) && _prefs.WalkSpeed.Value == WalkParams.PreviousDefaultSpeeds.Walk && _prefs.RunSpeed.Value == WalkParams.PreviousDefaultSpeeds.Run)
+        {
+            // KD-28: saved speeds are never overwritten; the saved pair is the old default, so say what changed, once per start.
+            GetTree().CreateTimer(3.0).Timeout += () => _hud.Toast(
+                "Places are more compact now. Your saved speeds (walk 8, run 16 m/s) were the old defaults; Settings (F4) → Suggested speeds sets walk 5.5, run 11 m/s.",
+                new Color(1f, 0.9f, 0.6f), 10);
+        }
     }
 
     /// <summary>Preferences and the Settings checkboxes (centres in window pixels) for the OS-level probes' state file.</summary>
