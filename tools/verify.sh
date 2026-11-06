@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # FileScape verification tiers (TEST-01, AD-29; see docs/windows-workflow.md "Verification tiers").
+#   tools/fs.sh check harness   ~3 s     the harness's own judging, with test doubles (tools/verify-selftest.sh).
 #   tools/fs.sh check fast      ~1 min   app build + Core tests (Windows and WSL). Every commit.
 #   tools/fs.sh check smoke     ~3 min   fast + a staged export + the short end-to-end journeys (walk-explore, and
 #                                        hub → project → README/editor), UI 1.0.
@@ -9,12 +10,15 @@
 #                                        and 1.25 (moves the real mouse and takes focus), and the recording.
 # Options: --exe=<staged FileScape.exe (Windows path)> reuses a build instead of staging one; --out=<Windows dir>.
 # Journeys run one at a time: they share the screen, focus and GPU, and their timing checks must not contend.
-# A summary with each step's duration and PASS/FAIL counts is written to <out>\summary.txt and printed.
+# A summary with each step's duration and PASS/FAIL counts is written to <out>\summary.txt and printed. A step fails on
+# a non-zero exit or timeout, a missing/empty result file or one without assertions, or any FAIL (tools/verify-lib.sh).
 set -uo pipefail
 main() {
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=tools/verify-lib.sh
+source "$REPO/tools/verify-lib.sh"
 TIER="${1:-}"; shift || true
-case "$TIER" in fast|smoke|full|release) ;; *) sed -n '2,10p' "$0"; exit 2 ;; esac
+case "$TIER" in fast|smoke|full|release) ;; *) sed -n '2,13p' "$0"; exit 2 ;; esac
 EXEW=""; OUTW=""
 for a in "$@"; do case "$a" in --exe=*) EXEW="${a#--exe=}" ;; --out=*) OUTW="${a#--out=}" ;; esac; done
 
@@ -54,19 +58,11 @@ step() {
   return $code
 }
 
-# journey NAME LOGNAME TIMEOUT ARGS...: launch the staged build on one probe; count its PASS/FAIL/SKIP lines.
+# journey NAME LOGNAME TIMEOUT ARGS...: launch the staged build on one probe; judged by tools/verify-lib.sh (exit code
+# or timeout, and a non-empty result file with assertions and no FAIL).
 journey() {
   local name="$1" logname="$2" to="$3"; shift 3
-  local s; s=$(date +%s.%N)
-  timeout "$to" "$EXE" -- "$@" "--out=$OUTW\\$name" --window=1600x900 > "$OUT/$name.out" 2>&1
-  local code=$?
-  local d; d=$(printf '%.1f' "$(echo "$(date +%s.%N) - $s" | bc)")
-  local f="$OUT/$name/$logname"
-  local p=0 x=0 k=0
-  if [[ -f "$f" ]]; then p=$(grep -cE '(^| )PASS ' "$f"); x=$(grep -cE '(^| )FAIL ' "$f"); k=$(grep -cE '(^| )SKIP ' "$f"); else x=1; fi
-  [[ $code -ne 0 || $x -gt 0 ]] && FAILS=$((FAILS + 1))
-  printf '%-28s %7ss  exit %-3s %3s PASS %2s FAIL %2s SKIP\n' "$name" "$d" "$code" "$p" "$x" "$k" | tee -a "$SUM"
-  [[ -f "$f" ]] && grep -E '(^| )FAIL ' "$f" | head -5 | sed 's/^/    /' | tee -a "$SUM"
+  probe_step "$name" "$to" "$OUT/$name/$logname" "journey" "$EXE" -- "$@" "--out=$OUTW\\$name" --window=1600x900
 }
 
 log "FileScape check $TIER  $(date -u +%FT%TZ)  commit $(git -C "$REPO" rev-parse --short=12 HEAD)$( [[ -n "$(git -C "$REPO" status --porcelain)" ]] && echo ' (uncommitted changes)')"
@@ -100,6 +96,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey navigation navigation.log 300 --automate=navigation --ui-scale=1
   journey map-journey journey.log 400 --automate=journey --ui-scale=1
   journey planetoids planetoids.log 200 --experiment=planetoids --automate=planetoids --ui-scale=1
+  # AERIAL-07: a deliberately small aerial budget, the current place outside breadth-first (kept), then beyond it (recovery).
+  journey aerial-limit-24 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=24 --ui-scale=1
+  journey aerial-limit-8 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=8 --ui-scale=1
   # UI scaling changes the HUD, signs, drawer and picking geometry: those journeys repeat at 1.25.
   journey explore-ui1.25 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1.25 --tier=functional
   journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
@@ -109,17 +108,13 @@ if [[ "$TIER" == release ]]; then
   journey walk-ui1.25 walk.log 420 --automate=walk "--root=$W" --ui-scale=1.25 --tier=functional
   journey walk-perf walk-perf.log 200 --automate=walk-perf "--root=$W" --ui-scale=1
   grep -h 'perf ' "$OUT/walk-perf/walk-perf.log" 2>/dev/null | sed 's/^/    /' | tee -a "$SUM"
-  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$OUT/tools/"
+  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$REPO"/tools/os-righthold-repeat.ps1 "$OUT/tools/"
   for sc in 1 1.25; do
-    s=$(date +%s)
-    timeout 360 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier" > "$OUT/os-ui$sc.out" 2>&1
-    f="$OUT/os-ui$sc/os-walk-results.txt"; p=$(grep -c PASS "$f" 2>/dev/null); x=$(grep -c FAIL "$f" 2>/dev/null || echo 1)
-    [[ "$x" != 0 ]] && FAILS=$((FAILS + 1))
-    printf '%-28s %7ss  real OS input %3s PASS %2s FAIL\n' "os-ui$sc" "$(( $(date +%s) - s ))" "$p" "$x" | tee -a "$SUM"
+    probe_step "os-ui$sc" 360 "$OUT/os-ui$sc/os-walk-results.txt" "real OS input" \
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier"
   done
-  s=$(date +%s)
-  timeout 400 "$EXE" --write-movie "$OUTW\\explore-recording.avi" --fixed-fps 30 -- --automate=walk-explore "--root=$W" "--out=$OUTW\\recording" --window=1280x720 --ui-scale=1 > "$OUT/recording.out" 2>&1
-  printf '%-28s %7ss  %s\n' recording "$(( $(date +%s) - s ))" "$(ls -la "$OUT/explore-recording.avi" 2>/dev/null | awk '{print $5" bytes"}')" | tee -a "$SUM"
+  recording_step recording 400 "$OUT/explore-recording.avi" \
+    "$EXE" --write-movie "$OUTW\\explore-recording.avi" --fixed-fps 30 -- --automate=walk-explore "--root=$W" "--out=$OUTW\\recording" --window=1280x720 --ui-scale=1
 fi
 
 log "$(printf '%-28s %7ss' TOTAL "$(( $(date +%s) - T0 ))")  failing steps: $FAILS"

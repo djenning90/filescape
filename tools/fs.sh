@@ -169,6 +169,7 @@ case "$cmd" in
     verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
     echo "fs.sh: export OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
   check)
+    if [[ "${1:-}" == harness ]]; then exec "$REPO/tools/verify-selftest.sh"; fi
     exec "$REPO/tools/verify.sh" "$@" ;;
   builds)
     BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"; check_base "$BASE"
