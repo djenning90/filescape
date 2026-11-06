@@ -108,6 +108,19 @@ public partial class PlacesProbe : Node
 
         // ---------------------------------------------------- selection never moves you (PLACE-01)
         var file = await ClickVisibleFile();
+        if (file < 0 && Place.Files.Count > 0)
+        {
+            // The compact layout (PLACE-14) puts the file quarters beside and behind the arrival terrace, so the arrival
+            // view (towards the landmark and the gates) may show none: turn to face the nearest tower (set-up), then click.
+            var eye = _main.Rig.CameraPosition.ToNumerics();
+            var nearest = Place.Files.MinBy(f => System.Numerics.Vector3.Distance(f.Box.Center, eye))!;
+            var d = new System.Numerics.Vector2(nearest.Box.Center.X - eye.X, nearest.Box.Center.Z - eye.Z);
+            _main.ProbeSetGaze(Degrees.Of(-PlaceTerrain.PlaceAngle(System.Numerics.Vector2.Normalize(d))), Degrees.Of(-12));
+            await Frames(3);
+            Log("[direct] turned to face the nearest file tower (set-up: the compact arrival faces the gates)");
+            file = await ClickVisibleFile();
+        }
+
         if (file >= 0)
         {
             Check(_main.Selection.Selected == file && _main.Navigator.Current == R, F($"clicking a tower selects {Tree[file].Name}; the current folder stays {rootName}"));
@@ -723,10 +736,17 @@ public partial class PlacesProbe : Node
         await Frames(1);
     }
 
-    private static void Mouse(MouseButton button, bool pressed, Vector2 position)
+    /// <summary>
+    /// <paramref name="position"/> is in viewport units (UI rectangles, unprojected points); injected events are in window
+    /// pixels. Instrument defect found 2026-11-06, the first time this probe ran at UI scale 1.25: clicks landed at 80 %
+    /// of their target (ProbeBase.ToWindow had the same fix for the walking probes).
+    /// </summary>
+    private void Mouse(MouseButton button, bool pressed, Vector2 position)
     {
         var mask = pressed ? (MouseButtonMask)(1 << ((int)button - 1)) : 0;
-        Inject(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = position, GlobalPosition = position, ButtonMask = mask });
+        var at = position * GetWindow().ContentScaleFactor;
+        Inject(new InputEventMouseMotion { Position = at, GlobalPosition = at, ButtonMask = mask });
+        Inject(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = at, GlobalPosition = at, ButtonMask = mask });
     }
 
     private static void Motion(Vector2 relative) =>

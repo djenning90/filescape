@@ -405,6 +405,7 @@ public partial class Main
         if (_tree == null) return;
         var id = _nav.Current;
         if (!_ordinaryOverride.Add(id)) _ordinaryOverride.Remove(id);
+        InvalidateProminence();
         if (_experience == Experience.Places) Recompose(rebuildOnly: true);
         UpdateInspector();
     }

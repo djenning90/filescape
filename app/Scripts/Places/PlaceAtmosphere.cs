@@ -43,10 +43,10 @@ public static class PlaceAtmosphere
             GlowBlendMode = GEnvironment.GlowBlendModeEnum.Screen,
             FogEnabled = !high,
             FogLightColor = new Color(0.08f, 0.06f, 0.16f),
-            FogDensity = 0.006f,
+            FogDensity = 0.0045f, // HORIZON-03: thinner than before (0.006), so the silhouettes beyond the vistas read as shapes
             FogSkyAffect = 0.3f,
             VolumetricFogEnabled = high,
-            VolumetricFogDensity = 0.011f,
+            VolumetricFogDensity = 0.0078f, // was 0.011: the far horizon (≈ 100–140 m) now shows as haze, not nothing
             VolumetricFogAlbedo = new Color(0.5f, 0.5f, 0.78f),
             VolumetricFogEmission = new Color(0.035f, 0.025f, 0.07f),
             VolumetricFogEmissionEnergy = 1.0f,
@@ -86,8 +86,8 @@ public static class PlaceAtmosphere
         var high = quality == Quality.High;
         env.SsrEnabled = high && b < 0.5f;
         env.SsaoEnabled = high && b < 0.5f;
-        env.VolumetricFogDensity = Mathf.Lerp(0.011f, 0.0009f, b);
-        env.FogDensity = Mathf.Lerp(0.006f, 0.0005f, b);
+        env.VolumetricFogDensity = Mathf.Lerp(0.0078f, 0.0009f, b);
+        env.FogDensity = Mathf.Lerp(0.0045f, 0.0005f, b);
         env.VolumetricFogLength = Mathf.Lerp(240f, 900f, b);
     }
 }

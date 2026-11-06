@@ -256,6 +256,12 @@ public partial class Hud
     /// <summary>Esc peels popups first (Locations, problem list). Returns true if one was closed.</summary>
     public bool ClosePopups()
     {
+        if (_readmePanel.Visible)
+        {
+            HideReadme();
+            return true;
+        }
+
         if (_settingsPanel.Visible)
         {
             HideSettings();

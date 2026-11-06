@@ -35,6 +35,9 @@ public static class InputBindings
     // On-demand panels (VIEW-01/03): the key (legend) and the Destinations drawer.
     public const string Legend = "cmd_legend", Destinations = "cmd_destinations";
 
+    // Prominence and projects (PROM-03, DEV-02).
+    public const string Pin = "cmd_pin", Readme = "cmd_readme";
+
     public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
 
     /// <summary>Human-readable bindings for Help.</summary>
@@ -84,6 +87,8 @@ public static class InputBindings
         Physical(Locations, Key.L);
         Physical(Legend, Key.K);
         Physical(Destinations, Key.J);
+        Physical(Pin, Key.P);
+        Physical(Readme, Key.R);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

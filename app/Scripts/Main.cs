@@ -276,6 +276,9 @@ public partial class Main : Node3D
 
         _hud.OpenFolderRequested += ShowFolderDialog;
         _hud.OpenLocationRequested += ShowLocations;
+        _hud.PinToggled += TogglePin;
+        _hud.ReadmeRequested += ShowReadme;
+        _hud.EditorRequested += RequestEditor;
         _hud.DemoRequested += () => StartScan(new SyntheticTreeSource());
         _hud.CancelRequested += CancelScan;
         _hud.ExperienceRequested += i => SetExperience((Experience)i);
@@ -1013,6 +1016,8 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.Help)) _hud.ToggleHelp();
         else if (key.IsAction(InputBindings.Legend)) _hud.ToggleLegend();
         else if (key.IsAction(InputBindings.Destinations)) { if (places) _hud.ToggleDestinations(focusFilter: true); }
+        else if (key.IsAction(InputBindings.Pin)) { if (places) TogglePin(); }
+        else if (key.IsAction(InputBindings.Readme)) { if (places) ShowReadme(); }
         else if (key.IsAction(InputBindings.Quality)) ToggleQuality();
         else if (key.IsAction(InputBindings.Stats)) _hud.SetStats("", !_hud.StatsVisible);
         else if (key.IsAction(InputBindings.Settings)) _hud.ToggleSettings();
@@ -1330,6 +1335,7 @@ public partial class Main : Node3D
         {
             var current = node.Id == _nav.Current ? _place != null && KindOf(node.Id) is { } k && (k.Kind != FileScape.Core.Places.PlaceKind.Ordinary || k.Overridden) ? $"You are here · {k.Label}: {string.Join(", ", k.Evidence)}\n" : "You are here\n" : "";
             _hud.SetInspectorCard(compact: true, visible: true, current + Brief(node), FileIcons.Get(FileIcons.For(node)));
+            UpdateCardExtras(node);
         }
         else
         {

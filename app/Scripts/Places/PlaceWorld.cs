@@ -425,6 +425,33 @@ public partial class PlaceWorld : Node3D
         Emit("vista-spires", vSpires, _spire, _vistaSpire, false);
         Emit("vista-streets", vStreets, _box, _street, false);
         InstanceCount += vTowers.Count + vBeacons.Count + vSpires.Count + vStreets.Count;
+
+        // The horizon (HORIZON-01..03): one more level as dark silhouettes, the rest of the tree in that direction as
+        // haze, unknown places veiled. Restrained: no labels, dim, and fog does the rest.
+        var hSil = new InstanceBatch();
+        var hHaze = new InstanceBatch();
+        HorizonMarks = Horizon.Compose(tree, c, PlaceParams.Default);
+        foreach (var m in HorizonMarks)
+        {
+            var at = Gd(m.Position);
+            switch (m.Kind)
+            {
+                case HorizonKind.Silhouette:
+                    hSil.Add(new Vector3(m.Radius * 2, 0, 0), new Vector3(0, m.Height, 0), new Vector3(0, 0, m.Radius * 2), at + new Vector3(0, m.Height / 2, 0),
+                        new Color(0.16f, 0.17f, 0.3f).Lerp(PlacePalette.Accent(PlaceIdentity.For(tree[m.FolderId].Name), 0.45f), 0.25f + 0.2f * m.Weight), new Color(0, 0, 0, 0));
+                    break;
+                case HorizonKind.Unknown:
+                    hHaze.Add(new Vector3(m.Radius * 2, 0, 0), new Vector3(0, m.Height, 0), new Vector3(0, 0, m.Radius * 2), at + new Vector3(0, m.Height / 2, 0), PlacePalette.Unlisted with { A = 0.35f }, new Color(0, 0, 0, 0));
+                    break;
+                default:
+                    hHaze.Add(new Vector3(m.Radius * 2, 0, 0), new Vector3(0, m.Height, 0), new Vector3(0, 0, m.Radius * 2), at + new Vector3(0, m.Height / 2, 0), new Color(0.42f, 0.4f, 0.7f, 0.08f + 0.14f * m.Weight), new Color(0, 0, 0, 0));
+                    break;
+            }
+        }
+
+        Emit("vista-horizon", hSil, _spire, _vistaSpire, false);
+        Emit("vista-haze", hHaze, _column, _beacon, false);
+        InstanceCount += hSil.Count + hHaze.Count;
         SetVistasVisible(_vistasVisible);
 
         Emit("towers", towers, _box, _tower, true);
@@ -543,10 +570,30 @@ public partial class PlaceWorld : Node3D
     private bool _vistasVisible = true;
 
     /// <summary>Shows or hides the vistas (symbolic previews beyond the gates): hidden while the aerial world shows the real places.</summary>
+    /// <summary>PROM-02: a slim light above each prominent gate, taller and brighter by level, in its kind's colour.</summary>
+    public void SetProminentGates(IReadOnlyList<(int Id, Vector3 Top, float Level, Color Color)> marks)
+    {
+        var batch = new InstanceBatch();
+        foreach (var (_, top, level, color) in marks)
+        {
+            var h = 5f + 4f * level;
+            batch.Add(new Vector3(0.35f + 0.15f * level, 0, 0), new Vector3(0, h, 0), new Vector3(0, 0, 0.35f + 0.15f * level), top + new Vector3(0, h / 2 + 0.3f, 0), color with { A = 0.95f }, new Color(0, 0, 0, 0));
+            batch.Add(new Vector3(1.6f, 0, 0), new Vector3(0, 0.25f, 0), new Vector3(0, 0, 1.6f), top + new Vector3(0, 0.3f, 0), color with { A = 0.9f }, new Color(0, 0, 0, 0));
+        }
+
+        Emit("prominent", batch, _column, _beacon, false);
+        ProminentGateCount = marks.Count;
+    }
+
+    public int ProminentGateCount { get; private set; }
+
+    /// <summary>The horizon marks of the place last built (HORIZON-01), for probes.</summary>
+    public IReadOnlyList<HorizonMark> HorizonMarks { get; private set; } = [];
+
     public void SetVistasVisible(bool visible)
     {
         _vistasVisible = visible;
-        foreach (var slot in new[] { "vista-towers", "vista-beacons", "vista-spires", "vista-streets" }) SetSlotVisible(slot, visible);
+        foreach (var slot in new[] { "vista-towers", "vista-beacons", "vista-spires", "vista-streets", "vista-horizon", "vista-haze" }) SetSlotVisible(slot, visible);
     }
 
     /// <summary>Vista names repeat the gate names, so on the plaza they stay hidden; from above or beyond the gates they show.</summary>

@@ -282,6 +282,7 @@ public partial class Hud : CanvasLayer
         _inspectorDetails.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
         _inspectorDetails.Visible = false;
         v.AddChild(_inspectorDetails);
+        BuildProjectCard(v, _inspectorBrief.GetIndex());
 
         _inspectorBody = new RichTextLabel
         {

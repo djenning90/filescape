@@ -321,6 +321,7 @@ public partial class Main
         LastComposeMs = sw.Elapsed.TotalMilliseconds;
         sw.Restart();
         _placeWorld.Build(_tree!, _place, _quality);
+        UpdateProminentGates();
         LastPlaceBuildMs = sw.Elapsed.TotalMilliseconds;
         InstanceCount = _placeWorld.InstanceCount;
         Perf.MarkRelayout(LastComposeMs + LastPlaceBuildMs);
@@ -645,6 +646,13 @@ public partial class Main
                 ? $"{n.Name}   ·  {PlaceText.LinkShort(_tree, n)}"
                 : $"{n.Name}   ·  {PlaceText.GateSubtitle(_tree, n, g).Replace("\n", " · ")}";
             var where = _place.IsWide ? $"Tier {g.Tier + 1}" : "On the gate ring";
+            var prom = ProminenceOf(g.TargetId);
+            if (prom.IsProminent)
+            {
+                items.Add((g.TargetId, $"{prom.Mark} {text}", ProminenceColor(prom), $"{prom.Reason} {where}. {_tree.FullPath(g.TargetId)}", FileIcons.Get(FileIcons.For(n))));
+                continue;
+            }
+
             items.Add((g.TargetId, text, PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.3f), $"{where}. {_tree.FullPath(g.TargetId)}", FileIcons.Get(FileIcons.For(n))));
         }
 
@@ -710,6 +718,14 @@ public partial class Main
 
             var color = PlacePalette.ForGate(g, PlaceIdentity.For(n.Name)).Color.Lightened(0.45f);
             var detail = PlaceText.GateSubtitle(_tree, n, g).Replace("\n", " · ");
+            var prom = ProminenceOf(g.TargetId);
+            if (prom.IsProminent)
+            {
+                // PROM-02: marked and named first when space is short, never moved or reordered.
+                _signCandidates.Add(new SignCandidate(g.TargetId, anchor, $"{prom.Mark} {n.Name}", detail, ProminenceColor(prom).Lightened(0.25f), FileIcons.For(n), focus, Boost: 90f * prom.Level));
+                continue;
+            }
+
             _signCandidates.Add(new SignCandidate(g.TargetId, anchor, n.Name, detail, color, FileIcons.For(n), focus));
         }
 

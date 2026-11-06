@@ -15,6 +15,9 @@ public interface IShellActions
 
     /// <summary>Opens an Explorer window with the item selected.</summary>
     ShellResult RevealInExplorer(string path);
+
+    /// <summary>Starts an installed program with separate arguments (an editor, DEV-03), detached from FileScape's console.</summary>
+    ShellResult Start(string program, IReadOnlyList<string> args);
 }
 
 /// <summary>Used with synthetic data. It only describes what would have happened.</summary>
@@ -25,6 +28,9 @@ public sealed class MockShellActions : IShellActions
 
     public ShellResult RevealInExplorer(string path) =>
         new(false, true, $"MOCK — synthetic data has no real location ({path}).");
+
+    public ShellResult Start(string program, IReadOnlyList<string> args) =>
+        new(false, true, $"MOCK — would start {program} {string.Join(' ', args)}");
 }
 
 /// <summary>Classifies paths that would run code if opened, so the UI can ask for confirmation first (FILE-03).</summary>
@@ -69,6 +75,45 @@ public sealed class WindowsShellActions : IShellActions
 
         var error = Marshal.GetLastWin32Error();
         return new ShellResult(false, false, $"Windows could not open the item (error {error}: {new Win32Exception(error).Message}).");
+    }
+
+    /// <summary>
+    /// ShellExecuteEx, not Process.Start with inherited handles: the editor must not hold FileScape's console or pipes
+    /// (a child holding them keeps a waiting launcher open after FileScape closes, SHUT-01).
+    /// </summary>
+    public ShellResult Start(string program, IReadOnlyList<string> args)
+    {
+        if (!OperatingSystem.IsWindows()) return new ShellResult(false, false, "Starting programs requires Windows.");
+        var info = new ShellExecuteInfo
+        {
+            cbSize = Marshal.SizeOf<ShellExecuteInfo>(),
+            fMask = SeeMaskNoAsync | SeeMaskFlagNoUi,
+            lpFile = program,
+            lpParameters = string.Join(' ', args.Select(Quote)),
+            nShow = SwShowNormal,
+        };
+        _ = CoInitializeEx(IntPtr.Zero, CoinitApartmentThreaded | CoinitDisableOle1Dde);
+        if (ShellExecuteExW(ref info)) return new ShellResult(true, false, $"Started {Path.GetFileName(program)} {info.lpParameters}");
+        var error = Marshal.GetLastWin32Error();
+        return new ShellResult(false, false, $"Could not start {Path.GetFileName(program)} (error {error}: {new Win32Exception(error).Message}).");
+    }
+
+    /// <summary>Windows command-line quoting for one argument (CommandLineToArgvW rules).</summary>
+    public static string Quote(string a)
+    {
+        if (a.Length > 0 && a.IndexOfAny([' ', '\t', '"']) < 0) return a;
+        var sb = new System.Text.StringBuilder("\"");
+        var slashes = 0;
+        foreach (var ch in a)
+        {
+            if (ch == '\\') { slashes++; continue; }
+            sb.Append('\\', ch == '"' ? slashes * 2 + 1 : slashes);
+            slashes = 0;
+            sb.Append(ch);
+        }
+
+        sb.Append('\\', slashes * 2).Append('"');
+        return sb.ToString();
     }
 
     public ShellResult RevealInExplorer(string path)
