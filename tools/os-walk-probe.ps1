@@ -81,15 +81,27 @@ $s = State
 Check ((Dist $a.pos $s.pos) -gt 1.5 -and [math]::Abs($s.yaw - $a.yaw) -lt 0.5) "A steps sideways without turning"
 
 # Hold right mouse and move: look captured, heading turns; release frees the cursor.
+# 2026-11-06 follow-up (TEST-03): the original check read one snapshot 150 ms after the press. The app writes its state
+# file every >= 150 ms (frame-quantised, and a write is skipped while a reader holds the file), so that sample could
+# predate the app's reaction: reproduced 2 of 36 first-press cycles, each time with the sample written before the app
+# began the look (os-righthold-repeat.ps1). Now the 150 ms sample is only logged (with its freshness); the check waits, up to 1.5 s, for a
+# snapshot written after the press (seq newer) to show the capture, and likewise for the release, and records values.
 $a = $s
+$pre = State
 Right-Down; Start-Sleep -Milliseconds 150
 $mid = State
+$capSw = [System.Diagnostics.Stopwatch]::StartNew(); $cap = $mid
+while ($capSw.ElapsedMilliseconds -lt 1500 -and -not ($cap.seq -gt $pre.seq -and $cap.lookCaptured)) { Start-Sleep -Milliseconds 15; $cap = State }
+$capMs = [int]$capSw.ElapsedMilliseconds + 150
 Drag-Relative 300 120 15
 Start-Sleep -Milliseconds 300
 $h = State   # still held: the pitch as looked
 Right-Up; Start-Sleep -Milliseconds 700
 $s = State
-Check ($mid.lookCaptured -and -not $s.lookCaptured -and $s.mouseMode -eq 'Visible') "right-hold captures the mouse to look; release frees it"
+$relSw = [System.Diagnostics.Stopwatch]::StartNew()
+while ($relSw.ElapsedMilliseconds -lt 1500 -and -not ($s.seq -gt $h.seq -and -not $s.lookCaptured -and $s.mouseMode -eq 'Visible')) { Start-Sleep -Milliseconds 15; $s = State }
+Log "right-hold diagnostics: 150 ms sample written at app $($mid.appMs) ms, look began at $($cap.lookBeganMs) ms (sample stale=$([double]$mid.appMs -lt [double]$cap.lookBeganMs)) captured=$($mid.lookCaptured); last long frame $($cap.lastHitchMs) ms at $($cap.lastHitchAtMs); fresh capture seen at $capMs ms (seq $($cap.seq)); release seen $([int]$relSw.ElapsedMilliseconds + 700) ms after (seq $($s.seq), captured=$($s.lookCaptured), mouse=$($s.mouseMode), focused=$($s.focused))"
+Check ($cap.seq -gt $pre.seq -and $cap.lookCaptured -and $s.seq -gt $h.seq -and -not $s.lookCaptured -and $s.mouseMode -eq 'Visible') "right-hold captures the mouse to look ($capMs ms); release frees it (captured=$($s.lookCaptured), mouse=$($s.mouseMode))"
 Check ($h.reverseH -and $h.reverseV -and ($h.yaw - $a.yaw) -gt 10 -and ($h.lookPitch - $a.lookPitch) -gt 3) "default (both reversed), real mouse right+down at UI $($h.uiScale): turns left and looks up (yaw $([math]::Round($a.yaw, 1)) -> $([math]::Round($h.yaw, 1)), pitch $([math]::Round($a.lookPitch, 1)) -> $([math]::Round($h.lookPitch, 1)) while held)"
 Check ($s.levelView -and [math]::Abs($s.lookPitch) -lt 0.05 -and [math]::Abs($s.yaw - $h.yaw) -lt 0.05) "real release: the view is level again 0.7 s later (pitch $([math]::Round($s.lookPitch, 2))), heading kept ($([math]::Round($s.yaw, 1)))"
 

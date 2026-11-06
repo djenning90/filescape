@@ -407,6 +407,13 @@ public partial class Main : Node3D
         if (_experimentOnly) return;
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
+        if (_now > TimeSpan.Zero && (now - _now).TotalMilliseconds > 50)
+        {
+            // TEST-03 diagnostics: the last long frame (the gap since the previous frame began), for outside probes.
+            _lastHitchMs = (now - _now).TotalMilliseconds;
+            _lastHitchAtMs = now.TotalMilliseconds;
+        }
+
         _now = _clock.Elapsed;
         DrainBatches();
         var places = _experience == Experience.Places;
@@ -772,6 +779,8 @@ public partial class Main : Node3D
 
     private readonly HeldActions _held = new();
     private string? _stateFile;
+    private long _stateSeq;
+    private double _lastHitchMs, _lastHitchAtMs, _lookBeganMs = -1;
     private TimeSpan _lastStateWrite;
     private bool _windowFocused = true;
     private Vector2 _flyStartMouse;
@@ -1122,7 +1131,7 @@ public partial class Main : Node3D
         var t = _rig.Target;
         var up = _rig.Camera.GlobalTransform.Basis.Y;
         return
-            System.FormattableString.Invariant($"{{\"mode\":\"{_rig.Mode}\",\"mouseMode\":\"{Input.MouseMode}\",\"focused\":{(_windowFocused ? "true" : "false")},\"modal\":{(ModalOpen ? "true" : "false")},\"dragging\":\"{_pressButton}\",") +
+            System.FormattableString.Invariant($"{{\"seq\":{_stateSeq},\"appMs\":{_clock.Elapsed.TotalMilliseconds:0},\"frameMs\":{_now.TotalMilliseconds:0},\"lookBeganMs\":{_lookBeganMs:0},\"lastHitchMs\":{_lastHitchMs:0},\"lastHitchAtMs\":{_lastHitchAtMs:0},\"mode\":\"{_rig.Mode}\",\"mouseMode\":\"{Input.MouseMode}\",\"focused\":{(_windowFocused ? "true" : "false")},\"modal\":{(ModalOpen ? "true" : "false")},\"dragging\":\"{_pressButton}\",") +
             System.FormattableString.Invariant($"\"pos\":[{p.X:0.###},{p.Y:0.###},{p.Z:0.###}],\"target\":[{t.X:0.###},{t.Y:0.###},{t.Z:0.###}],\"yaw\":{_rig.Yaw.Value:0.###},\"lookPitch\":{_rig.LookPitch.Value:0.###},\"up\":{up.Y:0.####},") +
             System.FormattableString.Invariant($"\"distance\":{_rig.Distance:0.###},\"flySpeed\":{_rig.FlySpeedWorldUnitsPerSecond:0.###},\"held\":[{string.Join(",", HeldActionNames.Select(h => $"\"{h}\""))}],") +
             System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
@@ -1137,6 +1146,8 @@ public partial class Main : Node3D
     {
         try
         {
+            // seq and appMs let an outside probe tell a fresh snapshot from one written before its input (TEST-03).
+            _stateSeq++;
             System.IO.File.WriteAllText(_stateFile!, StateJson());
         }
         catch (System.IO.IOException)

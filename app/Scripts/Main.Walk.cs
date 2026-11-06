@@ -457,6 +457,7 @@ public partial class Main
         if (_guided) EndGuide();
         _flyStartMouse = mousePosition;
         _placeLook = true;
+        _lookBeganMs = _clock.Elapsed.TotalMilliseconds; // TEST-03 diagnostics
         _leveling = null;
         _takeOffPitch = null;
         _pressButton = MouseButton.None;
