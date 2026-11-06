@@ -1,0 +1,15 @@
+[20:20:46.935] walk-aerial-limit probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[20:20:48.207] aerial display budget: 24 places (--test-max-islands)
+[20:20:49.102] PASS Go to path reaches C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Journeys\Coast\Harbour
+[20:20:50.621] PASS premise: breadth-first alone keeps 24 of 45 known folders and leaves Harbour out (depth 12)
+[20:20:53.363] aerial world: 24 places, 19 left out, focus shown True; chip: Aerial view · 24 known places, 12 not listed yet · 19 deeper folders not drawn · T over a place lands there · click one + G flies there
+[20:20:53.363] PASS the display budget holds (24 ≤ 24)
+[20:20:53.363] PASS the current place is in the aerial world
+[20:20:53.364] PASS so is the whole way down to it (12 places)
+[20:20:53.364] PASS and its own folders (3 of 3)
+[20:20:53.364] PASS the aerial world is drawn around you
+[20:20:53.399] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-06-followup/installed/aerial-limit-24/01-aerial-limit-focus-kept.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Journeys\Coast\Harbour selected=-
+[20:20:56.341] PASS T far over open space lands you safely, in Shared Library (There is no walkable ground below here (that is a distant view, outside this place), so you are landing at the arrival point.)
+[20:20:58.920] PASS after going back to Harbour the aerial view follows (24 places, focus shown True)
+[20:21:00.734] PASS and you land again on foot
+[20:21:00.736] done failures=0

@@ -1,0 +1,32 @@
+﻿PASS OS arrives on foot in Wayfarer (locomotion=Walking, feetY=1.6)
+PASS OS Up arrow walks off the terrace and down the stairs (7.8 m, feetY 0)
+PASS OS Left arrow turns in place (turned 74 deg)
+PASS OS Up+Right walks a curve (turned 110 deg, moved 4.3 m)
+PASS OS Space jumps and lands (jumps 0 -> 1)
+PASS OS A steps sideways without turning
+right-hold diagnostics: 150 ms sample written at app 13887 ms, look began at 13773 ms (sample stale=False) captured=True; last long frame 225 ms at 453; fresh capture seen at 154 ms (seq 85); release seen 710 ms after (seq 94, captured=False, mouse=Visible, focused=True)
+PASS OS right-hold captures the mouse to look (154 ms); release frees it (captured=False, mouse=Visible)
+PASS OS default (both reversed), real mouse right+down at UI 1: turns left and looks up (yaw -36 -> 0, pitch -6 -> 8.4 while held)
+PASS OS real release: the view is level again 0.7 s later (pitch 0), heading kept (0)
+PASS OS F4 opens Settings
+PASS OS after clicking the checkbox: right turns right, down still looks up (yaw 0 -> -36, pitch 0 -> 40.2)
+PASS OS the change is saved to the probe's own preferences file (C:\Users\David\AppData\Local\FileScape\evidence\2026-11-06-followup\installed\os-ui1\preferences.json)
+PASS OS default view: no Destinations drawer, no key; 7 gates named on screen
+PASS OS real J opens Destinations, real Esc closes it
+PASS OS real K shows and hides the key
+PASS OS T takes off (16.0 m up, looking down -35 deg, aerial world: 43 places)
+PASS OS real keys in flight: E +6.6 m, Q -7.0 m, W looking down moved 7.1 m level (-0.02 m)
+PASS OS T again lands on foot, view level again (feetY 0, pitch 0)
+PASS OS Alt-Tab while walking: focus lost, nothing held or captured
+PASS OS after returning, you stand still (no stuck key)
+PASS OS H shows hidden and system items
+PASS OS L opens Locations; the arrow keys do not walk while it is open
+PASS OS Esc closes Locations
+PASS OS typed 'shared' in Destinations and clicked the to-shared-library row (selected=to-shared-library)
+PASS OS G follows the junction to Shared Library (via link 29)
+PASS OS Backspace returns through it, with the link selected
+PASS OS after a relaunch the saved look direction is in effect (H usual, V reversed)
+PASS OS U from Pier arrives in Harbour (Harbour)
+real W held from Harbour: Coast@3.4s, Journeys@7.3s, Wayfarer@11.4s
+PASS OS holding the real W key went up Coast, Journeys, Wayfarer without turning (12.5 s)
+done failures=0

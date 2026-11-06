@@ -1,8 +1,55 @@
 # Implementation status
 
-Last updated: 2026-11-06, after the reliability/compact-places iteration (commits `3c838d7`…HEAD); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-06, after the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Correctness follow-up on build 8c18e8e3f107 (2026-11-06)
+
+A ChatGPT review independently confirmed the executable hash and the 217/220 Core test counts of `8c18e8e3f107`, and named three issues. The review's aerial-limit finding came through chat: absence from repository history did not mean it was done, and it was not done.
+
+Requirements: PROM-05, AERIAL-07, TEST-03, TEST-04. Decisions: AD-36..38. Evidence: `docs/evidence/2026-11-06-followup/`.
+
+**Build.** **`217a37f7ffa9`** (clean tree) is **installed** at `C:\Users\David\AppData\Local\FileScape\build\` (FileScape.exe and FileScape.console.exe). No FileScape was running when it was exported. The previous build `8c18e8e3f107` is kept as `previous-20261106-131840-516900`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Pin identity (PROM-05, AD-36) | **Demonstrated (Core).** `Notes` and `notes` under WSL and POSIX are separate pins through save, reload, prominence and unpin. Windows paths compare without case. `\\wsl$\`, distro-name case and a trailing separator are one folder. | 16 new tests (`ProminenceAndProjectTests`). Not exercised in the app: pinning two case-variant WSL folders by hand (the fixture has none). |
+| Aerial limit (AERIAL-07, AD-38) | **Demonstrated (Core and exported app).** The current place, its ancestry and its folders are kept under the budget. Past the budget, the aerial view is withheld and landing recovers in the place. | 3 Core tests: the current place is outside breadth-first (premise asserted), a wide current place, and the way down exceeding the budget. On the installed build at budget 24: 10/0, Harbour kept with 3/3 of its folders, a safe landing over open space. At budget 8: 11/0, the chip names the limit, T lands in Harbour. The old code's crash was not reproduced in the app: the old build lacks `--test-max-islands`. |
+| verify.sh exit handling (TEST-04, AD-37) | **Demonstrated (test doubles).** | `fs.sh check harness`: 14 paths, 12 failures counted with the right reason, 2 s (`checks/harness-selftest.txt`). |
+| Right-hold real-input failure (TEST-03) | **Instrument race reproduced.** The original occurrence is unconfirmed but consistent with it (KD-28). | Below. |
+| Shutdown | **Unchanged:** no hang reproduced on the tested routes. `FileScape.console.exe` is a demonstrated alternative launcher; the original cause remains provisional. | — |
+
+**The old harness, judged on the same test doubles:**
+- The real-input count could never pass: a clean result read as "0 1" failures.
+- It never read the exit code.
+- The recording was never judged.
+- A journey that exited 0 with an empty or assertion-free log passed. The `be3c673` full run reported planetoids as passing with 0 assertions.
+
+So the release tier's earlier "real OS input" lines were not evidence either way; the 29/0 results came from separate runs.
+
+**Right-hold investigation.** The original failure (`os-input/original-failure-ui1.txt`) was the first right-press of its session, and its check recorded no values.
+
+- **Repetition** (`righthold/`):
+  - 20 cycles at each UI scale;
+  - then 6 launches × 3 cycles at each scale, focusing on first presses;
+  - 76 cycles in all.
+- **Result:** the original condition (one sample 150 ms after the press) was false in 3 of the 76 cycles: twice on a first press and once on a third.
+- **Cause, from the state file's new timing fields** (two of the three cases; the first 40-cycle run predates the fields):
+  - the false sample was written *before the app began the look* (app 10313 < 10332 ms, 13279 < 13296 ms);
+  - no long frame was near the press (the last one over 50 ms was at start-up, about 0.46 s);
+  - the app writes its state every 150 ms or more, so a single sample 150 ms after the press can predate the app's reaction.
+- **Product failures** (no capture or release seen in a fresh snapshot within 1.5 s): 0 of 76.
+- **Fixed check:** waits for a snapshot written after the press and records its values. Real input then passed 29/0 at UI 1.0 and 1.25 on the staged build, and 29/0 at UI 1.0 on the installed build. Capture was seen at 154–159 ms.
+
+| Check on `217a37f7ffa9` (installed) | Result |
+|---|---|
+| Smoke tier | 86 s, 0 failing steps (Core tests: Windows 233 passed / 18 skipped, WSL 236 / 15; explore 29/0; hub → project 19/0) |
+| Aerial limit at budget 24 / 8 | 10/0, 11/0 |
+| Real OS input at UI 1.0 | 29/0 |
+| Harness self-test | all 14 paths as expected |
+
+Not run in this follow-up: the full and release tiers (by design; the brief asked for targeted evidence).
 
 ## Iteration: reliable operation, faster verification, intimate places, purposeful exploration (2026-11-06)
 
@@ -34,7 +81,7 @@ Requirements: SHUT-01/02, TEST-01, LOC-06, LIST-01..03, PROM-01..03, DEV-01..03,
 | Release tier failures | Places at 1.25 (fixed below), and real-input runs that failed in under a second because `verify.sh` did not copy the probe's helper script (instrument defect, fixed) |
 | Smoke tier on the installed build | 85 s, 0 failing steps (explore 29/0, hub → project 19/0) |
 | Real OS input on the installed build, UI 1.25 | 29/0 |
-| Real OS input on the installed build, UI 1.0 | 28/1 at first ("right-hold captures the mouse"), 29/0 on the rerun; the first failure is unconfirmed, possibly contention for the real mouse |
+| Real OS input on the installed build, UI 1.0 | 28/1 at first ("right-hold captures the mouse"), 29/0 on the rerun. Follow-up: an instrument sampling race reproduced 3 of 76 cycles; the original is unconfirmed but consistent (KD-28) |
 | Places at 1.25 after the probe fixes | 0 failures |
 | Planetoids | 9/0 |
 | Recording | 199 MB |
@@ -447,6 +494,12 @@ Other measurements:
 
   If vertical flight still "feels wrong", the next suspects are the vertical speed (0.8 × flight speed) and the take-off rise.
 - **KD-27 Not promoted:** build `4a7b9ce6fdf6` is staged, not installed (DJ's FileScape was running). Install by closing FileScape and running `tools/fs.sh export`.
+- **KD-28 Right-hold real-input check (open as intermittent, instrument).** The check read one state snapshot 150 ms after the right press, so it could see a snapshot written before the app reacted. This was reproduced 3 times in 76 cycles, each with the sample predating the app's look (where timed), and with no product failure in a fresh snapshot.
+  - **Original occurrence (2026-11-06):** it recorded no values, so its cause is unconfirmed, though consistent with this race.
+  - **Fix:** the check now waits up to 1.5 s for a fresh snapshot and logs its values. A future failure will therefore show which part failed.
+  - **Reopen as a product defect:** if a fresh snapshot ever fails to show the capture.
+- **KD-29 Aerial limit, not exercised:** a real namespace of more than 4,000 places in the app, and the old build's failure in the app (it has no small-budget switch). With a budget too small for the way down, the aerial view is unavailable in that place by design.
+- **KD-30 Pin identity:** NTFS per-directory case sensitivity is not detected (AD-36). Two case-variant WSL folders were not pinned by hand in the app.
 - **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
 
 ## Provisional decisions to confirm with DJ

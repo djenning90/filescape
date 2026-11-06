@@ -1,0 +1,23 @@
+﻿right-hold repetition: 20 cycles at UI 1
+ok cycle 1 : 150 ms sample seq 63 (pre 62, fresh=True) captured=True; fresh capture after 17 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 15 ms
+ok cycle 2 : 150 ms sample seq 73 (pre 72, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 3 : 150 ms sample seq 82 (pre 81, fresh=True) captured=True; fresh capture after 3 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 4 : 150 ms sample seq 91 (pre 90, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 5 : 150 ms sample seq 101 (pre 100, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 6 : 150 ms sample seq 110 (pre 109, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 7 : 150 ms sample seq 119 (pre 118, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 8 : 150 ms sample seq 129 (pre 128, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 9 : 150 ms sample seq 138 (pre 137, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 10 : 150 ms sample seq 148 (pre 147, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 11 : 150 ms sample seq 157 (pre 156, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 12 : 150 ms sample seq 166 (pre 165, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 13 : 150 ms sample seq 176 (pre 175, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 14 : 150 ms sample seq 185 (pre 184, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 15 : 150 ms sample seq 194 (pre 193, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 16 : 150 ms sample seq 204 (pre 203, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 17 : 150 ms sample seq 213 (pre 212, fresh=True) captured=True; fresh capture after 2 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 18 : 150 ms sample seq 222 (pre 221, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 19 : 150 ms sample seq 232 (pre 231, fresh=True) captured=True; fresh capture after 4 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 2 ms
+ok cycle 20 : 150 ms sample seq 241 (pre 240, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+summary: 20 cycles; the original check's condition false in 0; its 150 ms sample was stale (written before the press could be seen) in 0; product failures (no fresh capture or release within 1.5 s) 0; capture seen after max 17 ms, p95 4 ms
+PASS OS right-hold captures the mouse and release frees it in every one of 20 fresh-state cycles

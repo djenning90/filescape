@@ -1,0 +1,32 @@
+ok    clean                      pass 
+ok    assertion-fail             fail [1 failing assertion]
+ok    exit-nonzero               fail [exit 3]
+ok    timed-out                  fail [timed out]
+ok    missing                    fail [no result file]
+ok    empty                      fail [empty result file]
+ok    no-assertions              fail [no assertions]
+ok    missing-and-exit           fail [exit 1; no result file]
+ok    os-partial                 fail [exit 1]
+ok    rec-clean                  pass 
+ok    rec-exit                   fail [exit 2]
+ok    rec-timeout                fail [timed out]
+ok    rec-missing                fail [no video file]
+ok    rec-empty                  fail [empty video file]
+summary lines written by the harness:
+  clean                            0.0s  ok     probe            2 PASS  0 FAIL  0 SKIP
+  assertion-fail                   0.0s  FAILED probe            1 PASS  1 FAIL  0 SKIP  (1 failing assertion(s))
+      FAIL b
+  exit-nonzero                     0.0s  FAILED probe            2 PASS  0 FAIL  0 SKIP  (exit 3)
+  timed-out                        1.0s  FAILED probe            2 PASS  0 FAIL  0 SKIP  (timed out)
+  missing                          0.0s  FAILED probe            0 PASS  0 FAIL  0 SKIP  (no result file)
+  empty                            0.0s  FAILED probe            0 PASS  0 FAIL  0 SKIP  (empty result file)
+  no-assertions                    0.0s  FAILED probe            0 PASS  0 FAIL  0 SKIP  (no assertions in result file)
+  missing-and-exit                 0.0s  FAILED probe            0 PASS  0 FAIL  0 SKIP  (exit 1; no result file)
+  os-partial                       0.0s  FAILED real OS input    2 PASS  0 FAIL  0 SKIP  (exit 1)
+  rec-clean                        0.0s  ok     recording      12 bytes
+  rec-exit                         0.0s  FAILED recording      12 bytes  (exit 2)
+  rec-timeout                      1.0s  FAILED recording      4 bytes  (timed out)
+  rec-missing                      0.0s  FAILED recording      0 bytes  (no video file)
+  rec-empty                        0.0s  FAILED recording      0 bytes  (empty video file)
+failing steps counted: 12 (expected 12)
+verify harness self-test: all paths judged as expected

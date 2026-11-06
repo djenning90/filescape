@@ -1,0 +1,45 @@
+﻿right-hold repetition: 6 launch(es) x 3 cycles at UI 1.25
+NOTE cycle 1.1 : look began at app 10332 ms (pre snapshot 10147, 150 ms sample written 10313); last long frame 239 ms ending at 478;
+    150 ms sample seq 63 (pre 62, fresh=True) captured=False; fresh capture after 4 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 7 ms
+ok cycle 1.2 : look began at app 11895 ms (pre snapshot 11745, 150 ms sample written 12060); last long frame 239 ms ending at 478;
+    150 ms sample seq 74 (pre 72, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 1.3 : look began at app 13426 ms (pre snapshot 13358, 150 ms sample written 13524); last long frame 239 ms ending at 478;
+    150 ms sample seq 83 (pre 82, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 2.1 : look began at app 10229 ms (pre snapshot 10129, 150 ms sample written 10293); last long frame 218 ms ending at 457;
+    150 ms sample seq 63 (pre 62, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 3 ms
+ok cycle 2.2 : look began at app 11759 ms (pre snapshot 11576, 150 ms sample written 11908); last long frame 218 ms ending at 457;
+    150 ms sample seq 73 (pre 71, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 2 ms
+ok cycle 2.3 : look began at app 13256 ms (pre snapshot 13223, 150 ms sample written 13388); last long frame 218 ms ending at 457;
+    150 ms sample seq 82 (pre 81, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 3.1 : look began at app 10213 ms (pre snapshot 10014, 150 ms sample written 10346); last long frame 221 ms ending at 457;
+    150 ms sample seq 63 (pre 61, fresh=True) captured=True; fresh capture after 2 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 3.2 : look began at app 11728 ms (pre snapshot 11644, 150 ms sample written 11810); last long frame 221 ms ending at 457;
+    150 ms sample seq 72 (pre 71, fresh=True) captured=True; fresh capture after 2 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 3.3 : look began at app 13293 ms (pre snapshot 13125, 150 ms sample written 13297); last long frame 221 ms ending at 457;
+    150 ms sample seq 81 (pre 80, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 4.1 : look began at app 10205 ms (pre snapshot 10137, 150 ms sample written 10304); last long frame 217 ms ending at 456;
+    150 ms sample seq 63 (pre 62, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 2 ms
+ok cycle 4.2 : look began at app 11720 ms (pre snapshot 11586, 150 ms sample written 11752); last long frame 217 ms ending at 456;
+    150 ms sample seq 72 (pre 71, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 4.3 : look began at app 13234 ms (pre snapshot 13200, 150 ms sample written 13365); last long frame 217 ms ending at 456;
+    150 ms sample seq 82 (pre 81, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 2 ms
+ok cycle 5.1 : look began at app 10215 ms (pre snapshot 10182, 150 ms sample written 10346); last long frame 220 ms ending at 476;
+    150 ms sample seq 63 (pre 62, fresh=True) captured=True; fresh capture after 0 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 5.2 : look began at app 11714 ms (pre snapshot 11628, 150 ms sample written 11795); last long frame 220 ms ending at 476;
+    150 ms sample seq 72 (pre 71, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 5.3 : look began at app 13243 ms (pre snapshot 13060, 150 ms sample written 13393); last long frame 220 ms ending at 476;
+    150 ms sample seq 82 (pre 80, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+ok cycle 6.1 : look began at app 10179 ms (pre snapshot 10127, 150 ms sample written 10278); last long frame 221 ms ending at 456;
+    150 ms sample seq 63 (pre 62, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 1 ms
+ok cycle 6.2 : look began at app 11675 ms (pre snapshot 11591, 150 ms sample written 11742); last long frame 221 ms ending at 456;
+    150 ms sample seq 72 (pre 71, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 2 ms
+ok cycle 6.3 : look began at app 13174 ms (pre snapshot 13041, 150 ms sample written 13206); last long frame 221 ms ending at 456;
+    150 ms sample seq 81 (pre 80, fresh=True) captured=True; fresh capture after 1 ms; 700 ms sample fresh=True released=True mouse=Visible; fresh release after 0 ms
+first press: launch 1 : look began 185 ms after the pre-press snapshot; last long frame 239 ms ending at 478 (look began 10332)
+first press: launch 2 : look began 100 ms after the pre-press snapshot; last long frame 218 ms ending at 457 (look began 10229)
+first press: launch 3 : look began 199 ms after the pre-press snapshot; last long frame 221 ms ending at 457 (look began 10213)
+first press: launch 4 : look began 68 ms after the pre-press snapshot; last long frame 217 ms ending at 456 (look began 10205)
+first press: launch 5 : look began 33 ms after the pre-press snapshot; last long frame 220 ms ending at 476 (look began 10215)
+first press: launch 6 : look began 52 ms after the pre-press snapshot; last long frame 221 ms ending at 456 (look began 10179)
+summary: 18 cycles; the original check's condition false in 1; its 150 ms sample was stale (written before the press could be seen) in 0; product failures (no fresh capture or release within 1.5 s) 0; capture seen after max 4 ms, p95 4 ms
+PASS OS right-hold captures the mouse and release frees it in every one of 18 fresh-state cycles
