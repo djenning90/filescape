@@ -565,10 +565,15 @@ public partial class PlanetsProbe : ProbeBase
             var target = inView[^1];
             App.Selection.Select(target); // [direct] as a click in the list
             await Frames(4);
-            var shown = App.Signs.ShownAnchors.TryGetValue(-100_000 - target, out var at);
+            // One name per destination: on its pad when the pad is on screen, otherwise on its world.
+            var onPad = App.Signs.ShownAnchors.TryGetValue(target, out var padAt);
+            var onWorld = App.Signs.ShownAnchors.TryGetValue(-100_000 - target, out var worldAt);
+            var launcher = c.Launchers.First(l => l.TargetId == target);
+            var (padAnchor, _) = P.PadAnchor(launcher);
             var (worldCentre, radiusPx) = P.WorldOnScreen(target);
-            var gap = shown ? at.DistanceTo(worldCentre) - radiusPx * 1.15f : 999f;
-            Check(shown && gap <= 1f, F($"the selected world ({Tree[target].Name}) is named, its name pinned on the world (anchor {at.DistanceTo(worldCentre):0} px from its centre, radius {radiusPx:0} px)"));
+            var padGap = onPad && !P.Camera.IsPositionBehind(padAnchor) ? P.Camera.UnprojectPosition(padAnchor).DistanceTo(padAt) : 999f;
+            var worldGap = onWorld ? worldAt.DistanceTo(worldCentre) - radiusPx * 1.15f : 999f;
+            Check(onPad != onWorld && (padGap < 1f || worldGap <= 1f), F($"the selected destination ({Tree[target].Name}) is named once, pinned {(onPad ? $"on its pad ({padGap:0.00} px)" : $"on its world ({worldGap:0.0} px outside its disc)")}"));
             await Shot("labels-selected-wins");
             App.Selection.Select(-1);
         }

@@ -469,7 +469,7 @@ public partial class PlanetWorld
             var looked = Looked(centre);
             var focus = selected == b.FolderId || _hovered == b.FolderId;
             if (!focus && looked <= 0 && !OnOverlook) return;
-            if (!focus && padNamed.Contains(b.FolderId)) return; // its pad is named on screen already: one name per destination
+            if (padNamed.Contains(b.FolderId)) return; // its pad is named on screen already: one name per destination
             var detail = isParent ? "the way back" : FolderSummary.Gate(tree[b.FolderId], Listing.Of(tree[b.FolderId]));
             var color = PlanetArt.Palette(b.Comp.Theme).Accent.Lightened(0.35f);
             _signs.Add(new SignCandidate(-100_000 - b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, 60f * looked, FixedAnchor: true));

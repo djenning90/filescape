@@ -79,6 +79,7 @@ public partial class PlanetWorld
         _uniDistance = here.Body.Radius * 3f;
         _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * 2.6f, 30f, 3000f);
         _camera.Far = 30000f;
+        _warpFlash = 0.75f; // a soft flash, fading as you pull back from your world
         _s.Hud.SetPlanetsOverview(open: true);
         _audio.Launch();
         _s.Signs.Clear();
@@ -244,6 +245,8 @@ public partial class PlanetWorld
             if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * 0.9f * dt;
         }
 
+        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding != null ? Mathf.Clamp(_uniLanding.Value.T / 0.75f, 0, 1) : 0, dt * 1.6f);
+        _flash.Color = new Color(1f, 0.95f, 0.86f, Mathf.Clamp(_warpFlash * _warpFlash * 0.85f, 0, 0.85f));
         var ease = 1 - Mathf.Exp(-dt * 6f);
         _uniFocus = _uniFocus.Lerp(_uniFocusTarget, ease);
         _uniDistance = Mathf.Lerp(_uniDistance, _uniDistanceTarget, 1 - Mathf.Exp(-dt * 3.5f));
