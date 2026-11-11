@@ -4,6 +4,7 @@ using FileScape.Fixtures;
 //   FileScape.Fixtures create [parentDir]   creates a fixture (default parent: %TEMP%\FileScape-fixtures) and prints its manifest
 //   FileScape.Fixtures create-places [parent] creates the Places fixture (PLACE-*) and prints its roots
 //   FileScape.Fixtures create-walk [parent]   creates the walking-world fixture (links, identities, visibility)
+//   FileScape.Fixtures create-sky [parent]    creates a marked sky-<stamp>-<hex> holding the "Starter Sky" sample; prints its path
 //   FileScape.Fixtures delete <fixtureRoot>  deletes a fixture; refuses directories without the marker
 //   FileScape.Fixtures delete-all            deletes every marked fixture under the default parent
 switch (args.FirstOrDefault())
@@ -14,6 +15,9 @@ switch (args.FirstOrDefault())
         return 0;
     case "create-walk":
         Console.WriteLine(WalkFixture.Create(args.Length > 1 ? args[1] : null));
+        return 0;
+    case "create-sky":
+        Console.WriteLine(SkyFixture.Create(args.Length > 1 ? args[1] : null));
         return 0;
     case "create-places":
         var places = PlacesFixture.Create(args.Length > 1 ? args[1] : null);
@@ -27,6 +31,23 @@ switch (args.FirstOrDefault())
         Console.WriteLine($"Deleted {FixtureBuilder.DeleteAllUnderDefaultParent()} fixture(s) under {FixtureBuilder.DefaultParent}");
         return 0;
     default:
-        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | delete <fixtureRoot>");
+        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-places [parentDir] | create-sky [parentDir] | delete <fixtureRoot> | delete-all");
         return 2;
+}
+
+/// <summary>
+/// The Starter Sky fixture: an owned, marked directory (sky-&lt;stamp&gt;-&lt;hex&gt;) holding the curated sample written by
+/// <see cref="FileScape.Core.Samples.SampleSky"/>, so the planetary world can be tried without touching anyone's own folders.
+/// </summary>
+internal static class SkyFixture
+{
+    /// <summary>Creates the fixture under <paramref name="parent"/> (default: the fixtures parent) and returns the Starter Sky path.</summary>
+    public static string Create(string? parent)
+    {
+        parent ??= FixtureBuilder.DefaultParent;
+        var dir = Path.Combine(parent, "sky-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, FixtureBuilder.MarkerName), "FileScape Starter Sky fixture. Safe to delete.\n");
+        return FileScape.Core.Samples.SampleSky.Create(dir);
+    }
 }

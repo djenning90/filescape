@@ -8,4 +8,8 @@
          share (docs/windows-workflow.md). Run with: dotnet FileScape.Fixtures.dll -->
     <UseAppHost>false</UseAppHost>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- create-sky writes the Starter Sky sample (FileScape.Core.Samples.SampleSky). -->
+    <ProjectReference Include="..\FileScape.Core\FileScape.Core.csproj" />
+  </ItemGroup>
 </Project>
