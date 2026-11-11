@@ -258,7 +258,7 @@ public static class FixtureBuilder
         }
 
         var n = 0;
-        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*").Concat(Directory.GetDirectories(DefaultParent, "places-*")).Concat(Directory.GetDirectories(DefaultParent, "walk-*")))
+        foreach (var dir in Directory.GetDirectories(DefaultParent, "fixture-*").Concat(Directory.GetDirectories(DefaultParent, "places-*")).Concat(Directory.GetDirectories(DefaultParent, "walk-*")).Concat(Directory.GetDirectories(DefaultParent, "sky-*")))
         {
             if (File.Exists(Path.Combine(dir, MarkerName)))
             {
