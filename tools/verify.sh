@@ -89,6 +89,8 @@ if [[ "$TIER" != fast ]]; then
   # The planetary world (PLANET-10..16): the first minutes on the Starter Sky (the app's own sample of real files),
   # opening recorded by the test shell (nothing starts).
   journey planets-ui1.0 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # 2026-11-12 (DJ's playtest): launcher discovery on a crowded world, labels during a full camera turn, overview travel.
+  journey planets-flows planets-flows.log 300 --automate=planets-flows --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
@@ -107,6 +109,8 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
   # The same planetary system on the bounded real fixture: links, an empty room, and a WSL folder.
   journey planets-fixture planets-fixture.log 300 --automate=planets-fixture "--root=$W" --vis=planets --test-shell=record --ui-scale=1 "--wsl-root=${FILESCAPE_WSL_FIXTURE:-}" --tier=functional
+  # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home).
+  journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
 fi
 
