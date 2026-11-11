@@ -17,7 +17,7 @@ public sealed record PlanetParams
     /// <summary>Child launchers at most; further child folders become belt moons.</summary>
     public int MaxLaunchers { get; init; } = 28;
 
-    /// <summary>The first launcher ring's distance from the arrival point along the surface, metres (2026-11-12: launchers in rings round the arrival).</summary>
+    /// <summary>The first launcher ring's distance from the arrival point along the surface, metres (2026-11-11: launchers in rings round the arrival).</summary>
     public float RingFirst { get; init; } = 9f;
 
     /// <summary>Distance between launcher rings, metres.</summary>
@@ -390,7 +390,7 @@ public static class PlanetComposer
             var h = SeedOf(c.Node.Name, c.Id);
             var lift = p.SkyHeightMin + (p.SkyHeightMax - p.SkyHeightMin) * Frac(h, 2);
             var jitter = (Frac(h, 3) - 0.5f) * 4f;
-            // On the same bearing as its pad but further out (2026-11-12): the worlds stand round the horizon as a crown
+            // On the same bearing as its pad but further out (2026-11-11): the worlds stand round the horizon as a crown
             // you see from the arrival; walking towards one brings you to its pad on the ring.
             var padPolar = PlanetFrame.PolarOf(d);
             // Kept above the arrival's horizon as the chase camera sees it (eye ≈ 3.4 m), whole body and a margin.
@@ -481,7 +481,7 @@ public static class PlanetComposer
                 if (PlanetShape.Angle(d, z.Direction) * radius < z.Radius + r) return false;
             }
 
-            // The launcher rings are walking routes: nothing stands on them (2026-11-12 review).
+            // The launcher rings are walking routes: nothing stands on them (2026-11-11 review).
             var fromArrival = PlanetFrame.PolarOf(d) * radius;
             foreach (var ringDistance in ringDistances)
             {
@@ -630,7 +630,7 @@ public static class PlanetComposer
     private readonly record struct RingSlot(Vector3 Direction, float DistanceMetres, bool Parent);
 
     /// <summary>
-    /// Launchers in rings round the arrival meadow, read like a clock (2026-11-12, DJ's playtest: on the Ubuntu root
+    /// Launchers in rings round the arrival meadow, read like a clock (2026-11-11, DJ's playtest: on the Ubuntu root
     /// "home" took a while to find): child folders in name order, clockwise from straight ahead (12 o'clock) on the
     /// first ring, then the next ring out; the way back always at 6 o'clock on the first ring. Every pad is within a
     /// few rings of where you land, so a named launcher is found from the arrival without circling the planet.

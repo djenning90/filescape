@@ -435,6 +435,15 @@ public partial class Main : Node3D
             // The planetary world (AD-39) owns its camera, movement and signs; the session, HUD and state file stay shared.
             var blockedKeys = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null;
             _planets.Tick(delta, blockedKeys);
+            // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
+            // "You are in" empty, because the HUD was set before the root was listed). At most twice a second.
+            if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= TimeSpan.FromSeconds(0.5))
+            {
+                _planetHudTreeVersion = _tree.Version;
+                _planetHudAt = _now;
+                UpdatePlaceHud();
+            }
+
             FinishFrame(now);
             return;
         }
@@ -511,6 +520,9 @@ public partial class Main : Node3D
             UpdateStats(now);
         }
     }
+
+    private long _planetHudTreeVersion = -1;
+    private TimeSpan _planetHudAt = TimeSpan.Zero;
 
     private void DrainBatches()
     {

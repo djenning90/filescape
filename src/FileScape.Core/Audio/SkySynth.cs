@@ -866,7 +866,7 @@ public sealed class SkySynth
         {
             var drone = p.Pad != PadKind.Normal;
             // The augmented ending stretches bars 7–8 over 7–9: the harmony follows (V under the stretched approach, I under
-            // the last note), and a drone ends where the theme ends (2026-11-12 review).
+            // the last note), and a drone ends where the theme ends (2026-11-11 review).
             var chordBar = deck.Variation == ThemeVariation.AugmentedEnding && bar >= 6 ? (bar < 8 ? 6 : 7) : bar;
             chord = drone ? p.Progression[0] : ThemeChordAt(p, chordBar);
             holdSixteenths = drone ? Math.Min(32 - pos % 32, deck.ThemeBars * 16 - pos) : 16 - pos % 16;

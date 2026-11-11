@@ -1,8 +1,27 @@
 # Implementation status
 
-Last updated: 2026-11-11, after the planetary world (commits `4d7ea48`…HEAD); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-11 (later), after the second planets iteration from DJ's playtest (commits `1ba70a7`…HEAD); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Planets, second iteration from DJ's playtest (2026-11-11, later)
+
+DJ's playtest brief: launchers easy to find from arrival (home on the Ubuntu root took a while), labels that belong to what they name, no artificial horizon and smaller distant worlds, a Universe Sandbox–style overview with landing and return, livelier music with a returning melody, and samples to judge by ear. Requirements PLANET-19..23; decisions AD-44 (launcher rings), AD-45 (pinned names), AD-46 (overview), AD-42 amended (music). Playthrough: `docs/planets-playthrough.md` § Second iteration.
+
+**Codex's untested draft** was inspected before editing. Kept: the sky shader without the horizon band, fog off, SignLayer's fixed-anchor signs, the T key, the overview and distant-world hooks (rewritten). Replaced: the composer's 57° launcher band (ring layout instead), Label3D launcher names (2D signs pinned with a stem instead, so overlap and occlusion are handled in one place), the input draft and the overview file (rewritten; it did not compile).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Launchers on rings round the arrival, read like a clock; the way back at 6 o'clock; up to 28 pads, the rest as moons (PLANET-19) | **Demonstrated** | Core tests (Ubuntu-like root: 21 folders incl. home on rings; crowded world: no two worlds share a bearing); planets-flows: Constellations 28 pads on 3 rings; Ubuntu root (`\\wsl.localhost\Ubuntu-24.04\`): 21 launchers on 2 rings, **home 9 m from arrival, found by turning ~100° and walking 8.8 m**, prompt "Space · fly to home" |
+| Names pinned to pads/worlds; hidden when the planet blocks them; one name per destination; selected/pointed-at wins (PLANET-20) | **Demonstrated** | planets-flows: a 120-frame full camera turn, every shown name within 0.00 px of its anchor, none shown for an occluded pad, no overlaps, the selected destination named exactly once |
+| Sky without the artificial horizon or fog; distant folder worlds small and unnamed (PLANET-21) | **Demonstrated** (look: DJ to judge) | screenshots; up to 120 distant worlds at 320–880 m |
+| Overview (T): known hierarchy as nested 3D systems, listed / partial / unknown shown apart, visited rings, orbit/pan/zoom, select, zoom in, land via the navigator (history), Esc back to where you stood (PLANET-22) | **Demonstrated** | UniverseLayout tests (5); planets-flows: 62 worlds (51 listed, 11 unknown), click-select Star Archive\2025, Enter lands (history +1), Backspace back, T then Esc returns to the same spot |
+| Music at 108 BPM, an original 8-bar theme returning every 16 bars with variations; launch cues still on the beat (PLANET-23) | **Demonstrated** (by ear: DJ to judge) | SkySynth tests; samples `%LOCALAPPDATA%\FileScape\evidence\2026-11-11-planets-2\music\` (`before\`, `after\`, README.txt) |
+| Review | 17 confirmed findings fixed | adversarially verified review of the iteration (commit `7ce2658`) |
+
+**Checks:** FULLTIER_PLACEHOLDER
+
+**Open:** the feel of ring spacing on very small worlds and of the overview's camera speed are unknown until DJ plays; decorative objects untouched as asked; promotion into `build\` is still refused by Windows (KD-32), so the new build is staged, not installed.
 
 ## The planetary FileScape (2026-11-11, overnight)
 

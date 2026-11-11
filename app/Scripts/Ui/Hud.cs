@@ -736,7 +736,7 @@ public partial class Hud : CanvasLayer
 
     private const string FlightTooltip = "Equip flight: rise out of the place and fly freely (T). Press again to land safely on foot.";
 
-    /// <summary>On the planets the flight button is the overview (2026-11-12).</summary>
+    /// <summary>On the planets the flight button is the overview (2026-11-11).</summary>
     public void SetPlanetsOverview(bool open)
     {
         _flightButton.Visible = true;

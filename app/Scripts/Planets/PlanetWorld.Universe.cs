@@ -9,7 +9,7 @@ using Godot;
 namespace FileScape.App.Planets;
 
 /// <summary>
-/// The overview (PLANET-19, 2026-11-12; DJ: "a Universe Sandbox–style overview"): T (or the toolbar) zooms out from
+/// The overview (PLANET-19, 2026-11-11; DJ: "a Universe Sandbox–style overview"): T (or the toolbar) zooms out from
 /// where you stand to the whole known folder hierarchy in 3D, laid out as nested star systems
 /// (<see cref="UniverseLayout"/>): a folder's subfolders orbit it on one tilted ring. Listed folders are solid worlds,
 /// partly listed ones dimmer, folders known only by name are pale ghosts; folders you have visited this session wear a

@@ -89,7 +89,7 @@ if [[ "$TIER" != fast ]]; then
   # The planetary world (PLANET-10..16): the first minutes on the Starter Sky (the app's own sample of real files),
   # opening recorded by the test shell (nothing starts).
   journey planets-ui1.0 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
-  # 2026-11-12 (DJ's playtest): launcher discovery on a crowded world, labels during a full camera turn, overview travel.
+  # 2026-11-11 (DJ's playtest): launcher discovery on a crowded world, labels during a full camera turn, overview travel.
   journey planets-flows planets-flows.log 300 --automate=planets-flows --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
 fi
 

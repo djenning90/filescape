@@ -22,7 +22,7 @@ public enum Discovery
 public sealed record UniverseBody(int NodeId, int ParentId, Vector3 Position, float Radius, int Depth, Discovery Discovery, int HiddenChildren, Vector3 OrbitNormal, float OrbitRadius);
 
 /// <summary>
-/// The overview of the known folder hierarchy in 3D (PLANET-19, 2026-11-12; "Universe Sandbox–style"): every known
+/// The overview of the known folder hierarchy in 3D (PLANET-19, 2026-11-11; "Universe Sandbox–style"): every known
 /// folder is a world; a folder's subfolders orbit it on one tilted ring, so the hierarchy reads as nested star systems.
 /// Ring radii are found bottom-up so neighbours never overlap (a ring's circumference holds its children's extents), and
 /// each ring is tilted by a deterministic angle so the systems are not flat. Only what the tree already knows is laid

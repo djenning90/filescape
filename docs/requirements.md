@@ -278,7 +278,7 @@ A playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* w
 | PLANET-17 | Switching between Places and Planets (V or the toolbar) keeps the current folder, the selection and the history. | Journey: V to Places and back with the same folder, selection and history count; arrival beside the selected file. | **Demonstrated** |
 | PLANET-18 | Responsiveness: no hitch in flight; planet building off the main thread. | Journey on the Radeon 890M: flight frames p99 ≤ 17 ms; ground meshes made on worker threads and prefetched. | **Demonstrated** in the dev build (flight max 16.7 ms; walking p99 18 ms, rare spikes ≈ 110 ms at a warp) |
 
-## Planets, second iteration (PLANET-19..23, 2026-11-12, from DJ's playtest)
+## Planets, second iteration (PLANET-19..23, 2026-11-11, from DJ's playtest)
 
 | ID | Requirement | Acceptance | Status |
 |---|---|---|---|
@@ -286,7 +286,7 @@ A playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* w
 | PLANET-20 | Names belong visibly to what they name: pinned with a stem on the pad or world, updated every frame as the camera turns, hidden when the planet blocks the thing, one name per destination, and the selected, pointed-at or looked-at one wins overlaps. | A full camera turn (120 frames): every pad name on its pad (0.00 px), none named while hidden, no overlaps; the selected destination named once. | **Demonstrated** |
 | PLANET-21 | The sky has no artificial horizon; folder worlds further away are drawn smaller and are not named. | Sky shader without the horizon band; distant worlds (≤ 120, 320–880 m) unnamed. | Implemented (visual) |
 | PLANET-22 | An overview of the known hierarchy in 3D: orbit, pan, zoom; discovered vs not shown; select, zoom in, land there through the navigator (history, Backspace); exit back to where you stood. | Journey: 62 worlds (51 listed, 11 not listed yet), click selects (shared selection) and zooms, Enter lands on Star Archive/2025 (history +1), Backspace returns, Esc returns where you stood. | **Demonstrated** |
-| PLANET-23 | Livelier music with a recognizable melody that returns with variations; launch cues keep their musical timing; before/after samples. | SkySynth tests (108 BPM, theme returns 4 of 4 with ≥ 3 variations, effect latency ≤ 70 ms, grid alignment); WAVs in `%LOCALAPPDATA%\FileScape\evidence\2026-11-12-planets\music\`. | **Demonstrated** offline; judged by ear: unknown |
+| PLANET-23 | Livelier music with a recognizable melody that returns with variations; launch cues keep their musical timing; before/after samples. | SkySynth tests (108 BPM, theme returns 4 of 4 with ≥ 3 variations, effect latency ≤ 70 ms, grid alignment); WAVs in `%LOCALAPPDATA%\FileScape\evidence\2026-11-11-planets-2\music\`. | **Demonstrated** offline; judged by ear: unknown |
 
 ## Later (not in this prototype)
 

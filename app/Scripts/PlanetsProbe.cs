@@ -143,7 +143,7 @@ public partial class PlanetsProbe : ProbeBase
             P.ProbeStandOn(ov.Direction, ov.Top);
             await Seconds(1.6);
             Check(P.OnOverlook, "standing on the overlook");
-            // A destination counts as named when its pad or its world is (one name per destination, 2026-11-12).
+            // A destination counts as named when its pad or its world is (one name per destination, 2026-11-11).
             var named = comp.SkyBodies.Count(k => !k.InBelt && (App.Signs.ShownIds.Contains(k.TargetId) || App.Signs.ShownIds.Contains(-100_000 - k.TargetId)));
             Check(named >= Math.Min(3, comp.SkyBodies.Count(k => !k.InBelt)), $"from the overlook the destinations are named ({named} of {comp.SkyBodies.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Values.Take(8))}");
             await Shot("overlook");
@@ -409,7 +409,7 @@ public partial class PlanetsProbe : ProbeBase
 
     private static float Vector3Distance(NVector3 a, NVector3 b) => NVector3.Distance(a, b);
 
-    // ------------------------------------------------------------------ 2026-11-12: the three flows from DJ's playtest
+    // ------------------------------------------------------------------ 2026-11-11: the three flows from DJ's playtest
 
     private static string? Arg(string name) =>
         OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith($"--{name}=", StringComparison.Ordinal))?[(name.Length + 3)..];
@@ -474,6 +474,8 @@ public partial class PlanetsProbe : ProbeBase
         var on = P.FocusNodeId == pad.TargetId;
         Check(on && walked < ring * 1.6f + 3f, F($"walked straight onto it: {walked:0.0} m for a pad {ring:0.0} m away (no circling)"));
         Check(P.PromptText.Contains(Tree[pad.TargetId].Name, StringComparison.Ordinal) && P.PromptText.StartsWith("Space", StringComparison.Ordinal), $"the prompt says what Space does: \"{P.PromptText}\"");
+        var hereName = Tree.DisplayName(App.Navigator.Current);
+        Check(App.Hud.BreadcrumbNames.LastOrDefault() == hereName, $"the breadcrumb says where you are: {string.Join(" › ", App.Hud.BreadcrumbNames)} (expected …{hereName})");
         await Shot($"discover-on-{name.Replace(' ', '-').ToLowerInvariant()}");
         if (launch) await Fly(Godot.Key.Space, pad.TargetId, Tree.DisplayName(pad.TargetId));
         return on;

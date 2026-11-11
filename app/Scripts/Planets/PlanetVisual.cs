@@ -145,7 +145,7 @@ public partial class PlanetVisual : Node3D
     }
 
     /// <summary>
-    /// The launcher rings drawn on the ground (2026-11-12): a circle of small lights through the pads of each ring round
+    /// The launcher rings drawn on the ground (2026-11-11): a circle of small lights through the pads of each ring round
     /// the arrival, so the ring reads as one route you can follow from pad to pad; the way back's pad has its own colour.
     /// </summary>
     private void BuildRingLights(PlanetSurface surf)

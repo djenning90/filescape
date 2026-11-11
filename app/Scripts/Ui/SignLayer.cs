@@ -186,7 +186,7 @@ public partial class SignLayer : Control
             var r = p.Rect;
             if (p.C.FixedAnchor)
             {
-                // A pinned sign (planets, 2026-11-12): a short stem and a dot on the very thing it names, so it is plain
+                // A pinned sign (planets, 2026-11-11): a short stem and a dot on the very thing it names, so it is plain
                 // which pad or world it belongs to, wherever the camera turns.
                 var foot = new Vector2(Mathf.Clamp(p.AnchorScreen.X, r.Position.X + 4, r.End.X - 4), r.Position.Y > p.AnchorScreen.Y ? r.Position.Y : r.End.Y);
                 DrawLine(foot, p.AnchorScreen, p.C.Color with { A = 0.8f }, 1.5f, true);

@@ -35,7 +35,7 @@ Keys: W/A/S/D or arrows run (Shift: faster) · Space jump / twirl / launch · E 
 back · U up · G fly to the selected world · J the planet's list · L locations · Ctrl+L go to path · V Places/Planets ·
 right-drag turn the camera · mouse wheel camera distance · Home back to the arrival meadow · N sound on/off · F1 help.
 
-## Second iteration (2026-11-12): three flows to try
+## Second iteration (2026-11-11): three flows to try
 
 **1. Find a named launcher (try the Ubuntu root).** Ctrl+L, type `\\wsl.localhost\Ubuntu-24.04\` (or open it from
 Locations). You land in the middle of a ring of flower launchers: names go in order like a clock, the way back is
@@ -54,6 +54,6 @@ gold beacon is you. Right-drag orbits, middle-drag or WASD pans, the wheel zooms
 **T** again and then **Esc**: you glide back down to exactly where you stood.
 
 **Music.** Listen for the tune that opens a world (on Hearth it starts A–C–F, rising) and comes back every 16 bars,
-each time a little different. Samples to compare: `%LOCALAPPDATA%\FileScape\evidence\2026-11-12-planets\music\`
+each time a little different. Samples to compare: `%LOCALAPPDATA%\FileScape\evidence\2026-11-11-planets-2\music\`
 (`before\` and `after\`, and `after\hearth-theme-returns-89s.wav` for three returns of the theme; README.txt says what
 to listen for).

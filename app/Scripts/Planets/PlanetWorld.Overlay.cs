@@ -401,7 +401,7 @@ public partial class PlanetWorld
     private readonly List<SignCandidate> _signs = [];
 
     /// <summary>
-    /// Names on screen (2026-11-12, after DJ's playtest), every frame so they stay attached as the camera turns:
+    /// Names on screen (2026-11-11, after DJ's playtest), every frame so they stay attached as the camera turns:
     /// <list type="bullet">
     /// <item>every launcher pad within reach is named, pinned above its pad with a stem (which pad is plain);</item>
     /// <item>a world in the sky is named when you look at it, point at it or select it, pinned above the body;</item>

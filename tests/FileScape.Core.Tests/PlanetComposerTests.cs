@@ -126,7 +126,7 @@ public class PlanetComposerTests
         c.Shape.FlatSpots.Should().Contain(f => f.Direction == Vector3.UnitY && f.Radius >= 3.5f, "the arrival meadow is flat");
 
         // Landmark straight ahead, 35–45° from the pole; the overlook beside it.
-        // 2026-11-12: the landmark stands ahead beyond the launcher rings (at least 40°).
+        // 2026-11-11: the landmark stands ahead beyond the launcher rings (at least 40°).
         Deg(PlanetFrame.PolarOf(c.Landmark.Direction)).Should().BeGreaterThanOrEqualTo(39.9f);
         var outerRing = c.Launchers.Max(l => c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY));
         c.Surface.SurfaceDistance(c.Landmark.Direction, Vector3.UnitY).Should().BeGreaterThan(outerRing + P.PadRadius + c.Landmark.Radius);
@@ -398,7 +398,7 @@ public class PlanetComposerTests
 
     /// <summary>No two solids overlap (touching is allowed); no item stands in a pad, the arrival meadow or the overlook.</summary>
     /// <summary>
-    /// The launcher clock (2026-11-12): every child launcher on a ring round the arrival (first ring at RingFirst, then
+    /// The launcher clock (2026-11-11): every child launcher on a ring round the arrival (first ring at RingFirst, then
     /// every RingGap), in name order clockwise from straight ahead, ring by ring; the way back at 6 o'clock.
     /// </summary>
     private static void ShouldBeAClock(PlanetComposition c)
@@ -430,7 +430,7 @@ public class PlanetComposerTests
     [Fact]
     public void An_ubuntu_like_root_puts_every_folder_on_rings_round_the_arrival_home_included()
     {
-        // DJ's playtest (2026-11-12): on the Ubuntu root, home took a while to find. A Linux root's folders (and its
+        // DJ's playtest (2026-11-11): on the Ubuntu root, home took a while to find. A Linux root's folders (and its
         // usr-merge links) all get a pad within three rings of the arrival, in name order like a clock.
         var names = new[] { "bin", "boot", "dev", "etc", "home", "lib", "lib64", "lost+found", "media", "mnt", "opt", "proc", "root", "run", "sbin", "snap", "srv", "sys", "tmp", "usr", "var", "init" };
         var spec = new Spec("/");
