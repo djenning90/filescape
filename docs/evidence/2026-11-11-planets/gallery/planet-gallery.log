@@ -1,0 +1,47 @@
+triangles: showcase planet (r 34 m, subdivisions 5) 20480
+triangles: small planet (r 10 m, subdivisions 4) 5120
+triangles: file Document 1368, pile 3672
+triangles: file Image 1350, pile 3806
+triangles: file Audio 878, pile 2394
+triangles: file Video 1338, pile 3770
+triangles: file Archive 1128, pile 3144
+triangles: file Code 1400, pile 3960
+triangles: file Executable 820, pile 2220
+triangles: file Data 420, pile 1020
+triangles: file Other 1508, pile 4188
+triangles: launcher pad 1376, core 324, petals 5 x 216
+triangles: overlook 2832, stepping stone 128
+triangles: landmark Hearth 2388
+triangles: landmark Meadow 3410
+triangles: landmark Workshop 2622
+triangles: landmark Library 3776
+triangles: landmark Chime 2120
+triangles: landmark Theatre 1868
+triangles: landmark Vault 3272
+triangles: landmark Crystal 529
+triangles: landmark Wild 2659
+triangles: landmark Quiet 2560
+triangles: landmark Veiled 1572
+triangles: decoration Tree (Hearth/Workshop/Library/Chime) 554/700/208/554
+triangles: decoration Rock (Hearth/Workshop/Library/Chime) 120/120/360/240
+triangles: decoration Flower (Hearth/Workshop/Library/Chime) 1464/1464/732/464
+triangles: decoration Grass (Hearth/Workshop/Library/Chime) 45/45/63/45
+triangles: decoration Mushroom (Hearth/Workshop/Library/Chime) 584/584/292/584
+triangles: decoration Crystal (Hearth/Workshop/Library/Chime) 60/60/90/60
+triangles: decoration Lamp (Hearth/Workshop/Library/Chime) 252/108/310/252
+triangles: avatar 2886 + scarf ribbon 40 (dynamic)
+normals replaced (non-finite or zero): 0
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\01-wide.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\02-from-the-surface.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\03-files-left.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\04-files-right.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\05-piles.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\06-launcher-overlook.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\07-avatar-run.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\08-avatar-portrait.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\09-avatar-twirl.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\10-avatar-windup.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\11-avatar-flight.png
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\12-planets-sheet.png (Meadow, Workshop, Library, Chime, Theatre, Vault, Crystal, Wild, Quiet, Veiled)
+screenshot C:\Users\David\AppData\Local\Temp\planet-gallery\13-landmarks-sheet.png (Meadow, Workshop, Library, Chime, Theatre, Vault, Crystal, Wild, Quiet, Veiled)
+done

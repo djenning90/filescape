@@ -132,6 +132,8 @@ public partial class Main : Node3D
             return;
         }
 
+        if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
+
         _testListDelayMs = args.TestListDelayMs ?? 0;
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
