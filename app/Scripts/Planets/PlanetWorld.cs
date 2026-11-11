@@ -1,3 +1,4 @@
+using FileScape.App.Places;
 using FileScape.App.Visual;
 using FileScape.Core.Interaction;
 using FileScape.Core.Model;
@@ -33,7 +34,7 @@ public partial class PlanetWorld : Node3D
     private Camera3D _camera = null!;
     private AvatarRig _avatar = null!;
     private SkyAudio _audio = null!;
-    private Godot.Environment _environment = null!;
+    private readonly Dictionary<PlanetTheme, Godot.Environment> _environments = [];
     private WorldEnvironment? _worldEnv;
     private DirectionalLight3D? _sun;
     private Godot.Environment? _savedEnvironment;
@@ -81,7 +82,6 @@ public partial class PlanetWorld : Node3D
         AddChild(_avatar);
         _audio = new SkyAudio { Name = "SkyAudio" };
         AddChild(_audio);
-        _environment = new Godot.Environment();
         BuildOverlay();
         BuildTravelFx();
     }
@@ -94,6 +94,7 @@ public partial class PlanetWorld : Node3D
         _worldEnv = world;
         _sun = sun;
         _savedEnvironment = world.Environment;
+        _savedShadow = (sun.ShadowBlur, sun.ShadowNormalBias, sun.DirectionalShadowMaxDistance);
         _active = true;
         Visible = true;
         _camera.Current = true;
@@ -122,8 +123,14 @@ public partial class PlanetWorld : Node3D
         _s.Signs.Clear();
         _overlay.Visible = false;
         if (_worldEnv != null && _savedEnvironment != null) _worldEnv.Environment = _savedEnvironment;
-        if (_sun != null) _sun.Visible = true;
+        if (_sun != null)
+        {
+            _sun.Visible = true;
+            (_sun.ShadowBlur, _sun.ShadowNormalBias, _sun.DirectionalShadowMaxDistance) = _savedShadow;
+        }
     }
+
+    private (float Blur, float NormalBias, float MaxDistance) _savedShadow = (1f, 1f, 160f);
 
     public void ApplyQuality(Quality q)
     {
@@ -230,55 +237,109 @@ public partial class PlanetWorld : Node3D
         _audio.SetTheme(comp.Theme);
         if (arriveFrom != -2)
         {
-            var (up, facing) = arriveFrom >= 0 ? comp.ArrivalFor(arriveFrom) : (comp.ArrivalDirection, comp.ArrivalFacing);
+            var (up, facing) = arriveFrom >= 0 ? comp.ArrivalFor(arriveFrom) : comp.Arrival;
             _walker.Teleport(comp.Surface, up, facing);
         }
 
         UpdateDestinations();
     }
 
+    /// <summary>Built planet visuals kept for a while after you leave (going back and forth reuses them; LRU, keyed by what they show).</summary>
+    private readonly List<(string Key, PlanetVisual Visual)> _visualCache = [];
+    private const int VisualCacheSize = 10;
+
+    public double LastBuildMs { get; private set; }
+
+    private static string VisualKey(Body b, bool full) => $"{b.FolderId}:{b.Comp.Signature}:{(full ? 1 : 0)}";
+
+    private PlanetVisual TakeOrBuild(FsTree tree, Body body, bool full)
+    {
+        var key = VisualKey(body, full);
+        var i = _visualCache.FindIndex(e => e.Key == key);
+        if (i >= 0)
+        {
+            var v = _visualCache[i].Visual;
+            _visualCache.RemoveAt(i);
+            return v;
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var built = new PlanetVisual(tree, body.Comp, _quality, full) { Name = key };
+        LastBuildMs = sw.Elapsed.TotalMilliseconds;
+        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms ({built.BuildTimes})");
+        return built;
+    }
+
     private void BuildFull(FsTree tree, Body body)
     {
-        foreach (var child in body.Node.GetChildren()) child.QueueFree();
-        body.Visual = new PlanetVisual(tree, body.Comp, _quality, full: true);
+        if (body.Full && body.Visual != null) return;
+        if (body.Visual != null) Release(body);
+        body.Visual = TakeOrBuild(tree, body, full: true);
         body.Node.AddChild(body.Visual);
         body.Full = true;
     }
 
     private void BuildPreview(FsTree tree, Body body)
     {
-        body.Visual = new PlanetVisual(tree, body.Comp, _quality, full: false);
+        body.Visual = TakeOrBuild(tree, body, full: false);
         body.Node.AddChild(body.Visual);
         body.Full = false;
     }
 
+    /// <summary>Detaches a body's visual into the cache (or frees it when the cache is full).</summary>
+    private void Release(Body b)
+    {
+        if (b.Visual == null || !GodotObject.IsInstanceValid(b.Visual)) return;
+        b.Visual.GetParent()?.RemoveChild(b.Visual);
+        _visualCache.Add((VisualKey(b, b.Full), b.Visual));
+        while (_visualCache.Count > VisualCacheSize)
+        {
+            _visualCache[0].Visual.QueueFree();
+            _visualCache.RemoveAt(0);
+        }
+
+        b.Visual = null;
+    }
+
     private void FreeBody(Body b)
     {
+        Release(b);
         if (GodotObject.IsInstanceValid(b.Node)) b.Node.QueueFree();
+    }
+
+    /// <summary>
+    /// Standing on a launcher pad, the world it leads to is built in full ahead of the launch (the cost is paid while you
+    /// stand, not in the release frame), so the flight starts smoothly.
+    /// </summary>
+    private void Prepare(int targetId)
+    {
+        if (_s.Tree is not { } tree) return;
+        if (_children.TryGetValue(targetId, out var b) && !b.Full) BuildFull(tree, b);
+        else if (_parent != null && _parent.FolderId == targetId && !_parent.Full) BuildFull(tree, _parent);
     }
 
     /// <summary>Children as previews at their sky placements; the parent at the inverse of this planet's placement in it.</summary>
     private void BuildNeighbours(FsTree tree, Body? keep)
     {
         if (_current == null) return;
-        foreach (var sky in _current.Comp.Sky)
+        foreach (var sky in _current.Comp.SkyBodies)
         {
-            if (sky.InBelt || sky.IsParent || sky.NodeId < 0 || !tree.Contains(sky.NodeId)) continue;
-            if (!tree[sky.NodeId].IsDirectory) continue;
+            if (sky.InBelt || sky.IsParent || sky.TargetId < 0 || !tree.Contains(sky.TargetId)) continue;
+            if (!tree[sky.TargetId].IsDirectory) continue;
             Body body;
-            if (keep != null && keep.FolderId == sky.NodeId)
+            if (keep != null && keep.FolderId == sky.TargetId)
             {
                 body = keep; // the planet you came up from, still in full detail, where it already is
             }
             else
             {
-                body = new Body { FolderId = sky.NodeId, Comp = Compose(tree, sky.NodeId), Node = new Node3D { Name = $"Child-{sky.NodeId}" } };
+                body = new Body { FolderId = sky.TargetId, Comp = Compose(tree, sky.TargetId), Node = new Node3D { Name = $"Child-{sky.TargetId}" } };
                 AddChild(body.Node);
                 BuildPreview(tree, body);
             }
 
             body.Node.Transform = ChildPlacement(_current.Comp, sky, body.Comp);
-            _children[sky.NodeId] = body;
+            _children[sky.TargetId] = body;
         }
 
         var parentId = tree[_current.FolderId].ParentId;
@@ -297,7 +358,7 @@ public partial class PlanetWorld : Node3D
             }
 
             var pcomp = body.Comp;
-            var mine = pcomp.Sky.FirstOrDefault(k => k.NodeId == _current.FolderId && !k.InBelt);
+            var mine = pcomp.SkyBodies.FirstOrDefault(k => k.TargetId == _current.FolderId && !k.InBelt);
             body.Node.Transform = mine != null
                 ? ChildPlacement(pcomp, mine, _current.Comp).AffineInverse()
                 : DefaultParentPlacement(_current.Comp, pcomp);
@@ -310,7 +371,7 @@ public partial class PlanetWorld : Node3D
     /// radius look like its preview radius, turned so its arrival meadow faces back towards the parent at 45° (so on
     /// arrival the parent hangs above the horizon behind you, not straight overhead).
     /// </summary>
-    public static Transform3D ChildPlacement(PlanetComposition parent, PlanetSkyBody sky, PlanetComposition child)
+    public static Transform3D ChildPlacement(PlanetComposition parent, SkyBody sky, PlanetComposition child)
     {
         var c = Gd(sky.Position);
         var toParent = (-c).Normalized();
@@ -326,7 +387,7 @@ public partial class PlanetWorld : Node3D
     /// <summary>A parent we have no sky position for (it does not list us yet): large and behind the arrival meadow.</summary>
     private static Transform3D DefaultParentPlacement(PlanetComposition current, PlanetComposition parent)
     {
-        var dir = Gd(NVector3.Normalize(current.ArrivalDirection * 0.55f - current.ArrivalFacing)) ;
+        var dir = Gd(NVector3.Normalize(current.Arrival.Up * 0.55f - current.Arrival.Facing)) ;
         var scale = 2.2f;
         var dist = current.Shape.Radius + parent.Shape.Radius * scale + 60f;
         return new Transform3D(Basis.Identity.Scaled(new Godot.Vector3(scale, scale, scale)), dir * dist);
@@ -364,7 +425,7 @@ public partial class PlanetWorld : Node3D
         var up = target;
         var (a, _) = PlanetShape.Tangents(up);
         // Step back along the line from the arrival meadow, so you face it with the meadow behind you.
-        var away = _current.Comp.ArrivalDirection - up * NVector3.Dot(_current.Comp.ArrivalDirection, up);
+        var away = _current.Comp.Arrival.Up - up * NVector3.Dot(_current.Comp.Arrival.Up, up);
         away = away.LengthSquared() > 1e-6f ? NVector3.Normalize(away) : a;
         var standOff = (1.6f + size * 0.6f) / surf.Radius;
         var stand = NVector3.Normalize(up * MathF.Cos(standOff) + away * MathF.Sin(standOff));
@@ -378,8 +439,13 @@ public partial class PlanetWorld : Node3D
     {
         if (_worldEnv == null) return;
         var pal = PlanetArt.Palette(theme);
-        PlanetArt.ConfigureEnvironment(_environment, pal, _quality == Quality.High);
-        _worldEnv.Environment = _environment;
+        if (!_environments.TryGetValue(theme, out var env))
+        {
+            _environments[theme] = env = PlanetArt.SkyEnvironment(pal);
+        }
+
+        env.SsaoEnabled = _quality == Quality.High && env.SsaoEnabled;
+        _worldEnv.Environment = env;
         if (_sun != null)
         {
             _sun.Visible = true;
@@ -387,6 +453,10 @@ public partial class PlanetWorld : Node3D
             _sun.LightEnergy = 1.15f;
             _sun.RotationDegrees = new Godot.Vector3(-38, 35, 0);
             _sun.ShadowEnabled = _quality == Quality.High;
+            // A small world needs a short, fine shadow range (the flat world's 160 m made blocky shadows on the ground).
+            _sun.DirectionalShadowMaxDistance = 48;
+            _sun.ShadowBlur = 1.6f;
+            _sun.ShadowNormalBias = 1.4f;
         }
     }
 

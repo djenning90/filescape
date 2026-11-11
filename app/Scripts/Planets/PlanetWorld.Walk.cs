@@ -1,3 +1,4 @@
+using FileScape.App.Places;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -16,7 +17,7 @@ public partial class PlanetWorld
     /// <summary>The camera's up turns towards the local up at most this fast (research E4: 90°/s cap, eased).</summary>
     public const float CameraRollCapDegreesPerSecond = 90f;
 
-    private Godot.Vector3 _camPos, _camUp = Godot.Vector3.Up, _camFwd = Godot.Vector3.Forward;
+    private Godot.Vector3 _camPos, _camUp = Godot.Vector3.Up, _camFwd = Godot.Vector3.Forward, _camLook;
     private float _camPitchDegrees = 18f, _camDistance = 7.2f, _sinceOrbitSeconds = 99f;
     private float _overlook01;
     private bool _jumpQueued;
@@ -39,6 +40,7 @@ public partial class PlanetWorld
         if (_current == null) return;
         if (_hop != null)
         {
+            _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * 1.6f);
             UpdateHop(dt);
             return;
         }
@@ -52,8 +54,8 @@ public partial class PlanetWorld
             fwd = Axis(InputBindings.Back, InputBindings.Forward);
             strafe = Axis(InputBindings.Left, InputBindings.Right) + Axis(InputBindings.TurnLeft, InputBindings.TurnRight);
             strafe = Mathf.Clamp(strafe, -1, 1);
-            run = Input.IsActionPressed(InputBindings.Fast);
-            jumpHeld = Input.IsActionPressed(InputBindings.Jump);
+            run = Godot.Input.IsActionPressed(InputBindings.Fast);
+            jumpHeld = Godot.Input.IsActionPressed(InputBindings.Jump);
         }
 
         var jump = _jumpQueued && !blockedKeys;
@@ -119,7 +121,7 @@ public partial class PlanetWorld
     private bool _overlookNoted;
 
     private static float Axis(string negative, string positive) =>
-        (Input.IsActionPressed(positive) ? 1f : 0f) - (Input.IsActionPressed(negative) ? 1f : 0f);
+        (Godot.Input.IsActionPressed(positive) ? 1f : 0f) - (Godot.Input.IsActionPressed(negative) ? 1f : 0f);
 
     /// <summary>The traveller's pose from the walker: feet on the ground, up along the local up, facing where it runs.</summary>
     private void PoseAvatar(float dt, float windUp = 0, bool hover = false)
@@ -130,15 +132,7 @@ public partial class PlanetWorld
         _avatarUp = up;
         _avatar.Scale = Godot.Vector3.One;
         _avatar.SetPose(feet, up, Gd(_walker.Facing));
-        var speed = _walker.Velocity.Length();
-        _avatar.Animate(dt, new AvatarState
-        {
-            Speed = speed,
-            Grounded = _walker.Grounded,
-            VerticalSpeed = _walker.VerticalVelocity.Value,
-            WindUp01 = windUp,
-            Flying = false,
-        });
+        _avatar.Drive(dt, _walker.Velocity.Length(), _walker.Grounded && !hover, _walker.VerticalVelocity.Value, windUp);
     }
 
     /// <summary>
@@ -185,7 +179,15 @@ public partial class PlanetWorld
         if (desired.Length() < minR) desired = dir * minR;
         _camPos = _camPos.Lerp(desired, 1 - MathF.Exp(-7.5f * dt));
         var look = target;
-        if (lookAt is { } la) look = target.Lerp(la, 0.35f);
+        if (lookAt is { } la)
+        {
+            // Wind-up: look past the traveller towards where it is going; it stays low in the frame, the world above it.
+            var toward = (la - target).Normalized();
+            look = target + toward * 5f;
+        }
+        // The point looked at is smoothed too, so the view never turns in one frame (launch, landing, a hop's end).
+        _camLook = _camLook.Lerp(look, 1 - MathF.Exp(-12f * dt));
+        look = _camPos + KeepInFrame(_camPos, _camLook - _camPos, feet + up * 0.6f, 18f);
         if (_camBlend > 0)
         {
             // Just landed: blend from the flight camera to the walking one (no cut, research E5).
@@ -202,26 +204,61 @@ public partial class PlanetWorld
         _camera.Fov = Mathf.Lerp(_camera.Fov, 62f, 1 - MathF.Exp(-4f * dt));
     }
 
-    /// <summary>The camera in flight: behind and above the traveller, scaled with it, turning to frame the target.</summary>
+    /// <summary>
+    /// The camera in flight: it travels with the traveller (an offset from it, eased towards behind-and-above along the
+    /// direction of travel, scaled with it), so the traveller stays steady on screen however fast it goes, and it turns
+    /// to frame the target as it nears.
+    /// </summary>
     private void FlightCamera(Godot.Vector3 pos, Godot.Vector3 up, Godot.Vector3 fwd, float scale, float u, Transfer tr, float dt, bool warp = false)
     {
         var side = fwd.Cross(up);
         if (side.LengthSquared() < 1e-4f) side = _camera.GlobalBasis.X;
-        var camUpVec = up;
+        if (!_flightCamStarted)
+        {
+            _flightCamStarted = true;
+            _camOffset = _camPos - pos;
+            _lookOffset = _camLook - pos;
+        }
+
         var back = warp ? 12f : 9f;
-        var desired = pos - fwd * (back * scale) + camUpVec * (3.2f * scale);
-        if (warp) desired = pos + tr.FromUp.Cross(Godot.Vector3.Right).Normalized() * 0.01f + (tr.Built ? tr.ToUp * 9f + Gd(tr.LandFacing) * 6f : tr.FromUp * -6f + _camFwd * -9f);
-        _camPos = _camPos.Lerp(desired, 1 - MathF.Exp(-9f * dt));
-        var look = pos + fwd * (6f * scale);
-        if (tr.Target != null) look = look.Lerp(tr.Target.Node.GlobalPosition, Smooth(u) * 0.5f);
-        _camUp = _camUp.Slerp(camUpVec, 1 - MathF.Exp(-5f * dt)).Normalized();
-        var lookDir = (look - _camPos);
+        var desired = -fwd * (back * scale) + up * (3.2f * scale);
+        if (warp) desired = tr.Built ? tr.ToUp * 9f + Gd(tr.LandFacing) * 6f : -tr.FromUp * 6f - _camFwd * 9f;
+        _camOffset = _camOffset.Lerp(desired, 1 - MathF.Exp(-3.5f * dt));
+        _camPos = pos + _camOffset;
+        var lookWant = fwd * (6f * scale);
+        if (tr.Target != null) lookWant = lookWant.Lerp(tr.Target.Node.GlobalPosition - pos, Smooth(u) * 0.5f);
+        _lookOffset = _lookOffset.Lerp(lookWant, 1 - MathF.Exp(-4f * dt));
+        _camLook = pos + _lookOffset;
+        _camUp = _camUp.Slerp(up, 1 - MathF.Exp(-5f * dt)).Normalized();
+        var lookDir = _camLook - _camPos;
         if (lookDir.LengthSquared() < 1e-6f) lookDir = fwd;
+        lookDir = KeepInFrame(_camPos, lookDir, pos + up * (0.6f * scale), 16f);
         if (MathF.Abs(lookDir.Normalized().Dot(_camUp)) > 0.995f) _camUp = side.Normalized();
         _camera.LookAtFromPosition(_camPos, _camPos + lookDir, _camUp);
         _camera.Fov = 62f + 12f * Mathf.Sin(Mathf.Clamp(u, 0, 1) * Mathf.Pi);
         _camFwd = fwd;
     }
+
+    /// <summary>
+    /// Turns a view direction just enough that <paramref name="subject"/> stays within <paramref name="maxDegrees"/> of
+    /// the centre (the traveller never leaves the frame, whatever the camera is easing towards).
+    /// </summary>
+    private static Godot.Vector3 KeepInFrame(Godot.Vector3 camPos, Godot.Vector3 lookDir, Godot.Vector3 subject, float maxDegrees)
+    {
+        var d = lookDir.Normalized();
+        var to = subject - camPos;
+        if (to.LengthSquared() < 1e-6f) return d;
+        to = to.Normalized();
+        var ang = d.AngleTo(to);
+        var max = Mathf.DegToRad(maxDegrees);
+        if (ang <= max) return d;
+        var axis = d.Cross(to);
+        if (axis.LengthSquared() < 1e-10f) return d;
+        return d.Rotated(axis.Normalized(), ang - max).Normalized();
+    }
+
+    private bool _flightCamStarted;
+    private Godot.Vector3 _camOffset, _lookOffset;
 
     /// <summary>Puts the camera straight into its walking pose (arrival, switching worlds).</summary>
     private void SnapCamera()
@@ -235,7 +272,9 @@ public partial class PlanetWorld
         var target = feet + up * 1.15f;
         _camPos = target - _camFwd * (MathF.Cos(pitch) * _camDistance) + up * (MathF.Sin(pitch) * _camDistance);
         _camera.LookAtFromPosition(_camPos, target, _camUp);
+        _camLook = target;
         _camBlend = 0;
+        _overlook01 = 0;
         PoseAvatar(0);
     }
 
@@ -272,7 +311,7 @@ public partial class PlanetWorld
         facing = facing.LengthSquared() > 1e-5f ? NVector3.Normalize(facing) : h.Facing;
         var feet = Gd(surf.PointAt(dir, height));
         _avatar.SetPose(feet, Gd(dir), Gd(facing));
-        _avatar.Animate(dt, new AvatarState { Speed = 6, Grounded = false, VerticalSpeed = (1 - 2 * u) * 6 });
+        _avatar.Drive(dt, 6f, false, (1 - 2 * u) * 6f);
         _walker.Teleport(surf, dir, facing);
         UpdateCamera(dt, lookAt: null, moving: true);
         if (u >= 1)

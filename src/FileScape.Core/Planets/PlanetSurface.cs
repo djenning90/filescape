@@ -79,24 +79,55 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
     }
 
     /// <summary>Terrain height above <see cref="Radius"/> at a unit direction, metres (smooth, |h| ≤ <see cref="HillAmplitude"/>).</summary>
+    /// <remarks>
+    /// Evaluated per vertex and per walker step, so the cheap test comes first: a hill or flat spot whose influence cannot
+    /// reach this direction is skipped by one dot product against a precomputed cosine (2026-11-11: ground meshes took
+    /// 60–140 ms to build before this).
+    /// </remarks>
     public float HeightAt(Vector3 up)
     {
         if (HillAmplitude <= 0) return 0;
+        var cache = Cache;
         var h = 0f;
-        foreach (var (c, w, a) in Hills)
+        foreach (var (c, w, a, cosCut) in cache.Hills)
         {
-            var ang = Angle(up, c) / w;
+            var d = Vector3.Dot(up, c);
+            if (d < cosCut) continue; // beyond 3.2 widths: exp(−10) is nothing
+            var ang = MathF.Acos(Math.Clamp(d, -1f, 1f)) / w;
             h += a * MathF.Exp(-ang * ang);
         }
 
+        if (h == 0) return 0;
         var mask = 1f;
-        foreach (var (d, r) in FlatSpots)
+        foreach (var (dir, r, cosInner, cosOuter) in cache.Flats)
         {
-            var s = Angle(up, d) * Radius;
-            mask = MathF.Min(mask, SmoothStep(r, r + 3.5f, s));
+            var d = Vector3.Dot(up, dir);
+            if (d < cosOuter) continue;
+            if (d >= cosInner) return 0; // inside a flat spot
+            var sMetres = MathF.Acos(Math.Clamp(d, -1f, 1f)) * Radius;
+            mask = MathF.Min(mask, SmoothStep(r, r + FlatFadeMetres, sMetres));
         }
 
         return Math.Clamp(h, -HillAmplitude, HillAmplitude) * mask;
+    }
+
+    /// <summary>How far beyond a flat spot's radius the hills fade back in, metres.</summary>
+    public const float FlatFadeMetres = 3.5f;
+
+    private sealed record ShapeCache(object FlatSource, (Vector3 C, float W, float A, float CosCut)[] Hills, (Vector3 Dir, float R, float CosInner, float CosOuter)[] Flats);
+
+    private ShapeCache? _cache;
+
+    /// <summary>Hills and flat spots with their cut-off cosines, rebuilt if <see cref="FlatSpots"/> is replaced (a record <c>with</c> copies fields).</summary>
+    private ShapeCache Cache
+    {
+        get
+        {
+            if (_cache != null && ReferenceEquals(_cache.FlatSource, FlatSpots)) return _cache;
+            var hills = Hills.Select(hh => (hh.Centre, hh.WidthRadians, hh.Amplitude, MathF.Cos(MathF.Min(MathF.PI, hh.WidthRadians * 3.2f)))).ToArray();
+            var flats = FlatSpots.Select(f => (f.Direction, f.Radius, MathF.Cos(MathF.Min(MathF.PI, f.Radius / Radius)), MathF.Cos(MathF.Min(MathF.PI, (f.Radius + FlatFadeMetres) / Radius)))).ToArray();
+            return _cache = new ShapeCache(FlatSpots, hills, flats);
+        }
     }
 
     /// <summary>Distance from the centre to the ground at a unit direction, metres.</summary>

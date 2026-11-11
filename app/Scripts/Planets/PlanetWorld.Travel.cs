@@ -1,3 +1,4 @@
+using FileScape.App.Places;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Planets;
@@ -90,6 +91,7 @@ public partial class PlanetWorld
 
         // Backspace, U, the breadcrumb, Destinations, Go to path: the same launch, from where you stand.
         _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = false };
+        Prepare(change.To); // build it now, at the start of the wind-up (the camera is still), not in the release frame
         _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds * 0.8f, maxShiftSeconds: 0.09f);
         _phase = Phase.WindUp;
         _audio.WindUp(_transfer.WindUp);
@@ -107,6 +109,7 @@ public partial class PlanetWorld
         }
 
         tr.T += dt;
+        _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * 1.6f);
         switch (_phase)
         {
             case Phase.WindUp:
@@ -120,7 +123,8 @@ public partial class PlanetWorld
                 }
 
                 PoseAvatar(dt, windUp: k);
-                UpdateCamera(dt, lookAt: TargetCentreForCamera(tr), extraBack: 1.5f * k, extraUp: 1.2f * k);
+                TurnCameraTowards(TargetCentreForCamera(tr), dt);
+                UpdateCamera(dt, lookAt: TargetCentreForCamera(tr), extraBack: 1.5f * k, extraUp: 0.6f * k);
                 if (k >= 1 && !tr.Released)
                 {
                     tr.Released = true;
@@ -156,6 +160,23 @@ public partial class PlanetWorld
                 UpdateWarp(tree, tr, dt);
                 break;
         }
+    }
+
+    /// <summary>
+    /// The wind-up turns the camera to look where you are going (the destination ahead, you in front of the lens), so the
+    /// launch carries you away from the camera instead of past it.
+    /// </summary>
+    private void TurnCameraTowards(Godot.Vector3? target, float dt)
+    {
+        if (target is not { } t) return;
+        var up = Gd(_walker.Up);
+        var to = t - Gd(_walker.Feet);
+        to -= up * to.Dot(up);
+        if (to.LengthSquared() < 1e-4f) return;
+        to = to.Normalized();
+        var ang = _camFwd.SignedAngleTo(to, up);
+        _camFwd = _camFwd.Rotated(up, ang * (1 - MathF.Exp(-9f * dt))).Normalized();
+        _sinceOrbitSeconds = 0;
     }
 
     private bool IsParentTarget(FsTree tree, int id) => _current != null && tree.Contains(_current.FolderId) && tree[_current.FolderId].ParentId == id;
@@ -196,6 +217,7 @@ public partial class PlanetWorld
         Transfers++;
         if (body == null || _current == null)
         {
+            _flightCamStarted = false;
             _phase = Phase.Warping;
             tr.From = Gd(_walker.Feet);
             tr.FromUp = Gd(_walker.Up);
@@ -210,7 +232,7 @@ public partial class PlanetWorld
         }
 
         tr.Target = body;
-        var (landUp, landFacing) = tr.ArriveFrom >= 0 ? body.Comp.ArrivalFor(tr.ArriveFrom) : (body.Comp.ArrivalDirection, body.Comp.ArrivalFacing);
+        var (landUp, landFacing) = tr.ArriveFrom >= 0 ? body.Comp.ArrivalFor(tr.ArriveFrom) : body.Comp.Arrival;
         tr.LandUp = landUp;
         tr.LandFacing = landFacing;
         var place = body.Node.Transform;
@@ -228,6 +250,7 @@ public partial class PlanetWorld
         tr.MaxSpeed = 0;
         MaxFrameCameraStepInFlight = 0;
         _phase = Phase.Flying;
+        _flightCamStarted = false;
         _flightTrail.Begin(tr.From);
         Mark("flight");
     }
@@ -269,6 +292,7 @@ public partial class PlanetWorld
         var old = _current;
         // The camera and its smoothing state, in the new frame (the scale is undone too).
         _camPos = inv * _camPos;
+        _camLook = inv * _camLook;
         _camUp = (inv.Basis * _camUp).Normalized();
         _camFwd = (inv.Basis * _camFwd).Normalized();
         var camAfter = inv * camBefore;
@@ -284,9 +308,12 @@ public partial class PlanetWorld
         var facing = look - up * NVector3.Dot(look, up);
         facing = facing.LengthSquared() > 0.01f ? NVector3.Normalize(facing) : tr.LandFacing;
         _walker.Teleport(body.Comp.Surface, up, facing);
-        LastLandingUpError = Mathf.RadToDeg(Gd(up).AngleTo(_avatarUp.Normalized()));
         _avatar.Scale = Godot.Vector3.One;
         _avatar.Land(impact: 8f);
+        var flightUp = (inv.Basis * tr.ToUp).Normalized();
+        PoseAvatar(0); // the traveller stands where it touched down in this same frame (no stale pose: no cut)
+        LastLandingUpError = Mathf.RadToDeg(Gd(up).AngleTo(flightUp));
+        _overlook01 = 0;
         _flightTrail.End();
         _audio.Land(8f);
         _audio.Arrive();
@@ -326,8 +353,8 @@ public partial class PlanetWorld
                 // At the brightest moment the new world is built at the origin; you come down onto it from above.
                 var target = tr.Change?.To ?? tr.LaunchTarget;
                 BuildCurrent(tree, target, tr.ArriveFrom);
-                tr.LandUp = _current!.Comp.ArrivalDirection;
-                tr.LandFacing = _current.Comp.ArrivalFacing;
+                tr.LandUp = _current!.Comp.Arrival.Up;
+                tr.LandFacing = _current.Comp.Arrival.Facing;
                 tr.To = Gd(_current.Comp.Surface.PointAt(tr.LandUp));
                 tr.ToUp = Gd(tr.LandUp);
                 tr.From = tr.To + tr.ToUp * 70f;
@@ -356,6 +383,8 @@ public partial class PlanetWorld
             LastFlightSeconds = WarpRiseSeconds + tr.T;
             _walker.Teleport(_current!.Comp.Surface, tr.LandUp, tr.LandFacing);
             _avatar.Land(impact: 9f);
+            PoseAvatar(0);
+            _overlook01 = 0;
             _flightTrail.End();
             _audio.Land(9f);
             _audio.Arrive();
@@ -390,6 +419,6 @@ public partial class PlanetWorld
     public void ReturnToArrival()
     {
         if (_current == null || Busy) return;
-        StartHop(_current.Comp.ArrivalDirection, _current.Comp.ArrivalFacing, -1);
+        StartHop(_current.Comp.Arrival.Up, _current.Comp.Arrival.Facing, -1);
     }
 }

@@ -1,3 +1,4 @@
+using FileScape.App.Places;
 using FileScape.App.Ui;
 using FileScape.App.Visual;
 using FileScape.Core.Interaction;
@@ -183,7 +184,8 @@ public partial class PlanetWorld
         var c = _current.Comp;
         var world = PlanetText.WorldName(c.Theme);
         var parts = new List<string> { world, _s.Summary(folderId) };
-        if (c.OmittedFiles > 0) parts.Add($"{c.ShownFiles:N0} files stand here, {c.OmittedFiles:N0} more in piles (J lists them all)");
+        var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
+        if (piled > 0) parts.Add($"{c.Items.Count(i => i.Kind != PlanetItemKind.Pile):N0} stand here, {piled:N0} more in piles (J lists them all)");
         if (c.State is ListingState.Partial) parts.Add("partly listed");
         if (Listing.IsUnknown(c.State)) parts.Add(Listing.Describe(c.State));
         _titleDetail.Text = (lead != null ? lead + " · " : "") + string.Join("  ·  ", parts.Where(p => p.Length > 0));

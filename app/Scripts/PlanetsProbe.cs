@@ -1,3 +1,4 @@
+using FileScape.App.Places;
 using FileScape.App.Planets;
 using FileScape.Core.Interaction;
 using FileScape.Core.Model;
@@ -30,6 +31,8 @@ public partial class PlanetsProbe : ProbeBase
     private Vector2 _lastAvatarScreen = new(float.NaN, float.NaN);
     private float _maxLandingScreenJump, _maxFlightScreenJump;
     private string _lastPhase = "";
+    private float _maxFlightJumpAt;
+    private int _flightLogLines;
 
     public PlanetsProbe(Main main, string outDir, string mode) : base(main, outDir, mode)
     {
@@ -52,7 +55,17 @@ public partial class PlanetsProbe : ProbeBase
         {
             var jump = screen.DistanceTo(_lastAvatarScreen) / size.Y;
             if (_lastPhase == "Flying" && phase == "Walking") _maxLandingScreenJump = MathF.Max(_maxLandingScreenJump, jump);
-            if (phase == "Flying" && _lastPhase == "Flying") _maxFlightScreenJump = MathF.Max(_maxFlightScreenJump, jump);
+            if (phase == "Flying" && _lastPhase == "Flying" && jump > _maxFlightScreenJump)
+            {
+                _maxFlightScreenJump = jump;
+                _maxFlightJumpAt = P.FlightProgress;
+            }
+        }
+
+        if (phase == "Flying" && P.FlightProgress < 0.12f && _flightLogLines < 40)
+        {
+            _flightLogLines++;
+            Log(F($"flight u={P.FlightProgress:0.000} dt={delta * 1000:0.0} ms avatar screen=({screen.X:0},{screen.Y:0}) camera→avatar {cam.GlobalPosition.DistanceTo(at):0.0} m scale {P.Avatar.Scale.X:0.00}"));
         }
 
         _lastAvatarScreen = screen;
@@ -84,18 +97,18 @@ public partial class PlanetsProbe : ProbeBase
         _recording = true;
         var root = App.Navigator.Current;
         var comp = P.Composition!;
-        Log(F($"arrived: {Tree.FullPath(root)} theme={comp.Theme} radius={comp.Shape.Radius:0.0} m items={comp.Items.Count} launchers={comp.Launchers.Count} sky={comp.Sky.Count}"));
+        Log(F($"arrived: {Tree.FullPath(root)} theme={comp.Theme} radius={comp.Shape.Radius:0.0} m items={comp.Items.Count} launchers={comp.Launchers.Count} sky={comp.SkyBodies.Count}"));
         Check(P.TitleText == Tree.DisplayName(root), $"the title card introduces the world: \"{P.TitleText}\"");
         await Seconds(0.6);
         var inView = P.WorldsInView();
         Check(inView.Count >= 1, $"a destination is in view from the arrival (E1): {string.Join(", ", inView.Select(i => Tree[i].Name))}");
-        Check(App.Signs.ShownText.Any(t => inView.Any(i => t.Contains(Tree[i].Name.Length > 10 ? Tree[i].Name[..8] : Tree[i].Name, StringComparison.OrdinalIgnoreCase))), $"and named in the sky: {string.Join(" | ", App.Signs.ShownText.Take(6))}");
+        Check(App.Signs.ShownText.Values.Any(t => inView.Any(i => t.Contains(Tree[i].Name.Length > 10 ? Tree[i].Name[..8] : Tree[i].Name, StringComparison.OrdinalIgnoreCase))), $"and named in the sky: {string.Join(" | ", App.Signs.ShownText.Values.Take(6))}");
         await Shot("arrival-starter-sky");
 
         // Walking: camera-relative, round the curve; feet stay on the ground; the camera's roll stays capped.
         var start = P.Walker.Feet;
-        await Hold(1.6, Key.W);
-        await Hold(0.9, Key.W, Key.D);
+        await Hold(1.6, Godot.Key.W);
+        await Hold(0.9, Godot.Key.W, Godot.Key.D);
         await Seconds(0.3);
         var walked = Vector3Distance(start, P.Walker.Feet);
         var r = P.Walker.Feet.Length() - comp.Shape.GroundRadius(P.Walker.Up) - P.Walker.Height.Value;
@@ -105,13 +118,13 @@ public partial class PlanetsProbe : ProbeBase
         // Jump, then a second press in the air: one deliberate boost (twirl), higher than a single jump.
         var air0 = P.Walker.AirJumps;
         var apex = 0f;
-        Key1(Key.Space, true);
+        Key1(Godot.Key.Space, true);
         await Seconds(0.3);
-        Key1(Key.Space, false);
+        Key1(Godot.Key.Space, false);
         await Frames(2);
-        Key1(Key.Space, true);
+        Key1(Godot.Key.Space, true);
         for (var i = 0; i < 90; i++) { await Frames(1); apex = MathF.Max(apex, P.Walker.Height.Value); }
-        Key1(Key.Space, false);
+        Key1(Godot.Key.Space, false);
         await Until(() => P.Walker.Grounded, 3);
         Check(P.Walker.AirJumps == air0 + 1 && apex > 2.2f, F($"jump and twirl: one air boost, apex {apex:0.00} m (a single jump peaks ≈ 1.2 m)"));
         await Shot("after-twirl");
@@ -122,8 +135,8 @@ public partial class PlanetsProbe : ProbeBase
             P.ProbeStandOn(ov.Direction, ov.Top);
             await Seconds(1.6);
             Check(P.OnOverlook, "standing on the overlook");
-            var named = comp.Sky.Count(k => !k.InBelt && App.Signs.ShownIds.Contains(k.NodeId));
-            Check(named >= Math.Min(3, comp.Sky.Count(k => !k.InBelt)), $"from the overlook the worlds are named ({named} of {comp.Sky.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Take(8))}");
+            var named = comp.SkyBodies.Count(k => !k.InBelt && App.Signs.ShownIds.Contains(k.TargetId));
+            Check(named >= Math.Min(3, comp.SkyBodies.Count(k => !k.InBelt)), $"from the overlook the worlds are named ({named} of {comp.SkyBodies.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Values.Take(8))}");
             await Shot("overlook");
         }
 
@@ -135,7 +148,7 @@ public partial class PlanetsProbe : ProbeBase
         await Frames(4);
         Check(P.FocusNodeId == garden && P.PromptText.Contains("fly to Garden Photos", StringComparison.Ordinal), $"on the launcher, the prompt says what Space does: \"{P.PromptText}\"");
         await Shot("on-the-launcher");
-        await Fly(Key.Space, garden, "Garden Photos");
+        await Fly(Godot.Key.Space, garden, "Garden Photos");
         Check(P.Composition!.Theme == PlanetTheme.Meadow, $"Garden Photos is a picture meadow ({P.Composition.Theme})");
         await Shot("landed-garden-photos");
 
@@ -151,7 +164,7 @@ public partial class PlanetsProbe : ProbeBase
             await Until(() => P.ThumbnailsShown > 0, 6);
             Check(P.ThumbnailsShown > 0, $"the easels show the real pictures ({P.ThumbnailsShown})");
             await Shot("inspect-picture");
-            await Key(Key.Enter);
+            await Key(Godot.Key.Enter);
             await Frames(5);
             Check(App.LastShellMessage?.Contains(Tree.FullPath(pic.NodeId), StringComparison.Ordinal) == true, $"Enter opens it with Windows: {App.LastShellMessage}");
         }
@@ -159,12 +172,12 @@ public partial class PlanetsProbe : ProbeBase
         // Switch worlds: the same folder, selection and history in Places, and back.
         var sel = App.Selection.Selected;
         var history = App.Navigator.History.Count;
-        await Key(Key.V);
+        await Key(Godot.Key.V);
         await Until(() => App.Experience == Experience.Places && App.Place != null && !App.InTransition, 8);
         await Seconds(0.6);
         Check(App.Experience == Experience.Places && App.Navigator.Current == garden && App.Selection.Selected == sel && App.Navigator.History.Count == history, $"V: Places shows the same folder ({Tree[App.Navigator.Current].Name}), selection ({(sel >= 0 ? Tree[sel].Name : "-")}) and history ({App.Navigator.History.Count})");
         await Shot("switched-to-places");
-        await Key(Key.V);
+        await Key(Godot.Key.V);
         await WaitSettled();
         await Seconds(0.5);
         var near = pic != null ? PlanetShape.Angle(P.Walker.Up, pic.Direction) * P.Composition.Shape.Radius : 0;
@@ -172,7 +185,7 @@ public partial class PlanetsProbe : ProbeBase
         await Shot("switched-back");
 
         // Return: Backspace flies back up; you land beside the world you left.
-        await Fly(Key.Backspace, root, Tree.DisplayName(root));
+        await Fly(Godot.Key.Backspace, root, Tree.DisplayName(root));
         var gl = P.Composition.Launchers.FirstOrDefault(l => l.TargetId == garden);
         var besides = gl != null ? PlanetShape.Angle(P.Walker.Up, gl.Direction) * P.Composition.Shape.Radius : 99;
         Check(besides < 5f, F($"back home beside the Garden Photos launcher ({besides:0.0} m)"));
@@ -199,14 +212,14 @@ public partial class PlanetsProbe : ProbeBase
             var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
             Check(files >= 1000 && shown <= 64 && shown + piled == files, $"Star Archive: {files:N0} files, {shown} stand as objects and {piled:N0} are in {c.Items.Count(i => i.Kind == PlanetItemKind.Pile)} piles");
             await Shot("archive-piles");
-            await Key(Key.J);
+            await Key(Godot.Key.J);
             await Frames(4);
             Check(P.ListOpen && P.ListCount >= files, $"J lists every world and file here ({P.ListCount:N0})");
             await TypeText("readings-0042");
             await Frames(4);
             Check(P.ListCount >= 1, $"typing filters the list ({P.ListCount} for \"readings-0042\")");
             await Shot("archive-list");
-            await Key(Key.Escape);
+            await Key(Godot.Key.Escape);
         }
 
         // The empty moon, the workshop and the music box (through the list, the direct route).
@@ -225,7 +238,7 @@ public partial class PlanetsProbe : ProbeBase
             await Until(() => P.PreviewHasText, 5);
             Check(P.PreviewHasText, "the workshop's README reads as text in the preview");
             await Shot("workshop-readme");
-            await Key(Key.Escape);
+            await Key(Godot.Key.Escape);
         }
 
         await VisitByPath(root, "Music Box", w =>
@@ -241,8 +254,8 @@ public partial class PlanetsProbe : ProbeBase
             await Seconds(0.8);
             Check(P.PreviewPlaying, $"looking closer at {Tree[song.NodeId].Name} plays it");
             await Shot("music-box");
-            await Key(Key.Escape);
-            await Hold(1.2, Key.W);
+            await Key(Godot.Key.Escape);
+            await Hold(1.2, Godot.Key.W);
             Log($"bell flowers rung while walking: {P.Audio.ChimeCount - chimes}");
         }
 
@@ -262,16 +275,16 @@ public partial class PlanetsProbe : ProbeBase
         Check(App.Navigator.Current == expected && P.Composition?.FolderId == expected && P.Transfers == before + 1, $"{key}: flew to {name}");
         Check(P.LastWindUpSeconds is > 0.25 and < 0.55, F($"a visible wind-up first: {P.LastWindUpSeconds:0.00} s (0.4 s, aligned to the beat ±0.09 s)"));
         Check(P.LastFlightSeconds is >= 1.2 and <= 2.7, F($"a brisk crossing: {P.LastFlightSeconds:0.00} s"));
-        Check(_maxLandingScreenJump < 0.04f, F($"the landing does not cut: the traveller moves {_maxLandingScreenJump * 100:0.0} % of the screen height in the landing frame (flight frames ≤ {_maxFlightScreenJump * 100:0.0} %)"));
+        Check(_maxLandingScreenJump < 0.04f, F($"the landing does not cut: the traveller moves {_maxLandingScreenJump * 100:0.0} % of the screen height in the landing frame (flight frames ≤ {_maxFlightScreenJump * 100:0.0} %, the largest at {_maxFlightJumpAt:0.00} of the way)"));
         Check(P.Walker.Grounded, "landed on foot");
     }
 
     private async Task GoToPath(string path)
     {
-        await KeyCombo(Key.L, ctrl: true);
+        await KeyCombo(Godot.Key.L, ctrl: true);
         await Frames(3);
         await TypeText(path);
-        await Key(Key.Enter);
+        await Key(Godot.Key.Enter);
         await Until(() => P.Busy, 6);
         await Until(() => !P.Busy, 10);
     }
@@ -302,7 +315,7 @@ public partial class PlanetsProbe : ProbeBase
         _recording = true;
         var root = App.Navigator.Current;
         var c = P.Composition!;
-        Log(F($"fixture root {Tree.FullPath(root)}: theme {c.Theme}, {c.Items.Count} objects, {c.Launchers.Count} launchers ({c.Launchers.Count(l => l.Kind == PlanetLauncherKind.Link)} links), {c.Sky.Count} in the sky"));
+        Log(F($"fixture root {Tree.FullPath(root)}: theme {c.Theme}, {c.Items.Count} objects, {c.Launchers.Count} launchers ({c.Launchers.Count(l => l.IsLink)} links), {c.SkyBodies.Count} in the sky"));
         await Shot("fixture-arrival");
         var photos = Child(root, "Photos");
         if (photos >= 0 && c.Launchers.Any(l => l.TargetId == photos))
@@ -310,12 +323,12 @@ public partial class PlanetsProbe : ProbeBase
             P.Approach(photos);
             await Until(() => !P.Hopping, 4);
             await Frames(3);
-            await Fly(Key.Space, photos, "Photos");
+            await Fly(Godot.Key.Space, photos, "Photos");
             await Shot("fixture-photos");
-            await Fly(Key.Backspace, root, Tree.DisplayName(root));
+            await Fly(Godot.Key.Backspace, root, Tree.DisplayName(root));
         }
 
-        var link = c.Launchers.FirstOrDefault(l => l.Kind == PlanetLauncherKind.Link && l.CanFollow);
+        var link = c.Launchers.FirstOrDefault(l => l.IsLink && l.Followable);
         if (link != null)
         {
             Log($"link launcher: {Tree[link.TargetId].Name} → {PlaceText.LinkShort(Tree, Tree[link.TargetId])}");
@@ -324,12 +337,12 @@ public partial class PlanetsProbe : ProbeBase
             await Frames(3);
             Check(P.PromptText.Contains("follow the link", StringComparison.Ordinal), $"a link's launcher says it follows a link: \"{P.PromptText}\"");
             await Shot("fixture-link-launcher");
-            await Key(Key.Space);
+            await Key(Godot.Key.Space);
             await Until(() => P.Busy, 2);
             await Until(() => !P.Busy, 12);
             Check(App.Navigator.CurrentVia == link.TargetId, $"through the link to {Tree.FullPath(App.Navigator.Current)}");
             await Shot("fixture-through-link");
-            await Key(Key.Backspace);
+            await Key(Godot.Key.Backspace);
             await Until(() => P.Busy, 2);
             await Until(() => !P.Busy, 12);
         }
@@ -355,7 +368,7 @@ public partial class PlanetsProbe : ProbeBase
             var w = P.Composition!;
             var names = Tree[App.Navigator.Current].Children.Select(id => Tree[id].Name).ToList();
             Check(names.Contains("Notes") && names.Contains("notes"), $"a WSL folder as a planet: {Tree.FullPath(App.Navigator.Current)} ({w.Theme}, {w.Launchers.Count} launchers, {w.Items.Count} objects; Notes and notes are separate worlds)");
-            Check(w.Launchers.Count(l => l.Kind == PlanetLauncherKind.Link) + w.Items.Count(i => i.Kind == PlanetItemKind.Link) > 0, "its symbolic links are marked as links");
+            Check(w.Launchers.Count(l => l.IsLink) + w.Items.Count(i => i.Kind == PlanetItemKind.Link) > 0, "its symbolic links are marked as links");
             await Shot("fixture-wsl");
         }
     }

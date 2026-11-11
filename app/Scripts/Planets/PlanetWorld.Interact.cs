@@ -1,4 +1,5 @@
 using System.Globalization;
+using FileScape.App.Places;
 using FileScape.App.Ui;
 using FileScape.App.Visual;
 using FileScape.Core.Interaction;
@@ -23,6 +24,7 @@ public partial class PlanetWorld
     private PlanetItem? _focusItem;
     private PlanetLauncher? _focusLauncher;
     private bool _focusTelescope;
+    private int _prepared = -1;
     private bool _orbiting;
     private Vector2 _orbitStart;
 
@@ -193,6 +195,11 @@ public partial class PlanetWorld
         var tree = _s.Tree;
         if (_current == null || tree == null) return;
         _focusLauncher = FocusLauncher();
+        if (_focusLauncher is { } pad && pad.TargetId != _prepared)
+        {
+            _prepared = pad.TargetId;
+            Prepare(pad.TargetId);
+        }
         _focusItem = null;
         _focusTelescope = false;
         if (_focusLauncher == null)
@@ -220,13 +227,10 @@ public partial class PlanetWorld
         if (_focusLauncher is { } l && tree.Contains(l.TargetId))
         {
             var name = tree.DisplayName(l.TargetId);
-            var what = l.Kind switch
-            {
-                PlanetLauncherKind.Parent => $"Space · fly back up to {name}",
-                PlanetLauncherKind.Link => l.CanFollow ? $"Space · follow the link to {name}" : $"{name}: this link can't be followed ({PlaceText.LinkShort(tree, tree[l.TargetId])})",
-                _ => $"Space · fly to {name}",
-            };
-            SetPrompt(what, l.Kind == PlanetLauncherKind.Parent ? "the way back" : _s.Summary(l.TargetId));
+            var what = l.IsParent ? $"Space · fly back up to {name}"
+                : l.IsLink ? (l.Followable ? $"Space · follow the link to {name}" : $"{name}: this link can't be followed ({PlaceText.LinkShort(tree, tree[l.TargetId])})")
+                : $"Space · fly to {name}";
+            SetPrompt(what, l.IsParent ? "the way back" : _s.Summary(l.TargetId));
         }
         else if (_focusItem is { } it2)
         {
@@ -414,7 +418,7 @@ public partial class PlanetWorld
         var tree = _s.Tree;
         if (tree == null || _current == null || !_active) return;
         var items = new List<(int, string, Color, string, Texture2D?)>();
-        if (_current.Comp.Launchers.FirstOrDefault(l => l.Kind == PlanetLauncherKind.Parent) is { } up)
+        if (_current.Comp.Launchers.FirstOrDefault(l => l.IsParent) is { } up)
         {
             items.Add((up.TargetId, $"Back up to {tree.DisplayName(up.TargetId)}", new Color(0.75f, 0.8f, 0.95f), "The way back: the launcher behind the arrival meadow.", FileIcons.Get(IconKind.Up)));
         }
@@ -422,7 +426,7 @@ public partial class PlanetWorld
         foreach (var c in tree[_current.FolderId].Children.Where(c => tree[c].IsDirectory || tree[c].Kind == NodeKind.Link).Where(c => _s.IsVisible(tree[c])).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance))
         {
             var n = tree[c];
-            var shown = _current.Comp.Launchers.Any(l => l.TargetId == c) ? "a launcher on this planet" : _current.Comp.Sky.Any(k => k.NodeId == c && k.InBelt) ? "a moon in the ring (select it, then G)" : "not in the sky (select it, then G)";
+            var shown = _current.Comp.Launchers.Any(l => l.TargetId == c) ? "a launcher on this planet" : _current.Comp.SkyBodies.Any(k => k.TargetId == c && k.InBelt) ? "a moon in the ring (select it, then G)" : "not in the sky (select it, then G)";
             items.Add((c, $"{n.Name}   ·  {_s.Summary(c)}", PlanetArt.Palette(PlanetComposer.ThemeOf(tree, c)).Accent.Lightened(0.25f), $"{shown}. {tree.FullPath(c)}", FileIcons.Get(FileIcons.For(n))));
         }
 

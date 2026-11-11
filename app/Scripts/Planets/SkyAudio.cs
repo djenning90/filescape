@@ -77,10 +77,66 @@ public partial class SkyAudio : Node
         _player.Play();
         _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
         _capacityFrames = _playback?.GetFramesAvailable() ?? 0;
+        if (!_active)
+        {
+            _player.Stop();
+            _playback = null;
+            _synth.Mute(true);
+        }
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!_active) return;
         Fill();
     }
 
-    public override void _Process(double delta) => Fill();
+    private bool _active;
+
+    /// <summary>
+    /// On while the planetary world is shown: the music starts (muted ramp in), and off it stops filling, so the other
+    /// experiences pay nothing for it (2026-11-11 integration).
+    /// </summary>
+    public void SetActive(bool active)
+    {
+        if (_active == active) return;
+        _active = active;
+        _synth.Mute(!active);
+        if (_player == null) return;
+        if (active)
+        {
+            if (!_player.Playing) _player.Play();
+            _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
+            Fill();
+        }
+        else
+        {
+            _player.Stop();
+            _playback = null;
+        }
+    }
+
+    /// <summary>Lowers the music under a sound preview (and restores it).</summary>
+    public void Duck(bool ducked) => _synth.MusicVolume = ducked ? 0.2f : 1f;
+
+    /// <summary>Bell flowers rung since start (probes).</summary>
+    public int ChimeCount { get; private set; }
+
+    /// <summary>
+    /// A duration near <paramref name="seconds"/> (within <paramref name="maxShiftSeconds"/>) that ends on the music's
+    /// sixteenth-note grid (84 BPM: 0.179 s), so a launch released after it lands on the beat (research E6). Measured in
+    /// synth time, which is the time the release sound is rendered at.
+    /// </summary>
+    public float AlignToSixteenth(float seconds, float maxShiftSeconds)
+    {
+        var sixteenth = 60f / SkySynth.TempoBeatsPerMinute / 4f;
+        var now = _synth.FramesRendered / (double)_synth.SampleRateHz;
+        var end = now + seconds;
+        var grid = Math.Round(end / sixteenth) * sixteenth;
+        var shift = (float)(grid - end);
+        if (MathF.Abs(shift) > maxShiftSeconds) shift = 0;
+        return MathF.Max(0.1f, seconds + shift);
+    }
 
     public override void _ExitTree()
     {
@@ -141,6 +197,8 @@ public partial class SkyAudio : Node
     /// <summary>A launcher wind-up that peaks exactly <paramref name="duration"/> from now (call <see cref="Launch"/> then). Immediate.</summary>
     public void WindUp(TimeSpan duration) => _synth.WindUp(duration);
 
+    public void WindUp(float seconds) => _synth.WindUp(Durations.FromSeconds(seconds));
+
     /// <summary>The launch whoosh and glissando. Immediate.</summary>
     public void Launch() => _synth.Launch();
 
@@ -163,5 +221,9 @@ public partial class SkyAudio : Node
     public void Deny() => _synth.Deny();
 
     /// <summary>A bell-flower note at scale degree <paramref name="index"/>. Tempo-locked.</summary>
-    public void Chime(int index) => _synth.Chime(index);
+    public void Chime(int index)
+    {
+        ChimeCount++;
+        _synth.Chime(index);
+    }
 }

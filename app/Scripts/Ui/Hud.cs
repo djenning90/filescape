@@ -668,7 +668,7 @@ public partial class Hud : CanvasLayer
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
     public const string PlanetsHintText = "WASD / arrows run · Space jump (again in the air: twirl higher) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · J destinations · F1 help";
 
-    public const string HintText = ""W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
+    public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
 
     private void BuildHintAndFlyChip()
     {
