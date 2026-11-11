@@ -9,6 +9,7 @@
 #                                %LOCALAPPDATA%\FileScape\build, keeping the previous build as previous-<stamp>
 #   tools/fs.sh stage            the same export, verification and smoke launch into a fresh staging dir, never promoted
 #                                (for verification runs while DJ uses the installed build)
+#   tools/fs.sh promote NAME     promote a verified staging dir (staging-<stamp>) to build, with export's safety checks
 #   tools/fs.sh check TIER       verification tiers: fast | smoke | full | release (tools/verify.sh; timings in its summary)
 #   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
 #   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
@@ -168,6 +169,23 @@ case "$cmd" in
     mv "$STAGE" "$OUT"
     verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
     echo "fs.sh: export OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
+  promote)
+    # Promote an already verified staging dir (2026-11-11): the same safety as export's last steps (nothing may run from
+    # build; build -> previous-<stamp>, staging -> build; verify), for when the rename failed (a transient handle).
+    BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"
+    check_base "$BASE"
+    name="${1:?usage: fs.sh promote staging-<stamp>}"
+    [[ "$name" =~ ^staging-[0-9]{8}-[0-9]{6}-[0-9]+$ ]] || { echo "fs.sh: not a staging dir name: $name" >&2; exit 2; }
+    STAGE="$BASE/$name"; OUT_W="$BASE_W\\build"; OUT="$BASE/build"
+    verify_build "$STAGE" || { echo "fs.sh: $name is not a complete build" >&2; exit 3; }
+    [[ -s "$STAGE/build-info.txt" && -d "$STAGE/smoke" ]] || { echo "fs.sh: $name has no build-info or smoke result (not staged by fs.sh)" >&2; exit 3; }
+    running="$(running_paths)" || { echo "fs.sh: could not determine which FileScape processes run; not promoting." >&2; exit 6; }
+    if grep -qiF "$OUT_W\\" <<<"$running"; then echo "fs.sh: FileScape is running from $OUT_W; not replacing it." >&2; exit 4; fi
+    STAMP="$(date -u +%Y%m%d-%H%M%S)-$$"
+    if [[ -e "$OUT" ]]; then mv "$OUT" "$BASE/previous-$STAMP" || { echo "fs.sh: could not move the current build aside (a file in it is open); nothing changed." >&2; exit 8; }; echo "fs.sh: previous build kept as $BASE_W\\previous-$STAMP"; fi
+    mv "$STAGE" "$OUT"
+    verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
+    echo "fs.sh: promote OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
   check)
     if [[ "${1:-}" == harness ]]; then exec "$REPO/tools/verify-selftest.sh"; fi
     exec "$REPO/tools/verify.sh" "$@" ;;
