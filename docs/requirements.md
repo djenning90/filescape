@@ -262,6 +262,22 @@ Status words: **Demonstrated**, **Provisional**, **Failed**, **Unknown** (see do
 | UX-02 | Errors leave the app usable. | Demonstrated (problem directories; failed Open message) |
 | UX-06 | Live data, synthetic data and mock actions are always distinguishable: badge, inspector footer, MOCK messages. | Demonstrated |
 
+## The planetary world (PLANET-10..18, 2026-11-11)
+
+A playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* with original art, sound and interaction, on the shared session (AD-39). Research: `docs/galaxy-research.md`. Evidence: `docs/evidence/2026-11-11-planets/`.
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-10 | Every folder is a small walkable planet; its child folders hang in the sky above launchers; its files stand on the surface as objects grouped by kind; a theme (palette, landmark, music key) follows what it holds. | Themes for hub, project, images, documents, audio, video, archives, data, mixed, empty and unknown folders (Core tests); journey shows distinct worlds. | **Demonstrated** (Core tests, journey and gallery screenshots) |
+| PLANET-11 | Walk all the way round a planet (no chart, no seam); forgiving jump with one airborne boost in both worlds; a chase camera that keeps head-up with a capped roll. | Edge tests at ±Y and antipodes; jump ≈ 1.2 m, jump + boost ≈ 2.7 m in both walkers; camera roll ≤ 90°/s on a walk. | **Demonstrated** (Core tests; journey: 12.8 m walked, apex 2.6 m, roll ≤ 90°/s) |
+| PLANET-12 | Travel by launch: a visible wind-up (≈ 0.4 s, beat-aligned), a brisk arc (1.5–2.5 s), a landing that does not cut. Destinations not in the sky are reached by a warp. | Journey measures wind-up, flight time, the traveller's screen jump in the landing frame (< 4 % of the screen height), landing on foot. | **Demonstrated** (wind-up 0.32–0.42 s, flight 1.5–2.4 s, landing jump 0.1–0.6 %) |
+| PLANET-13 | Find, inspect and open real files: E looks closer (selection in the shared session, metadata card, preview: picture, text or a few seconds of sound); Enter opens with Windows (the usual confirmations). | Journey selects a picture, shows it, opens it (recorded by the test shell); README text and a WAV preview. | **Demonstrated** (journey; opening recorded, nothing started) |
+| PLANET-14 | A direct route to every destination: the planet's list (J: every folder and file here, filterable), the shared Destinations drawer, breadcrumb, Locations (L) and Go to path (Ctrl+L); G launches to a selected folder from anywhere. | Journey: Go to path warps to a world not in the sky; J lists all 1,501 entries of a 1,500-file folder and filters by typing. | **Demonstrated** |
+| PLANET-15 | A curated first impression: the Starter Sky, real files the app writes into its own data folder (pictures, a code project, music-box WAVs, letters, a 1,500-file archive, 36 constellations, an empty moon). Opening Planets from the synthetic sample opens it. | SampleSky tests (valid PNG/WAV, sizes, idempotent, refuses unmarked folders); journey runs on it. | **Demonstrated** |
+| PLANET-16 | Large, empty, linked and incomplete folders are legible: piles for files beyond the budget (64 shown), a belt of small moons for folders beyond the launcher budget (10), a quiet moon for empty, a veiled world for unknown listings, link launchers that say where they lead, "listing now" and "partly listed" in the title and bar. | Core tests (800 files, 240 folders, links, states); journey (1,500-file archive); fixture tour (junction, empty room, WSL symlinks). | **Demonstrated** |
+| PLANET-17 | Switching between Places and Planets (V or the toolbar) keeps the current folder, the selection and the history. | Journey: V to Places and back with the same folder, selection and history count; arrival beside the selected file. | **Demonstrated** |
+| PLANET-18 | Responsiveness: no hitch in flight; planet building off the main thread. | Journey on the Radeon 890M: flight frames p99 ≤ 17 ms; ground meshes made on worker threads and prefetched. | **Demonstrated** in the dev build (flight max 16.7 ms; walking p99 18 ms, rare spikes ≈ 110 ms at a warp) |
+
 ## Later (not in this prototype)
 
 Search, watchers/live refresh, persistent scan caches, bookmarks, split views, mutations (copy/move/rename/delete), shell context menus, multi-select, rich previews, warp mode and other historical-fidelity features, themes as data packages, sound/weather, installers, signing, marketplaces.

@@ -97,6 +97,10 @@ public partial class PlanetsProbe : ProbeBase
         _recording = true;
         var root = App.Navigator.Current;
         var comp = P.Composition!;
+        Check(P.EstablishingShots == 1, "the first world is introduced by an establishing shot (high over it, then down behind the traveller)");
+        await Seconds(0.9);
+        await Shot("opening-establishing-shot");
+        await Until(() => P.CameraSettled, 5);
         Log(F($"arrived: {Tree.FullPath(root)} theme={comp.Theme} radius={comp.Shape.Radius:0.0} m items={comp.Items.Count} launchers={comp.Launchers.Count} sky={comp.SkyBodies.Count}"));
         Check(P.TitleText == Tree.DisplayName(root), $"the title card introduces the world: \"{P.TitleText}\"");
         await Seconds(0.6);

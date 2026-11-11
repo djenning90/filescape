@@ -352,7 +352,7 @@ public partial class PlanetWorld
         _landFx.Burst(Gd(_walker.Feet), Gd(up), PlanetArt.Palette(body.Comp.Theme).Accent);
         _phase = Phase.Walking;
         _transfer = null;
-        _camBlend = 0.6f;
+        _camBlend = _camBlendTotal = 0.6f;
         _camBlendFrom = _camera.GlobalTransform;
         LastLandingCameraJump = 0; // measured by the probe across the frame (camera position before vs after)
         Mark("land");
@@ -425,7 +425,7 @@ public partial class PlanetWorld
             _phase = Phase.Walking;
             _transfer = null;
             _warpFlash = 0;
-            _camBlend = 0.6f;
+            _camBlend = _camBlendTotal = 0.6f;
             _camBlendFrom = _camera.GlobalTransform;
             Mark("land");
             ShowTitleCard(tree, _current.FolderId, null);

@@ -104,8 +104,9 @@ public partial class PlanetWorld : Node3D
         if (_s.Tree is { Count: > 0 } tree)
         {
             BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
-            ArriveBesideSelection(tree);
+            var beside = ArriveBesideSelection(tree);
             SnapCamera();
+            if (!beside) PlayEstablishingShot();
             ShowTitleCard(tree, _s.Navigator.Current, frame ? "Planets" : null);
         }
     }
@@ -163,8 +164,10 @@ public partial class PlanetWorld : Node3D
         if (_current == null || (_current.FolderId != _s.Navigator.Current && !Busy))
         {
             // The folder changed while this world was not travelling (a new tree, a reset): arrive there directly.
+            var first = _current == null;
             BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
             SnapCamera();
+            if (first) PlayEstablishingShot(); // the first world of a session is introduced
             ShowTitleCard(tree, _s.Navigator.Current, null);
         }
 
@@ -448,20 +451,26 @@ public partial class PlanetWorld : Node3D
     }
 
     /// <summary>The arrival when switching worlds: next to the selected file or folder if it is on this planet.</summary>
-    private void ArriveBesideSelection(FsTree tree)
+    private bool ArriveBesideSelection(FsTree tree)
     {
-        if (_current == null) return;
+        if (_current == null) return false;
         var sel = _s.Selection.Selected;
-        if (sel < 0 || !tree.Contains(sel)) return;
+        if (sel < 0 || !tree.Contains(sel)) return false;
         var item = _current.Comp.Items.FirstOrDefault(i => i.NodeId == sel);
         if (item != null)
         {
             StandFacing(item.Direction, item.Scale);
-            return;
+            return true;
         }
 
         var launcher = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == sel);
-        if (launcher != null) StandFacing(launcher.Direction, 1.4f);
+        if (launcher != null)
+        {
+            StandFacing(launcher.Direction, 1.4f);
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Stands the traveller a short walk from a point on the surface, facing it.</summary>

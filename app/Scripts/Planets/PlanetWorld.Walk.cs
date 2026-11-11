@@ -21,8 +21,40 @@ public partial class PlanetWorld
     private float _camPitchDegrees = 18f, _camDistance = 7.2f, _sinceOrbitSeconds = 99f;
     private float _overlook01;
     private bool _jumpQueued;
-    private float _camBlend;
+    private float _camBlend, _camBlendTotal = 0.6f;
     private Transform3D _camBlendFrom;
+
+    /// <summary>
+    /// The opening (research: introduce a destination by showing it): the camera starts high over the arrival meadow
+    /// with the world and its neighbours in view, then glides down behind the traveller. You can move at once; any key
+    /// or the mouse shortens it.
+    /// </summary>
+    public void PlayEstablishingShot(float seconds = 2.6f)
+    {
+        if (_current == null) return;
+        var up = Gd(_walker.Up);
+        var f = Gd(_walker.Facing);
+        var r = _current.Comp.Shape.Radius;
+        var eye = Gd(_walker.Feet) + up * (r * 1.5f + 10f) - f * (r * 1.1f + 8f);
+        var look = Gd(_walker.Feet) + f * (r * 0.5f);
+        _camBlendFrom = new Transform3D(Basis.LookingAt((look - eye).Normalized(), up), eye);
+        _camera.GlobalTransform = _camBlendFrom;
+        _camBlend = _camBlendTotal = seconds;
+        EstablishingShots++;
+    }
+
+    public int EstablishingShots { get; private set; }
+
+    /// <summary>A key or a click during the opening: finish the glide quickly (never cut).</summary>
+    private void HurryBlend()
+    {
+        if (_camBlend > 0.45f && _camBlendTotal > 1f)
+        {
+            var k = 1 - _camBlend / _camBlendTotal;
+            _camBlendTotal = 0.45f / MathF.Max(0.05f, 1 - k);
+            _camBlend = 0.45f;
+        }
+    }
     private Godot.Vector3 _avatarUp = Godot.Vector3.Up;
     private float _maxRollRateDegreesPerSecond;
     private int _lastFootsteps;
@@ -192,7 +224,7 @@ public partial class PlanetWorld
         {
             // Just landed: blend from the flight camera to the walking one (no cut, research E5).
             _camBlend = MathF.Max(0, _camBlend - dt);
-            var k = Smooth(1 - _camBlend / 0.6f);
+            var k = Smooth(1 - _camBlend / _camBlendTotal);
             var walking = new Transform3D(Basis.LookingAt((look - _camPos).Normalized(), _camUp), _camPos);
             _camera.GlobalTransform = _camBlendFrom.InterpolateWith(walking, k);
         }

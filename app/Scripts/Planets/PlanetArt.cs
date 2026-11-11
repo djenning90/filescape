@@ -44,7 +44,7 @@ public enum DecorationKind
 public sealed record FileArt(ArrayMesh Mesh, int FaceSurface, Vector2 FaceSize, Vector3 Lantern, float HeightMetres);
 
 /// <summary>
-/// The bloom launcher's parts: a pad (walkable top at <see cref="PadTopMetres"/>), a glowing core, and five petal meshes
+/// The bloom launcher's parts: a pad (walkable top at <see cref="PadTopMetres"/>), a glowing core, and six petal meshes
 /// hinged at the pad's inner ring that the app rotates open or closed (<see cref="PetalPose"/>). Local +Y up, origin at
 /// the pad's base centre.
 /// </summary>
@@ -56,7 +56,7 @@ public sealed record LauncherArt(ArrayMesh Pad, ArrayMesh Core, IReadOnlyList<Ar
     /// <summary>Petal tilt above the pad when fully closed (a bud) and fully open (a flat bloom), degrees.</summary>
     public const float ClosedTiltDegrees = 74f, OpenTiltDegrees = 6f;
 
-    /// <summary>Local transform of petal <paramref name="index"/> (0–4) at openness <paramref name="open01"/> (0 = bud, 1 = open).</summary>
+    /// <summary>Local transform of petal <paramref name="index"/> (0–5) at openness <paramref name="open01"/> (0 = bud, 1 = open).</summary>
     public Transform3D PetalPose(int index, float open01)
     {
         var yaw = index * Mathf.Tau / Petals.Count + Mathf.Pi / Petals.Count;
@@ -112,7 +112,8 @@ public static class PlanetArt
             C(0.05f, 0.05f, 0.18f), C(0.22f, 0.20f, 0.46f), C(0.30f, 0.38f, 0.56f), C(1.00f, 0.95f, 0.80f), C(0.40f, 0.45f, 0.66f), C(1.00f, 0.86f, 0.50f)),
         PlanetTheme.Workshop => new(C(0.84f, 0.54f, 0.32f), C(0.96f, 0.74f, 0.42f), C(0.30f, 0.72f, 0.70f), C(0.99f, 0.87f, 0.62f),
             C(0.07f, 0.04f, 0.12f), C(0.34f, 0.18f, 0.30f), C(0.45f, 0.29f, 0.33f), C(1.00f, 0.85f, 0.65f), C(0.48f, 0.38f, 0.52f), C(1.00f, 0.70f, 0.34f)),
-        PlanetTheme.Library => new(C(0.80f, 0.62f, 0.80f), C(0.98f, 0.89f, 0.80f), C(0.92f, 0.44f, 0.48f), C(1.00f, 0.97f, 0.88f),
+        // 2026-11-11, after the first playthrough screenshots: deeper lavender ground with warm paper paths (it read almost white).
+        PlanetTheme.Library => new(C(0.60f, 0.46f, 0.74f), C(0.86f, 0.70f, 0.82f), C(0.92f, 0.44f, 0.48f), C(0.99f, 0.90f, 0.76f),
             C(0.05f, 0.04f, 0.17f), C(0.24f, 0.18f, 0.46f), C(0.36f, 0.30f, 0.58f), C(1.00f, 0.93f, 0.85f), C(0.45f, 0.42f, 0.70f), C(1.00f, 0.88f, 0.60f)),
         PlanetTheme.Chime => new(C(0.36f, 0.78f, 0.80f), C(0.64f, 0.93f, 0.88f), C(0.78f, 0.62f, 1.00f), C(0.92f, 0.99f, 0.92f),
             C(0.04f, 0.05f, 0.17f), C(0.16f, 0.22f, 0.46f), C(0.24f, 0.38f, 0.56f), C(0.95f, 0.95f, 1.00f), C(0.38f, 0.48f, 0.72f), C(0.70f, 1.00f, 0.90f)),
@@ -901,7 +902,7 @@ public static class PlanetArt
         core.Ellipsoid(new Vector3(0, top + 0.08f, 0), new Vector3(0.36f, 0.24f, 0.36f), Colors.White, 18, 10);
         var coreMesh = Commit(core, null, GlowMaterial(glow, 2.4f, 0.25f));
         var petals = new List<ArrayMesh>();
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 6; i++) // six petals: a flower bud, never a five-pointed star
         {
             var pb = new MeshBuilder();
             Petal(pb, 1.15f, 0.36f, accent.Lerp(Colors.White, 0.25f + 0.04f * i), glow);

@@ -35,6 +35,12 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
 
     private string P(params string[] parts) => Path.Combine([sky.Root, .. parts]);
 
+    /// <summary>
+    /// Recursive listing that does not follow links: on Windows the sample has a junction ("Shortcut to Garden"), and
+    /// SearchOption.AllDirectories walks through it, counting the garden twice (found on Windows, 2026-11-11).
+    /// </summary>
+    private static readonly EnumerationOptions NoLinks = new() { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+
     private static string[] Files(string dir) => Directory.GetFiles(dir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
 
     private static string[] Dirs(string dir) => Directory.GetDirectories(dir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
@@ -65,7 +71,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
         Files(P("Garden Photos", "Pressed Flowers")).Should().HaveCount(4).And.OnlyContain(n => n.EndsWith(".png"));
         Files(P("Garden Photos")).Should().Contain("dawn-over-the-low-hills.png");
 
-        Directory.GetFiles(P("Lantern Workshop"), "*", SearchOption.AllDirectories)
+        Directory.GetFiles(P("Lantern Workshop"), "*", NoLinks)
             .Select(f => Path.GetRelativePath(P("Lantern Workshop"), f).Replace('\\', '/'))
             .Should().BeEquivalentTo("README.md", "Lantern.csproj", "Lantern.sln", "src/Lantern.cs", "src/Wick.cs", "src/Glow.cs",
                 "tests/LanternTests.cs", "docs/design.md", ".gitignore");
@@ -100,7 +106,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     [Fact]
     public void Star_archive_files_are_200_to_900_bytes_of_plausible_text()
     {
-        foreach (var f in Directory.GetFiles(P("Star Archive"), "*", SearchOption.AllDirectories))
+        foreach (var f in Directory.GetFiles(P("Star Archive"), "*", NoLinks))
         {
             new FileInfo(f).Length.Should().BeInRange(200, 900, f);
         }
@@ -117,7 +123,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     [Fact]
     public void Every_png_is_a_valid_320_by_240_truecolour_image_with_real_content()
     {
-        var pngs = Directory.GetFiles(sky.Root, "*.png", SearchOption.AllDirectories);
+        var pngs = Directory.GetFiles(sky.Root, "*.png", NoLinks);
         pngs.Should().HaveCount(21);
         foreach (var png in pngs)
         {
@@ -205,7 +211,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     [Fact]
     public void Total_size_is_under_12_megabytes()
     {
-        var totalBytes = Directory.GetFiles(sky.Root, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+        var totalBytes = Directory.GetFiles(sky.Root, "*", NoLinks).Sum(f => new FileInfo(f).Length);
         totalBytes.Should().BeLessThan(12L * 1024 * 1024);
     }
 
@@ -315,14 +321,14 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     }
 
     private static List<(string Path, long Bytes, DateTime WrittenUtc)> Snapshot(string root) =>
-        Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories)
+        Directory.GetFileSystemEntries(root, "*", NoLinks)
             .Where(e => !e.Contains("Shortcut to Garden", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .Select(e => (e, File.Exists(e) ? new FileInfo(e).Length : -1, File.GetLastWriteTimeUtc(e)))
             .ToList();
 
     private static List<(string Path, string Sha256)> Hashes(string root) =>
-        Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+        Directory.GetFiles(root, "*", NoLinks)
             .Where(f => !f.Contains("Shortcut to Garden", StringComparison.Ordinal))
             .Select(f => (Path.GetRelativePath(root, f), Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f)))))
             .OrderBy(t => t.Item1, StringComparer.Ordinal)

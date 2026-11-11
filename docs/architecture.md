@@ -111,3 +111,38 @@ Key flows:
 - **Compact places and the horizon (AD-34, AD-35):** `PlaceParams.Compact` (default) / `Spacious` (`--layout=spacious`). `Horizon.Compose` (Core) turns the composition's vistas and the tree into silhouette, haze and veil marks; `PlaceWorld` draws them in the vista slots (hidden from the air).
 - **Planetoid experiment:** `Planetoid` charts (handedness: east × north = up) carry a composed `PlaceComposition` onto a sphere (`PlanetoidExperiment.OnSurface`); picking marches the world ray and tests boxes in the chart; `PlanetoidTraveller.LaunchGuided` is the fast transfer.
 - **Verification (AD-29):** `tools/verify.sh` (via `fs.sh check`) runs tiers; `ProbeTier` (app) implements `--tier=functional` and off-thread screenshot saving.
+
+The planetary world on the shared session (2026-11-11, AD-39..43):
+
+```
+Main (owns the session: FsTree, ScanSession, WorldExplorer, PlaceNavigator, SelectionState, IShellActions, Hud, state file)
+  │  IWorldSession (app/Scripts/Planets/WorldSession.cs): Tree, Navigator, Selection, Explorer, Hud, Signs,
+  │    TravelInto / TravelUp / GoBack / Select / OpenSelection / ShowReadme / Summary / ProminenceOf / IsVisible
+  ├── Places experience (Main.Places, PlaceWorld)         └── PlanetWorld (app/Scripts/Planets/)
+  │                                                            controller: activation, nav changes → launches,
+  │                                                            camera (local up, capped roll, offset tracking),
+  │                                                            travel (wind-up, arc, nested scale, floating origin,
+  │                                                            warp, hop), interaction (focus, E, previews, the list)
+  │                                                            PlanetVisual (one world: ground, props, signs, belt)
+  │                                                            PlanetArt (procedural meshes, palettes, shaders)
+  │                                                            AvatarRig (the traveller) · SkyAudio (streams SkySynth)
+
+What varies between the walking worlds          Places                         Planets
+  surface and gravity                           PlaceTerrain + Walker          PlanetSurface + SphereWalker
+  (shared)                                      JumpModel (jump, coyote, buffer, short hop, one airborne boost)
+  camera frame                                  CameraRig (world Y up)         chase camera, local up, roll ≤ 90°/s
+  placement and travel                          PlaceComposer, gates           PlanetComposer, launches, warps
+  visual and audio treatment                    PlaceWorld, PlaceAtmosphere    PlanetVisual, PlanetArt, SkySynth
+
+FileScape.Core/Planets: PlanetShape (height field shared by mesh and walker), SurfaceObstacle, PlanetSurface,
+  SphereWalker, PlanetComposer → PlanetComposition (theme, shape, surface, arrival, landmark, overlook + steps,
+  launchers, sky bodies + belt, items + piles in groves, decorations, signs, paths, signature)
+FileScape.Core/Movement: JumpModel (shared by Walker and SphereWalker)
+FileScape.Core/Audio: SkySynth (generative music and tempo-locked effects, offline-testable)
+FileScape.Core/Samples: SampleSky (the Starter Sky: real files for the first impression)
+```
+
+Threads: planet ground vertex data is computed on worker threads (`PlanetArt.PlanetMeshArrays`, pure maths) and
+prefetched for every world in the sky; only the mesh upload and the props are built on the main thread (3–17 ms).
+Picture thumbnails are decoded on workers. A listing that changes the planet recomposes asynchronously (the new world is
+swapped in when its ground is ready).

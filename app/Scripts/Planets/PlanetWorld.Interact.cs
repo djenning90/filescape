@@ -87,6 +87,7 @@ public partial class PlanetWorld
     /// <summary>From Main._UnhandledInput: Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
     public bool UnhandledInput(InputEvent e)
     {
+        if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
         switch (e)
         {
             case InputEventKey { Pressed: true, Echo: false } k when k.IsAction(InputBindings.Jump):

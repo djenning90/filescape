@@ -10,6 +10,7 @@ public partial class PlanetWorld
 {
     public string PhaseName => _hop != null ? "Hopping" : _phase.ToString();
     public bool Hopping => _hop != null;
+    public bool CameraSettled => _camBlend <= 0;
     public float FlightProgress => _transfer is { } t && _phase == Phase.Flying ? Mathf.Clamp(t.T / t.Flight, 0, 1) : -1;
     public bool LastWasWarp => LaunchLog.LastOrDefault(l => l.Phase is "warp" or "flight").Phase == "warp";
     public string TitleDetail => _titleDetail.Text;

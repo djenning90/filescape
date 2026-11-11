@@ -302,3 +302,33 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Context:** the layout truncated breadth-first at `MaxIslands` without regard to where you are, and landing looked up the current place's island unconditionally. Deep in a large explored world, the current place could be missing: the aerial world was drawn in an identity frame, and landing over open space threw.
 - **Decision:** `WorldLayout.Compute(…, focus)` reserves the focus's ancestry, the focus and up to half the remaining budget for its own folders, then fills the rest breadth-first; the budget still holds. When the way down alone exceeds the budget, `FocusShown` is false and the app does not draw the aerial world, says so in the chip, ignores island picks and lands in the current place. `--test-max-islands=N` makes the case reachable in the exported app.
 
+
+## AD-39 The planetary world runs on the shared session; worlds vary only four things (2026-11-11)
+
+- **Context:** the 2026-11-06 planetoid experiment owned its own sample, camera, rendering, input and travel. DJ asked for a playable planetary FileScape on the same session as Places, and for boundaries a future world (a forest) could use.
+- **Decision:** `Main` keeps the tree, scan, explorer, navigator (current folder, history), selection, shell actions, HUD and state file. A world talks to them only through `IWorldSession` (`app/Scripts/Planets/WorldSession.cs`). What a world varies:
+  1. **Surface and gravity:** `PlanetSurface` + `SphereWalker` (planets) / `PlaceTerrain` + `Walker` (Places). Both use the shared `JumpModel` (jump, coyote, buffer, short hop, one airborne boost).
+  2. **Camera frame:** the planets' chase camera with local up (capped roll) / the Places rig.
+  3. **Placement and travel:** `PlanetComposer` + launches / `PlaceComposer` + gates.
+  4. **Visual and audio treatment:** `PlanetArt`, `PlanetVisual`, `AvatarRig`, `SkySynth` / `PlaceWorld`.
+- Navigation is the navigator's: a launcher calls `TravelInto`/`TravelUp` at the release, and any change made elsewhere (Backspace, breadcrumb, Destinations, a path) starts the same launch from where you stand. Switching worlds (V) keeps the folder, selection and history because neither world owns them.
+- **Consequence:** the flat Places world is unchanged except for the shared jump model (it gained the airborne boost) and small routing in `Main` (the new experience, V, the toolbar button).
+
+## AD-40 Planets are whole spheres with circle obstacles, not charts (2026-11-11)
+
+- **Context:** the experiment ran the flat walker in an azimuthal chart, which distorts across (sin φ/φ) and has a seam at the antipode, so a place had to stay within ≈ 35° of the pole.
+- **Decision:** `SphereWalker` moves a unit "up" vector by rotation about up × velocity and parallel-transports its facing and velocity, so it is the same everywhere (tested through ±Y and antipodes). Solids are circles measured along the surface (`SurfaceObstacle`), so collision matches what is drawn anywhere on the sphere. Ground height is one smooth field (`PlanetShape.HeightAt`) shared by the walker and the mesh. Limits: obstacles are columns from the ground (no overhangs or head bumps), there is no slope limit, and an obstacle's top is measured from the ground under the walker.
+
+## AD-41 Nested scale and a floating origin for travel (2026-11-11)
+
+- **Context:** a whole neighbourhood (up to 10 child worlds plus the parent) must fit in view, and travel must never cut.
+- **Decision:** the current planet is at the origin. A child hangs at its composed sky position at the scale (preview radius ÷ real radius) that makes it small in the sky, turned so its arrival meadow faces back towards the parent at 45°. The parent is drawn at the inverse of the current planet's placement in it: large, behind you. Because placements are a deterministic function of the two compositions, going down and coming back up agree. A launch flies into the target's placement while the traveller shrinks (or grows) into its scale; at touchdown everything (camera and its smoothing state included) is re-expressed in the target's frame, so the frame does not change on screen. Worlds not in the sky are reached by a warp (a rise into light, the new world built at the brightest moment, a descent).
+
+## AD-42 Original procedural audio, locked to the tempo (2026-11-11)
+
+- **Decision:** `SkySynth` (Core, pure C#, tested offline) generates music per theme (key and mode, 84 BPM, pad, music box, low pulse, a flight arpeggio) and effects in the current key; tempo-locked effects wait for the next 32nd note (≤ 89 ms), movement sounds are immediate, and the launch release is aligned to the sixteenth-note grid by stretching the wind-up by ≤ 0.09 s. `SkyAudio` streams it through an `AudioStreamGenerator` only while the planets are shown. No samples or assets.
+- **Unknown:** nobody has listened to it; the levels are measured, not judged.
+
+## AD-43 The Starter Sky: a curated sample of real files (2026-11-11)
+
+- **Decision:** the first impression is a small folder of real, original files (`SampleSky`) the app writes into its own data folder (`%APPDATA%\Godot\app_userdata\FileScape\samples`), never anywhere else, marked and idempotent, refusing to touch an unmarked folder. Opening Planets from the synthetic sample (the default start) opens it; `--root=sample` starts there. The same contents are a fixture (`create-sky`) under `%TEMP%\FileScape-fixtures` and `/tmp/filescape-wsl-fixtures`.
