@@ -17,6 +17,18 @@ public sealed class SkySynthWavFactAttribute : FactAttribute
     }
 }
 
+/// <summary>Runs only when SKYSYNTH_THEME_DIR names an output folder (a 12 s listening clip per theme); otherwise skipped.</summary>
+public sealed class SkySynthThemeClipsFactAttribute : FactAttribute
+{
+    public SkySynthThemeClipsFactAttribute()
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SKYSYNTH_THEME_DIR")))
+        {
+            Skip = "Set SKYSYNTH_THEME_DIR to a folder to render 12 s SkySynth clips per theme.";
+        }
+    }
+}
+
 /// <summary>The Planets audio synth (pure DSP): safety, determinism, latency, smooth crossfades and cost.</summary>
 public class SkySynthTests(ITestOutputHelper output)
 {
@@ -160,8 +172,8 @@ public class SkySynthTests(ITestOutputHelper output)
         var bound = quantised ? SkySynth.QuantisedLatencyBound : SkySynth.ImmediateLatencyBound;
         var boundFrames = (int)(bound.TotalSeconds * Rate);
         var worst = 0;
-        // Several start offsets, so the quantised ones meet the grid at different distances.
-        foreach (var preroll in new[] { 0, 1, 1000, 2345, 3900, 3939, 5000, 7000, 7874, 7876 })
+        // Several start offsets, so the quantised ones meet the grid (a 32nd note: 3062.5 frames at 108 BPM) at different distances.
+        foreach (var preroll in new[] { 0, 1, 1000, 2345, 3061, 3064, 5000, 6124, 6127, 7000 })
         {
             var s = new SkySynth(seed: 5);
             s.MusicVolume = 0; // isolate the effect
@@ -318,11 +330,197 @@ public class SkySynthTests(ITestOutputHelper output)
         s.Key.Mode.Should().Be("lydian");
     }
 
+    // ---------------------------------------------------------------- tempo and the FileScape theme
+
+    private const double FramesPerSixteenth = Rate * 60.0 / (SkySynth.TempoBeatsPerMinute * 4.0);
+    private const int LowRate = 8000;
+    private const double LowRateFramesPerSixteenth = LowRate * 60.0 / (SkySynth.TempoBeatsPerMinute * 4.0);
+
+    private static int Midi(MusicalKey key, int degree)
+    {
+        var len = key.IntervalsSemitones.Count;
+        var octave = (int)Math.Floor(degree / (double)len);
+        return key.RootMidiNote + 12 + key.IntervalsSemitones[degree - octave * len] + 12 * octave;
+    }
+
+    /// <summary>
+    /// The fraction of the written theme's notes (in a 7-note key) found among <paramref name="onsets"/> from bar
+    /// <paramref name="startBar"/>: an onset of the same pitch class within ± 2 sixteenths (an octave shift, an
+    /// anticipation or a delay still count; an ornament adds notes but keeps the theme's).
+    /// </summary>
+    private static double ThemeMatch(IReadOnlyList<MelodyNote> onsets, MusicalKey key, int startBar)
+    {
+        var found = 0;
+        foreach (var t in SkySynth.ThemeMelody)
+        {
+            var expected = (startBar * 16 + t.StartSixteenths) * FramesPerSixteenth;
+            var pitchClass = Midi(key, t.Degree) % 12;
+            if (onsets.Any(o => Math.Abs(o.Frame - expected) <= 2 * FramesPerSixteenth + 1 && o.MidiNote % 12 == pitchClass)) found++;
+        }
+
+        return found / (double)SkySynth.ThemeMelody.Count;
+    }
+
+    [Fact]
+    public void The_tempo_is_lively_and_effects_keep_to_its_32nd_note_grid()
+    {
+        SkySynth.TempoBeatsPerMinute.Should().Be(108f);
+        var thirtySecond = TimeSpan.FromSeconds(60.0 / SkySynth.TempoBeatsPerMinute / 8);
+        SkySynth.QuantisedLatencyBound.Should().BeGreaterThanOrEqualTo(thirtySecond).And.BeLessThanOrEqualTo(TimeSpan.FromMilliseconds(90));
+
+        // A tempo-locked effect starts exactly on a 32nd-note grid point.
+        var s = new SkySynth(seed: 5) { MusicVolume = 0 };
+        s.Render(1234);
+        s.Select();
+        var buf = s.Render(Frames(0.2));
+        var first = Array.FindIndex(buf, x => MathF.Abs(x) > 1e-6f) / 2 + 1234;
+        var grid = FramesPerSixteenth / 2;
+        var nearest = Math.Round(first / grid) * grid;
+        Math.Abs(first - nearest).Should().BeLessThan(8, "the select tick starts on the 32nd-note grid (allowing its attack)");
+    }
+
+    [Fact]
+    public void The_written_theme_is_8_bars_built_from_a_motif_and_its_answer()
+    {
+        var theme = SkySynth.ThemeMelody;
+        theme[^1].StartSixteenths.Should().Be(7 * 16, "the cadence's last note starts bar 8");
+        theme.Sum(n => n.LengthSixteenths).Should().Be(7 * 16 + 8);
+        int[] Bar(int b) => [.. theme.Where(n => n.StartSixteenths / 16 == b).Select(n => n.LengthSixteenths)];
+        Bar(2).Should().Equal(Bar(0), "the answer starts with the motif's rhythm");
+        Bar(4).Should().Equal(Bar(0), "bar 5 raises the motif in the same rhythm");
+        theme.Where(n => n.StartSixteenths < 16).Select(n => n.Degree).Take(3)
+            .Should().Equal(theme.Where(n => n.StartSixteenths is >= 32 and < 48).Select(n => n.Degree).Take(3), "the answer begins as the motif did");
+        theme[^1].Degree.Should().Be(0, "it ends on the tonic");
+        foreach (var n in theme) (n.Degree % 7).Should().BeOneOf([0, 1, 2, 4, 5], "the theme uses the pentatonic subset, so it maps into every key");
+    }
+
+    [Fact]
+    public void The_theme_returns_every_16_bars_with_variations_and_the_free_bars_between_are_not_the_theme()
+    {
+        foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Workshop, PlanetTheme.Library })
+        {
+            var key = SkySynth.KeyFor(theme);
+            var s = new SkySynth(seed: 2026, theme);
+            var lead = new List<MelodyNote>();
+            var all = new List<MelodyNote>();
+            s.MelodyObserver = n =>
+            {
+                all.Add(n);
+                if (n.Part == MelodyPart.Theme) lead.Add(n);
+            };
+            var bars = 64;
+            var total = (int)Math.Round(bars * 16 * FramesPerSixteenth);
+            var buffer = new float[4096 * 2];
+            for (var done = 0; done < total; done += 4096) s.Render(buffer);
+
+            var returns = 0;
+            var variations = new HashSet<ThemeVariation>();
+            var fingerprints = new HashSet<string>();
+            for (var cycle = 0; cycle < bars / SkySynth.CycleBars; cycle++)
+            {
+                var startBar = cycle * SkySynth.CycleBars;
+                var match = ThemeMatch(lead, key, startBar);
+                // The free half of the cycle, with every melody note (music box included), must not read as the theme.
+                var freeMatch = ThemeMatch(all, key, startBar + SkySynth.ThemeLengthBars);
+                var window = lead.Where(n => n.Frame >= startBar * 16 * FramesPerSixteenth && n.Frame < (startBar + 10) * 16 * FramesPerSixteenth).ToList();
+                var variation = window.Count > 0 ? window[0].Variation : ThemeVariation.Plain;
+                output.WriteLine($"{theme} cycle {cycle} (bar {startBar + 1}): {variation,-16} theme match {match:P0}, free bars {freeMatch:P0}, {window.Count} lead notes");
+                freeMatch.Should().BeLessThan(0.5, $"the free bars after cycle {cycle} are not the theme");
+                if (match >= 0.7)
+                {
+                    returns++;
+                    variations.Add(variation);
+                    fingerprints.Add(string.Join(",", window.Select(n => $"{Math.Round((n.Frame - startBar * 16 * FramesPerSixteenth) / FramesPerSixteenth)}:{n.MidiNote}")));
+                }
+            }
+
+            ThemeMatch(lead, key, 0).Should().Be(1, $"{theme}: the first return is the theme as written");
+            returns.Should().BeGreaterThanOrEqualTo(3, $"{theme}: the theme recurs");
+            variations.Count.Should().BeGreaterThanOrEqualTo(2, $"{theme}: the returns vary");
+            fingerprints.Count.Should().BeGreaterThanOrEqualTo(2, $"{theme}: the variations sound different");
+        }
+    }
+
+    [Fact]
+    public void Every_variation_keeps_the_theme_recognisable_in_every_key()
+    {
+        // Over many cycles each variation appears; in each key the lead plays it in the scale, starting on the bar line.
+        var seen = new HashSet<ThemeVariation>();
+        foreach (var theme in Enum.GetValues<PlanetTheme>())
+        {
+            var key = SkySynth.KeyFor(theme);
+            // 8 kHz: the notes are what is checked here, and the low rate keeps 12 cycles per key quick.
+            var s = new SkySynth(seed: (int)theme * 17 + 3, theme, sampleRateHz: LowRate);
+            var lead = new List<MelodyNote>();
+            s.MelodyObserver = n =>
+            {
+                if (n.Part is MelodyPart.Theme or MelodyPart.Grace or MelodyPart.Counter) lead.Add(n);
+            };
+            var buffer = new float[4096 * 2];
+            var total = (int)Math.Round(12 * 16 * 16 * LowRateFramesPerSixteenth); // 12 cycles
+            for (var done = 0; done < total; done += 4096) s.Render(buffer);
+
+            var scale = key.IntervalsSemitones.Select(x => (x + key.RootMidiNote) % 12).ToHashSet();
+            lead.Should().OnlyContain(n => scale.Contains(n.MidiNote % 12), $"{theme}'s lead stays in {key.Mode}");
+            lead.Should().OnlyContain(n => n.MidiNote >= 40 && n.MidiNote <= 100, $"{theme}'s lead stays in a singable bell range");
+            foreach (var n in lead) seen.Add(n.Variation);
+        }
+
+        seen.Should().BeEquivalentTo(Enum.GetValues<ThemeVariation>());
+    }
+
+    [Fact]
+    public void A_new_world_greets_you_with_the_plain_theme_on_the_next_bar_line()
+    {
+        var s = new SkySynth(seed: 8, PlanetTheme.Hearth);
+        s.Render(Frames(5.3));
+        var called = s.FramesRendered;
+        var first = (MelodyNote?)null;
+        s.MelodyObserver = n =>
+        {
+            if (first == null && n.Part == MelodyPart.Theme) first = n;
+        };
+        s.SetTheme(PlanetTheme.Meadow);
+        s.Render(Frames(4));
+        var bar = 16 * FramesPerSixteenth;
+        first.Should().NotBeNull();
+        first!.Value.Variation.Should().Be(ThemeVariation.Plain);
+        var expected = (long)Math.Ceiling(Math.Ceiling(called / bar) * bar - 1e-6);
+        first.Value.Frame.Should().BeCloseTo(expected, 2);
+        (first.Value.Frame - called).Should().BeLessThanOrEqualTo((long)bar, "within one bar (2.2 s)");
+    }
+
+    [Fact]
+    public void Variations_are_deterministic_per_seed_and_cycle()
+    {
+        List<ThemeVariation> Run(int seed)
+        {
+            var s = new SkySynth(seed, PlanetTheme.Chime, sampleRateHz: LowRate);
+            var list = new List<ThemeVariation>();
+            s.MelodyObserver = n =>
+            {
+                if (n.Part == MelodyPart.Theme && (list.Count == 0 || list[^1] != n.Variation)) list.Add(n.Variation);
+            };
+            var buffer = new float[4096 * 2];
+            var total = (int)Math.Round(8 * 16 * 16 * LowRateFramesPerSixteenth);
+            for (var done = 0; done < total; done += 4096) s.Render(buffer);
+            return list;
+        }
+
+        var one = Run(1);
+        one.Should().Equal(Run(1));
+        one[0].Should().Be(ThemeVariation.Plain);
+        var two = Run(2);
+        two.Should().NotEqual(one, "another seed varies differently");
+        output.WriteLine($"seed 1: {string.Join(", ", one)}; seed 2: {string.Join(", ", two)}");
+    }
+
     [SkySynthWavFact]
     public void Render_30_second_demo_to_wav()
     {
         var path = Environment.GetEnvironmentVariable("SKYSYNTH_WAV")!;
         var s = new SkySynth(seed: 2026, PlanetTheme.Hearth);
+        LogThemeStatements(s);
         var samples = new List<float>(Rate * 2 * 30);
         var t = 0.0;
         void Until(double seconds, Action<double>? perChunk = null)
@@ -400,8 +598,88 @@ public class SkySynthTests(ITestOutputHelper output)
 
         WriteWav(path, samples, Rate);
         var (peak, _, rms) = Measure([.. samples]);
-        output.WriteLine($"wrote {path}: {samples.Count / 2 / (double)Rate:0.0} s, peak {peak:0.000}, rms {rms:0.0000}");
+        output.WriteLine($"wrote {path}: {samples.Count / 2 / (double)Rate:0.0} s, peak {peak:0.000} ({Db(peak):0.0} dBFS), rms {rms:0.0000} ({Db(rms):0.0} dBFS)");
         peak.Should().BeLessThan(1f);
+    }
+
+    private static double Db(double linear) => 20 * Math.Log10(Math.Max(1e-9, linear));
+
+    /// <summary>
+    /// A 12 s listening clip per theme (Hearth, Meadow, Workshop, Chime): 8 s of music alone, then the launch cues
+    /// (a 0.8 s wind-up, the launch, flight wind) and an arrival with a bell-flower chime, to judge the tune and the mix.
+    /// </summary>
+    [SkySynthThemeClipsFact]
+    public void Render_12_second_theme_clips_to_wav()
+    {
+        var dir = Environment.GetEnvironmentVariable("SKYSYNTH_THEME_DIR")!;
+        Directory.CreateDirectory(dir);
+        foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Meadow, PlanetTheme.Workshop, PlanetTheme.Chime })
+        {
+            var s = new SkySynth(seed: 2026, theme);
+            LogThemeStatements(s, theme.ToString());
+            var samples = new List<float>(Rate * 2 * 12);
+            var t = 0.0;
+            void Until(double seconds, Action<double>? perChunk = null)
+            {
+                const int chunk = 735;
+                while (t < seconds)
+                {
+                    perChunk?.Invoke(t);
+                    samples.AddRange(s.Render(chunk));
+                    t += chunk / (double)Rate;
+                }
+            }
+
+            Until(8);
+            s.WindUp(TimeSpan.FromSeconds(0.8));
+            Until(8.8);
+            s.Launch();
+            var flightStart = t;
+            Until(10.3, now =>
+            {
+                var p = (float)((now - flightStart) / 1.5);
+                s.Fly(p);
+                s.SetFlight(MathF.Sin(MathF.PI * Math.Clamp(p, 0, 1)));
+            });
+            s.Fly(1);
+            s.SetFlight(0);
+            s.Arrive();
+            Until(11);
+            s.Chime(2);
+            Until(12);
+
+            var path = Path.Combine(dir, $"{theme.ToString().ToLowerInvariant()}-12s.wav");
+            WriteWav(path, samples, Rate);
+            var (peak, _, rms) = Measure([.. samples]);
+            output.WriteLine($"wrote {path}: peak {peak:0.000} ({Db(peak):0.0} dBFS), rms {rms:0.0000} ({Db(rms):0.0} dBFS)");
+            peak.Should().BeLessThan(1f);
+        }
+
+        // The theme's returns: 40 bars (≈ 89 s) of Hearth music alone, three statements of the theme.
+        var hearth = new SkySynth(seed: 2026, PlanetTheme.Hearth);
+        LogThemeStatements(hearth, "returns");
+        var frames = (int)Math.Round(40 * 16 * FramesPerSixteenth);
+        var returns = new List<float>(frames * 2);
+        for (var done = 0; done < frames; done += 4096) returns.AddRange(hearth.Render(Math.Min(4096, frames - done)));
+        var returnsPath = Path.Combine(dir, "hearth-theme-returns-89s.wav");
+        WriteWav(returnsPath, returns, Rate);
+        var m = Measure([.. returns]);
+        output.WriteLine($"wrote {returnsPath}: peak {m.Peak:0.000} ({Db(m.Peak):0.0} dBFS), rms {m.Rms:0.0000} ({Db(m.Rms):0.0} dBFS)");
+        m.Peak.Should().BeLessThan(1f);
+    }
+
+    /// <summary>Writes to the test output where each statement of the theme starts (seconds) and which variation it is.</summary>
+    private void LogThemeStatements(SkySynth s, string label = "demo")
+    {
+        var last = long.MinValue / 2;
+        var world = s.Theme;
+        s.MelodyObserver = n =>
+        {
+            if (n.Part != MelodyPart.Theme) return;
+            if (n.Frame - last > 16 * FramesPerSixteenth || s.Theme != world) output.WriteLine($"{label}: {s.Theme} theme at {n.Frame / (double)Rate:0.00} s ({n.Variation})");
+            world = s.Theme;
+            last = n.Frame;
+        };
     }
 
     private static void WriteWav(string path, List<float> interleaved, int rate)

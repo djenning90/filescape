@@ -10,21 +10,78 @@ namespace FileScape.Core.Audio;
 /// <param name="IntervalsSemitones">Scale steps above the root, ascending within one octave, starting at 0.</param>
 public sealed record MusicalKey(int RootMidiNote, string Mode, IReadOnlyList<int> IntervalsSemitones);
 
+/// <summary>A note of the written FileScape theme (<see cref="SkySynth.ThemeMelody"/>).</summary>
+/// <param name="StartSixteenths">Onset in sixteenth notes from the theme's first downbeat (16 per bar).</param>
+/// <param name="LengthSixteenths">Length in sixteenth notes.</param>
+/// <param name="Degree">Scale degree in 7-note numbering (0 = tonic, 7 = the octave above); pentatonic keys map it to do/re/mi/sol/la.</param>
+public readonly record struct ThemeNote(int StartSixteenths, int LengthSixteenths, int Degree);
+
+/// <summary>How the FileScape theme is played on one return (one per 16-bar cycle).</summary>
+public enum ThemeVariation
+{
+    /// <summary>As written (the first return in a world, then every fourth).</summary>
+    Plain,
+
+    /// <summary>Turns on the long notes, passing and neighbour notes, grace notes before upward leaps.</summary>
+    Ornamented,
+
+    /// <summary>Rhythmically displaced: beats anticipated (or delayed) by an eighth note.</summary>
+    Syncopated,
+
+    /// <summary>An octave up, over a slow counter-line of chord tones.</summary>
+    OctaveCounter,
+
+    /// <summary>The answer (bars 3–4) mirrored around its first note, so it falls where it rose.</summary>
+    InvertedAnswer,
+
+    /// <summary>The cadence (bars 7–8) in doubled note values: the theme ends a bar later.</summary>
+    AugmentedEnding,
+}
+
+/// <summary>Which melodic layer a <see cref="MelodyNote"/> belongs to.</summary>
+public enum MelodyPart
+{
+    /// <summary>A note of the theme's lead line (a bell with a little glide).</summary>
+    Theme,
+
+    /// <summary>A grace note just before a theme note.</summary>
+    Grace,
+
+    /// <summary>The counter-line under an <see cref="ThemeVariation.OctaveCounter"/> return.</summary>
+    Counter,
+
+    /// <summary>The freer music box between returns.</summary>
+    MusicBox,
+}
+
+/// <summary>A melody note as it is scheduled (diagnostics: <see cref="SkySynth.MelodyObserver"/>).</summary>
+/// <param name="Frame">The output frame at which it starts.</param>
+/// <param name="MidiNote">Its pitch as a MIDI note number.</param>
+/// <param name="Part">The melodic layer.</param>
+/// <param name="Variation">The variation of the cycle it was played in.</param>
+public readonly record struct MelodyNote(long Frame, int MidiNote, MelodyPart Part, ThemeVariation Variation);
+
 /// <summary>
 /// The Planets experience's original procedural audio ("Lantern Cosmos"): generative music and pitched sound effects,
 /// synthesised from scratch in plain C# (no engine types, no samples), so it can be rendered offline and tested.
 /// <para>
-/// <b>Music.</b> Every theme shares one tempo (<see cref="TempoBeatsPerMinute"/>, 84 BPM) and has its own key
-/// (<see cref="KeyFor"/>). Layers: a soft pad (a chord every 2 bars), a sparse seeded music-box melody (a random walk in
-/// the scale on eighth notes), a soft low pulse, and — while <see cref="SetFlight"/> is above zero — a rising arpeggio.
-/// <see cref="SetTheme"/> crossfades (equal power) over <see cref="ThemeCrossfade"/>. The music sits well below the effects.
+/// <b>Music.</b> Every theme shares one tempo (<see cref="TempoBeatsPerMinute"/>, 108 BPM) and has its own key
+/// (<see cref="KeyFor"/>). The music runs in 16-bar cycles (<see cref="CycleBars"/>): the original FileScape theme
+/// (<see cref="ThemeMelody"/>, 8 bars: a 2-bar motif, its answer, the motif raised, a cadence; written in scale degrees so it
+/// fits every key and mode) played by a bell lead with a little glide, then 8 bars of freer seeded music box. Each
+/// return is a <see cref="ThemeVariation"/> (plain first and every fourth cycle, otherwise a seeded choice per seed, theme
+/// and cycle). Under it: a soft pad that changes chord every bar under the theme and every 2 bars between (a progression
+/// per mode), a plucked bass on beat 1, the "and" of 2, beat 3 and a pickup, quiet offbeat shaker ticks of filtered
+/// noise, and — while <see cref="SetFlight"/> is above zero — a rising arpeggio. A new theme's first cycle starts on
+/// the next bar line. <see cref="SetTheme"/> crossfades (equal power) over <see cref="ThemeCrossfade"/>. The music sits
+/// well below the effects.
 /// </para>
 /// <para>
 /// <b>Effects.</b> All are pitched in the current key. Movement sounds (<see cref="Step"/>, <see cref="Jump"/>,
 /// <see cref="AirJump"/>, <see cref="Land"/>, <see cref="WindUp"/>, <see cref="Launch"/>, <see cref="Fly"/>) start at
 /// the render cursor (<see cref="ImmediateLatencyBound"/>). The others (<see cref="Arrive"/>, <see cref="Select"/>,
 /// <see cref="Inspect"/>, <see cref="Open"/>, <see cref="Deny"/>, <see cref="Chime"/>) wait for the next point of the
-/// half-sixteenth grid (a 32nd note, 89.3 ms at 84 BPM), so they lock to the tempo and never wait longer than
+/// half-sixteenth grid (a 32nd note, 69.4 ms at 108 BPM; a sixteenth, 139 ms, would exceed the ≈ 90 ms budget), so they lock to the tempo and never wait longer than
 /// <see cref="QuantisedLatencyBound"/>.
 /// </para>
 /// <para>
@@ -42,19 +99,31 @@ public sealed class SkySynth
     public const int DefaultSampleRateHz = 44100;
 
     /// <summary>Shared tempo of every theme, beats (quarter notes) per minute.</summary>
-    public const float TempoBeatsPerMinute = 84f;
+    public const float TempoBeatsPerMinute = 108f;
+
+    /// <summary>Bars per music cycle: the theme (<see cref="ThemeLengthBars"/>, or one more for an augmented ending), then free music box.</summary>
+    public const int CycleBars = 16;
+
+    /// <summary>The written theme's length in bars (4/4).</summary>
+    public const int ThemeLengthBars = 8;
 
     /// <summary>The size of the voice pool (music and effects together).</summary>
-    public const int MaxVoices = 24;
+    public const int MaxVoices = 32;
 
-    /// <summary>Voices the music may use at once; the rest are kept for effects (music notes are dropped, never stolen from effects).</summary>
-    public const int MaxMusicVoices = 16;
+    /// <summary>
+    /// Voices the music may use at once; the rest are kept for effects. When the music's share is full, a new music note
+    /// takes over the quietest music voice (never an effect's).
+    /// </summary>
+    public const int MaxMusicVoices = 22;
+
+    /// <summary>The FileScape theme as written: 8 bars of scale degrees and rhythm (see <see cref="ThemeNote"/>).</summary>
+    public static IReadOnlyList<ThemeNote> ThemeMelody { get; } = Array.AsReadOnly(BuildTheme());
 
     /// <summary>How long <see cref="SetTheme"/> takes to crossfade from one theme's music to the next.</summary>
     public static readonly TimeSpan ThemeCrossfade = TimeSpan.FromSeconds(2);
 
-    /// <summary>The longest a tempo-locked effect waits for the grid (one 32nd note at 84 BPM ≈ 89.3 ms, rounded up).</summary>
-    public static readonly TimeSpan QuantisedLatencyBound = TimeSpan.FromMilliseconds(90);
+    /// <summary>The longest a tempo-locked effect waits for the grid (one 32nd note at 108 BPM ≈ 69.4 ms, rounded up; within the ≈ 90 ms budget).</summary>
+    public static readonly TimeSpan QuantisedLatencyBound = TimeSpan.FromMilliseconds(70);
 
     /// <summary>The longest a movement effect waits before it sounds (it starts at the next rendered frame; attacks are ≤ 3 ms).</summary>
     public static readonly TimeSpan ImmediateLatencyBound = TimeSpan.FromMilliseconds(10);
@@ -67,6 +136,9 @@ public sealed class SkySynth
     private const int ControlFrames = 16;
     private const float LimiterThreshold = 0.8f;
     private const float OutputGain = 1.6f; // voice gains are designed small; this sets the overall loudness
+    private const int CycleSixteenths = CycleBars * 16;
+    private const int MaxCycleNotes = 128;
+    private static readonly ThemeNote[] ThemeNotes = [.. ThemeMelody];
 
     private readonly int _rate;
     private readonly float _invRate;
@@ -169,6 +241,12 @@ public sealed class SkySynth
     /// <summary>Music level relative to its designed (moderate) level, 0..1 (default 1). 0 leaves only the effects.</summary>
     public float MusicVolume { get; set; } = 1f;
 
+    /// <summary>The variation of the current theme cycle (diagnostics and probes).</summary>
+    public ThemeVariation Variation => _decks[_current].Variation;
+
+    /// <summary>Called (on the render thread, inside <see cref="Render(Span{float})"/>) for every melody note as it is scheduled; null by default.</summary>
+    public Action<MelodyNote>? MelodyObserver { get; set; }
+
     /// <summary>The key of a theme (all themes share <see cref="TempoBeatsPerMinute"/>).</summary>
     public static MusicalKey KeyFor(PlanetTheme theme)
     {
@@ -196,7 +274,7 @@ public sealed class SkySynth
         next.FadeTarget = 1;
         next.Rng = new Random(unchecked(_seed * 31 + (int)theme * 1009 + _themeChanges * 7919));
         next.NeedChord = true;
-        next.ResetMelody();
+        next.ResetMelody((_nextStep + 15) / 16);
     }
 
     /// <summary>Flight intensity 0..1: above zero, a rising arpeggio layer joins the music (smoothed, so it can be set every frame).</summary>
@@ -768,47 +846,59 @@ public sealed class SkySynth
         var p = deck.Profile;
         var group = _current;
         var len = p.Scale.Length;
-        var chordRoot = p.Progression[(int)(step / 32 % p.Progression.Length)];
         var inBar = (int)(step % 16);
+        var rel = step - deck.StartBar * 16; // sixteenths since the deck's first cycle (negative: the lead-in bar)
+        var pos = (int)(((rel % CycleSixteenths) + CycleSixteenths) % CycleSixteenths);
+        var bar = pos / 16;
+        if (rel >= 0 && pos == 0) BuildCycle(deck, rel / CycleSixteenths);
 
-        // Pad: a chord every 2 bars (or at once when a theme starts), held to the next chord.
-        if (step % 32 == 0 || deck.NeedChord)
+        // Harmony: a chord per bar under the theme, a chord every 2 bars between (the theme's progression per mode).
+        int chord;
+        int holdSixteenths;
+        var change = false;
+        if (rel < 0)
+        {
+            chord = p.Progression[0];
+            holdSixteenths = (int)-rel;
+            change = deck.NeedChord;
+        }
+        else if (bar < deck.ThemeBars)
+        {
+            var drone = p.Pad != PadKind.Normal;
+            chord = drone ? p.Progression[0] : ThemeChordAt(p, bar);
+            holdSixteenths = drone ? 32 - pos % 32 : 16 - pos % 16;
+            change = drone ? pos % 32 == 0 : inBar == 0;
+        }
+        else
+        {
+            var free = bar - deck.ThemeBars;
+            chord = p.Progression[free / 2 % p.Progression.Length];
+            holdSixteenths = Math.Min(2 - free % 2, 16 - bar) * 16 - inBar;
+            change = inBar == 0 && free % 2 == 0;
+        }
+
+        if (change || deck.NeedChord)
         {
             deck.NeedChord = false;
-            var holdSeconds = (float)((32 - step % 32) * _framesPerSixteenth / _rate) + 0.15f;
-            Span<int> voicing = stackalloc int[4];
-            ReadOnlySpan<int> offsets = p.Pad == PadKind.Cluster ? [0, 1, 2, 4] : p.Pad == PadKind.Drone ? [0, 2] : [0, 2, 4];
-            voicing = voicing[..offsets.Length];
-            for (var i = 0; i < offsets.Length; i++) voicing[i] = chordRoot + offsets[i];
-            var attack = p.Pad == PadKind.Normal ? 1.2f : 2.4f;
-            for (var i = 0; i < voicing.Length; i++)
-            {
-                var pan = voicing.Length == 1 ? 0 : -0.4f + 0.8f * i / (voicing.Length - 1);
-                Enqueue(frame, NoteSpec.Tone(p.Pad == PadKind.Drone ? Wave.Sine : Wave.Triangle, MidiHz(p.Root + ScaleNote(p.Scale, voicing[i]) - (p.Pad == PadKind.Drone ? 12 : 0))) with
-                {
-                    Attack = attack, Decay = 2f, Sustain = 0.75f, Hold = holdSeconds, Release = 1.8f, Gain = p.PadGain, ToneHz = p.PadToneHz,
-                    Pan = pan, Send = 0.5f, Group = group,
-                });
-            }
+            PlayPad(p, chord, (float)(holdSixteenths * _framesPerSixteenth / _rate) + 0.05f, frame, group);
+        }
 
-            Enqueue(frame, NoteSpec.Tone(Wave.Sine, MidiHz(p.Root - 12 + ScaleNote(p.Scale, chordRoot))) with
+        deck.Chord = chord;
+
+        // The FileScape theme (and its variation) from the deck's prepared notes.
+        if (rel >= 0)
+        {
+            while (deck.NextNote < deck.NoteCount && deck.Notes[deck.NextNote].Start <= pos)
             {
-                Attack = attack, Decay = 2f, Sustain = 0.7f, Hold = holdSeconds, Release = 1.8f, Gain = 0.05f, Send = 0.2f, Group = group,
-            });
-            if (p.Pad == PadKind.Cluster)
-            {
-                Enqueue(frame, NoteSpec.Noise(520, 520, 0, q: 0.7f, lowpass: true) with
-                {
-                    Attack = 2.5f, Decay = 2f, Sustain = 0.8f, Hold = holdSeconds, Release = 2f, Gain = 0.025f, Send = 0.6f, Group = group,
-                });
+                var note = deck.Notes[deck.NextNote++];
+                if (note.Start == pos) PlayThemeNote(deck, note, step, group);
             }
         }
 
-        // Phrasing: a bar of rest now and then.
+        // Between returns: the freer music box, a seeded random walk in the scale on eighth notes (chord tones on the beat).
         if (inBar == 0) deck.RestBar = deck.Rng.NextDouble() < p.RestChance;
-
-        // Music-box melody: a seeded random walk in the scale on eighth notes, landing on chord tones on the beat.
-        if (step % 2 == 0 && !deck.RestBar && deck.Rng.NextDouble() < p.MelodyDensity * (inBar % 4 == 0 ? 1.3 : 0.8))
+        if (rel >= 0 && bar >= deck.ThemeBars && step % 2 == 0 && !deck.RestBar
+            && deck.Rng.NextDouble() < p.MelodyDensity * (inBar % 4 == 0 ? 1.2 : 0.7))
         {
             ReadOnlySpan<int> moves = [-2, -1, -1, 0, 1, 1, 2];
             var deg = deck.MelodyDegree + moves[deck.Rng.Next(moves.Length)];
@@ -820,7 +910,7 @@ public sealed class SkySynth
             {
                 foreach (var d in (ReadOnlySpan<int>)[0, 1, -1, 2, -2])
                 {
-                    var c = ((deg + d - chordRoot) % len + len) % len;
+                    var c = ((deg + d - chord) % len + len) % len;
                     if (c is 0 or 2 or 4 && deg + d >= lo && deg + d <= hi)
                     {
                         deg += d;
@@ -831,19 +921,43 @@ public sealed class SkySynth
 
             deck.MelodyDegree = deg;
             var accent = inBar % 4 == 0 ? 1f : 0.75f + 0.2f * (float)deck.Rng.NextDouble();
-            Enqueue(frame, NoteSpec.Bell(MidiHz(p.Root + p.MelodyOctave * 12 + ScaleNote(p.Scale, deg)), ratio: p.BellRatio, index: 1.3f, indexDecay: 0.25f) with
+            var midi = p.Root + p.MelodyOctave * 12 + ScaleNote(p.Scale, deg);
+            Enqueue(frame, NoteSpec.Bell(MidiHz(midi), ratio: p.BellRatio, index: 1.3f, indexDecay: 0.25f) with
             {
-                Attack = 0.003f, Decay = 1.5f, Gain = 0.06f * accent, Pan = (float)(deck.Rng.NextDouble() * 0.9 - 0.45), Send = 0.45f, Group = group,
+                Attack = 0.003f, Decay = 1.2f, Gain = 0.05f * accent, Pan = (float)(deck.Rng.NextDouble() * 0.9 - 0.45), Send = 0.45f, Group = group,
             });
+            MelodyObserver?.Invoke(new MelodyNote(frame, midi, MelodyPart.MusicBox, deck.Variation));
         }
 
-        // Soft low pulse on beats 1 and 3.
-        if (p.Pulse && step % 8 == 0)
+        // The rhythmic bed: a plucked bass (beat 1, the "and" of 2, beat 3, a pickup) and soft offbeat shaker ticks.
+        if (p.Pulse)
         {
-            Enqueue(frame, NoteSpec.Tone(Wave.Sine, MidiHz(p.Root - 12 + ScaleNote(p.Scale, chordRoot))) with
+            var fifth = len == 7 ? 4 : 3;
+            var bassDegree = inBar switch { 0 => chord, 6 => chord, 8 => chord + fifth, 14 => chord, _ => int.MinValue };
+            if (bassDegree != int.MinValue)
             {
-                Attack = 0.012f, Decay = 0.5f, Gain = 0.08f, ToneHz = 400, Send = 0.1f, Group = group,
-            });
+                var semis = ScaleNote(p.Scale, bassDegree) - ScaleNote(p.Scale, chord) + BassSemitones(p, chord);
+                var gain = inBar switch { 0 => 0.085f, 8 => 0.06f, 14 => 0.035f, _ => 0.045f };
+                Enqueue(frame, NoteSpec.Tone(Wave.Triangle, MidiHz(p.Root - 12 + semis)) with
+                {
+                    Attack = 0.004f, Decay = inBar == 0 ? 0.6f : 0.4f, Gain = gain, ToneHz = 420, Send = 0.08f, Group = group,
+                });
+            }
+
+            if (inBar % 4 == 2)
+            {
+                Enqueue(frame, NoteSpec.Noise(8200, 6800, 0.03f, q: 1.6f) with
+                {
+                    Attack = 0.0015f, Decay = 0.045f, Gain = 0.02f, Pan = inBar % 8 == 2 ? -0.28f : 0.28f, Send = 0.05f, Group = group,
+                });
+            }
+            else if (inBar % 2 == 1 && Mix((uint)step * 0x9E3779B1u ^ (uint)_seed) % 3 != 0)
+            {
+                Enqueue(frame, NoteSpec.Noise(9500, 8000, 0.02f, q: 1.4f) with
+                {
+                    Attack = 0.001f, Decay = 0.025f, Gain = 0.007f, Pan = 0.1f, Send = 0.03f, Group = group,
+                });
+            }
         }
 
         // Flight: a rising arpeggio through the chord, climbing with the intensity.
@@ -853,15 +967,323 @@ public sealed class SkySynth
             var a = _arpCounter++ % 6;
             var arpDegree = arpBase[a % 3] + (a / 3) * len;
             var lift = _flightTarget > 0.6f ? len : 0;
-            Enqueue(frame, NoteSpec.Bell(MidiHz(p.Root + 12 + ScaleNote(p.Scale, chordRoot + arpDegree + lift)), ratio: 2f, index: 0.8f, indexDecay: 0.1f) with
+            Enqueue(frame, NoteSpec.Bell(MidiHz(p.Root + 12 + ScaleNote(p.Scale, chord + arpDegree + lift)), ratio: 2f, index: 0.8f, indexDecay: 0.1f) with
             {
-                Attack = 0.003f, Decay = 0.4f, Gain = 0.05f, Pan = -0.4f + 0.16f * a, Send = 0.4f, Group = GroupFlight,
+                Attack = 0.003f, Decay = 0.4f, Gain = 0.045f, Pan = -0.4f + 0.16f * a, Send = 0.4f, Group = GroupFlight,
             });
         }
         else
         {
             _arpCounter = 0;
         }
+    }
+
+    /// <summary>A pad chord (three soft triangles, a drone or a cluster), held for <paramref name="holdSeconds"/>.</summary>
+    private void PlayPad(Profile p, int chord, float holdSeconds, long frame, int group)
+    {
+        ReadOnlySpan<int> offsets = p.Pad == PadKind.Cluster ? [0, 1, 2, 4] : p.Pad == PadKind.Drone ? [0, 2] : [0, 2, 4];
+        var normal = p.Pad == PadKind.Normal;
+        var attack = normal ? 0.45f : 2.4f;
+        var release = normal ? 1.0f : 1.8f;
+        for (var i = 0; i < offsets.Length; i++)
+        {
+            var pan = -0.4f + 0.8f * i / (offsets.Length - 1);
+            var midi = p.Root + ScaleNote(p.Scale, chord + offsets[i]) - (p.Pad == PadKind.Drone ? 12 : 0);
+            Enqueue(frame, NoteSpec.Tone(p.Pad == PadKind.Drone ? Wave.Sine : Wave.Triangle, MidiHz(midi)) with
+            {
+                Attack = attack, Decay = 2f, Sustain = 0.75f, Hold = holdSeconds, Release = release, Gain = p.PadGain * (normal ? 0.7f : 1f), ToneHz = p.PadToneHz,
+                Pan = pan, Send = 0.5f, Group = group,
+            });
+        }
+
+        if (!p.Pulse)
+        {
+            // Without the plucked bass, a soft sustained root carries the low end.
+            Enqueue(frame, NoteSpec.Tone(Wave.Sine, MidiHz(p.Root - 12 + BassSemitones(p, chord))) with
+            {
+                Attack = attack, Decay = 2f, Sustain = 0.7f, Hold = holdSeconds, Release = release, Gain = 0.05f, Send = 0.2f, Group = group,
+            });
+        }
+
+        if (p.Pad == PadKind.Cluster)
+        {
+            Enqueue(frame, NoteSpec.Noise(520, 520, 0, q: 0.7f, lowpass: true) with
+            {
+                Attack = 2.5f, Decay = 2f, Sustain = 0.8f, Hold = holdSeconds, Release = 2f, Gain = 0.025f, Send = 0.6f, Group = group,
+            });
+        }
+    }
+
+    /// <summary>The chord's root in semitones above the key's root, folded into −5..+7 so the bass stays low and close.</summary>
+    private static int BassSemitones(Profile p, int chord)
+    {
+        var len = p.Scale.Length;
+        var semis = p.Scale[((chord % len) + len) % len];
+        return semis > 7 ? semis - 12 : semis;
+    }
+
+    private void PlayThemeNote(Deck deck, in LeadNote note, long step, int group)
+    {
+        var p = deck.Profile;
+        var midi = p.Root + 12 + ScaleNote(p.Scale, note.Degree);
+        var hz = MidiHz(midi);
+        var sixteenth = (float)(_framesPerSixteenth / _rate);
+        var at = Math.Max(_frame, StepFrame(step) + (long)Math.Round(note.Delay * _framesPerSixteenth));
+        var themeGain = p.Pad == PadKind.Normal ? 1f : 0.55f;
+        switch (note.Part)
+        {
+            case MelodyPart.Theme:
+            {
+                // A little glide from the previous note when the line is legato and the step is small.
+                var glide = deck.LastLeadEnd == step && midi != deck.LastLeadMidi && Math.Abs(midi - deck.LastLeadMidi) <= 5;
+                var from = glide ? MidiHz(deck.LastLeadMidi) : hz;
+                Enqueue(at, NoteSpec.Bell(from, ratio: 2f, index: 1.5f, indexDecay: 0.35f) with
+                {
+                    GlideToHz = glide ? hz : 0, Glide = 0.035f, Attack = 0.004f, Decay = 0.8f, Sustain = 0.32f,
+                    Hold = MathF.Max(0.05f, note.Length * sixteenth - 0.02f), Release = 0.4f, Gain = 0.085f * note.Velocity * themeGain,
+                    Pan = 0.05f, Send = 0.35f, ToneHz = 5200, Group = group,
+                });
+                deck.LastLeadEnd = step + note.Length;
+                deck.LastLeadMidi = midi;
+                break;
+            }
+
+            case MelodyPart.Grace:
+                Enqueue(at, NoteSpec.Bell(hz, ratio: 2f, index: 1f, indexDecay: 0.1f) with
+                {
+                    Attack = 0.002f, Decay = 0.18f, Gain = 0.05f * note.Velocity * themeGain, Pan = 0.05f, Send = 0.3f, ToneHz = 5200, Group = group,
+                });
+                break;
+            default:
+                Enqueue(at, NoteSpec.Tone(Wave.Triangle, hz) with
+                {
+                    Attack = 0.03f, Decay = 1.2f, Sustain = 0.45f, Hold = MathF.Max(0.05f, note.Length * sixteenth - 0.05f), Release = 0.6f,
+                    Gain = 0.04f * note.Velocity * themeGain, ToneHz = 1500, Pan = -0.3f, Send = 0.4f, Group = group,
+                });
+                break;
+        }
+
+        MelodyObserver?.Invoke(new MelodyNote(at, midi, note.Part, deck.Variation));
+    }
+
+    // ---------------------------------------------------------------- the FileScape theme
+
+    /// <summary>
+    /// Prepares cycle <paramref name="cycle"/>'s theme notes in the deck's key: the written theme mapped into the scale,
+    /// then transformed by the cycle's variation. Allocation-free (the deck's note array is reused).
+    /// </summary>
+    private void BuildCycle(Deck deck, long cycle)
+    {
+        var p = deck.Profile;
+        var len = p.Scale.Length;
+        var variation = VariationFor(deck.Theme, cycle, deck.Variation);
+        deck.Variation = variation;
+        var notes = deck.Notes;
+        var n = 0;
+        var theme = ThemeNotes;
+        var graceDelay = 1f - 0.05f / (float)(_framesPerSixteenth / _rate); // a grace note sounds 50 ms before its note
+        var pivot = int.MinValue;
+        var previous = int.MinValue;
+        for (var i = 0; i < theme.Length; i++)
+        {
+            var t = theme[i];
+            var d = MapDegree(t.Degree, len);
+            var next = i + 1 < theme.Length ? MapDegree(theme[i + 1].Degree, len) : d;
+            int start = t.StartSixteenths, length = t.LengthSixteenths;
+            var velocity = start % 16 == 0 || length >= 6 ? 1f : start % 4 == 0 ? 0.9f : 0.8f;
+            switch (variation)
+            {
+                case ThemeVariation.OctaveCounter:
+                    d += len;
+                    next += len;
+                    break;
+                case ThemeVariation.InvertedAnswer when start is >= 32 and < 64:
+                    if (pivot == int.MinValue) pivot = d;
+                    d = 2 * pivot - d;
+                    next = start + length < 64 ? 2 * pivot - next : next;
+                    break;
+                case ThemeVariation.AugmentedEnding when start >= 96:
+                    start = 96 + 2 * (start - 96);
+                    length *= 2;
+                    break;
+            }
+
+            if (variation == ThemeVariation.Ornamented)
+            {
+                if (previous != int.MinValue && d - previous >= 3) notes[n++] = new LeadNote(start - 1, 1, d - 1, 0.55f, graceDelay, MelodyPart.Grace);
+                previous = d;
+                if (i + 1 < theme.Length && length >= 6)
+                {
+                    // A turn on the long notes: the note, its upper neighbour, the note again.
+                    notes[n++] = new LeadNote(start, 3, d, velocity, 0, MelodyPart.Theme);
+                    notes[n++] = new LeadNote(start + 3, 1, d + 1, 0.6f, 0, MelodyPart.Theme);
+                    notes[n++] = new LeadNote(start + 4, length - 4, d, 0.75f, 0, MelodyPart.Theme);
+                    continue;
+                }
+
+                if (i + 1 < theme.Length && length >= 4)
+                {
+                    // A passing note into a third, otherwise a neighbour note away from the next one.
+                    var diff = next - d;
+                    var ornament = Math.Abs(diff) == 2 ? d + Math.Sign(diff) : diff > 0 ? d - 1 : d + 1;
+                    notes[n++] = new LeadNote(start, length - 2, d, velocity, 0, MelodyPart.Theme);
+                    notes[n++] = new LeadNote(start + length - 2, 2, ornament, 0.7f, 0, MelodyPart.Theme);
+                    continue;
+                }
+            }
+
+            notes[n++] = new LeadNote(start, length, d, velocity, 0, MelodyPart.Theme);
+        }
+
+        if (variation == ThemeVariation.Syncopated)
+        {
+            // Anticipate a beat where the note before can give up an eighth, otherwise delay the note by one.
+            for (var i = 1; i < n; i++)
+            {
+                ref var cur = ref notes[i];
+                ref var prev = ref notes[i - 1];
+                if (cur.Start % 4 != 0 || prev.Start + prev.Length != cur.Start) continue;
+                if (prev.Length >= 4)
+                {
+                    prev.Length -= 2;
+                    cur.Start -= 2;
+                    cur.Length += 2;
+                }
+                else if (cur.Length >= 4)
+                {
+                    prev.Length += 2;
+                    cur.Start += 2;
+                    cur.Length -= 2;
+                }
+            }
+        }
+
+        if (variation == ThemeVariation.OctaveCounter)
+        {
+            // A slow counter-line of chord tones an octave below the (raised) theme, moving every half bar.
+            var counter = 2;
+            for (var b = 0; b < ThemeLengthBars; b++)
+            {
+                var root = p.Pad == PadKind.Normal ? ThemeChordAt(p, b) : p.Progression[0];
+                var halves = b == ThemeLengthBars - 1 ? 1 : 2;
+                for (var h = 0; h < halves; h++)
+                {
+                    var best = counter;
+                    var bestDistance = int.MaxValue;
+                    foreach (var k in (ReadOnlySpan<int>)[0, 2, 4])
+                    {
+                        for (var octave = -1; octave <= 1; octave++)
+                        {
+                            var c = root + k + octave * len;
+                            if (c < -2 || c > len + 3 || (h == 1 && c == counter)) continue;
+                            var distance = Math.Abs(c - counter);
+                            if (distance < bestDistance)
+                            {
+                                bestDistance = distance;
+                                best = c;
+                            }
+                        }
+                    }
+
+                    counter = best;
+                    notes[n++] = new LeadNote(b * 16 + h * 8, halves == 1 ? 16 : 8, counter, 0.8f, 0, MelodyPart.Counter);
+                }
+            }
+        }
+
+        // Order by onset (insertion sort: a few dozen notes, once per 16 bars).
+        for (var i = 1; i < n; i++)
+        {
+            var x = notes[i];
+            var j = i - 1;
+            while (j >= 0 && notes[j].Start + notes[j].Delay > x.Start + x.Delay)
+            {
+                notes[j + 1] = notes[j];
+                j--;
+            }
+
+            notes[j + 1] = x;
+        }
+
+        var end = 0;
+        for (var i = 0; i < n; i++)
+        {
+            if (notes[i].Part == MelodyPart.Theme) end = Math.Max(end, notes[i].Start + notes[i].Length);
+        }
+
+        deck.NoteCount = n;
+        deck.NextNote = 0;
+        deck.ThemeBars = Math.Clamp((end + 15) / 16, ThemeLengthBars, CycleBars - 4);
+        deck.LastLeadEnd = long.MinValue;
+    }
+
+    /// <summary>The variation of a theme's cycle: plain on cycles 0, 4, 8, …; otherwise a seeded choice that never repeats the last one.</summary>
+    private ThemeVariation VariationFor(PlanetTheme theme, long cycle, ThemeVariation previous)
+    {
+        if (cycle % 4 == 0) return ThemeVariation.Plain;
+        var h = Mix((uint)_seed * 0x9E3779B1u ^ (uint)((int)theme + 1) * 0x85EBCA77u ^ (uint)cycle * 0xC2B2AE3Du);
+        var v = 1 + (int)(h % 5);
+        if ((ThemeVariation)v == previous) v = 1 + v % 5;
+        return (ThemeVariation)v;
+    }
+
+    /// <summary>A theme degree (7-note numbering) in a scale of <paramref name="len"/> notes: identity for 7, la/sol/mi/re/do for pentatonics.</summary>
+    private static int MapDegree(int degree, int len)
+    {
+        if (len == 7) return degree;
+        var octave = (int)Math.Floor(degree / 7.0);
+        var r = degree - 7 * octave;
+        ReadOnlySpan<int> pentatonic = [0, 1, 2, 2, 3, 4, 4];
+        return (len == 5 ? pentatonic[r] : (int)Math.Round(r * len / 7.0)) + len * octave;
+    }
+
+    /// <summary>The chord root under bar <paramref name="bar"/> of the theme, per mode (avoiding the mode's diminished triad).</summary>
+    private static int ThemeChordAt(Profile p, int bar)
+    {
+        if (bar < 0 || bar >= ThemeLengthBars) return 0; // an augmented ending's extra bar rests on the tonic
+        ReadOnlySpan<int> chords = p.Scale.Length == 5 ? [0, 4, 0, 3, 1, 0, 3, 0]
+            : ReferenceEquals(p.Scale, Lydian) ? [0, 5, 0, 4, 1, 0, 4, 0]
+            : ReferenceEquals(p.Scale, Dorian) ? [0, 3, 0, 4, 6, 0, 4, 0]
+            : [0, 5, 0, 4, 3, 0, 4, 0];
+        return chords[bar];
+    }
+
+    private static uint Mix(uint h)
+    {
+        h ^= h >> 16;
+        h *= 0x7FEB352Du;
+        h ^= h >> 15;
+        h *= 0x846CA68Bu;
+        h ^= h >> 16;
+        return h;
+    }
+
+    private static ThemeNote[] BuildTheme()
+    {
+        // (degree, sixteenths) per bar: motif (bars 1–2), answer (3–4), the motif raised (5–6), the cadence (7–8).
+        (int Degree, int Length)[][] bars =
+        [
+            [(2, 2), (4, 2), (7, 6), (5, 2), (4, 4)],
+            [(5, 2), (4, 2), (2, 2), (1, 2), (2, 8)],
+            [(2, 2), (4, 2), (7, 6), (8, 2), (9, 4)],
+            [(8, 2), (7, 2), (5, 4), (4, 8)],
+            [(4, 2), (5, 2), (9, 6), (8, 2), (7, 4)],
+            [(5, 2), (7, 2), (4, 2), (2, 2), (4, 8)],
+            [(5, 2), (4, 2), (2, 2), (4, 2), (1, 6), (2, 2)],
+            [(0, 8)],
+        ];
+        var notes = new List<ThemeNote>();
+        for (var b = 0; b < bars.Length; b++)
+        {
+            var at = b * 16;
+            foreach (var (degree, length) in bars[b])
+            {
+                notes.Add(new ThemeNote(at, length, degree));
+                at += length;
+            }
+        }
+
+        return [.. notes];
     }
 
     // ---------------------------------------------------------------- voices and scheduling
@@ -901,10 +1323,28 @@ public sealed class SkySynth
             else if (v.Group != GroupSfx) musicCount++;
         }
 
-        if (music && musicCount >= MaxMusicVoices) return null;
-        if (slot == null)
+        if (music && (musicCount >= MaxMusicVoices || slot == null))
         {
-            if (music) return null;
+            // The music's share is full: take over the quietest music voice (never an effect's).
+            slot = null;
+            var quietest = float.MaxValue;
+            foreach (var v in _voices)
+            {
+                if (!v.Active || v.Group == GroupSfx) continue;
+                var loud = v.Env * v.Level;
+                if (loud < quietest)
+                {
+                    quietest = loud;
+                    slot = v;
+                }
+            }
+
+            if (slot == null) return null;
+            _residualL[slot.Group] += slot.LastL;
+            _residualR[slot.Group] += slot.LastR;
+        }
+        else if (slot == null)
+        {
             // Steal the quietest voice; its last output decays through the group's residual, so the cut never clicks.
             var best = float.MaxValue;
             foreach (var v in _voices)
@@ -1040,8 +1480,41 @@ public sealed class SkySynth
         public bool NeedChord;
         public bool RestBar;
         public int MelodyDegree;
+        public int Chord;
 
-        public void ResetMelody() => MelodyDegree = Profile.Scale.Length / 2 + 2;
+        /// <summary>The bar (counted from the synth's start) where this deck's first theme cycle begins.</summary>
+        public long StartBar;
+        public ThemeVariation Variation;
+        public int ThemeBars = ThemeLengthBars;
+        public readonly LeadNote[] Notes = new LeadNote[MaxCycleNotes];
+        public int NoteCount;
+        public int NextNote;
+        public int LastLeadMidi;
+        public long LastLeadEnd = long.MinValue;
+
+        /// <summary>Starts over for a new theme: the first cycle (the plain theme) begins at bar <paramref name="startBar"/>.</summary>
+        public void ResetMelody(long startBar = 0)
+        {
+            MelodyDegree = Profile.Scale.Length / 2 + 2;
+            StartBar = startBar;
+            Variation = ThemeVariation.Plain;
+            NoteCount = NextNote = 0;
+            LastLeadEnd = long.MinValue;
+            Chord = Profile.Progression[0];
+        }
+    }
+
+    /// <summary>A prepared theme note of the current cycle: onset/length in sixteenths from the cycle start, a degree in the deck's scale.</summary>
+    private struct LeadNote(int start, int length, int degree, float velocity, float delay, MelodyPart part)
+    {
+        public int Start = start;
+        public int Length = length;
+        public int Degree = degree;
+        public float Velocity = velocity;
+
+        /// <summary>Extra onset delay in sixteenths (a grace note sounds just before its note).</summary>
+        public float Delay = delay;
+        public MelodyPart Part = part;
     }
 
     // ---------------------------------------------------------------- voice

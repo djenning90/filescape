@@ -134,7 +134,7 @@ public partial class SkyAudio : Node
 
     /// <summary>
     /// A duration near <paramref name="seconds"/> (within <paramref name="maxShiftSeconds"/>) that ends on the music's
-    /// sixteenth-note grid (84 BPM: 0.179 s), so a launch released after it lands on the beat (research E6). Measured in
+    /// sixteenth-note grid (108 BPM: 0.139 s), so a launch released after it lands on the beat (research E6). Measured in
     /// synth time, which is the time the release sound is rendered at.
     /// </summary>
     public float AlignToSixteenth(float seconds, float maxShiftSeconds)
