@@ -1,0 +1,25 @@
+FileScape check full  2026-11-11T06:51:29Z  commit a98fdb4696c6
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\full-20261111-065129
+build                           11.4s  exit 0
+tests-windows                   32.6s  exit 0
+tests-wsl                       17.0s  exit 0
+    Passed!  - Failed:     0, Passed:   311, Skipped:    19, Total:   330, Duration: 16 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   313, Skipped:    17, Total:   330, Duration: 8 s - FileScape.Core.Tests.dll (net10.0)
+build: a98fdb4696c6 2026-11-11T06:51:21Z  (C:\Users\David\AppData\Local\FileScape\staging-20261111-065057-821915\FileScape.exe)
+explore-ui1.0                   44.0s  ok     journey         29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    7.7s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   40.1s  ok     journey         39 PASS  0 FAIL  2 SKIP
+walk-ui1.0                      85.9s  ok     journey        101 PASS  0 FAIL  2 SKIP
+places-connected                51.3s  ok     journey         53 PASS  0 FAIL  4 SKIP
+places-tree                     49.9s  ok     journey         52 PASS  0 FAIL  4 SKIP
+places-scan                      8.7s  ok     journey          8 PASS  0 FAIL  0 SKIP
+navigation                      39.8s  ok     journey         56 PASS  0 FAIL  0 SKIP
+map-journey                     18.2s  ok     journey         15 PASS  0 FAIL  0 SKIP
+planetoids                      12.5s  ok     journey          9 PASS  0 FAIL  0 SKIP
+aerial-limit-24                 16.4s  ok     journey         10 PASS  0 FAIL  0 SKIP
+aerial-limit-8                  13.2s  ok     journey         11 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  43.7s  ok     journey         29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   53.0s  ok     journey         53 PASS  0 FAIL  4 SKIP
+planets-fixture                 22.7s  ok     journey         15 PASS  0 FAIL  2 SKIP
+planets-ui1.25                  37.1s  ok     journey         39 PASS  0 FAIL  2 SKIP
+TOTAL                            606s  failing steps: 0

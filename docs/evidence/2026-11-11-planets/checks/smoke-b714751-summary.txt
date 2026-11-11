@@ -1,0 +1,13 @@
+FileScape check smoke  2026-11-11T06:11:48Z  commit b7147513a9bd
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\smoke-20261111-061148
+build                           11.3s  exit 0
+tests-windows                   38.5s  exit 1
+tests-wsl                       20.1s  exit 0
+    Failed!  - Failed:     1, Passed:   308, Skipped:    19, Total:   328, Duration: 18 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   311, Skipped:    17, Total:   328, Duration: 8 s - FileScape.Core.Tests.dll (net10.0)
+stage                           36.4s  exit 0
+build: b7147513a9bd+27-uncommitted 2026-11-11T06:13:31Z  (C:\Users\David\AppData\Local\FileScape\staging-20261111-061259-754416\FileScape.exe)
+explore-ui1.0                   47.1s  ok     journey         29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    8.2s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   35.6s  ok     journey         37 PASS  0 FAIL  2 SKIP
+TOTAL                            198s  failing steps: 1

@@ -8,7 +8,7 @@ Wayfarer fixture (`%TEMP%\FileScape-fixtures\walk-…`) and the WSL fixture (`/t
 |---|---|---|
 | `gallery/` | the art pass: every planet theme, file object, landmark and the traveller (`--experiment=planet-gallery`) | art branch |
 | `journey/` | the first minutes on the Starter Sky (`--automate=planets-journey`): opening shot, arrival, overlook, launcher, landing, picture preview, Places, return, piles, the list, Quiet Moon, workshop, Music Box; `planets-journey.log` | staged `63dfed091e8b` (full tier) |
-| `fixture/` | the same system on the Wayfarer fixture and a WSL folder (`--automate=planets-fixture`) | staged `88899d32ccf3` |
+| `fixture/` | the same system on the Wayfarer fixture and a WSL folder (`--automate=planets-fixture`) | staged `a98fdb4696c6` (full tier) |
 | `checks/` | verification tier summaries | see each |
 
 The recorded reel (`--automate=planets-reel --write-movie … --fixed-fps 30`, 1280×720, with its sound) is kept outside

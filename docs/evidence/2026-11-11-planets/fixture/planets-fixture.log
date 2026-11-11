@@ -1,0 +1,67 @@
+[23:00:38.347] planets-fixture probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[23:00:38.917] fixture root C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer: theme Library, 4 objects, 11 launchers (3 links), 15 in the sky
+[23:00:38.942] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/01-fixture-arrival.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer selected=-
+[23:00:40.547] flight u=0.000 dt=16.7 ms avatar screen=(764,669) camera→avatar 8.7 m scale 1.00
+[23:00:40.557] flight u=0.011 dt=16.7 ms avatar screen=(814,663) camera→avatar 8.1 m scale 1.00
+[23:00:40.573] flight u=0.022 dt=16.7 ms avatar screen=(812,661) camera→avatar 7.8 m scale 1.00
+[23:00:40.589] flight u=0.033 dt=16.7 ms avatar screen=(810,659) camera→avatar 7.5 m scale 1.00
+[23:00:40.606] flight u=0.044 dt=16.7 ms avatar screen=(809,658) camera→avatar 7.3 m scale 0.99
+[23:00:40.623] flight u=0.056 dt=16.7 ms avatar screen=(808,656) camera→avatar 7.1 m scale 0.99
+[23:00:40.640] flight u=0.067 dt=16.7 ms avatar screen=(807,654) camera→avatar 6.9 m scale 0.98
+[23:00:40.656] flight u=0.078 dt=16.7 ms avatar screen=(806,653) camera→avatar 6.7 m scale 0.98
+[23:00:40.673] flight u=0.089 dt=16.7 ms avatar screen=(805,651) camera→avatar 6.6 m scale 0.97
+[23:00:40.689] flight u=0.100 dt=16.7 ms avatar screen=(804,650) camera→avatar 6.5 m scale 0.96
+[23:00:40.706] flight u=0.111 dt=16.7 ms avatar screen=(804,648) camera→avatar 6.3 m scale 0.95
+[23:00:42.126] PASS Space: flew to Photos
+[23:00:42.126] PASS a visible wind-up first: 0.38 s (0.4 s, aligned to the beat ±0.09 s)
+[23:00:42.126] PASS a brisk crossing: 1.52 s
+[23:00:42.126] PASS the landing does not cut: the traveller moves 0.3 % of the screen height in the landing frame (flight frames ≤ 27.9 %, the largest at 0.54 of the way)
+[23:00:42.126] PASS landed on foot
+[23:00:42.159] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/02-fixture-photos.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Photos selected=-
+[23:00:42.503] flight u=0.000 dt=16.7 ms avatar screen=(841,864) camera→avatar 7.3 m scale 1.00
+[23:00:42.507] flight u=0.008 dt=16.7 ms avatar screen=(761,660) camera→avatar 7.3 m scale 1.00
+[23:00:42.524] flight u=0.015 dt=16.7 ms avatar screen=(761,659) camera→avatar 6.8 m scale 1.00
+[23:00:42.540] flight u=0.023 dt=16.7 ms avatar screen=(761,658) camera→avatar 6.3 m scale 1.00
+[23:00:42.557] flight u=0.031 dt=16.7 ms avatar screen=(761,656) camera→avatar 5.9 m scale 1.00
+[23:00:42.573] flight u=0.038 dt=16.7 ms avatar screen=(761,655) camera→avatar 5.6 m scale 1.01
+[23:00:42.590] flight u=0.046 dt=16.7 ms avatar screen=(760,654) camera→avatar 5.3 m scale 1.01
+[23:00:42.607] flight u=0.054 dt=16.7 ms avatar screen=(760,653) camera→avatar 5.1 m scale 1.01
+[23:00:42.624] flight u=0.061 dt=16.7 ms avatar screen=(759,651) camera→avatar 4.9 m scale 1.02
+[23:00:42.641] flight u=0.069 dt=16.7 ms avatar screen=(759,650) camera→avatar 4.7 m scale 1.02
+[23:00:42.657] flight u=0.076 dt=16.7 ms avatar screen=(758,649) camera→avatar 4.6 m scale 1.02
+[23:00:42.674] flight u=0.084 dt=16.7 ms avatar screen=(757,647) camera→avatar 4.6 m scale 1.03
+[23:00:42.706] flight u=0.092 dt=18.1 ms avatar screen=(756,646) camera→avatar 4.6 m scale 1.04
+[23:00:42.714] flight u=0.100 dt=16.7 ms avatar screen=(756,645) camera→avatar 4.6 m scale 1.04
+[23:00:42.725] flight u=0.107 dt=16.1 ms avatar screen=(756,644) camera→avatar 4.6 m scale 1.05
+[23:00:42.742] flight u=0.115 dt=16.5 ms avatar screen=(757,643) camera→avatar 4.6 m scale 1.05
+[23:00:44.740] PASS Backspace: flew to Wayfarer
+[23:00:44.740] PASS a visible wind-up first: 0.38 s (0.4 s, aligned to the beat ±0.09 s)
+[23:00:44.740] PASS a brisk crossing: 2.19 s
+[23:00:44.740] PASS the landing does not cut: the traveller moves 0.6 % of the screen height in the landing frame (flight frames ≤ 34.0 %, the largest at 0.95 of the way)
+[23:00:44.740] PASS landed on foot
+[23:00:44.741] link launcher: also-photos → junction
+[23:00:46.007] PASS a link's launcher says it follows a link: "Space · follow the link to also-photos"
+[23:00:46.043] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/03-fixture-link-launcher.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer selected=Photos
+[23:00:46.478] flight u=0.009 dt=16.7 ms avatar screen=(841,506) camera→avatar 7.6 m scale 1.00
+[23:00:46.492] flight u=0.018 dt=16.7 ms avatar screen=(834,461) camera→avatar 7.1 m scale 1.00
+[23:00:46.508] flight u=0.027 dt=16.7 ms avatar screen=(825,409) camera→avatar 6.6 m scale 1.00
+[23:00:46.525] flight u=0.036 dt=16.7 ms avatar screen=(809,354) camera→avatar 6.3 m scale 0.99
+[23:00:46.542] flight u=0.045 dt=16.7 ms avatar screen=(785,305) camera→avatar 6.0 m scale 0.99
+[23:00:46.558] flight u=0.054 dt=16.7 ms avatar screen=(742,273) camera→avatar 5.8 m scale 0.99
+[23:00:46.575] flight u=0.064 dt=16.7 ms avatar screen=(679,284) camera→avatar 5.7 m scale 0.98
+[23:00:46.591] flight u=0.073 dt=16.7 ms avatar screen=(619,356) camera→avatar 5.7 m scale 0.98
+[23:00:46.608] flight u=0.082 dt=16.7 ms avatar screen=(599,472) camera→avatar 5.7 m scale 0.97
+[23:00:46.625] flight u=0.091 dt=16.7 ms avatar screen=(628,555) camera→avatar 5.8 m scale 0.97
+[23:00:46.642] flight u=0.100 dt=16.7 ms avatar screen=(661,593) camera→avatar 5.9 m scale 0.96
+[23:00:46.658] flight u=0.109 dt=16.7 ms avatar screen=(684,611) camera→avatar 6.0 m scale 0.95
+[23:00:46.676] flight u=0.118 dt=16.7 ms avatar screen=(701,609) camera→avatar 6.2 m scale 0.95
+[23:00:48.325] PASS through the link to C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Photos
+[23:00:48.361] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/04-fixture-through-link.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\Photos selected=Photos
+[23:00:54.177] PASS an empty folder is a quiet moon (Quiet): "a quiet moon: empty  ·  Here: empty"
+[23:00:54.212] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/05-fixture-empty-room.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\walk-20261105-071512-10a41c\Wayfarer\empty-room selected=also-photos
+[23:00:57.579] PASS a WSL folder as a planet: \\wsl.localhost\Ubuntu-24.04\tmp\filescape-wsl-fixtures\wsl-20261105-094515 (Wild, 6 launchers, 11 objects; Notes and notes are separate worlds)
+[23:00:57.579] PASS its symbolic links are marked as links
+[23:00:57.613] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-065129/planets-fixture/06-fixture-wsl.png current=\\wsl.localhost\Ubuntu-24.04\tmp\filescape-wsl-fixtures\wsl-20261105-094515 selected=also-photos
+[23:00:57.619] SKIP perf walking: 169 frames, mean 16.6 ms, p95 16.7 ms, p99 16.7 ms, max 21.4 ms (functional tier: not a measurement)
+[23:00:57.619] SKIP perf flying: 482 frames, mean 16.7 ms, p95 16.7 ms, p99 18.1 ms, max 33.3 ms (functional tier: not a measurement)
+[23:00:57.732] done failures=0

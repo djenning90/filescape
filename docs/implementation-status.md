@@ -8,9 +8,9 @@ Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** 
 
 DJ's brief: a playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* with original art, sound and interaction, on the shared session, alongside the flat world. Research: `docs/galaxy-research.md` (what was examined, what it changed). Requirements: PLANET-10..18. Decisions: AD-39..43. Guided first playthrough: `docs/planets-playthrough.md`. Evidence: `docs/evidence/2026-11-11-planets/`.
 
-**Build.** **`88899d32ccf3`** (clean tree) is verified (exported, files and hashes checked, smoke-launched) in `C:\Users\David\AppData\Local\FileScape\staging-20261111-064427-812106\`. It is **not promoted** into `build\` (KD-32): Windows refused to move the current `build` folder although no FileScape was running and no file in it was open; nothing was closed. The installed build is still `217a37f7ffa9`. Launch the planets directly from the staging folder (below) or run `tools/fs.sh promote staging-20261111-064427-812106` once the folder is free.
+**Build.** **`a98fdb4696c6`** (clean tree) is verified (exported, files and hashes checked, smoke-launched) in `C:\Users\David\AppData\Local\FileScape\staging-20261111-065057-821915\`. It is **not promoted** into `build\` (KD-32): Windows refused to move the current `build` folder although no FileScape was running and no file in it was open; nothing was closed. The installed build is still `217a37f7ffa9`. Launch the planets directly from the staging folder (below) or run `tools/fs.sh promote staging-20261111-065057-821915` once the folder is free.
 
-**Launch:** `C:\Users\David\AppData\Local\FileScape\staging-20261111-064427-812106\FileScape.exe -- --root=sample --vis=planets` (or start it plainly and click **✦ Planets (V)**: from the sample data it opens the Starter Sky).
+**Launch:** `C:\Users\David\AppData\Local\FileScape\staging-20261111-065057-821915\FileScape.exe -- --root=sample --vis=planets` (or start it plainly and click **✦ Planets (V)**: from the sample data it opens the Starter Sky).
 
 | Area | Status | Evidence |
 |---|---|---|
@@ -33,7 +33,8 @@ DJ's brief: a playable planetary FileScape, a spiritual descendant of *Super Mar
 | Core tests | Windows 309 passed / 19 skipped (`63dfed0`); WSL 313 passed / 17 skipped (HEAD) |
 | Smoke tier (`b714751`+) | explore 29/0, hub → project 19/0, planets 37/0 |
 | Full tier on `63dfed0` | 18 of 20 steps passed: planets 38/0, planets fixture (Wayfarer + WSL) 15/0, places, scan, navigation, map, planetoids, aerial limits, explore and places at 1.25 all 0 failures; **walk 99/2** (KD-31, intermittent, not reproduced in 3 reruns); planets at 1.25 37/1 (a Backspace wind-up of 0.25 s, by design then; all wind-ups are now 0.4 s) |
-| Full tier on the final `88899d3` | see below (filled in after the run) |
+| **Full tier on the final `a98fdb4`** | **20 of 20 steps pass, 606 s**: planets 39/0, planets at 1.25 39/0, planets fixture (Wayfarer + WSL) 15/0, walk 101/0, explore 29/0 (1.0 and 1.25), places, scan, navigation, map, planetoids, aerial limits, project all 0 failures |
+| Recording | `%LOCALAPPDATA%\FileScape\evidence\2026-11-11-planets\planets-reel.avi` (1280×720, 30 fps, with sound; 0 failures) |
 
 **What changed after trying the build** (each from a screenshot, a measurement or a recorded reel): the camera's look is smoothed and keeps the traveller in frame (the traveller left the frame at launch); the flight camera travels with the traveller as an offset (it lagged at 30 m/s); the traveller keeps its flight scale (it popped to size at touchdown); the camera rides along with hops (it rolled behind); the wind-up turns the camera to the destination (the return flight came at the lens); the atmosphere shell only on worlds in the sky (it hazed the view from inside); no self-shadowing ground (blocky acne); grove signs small and close (they filled the screen); planet ground built on worker threads and prefetched (60–220 ms hitches); an establishing shot for the first world; six-petal launchers (five read as a star); a deeper Library palette; a slim flight trail (it read as a beam); +5 dB (the mix measured ≈ −28 dBFS); remembered routes; hover names; easels read pictures by themselves only in the Starter Sky (FILE-02).
 

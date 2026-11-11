@@ -1,6 +1,8 @@
 # The planetary FileScape: a short guided first playthrough
 
-Launch (installed build): `C:\Users\David\AppData\Local\FileScape\build\FileScape.exe -- --root=sample --vis=planets`
+Launch: `C:\Users\David\AppData\Local\FileScape\staging-20261111-065057-821915\FileScape.exe -- --root=sample --vis=planets`
+(the verified build `a98fdb4696c6`; once promoted with `tools/fs.sh promote staging-20261111-065057-821915` it is
+`C:\Users\David\AppData\Local\FileScape\build\FileScape.exe`)
 (or start FileScape as usual and click **✦ Planets (V)** in the toolbar: from the sample data it opens the Starter Sky).
 
 The Starter Sky is a small folder of real, original files that FileScape writes into its own data folder

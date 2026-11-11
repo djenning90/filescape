@@ -1,0 +1,28 @@
+FileScape check full  2026-11-11T06:19:16Z  commit 9e492a9ee2ed
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\full-20261111-061916
+build                           12.6s  exit 0
+tests-windows                   37.3s  exit 0
+tests-wsl                       22.8s  exit 0
+    Passed!  - Failed:     0, Passed:   309, Skipped:    19, Total:   328, Duration: 20 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   311, Skipped:    17, Total:   328, Duration: 7 s - FileScape.Core.Tests.dll (net10.0)
+build: 63dfed091e8b 2026-11-11T06:17:03Z  (C:\Users\David\AppData\Local\FileScape\staging-20261111-061639-767928\FileScape.exe)
+explore-ui1.0                   46.6s  ok     journey         29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    8.2s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   37.2s  ok     journey         38 PASS  0 FAIL  2 SKIP
+walk-ui1.0                      86.8s  FAILED journey         99 PASS  2 FAIL  2 SKIP  (exit 1; 2 failing assertion(s))
+    [22:22:08.704] FAIL horizontal usual, vertical still reversed: right turns right (-13.3°), down looks up (+16.8°)
+    [22:22:09.952] FAIL both usual: down looks down (-14.0°); left-drag follows too (yaw -20.3°, pitch +6.2°)
+places-connected                51.7s  ok     journey         53 PASS  0 FAIL  4 SKIP
+places-tree                     49.9s  ok     journey         52 PASS  0 FAIL  4 SKIP
+places-scan                      9.0s  ok     journey          8 PASS  0 FAIL  0 SKIP
+navigation                      42.3s  ok     journey         56 PASS  0 FAIL  0 SKIP
+map-journey                     16.0s  ok     journey         15 PASS  0 FAIL  0 SKIP
+planetoids                      12.9s  ok     journey          9 PASS  0 FAIL  0 SKIP
+aerial-limit-24                 17.0s  ok     journey         10 PASS  0 FAIL  0 SKIP
+aerial-limit-8                  13.4s  ok     journey         11 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  46.4s  ok     journey         29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   52.1s  ok     journey         53 PASS  0 FAIL  4 SKIP
+planets-fixture                 21.8s  ok     journey         15 PASS  0 FAIL  2 SKIP
+planets-ui1.25                  40.0s  FAILED journey         37 PASS  1 FAIL  2 SKIP  (exit 1; 1 failing assertion(s))
+    [22:29:22.684] FAIL a visible wind-up first: 0.25 s (0.4 s, aligned to the beat ±0.09 s)
+TOTAL                            626s  failing steps: 2
