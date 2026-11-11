@@ -78,6 +78,27 @@ public partial class PlanetWorld
     public void OnNavChanged(PlaceChange change)
     {
         if (!_active) return;
+        if (_universe != null)
+        {
+            // A navigation change from the overview (Backspace, the list, a path): come down onto it out of the light.
+            CloseUniverse(returnToSurface: false);
+            _arriveFromSky = true;
+            _warpFlash = 1f;
+        }
+
+        if (_arriveFromSky)
+        {
+            _arriveFromSky = false;
+            _hop = null;
+            _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = true, From = Gd(_walker.Feet), FromUp = Gd(_walker.Up), T = WarpRiseSeconds };
+            _transfer.ArriveFrom = _s.Tree is { } t ? ArrivalFrom(t, change, _current?.FolderId ?? -1) : -1;
+            _phase = Phase.Warping;
+            _flightCamStarted = false;
+            Transfers++;
+            Mark("warp");
+            return;
+        }
+
         if (_phase is Phase.WindUp or Phase.AwaitNav && _transfer != null)
         {
             _transfer.Change = change;
@@ -441,6 +462,12 @@ public partial class PlanetWorld
     /// <summary>G: launch to the selected folder from where you stand (or to the folder of a selected file).</summary>
     public void LaunchToSelection()
     {
+        if (_universe != null)
+        {
+            BeginUniverseLanding(_s.Selection.Selected); // G in the overview lands on the selected world
+            return;
+        }
+
         var tree = _s.Tree;
         if (tree == null || _current == null || Busy) return;
         var id = _s.Selection.Selected;

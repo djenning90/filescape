@@ -36,6 +36,7 @@ public partial class PlanetWorld
     /// <summary>From Main._Input: the camera drag and the wheel (before the GUI sees them).</summary>
     public bool Input(InputEvent e)
     {
+        if (_universe != null && e is not InputEventMouseButton { ButtonIndex: MouseButton.Right } && UniverseInput(e)) return true;
         switch (e)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.Right } rb:
@@ -87,6 +88,7 @@ public partial class PlanetWorld
     /// <summary>From Main._UnhandledInput: Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
     public bool UnhandledInput(InputEvent e)
     {
+        if (_universe != null) return UniverseCommand(e);
         if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
         switch (e)
         {

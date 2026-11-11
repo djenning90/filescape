@@ -34,6 +34,7 @@ public partial class Main : IWorldSession
     PlaceNavigator IWorldSession.Navigator => _nav;
     bool IWorldSession.IsLive => _tree?.Source.IsLive ?? false;
     bool IWorldSession.IsVisible(FsNode node) => IsVisibleInPlace(node);
+    bool IWorldSession.Visited(int id) => _visitedPlaces.Contains(id);
     bool IWorldSession.TravelInto(int id) => TravelIntoFromPlanets(id);
     int IWorldSession.PendingRequests => PendingRequests;
     bool IWorldSession.AwaitingArrival => _awaitingArrival;
@@ -55,7 +56,7 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
-        if (key.IsAction(InputBindings.FlightToggle)) { _hud.Toast("On the planets you travel by launcher: stand on one and press Space (or select a folder and press G)."); return true; }
+        if (key.IsAction(InputBindings.FlightToggle)) { _planets.ToggleUniverse(); return true; }
         return false;
     }
 

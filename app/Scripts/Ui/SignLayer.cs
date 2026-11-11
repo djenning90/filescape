@@ -12,7 +12,8 @@ public readonly record struct SignCandidate(
     Color Color,
     IconKind Icon,
     bool Focus,
-    float Boost = 0f);
+    float Boost = 0f,
+    bool FixedAnchor = false); // pinned straight above its anchor with a stem (planets); never moved to another slot
 
 /// <summary>
 /// Glanceable destination names (LABEL-01, AD-25): screen-space signs for every gate (or aerial place) in view, so a
@@ -54,6 +55,9 @@ public partial class SignLayer : Control
     /// <summary>The text shown for each placed id (name line, as shortened), for checks.</summary>
     public Dictionary<int, string> ShownText { get; } = [];
 
+    /// <summary>Where each shown sign's anchor projected this frame (screen), for probes: a pinned sign sits right above it.</summary>
+    public Dictionary<int, Vector2> ShownAnchors { get; } = [];
+
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Ignore;
@@ -89,6 +93,7 @@ public partial class SignLayer : Control
         ShownIds.Clear();
         ShownRects.Clear();
         ShownText.Clear();
+        ShownAnchors.Clear();
         var vp = GetViewportRect();
         var eye = camera.GlobalPosition;
         var ordered = new List<(SignCandidate C, float D, Vector2 S)>();
@@ -139,9 +144,16 @@ public partial class SignLayer : Control
             new(-w * 0.55f, -(h + 4) * 0.5f), new(w * 0.55f, -(h + 4) * 0.5f), new(0, -3 * (h + 4)), new(0, 3 * h + 22),
             new(-w * 0.6f, -1.5f * (h + 4)), new(w * 0.6f, -1.5f * (h + 4)),
         ];
-        for (var i = 0; i < offsets.Length; i++)
+        for (var i = 0; i < (c.FixedAnchor ? 1 : offsets.Length); i++)
         {
-            var r = new Rect2(anchor.X - w / 2 + offsets[i].X, anchor.Y - h - 6 + offsets[i].Y, w, h);
+            var r = new Rect2(anchor.X - w / 2 + offsets[i].X, anchor.Y - h - (c.FixedAnchor ? 16 : 6) + offsets[i].Y, w, h);
+            if (c.FixedAnchor && !vp.Encloses(r) && vp.HasPoint(anchor))
+            {
+                // A pinned sign near the edge is kept on screen; its stem still reaches the anchor.
+                r.Position = new Vector2(Mathf.Clamp(r.Position.X, vp.Position.X + 2, vp.End.X - w - 2), Mathf.Clamp(r.Position.Y, vp.Position.Y + 2, vp.End.Y - h - 2));
+                if (r.HasPoint(anchor)) r.Position = r.Position with { Y = anchor.Y + 14 }; // never over the thing it names
+            }
+
             if (!vp.Encloses(r)) continue;
             var clear = true;
             foreach (var o in _occupied)
@@ -155,6 +167,7 @@ public partial class SignLayer : Control
             ShownIds.Add(c.Id);
             ShownRects.Add(r);
             ShownText[c.Id] = name;
+            ShownAnchors[c.Id] = anchor;
             return true;
         }
 
@@ -166,7 +179,15 @@ public partial class SignLayer : Control
         foreach (var p in _placed)
         {
             var r = p.Rect;
-            if (p.Leader)
+            if (p.C.FixedAnchor)
+            {
+                // A pinned sign (planets, 2026-11-12): a short stem and a dot on the very thing it names, so it is plain
+                // which pad or world it belongs to, wherever the camera turns.
+                var foot = new Vector2(Mathf.Clamp(p.AnchorScreen.X, r.Position.X + 4, r.End.X - 4), r.Position.Y > p.AnchorScreen.Y ? r.Position.Y : r.End.Y);
+                DrawLine(foot, p.AnchorScreen, p.C.Color with { A = 0.8f }, 1.5f, true);
+                DrawCircle(p.AnchorScreen, 3f, p.C.Color);
+            }
+            else if (p.Leader)
             {
                 var from = r.Position.Y > p.AnchorScreen.Y ? new Vector2(r.Position.X + r.Size.X / 2, r.Position.Y) : new Vector2(r.Position.X + r.Size.X / 2, r.End.Y);
                 DrawLine(from, p.AnchorScreen, p.C.Color with { A = 0.55f }, 1.5f, true);

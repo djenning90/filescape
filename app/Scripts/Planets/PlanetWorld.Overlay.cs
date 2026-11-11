@@ -394,12 +394,22 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ names in the sky (the shared sign layer)
 
-    private TimeSpan _lastSigns;
     private int _hovered = -1;
 
     public int HoveredNodeId => _hovered;
     private readonly List<SignCandidate> _signs = [];
 
+    /// <summary>
+    /// Names on screen (2026-11-12, after DJ's playtest), every frame so they stay attached as the camera turns:
+    /// <list type="bullet">
+    /// <item>every launcher pad within reach is named, pinned above its pad with a stem (which pad is plain);</item>
+    /// <item>a world in the sky is named when you look at it, point at it or select it, pinned above the body;</item>
+    /// <item>nothing is named when the planet stands between the camera and it (a pad over the horizon, a world behind
+    /// the planet);</item>
+    /// <item>when names overlap, the selected or pointed-at one wins, then the one nearest the middle of the view,
+    /// then the nearest.</item>
+    /// </list>
+    /// </summary>
     private void UpdateSigns(FsTree tree)
     {
         if (_current == null) return;
@@ -409,69 +419,114 @@ public partial class PlanetWorld
             return;
         }
 
-        if (_s.Now - _lastSigns < TimeSpan.FromSeconds(0.05)) return;
-        _lastSigns = _s.Now;
         _signs.Clear();
         var camPos = _camera.GlobalPosition;
         var camFwd = -_camera.GlobalBasis.Z;
-        // Whatever the mouse points at is named (a world in the sky, a moon in the ring, an object): pointing is enough.
+        var screenUp = _camera.GlobalBasis.Y;
         var mouse = GetViewport().GetMousePosition();
         _hovered = -1;
-        if (!_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) && !OverOverlay(mouse))
+        if (!_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) && !OverOverlay(mouse) && !_orbiting)
         {
             var picked = Pick(mouse);
             if (picked.Id >= 0 && tree.Contains(picked.Id)) _hovered = picked.Id;
         }
 
-        if (_hovered >= 0 && _hovered != _focusItem?.NodeId && !_children.ContainsKey(_hovered) && _parent?.FolderId != _hovered)
+        var selected = _s.Selection.Selected;
+        // Looking at it: within ≈ 12° of the middle of the view gives a boost that grows towards the centre.
+        float Looked(Godot.Vector3 at) => MathF.Max(0, (camFwd.Dot((at - camPos).Normalized()) - 0.978f) / 0.022f);
+
+        // Launcher pads: the ring round the arrival, named on the ground.
+        var surf = _current.Comp.Surface;
+        var padNamed = new HashSet<int>();
+        var groundTest = _current.Comp.Shape.Radius - 0.3f;
+        foreach (var l in _current.Comp.Launchers)
         {
-            var hover = (Id: _hovered, Sky: false);
-            var hn = tree[hover.Id];
-            Godot.Vector3 anchor;
-            if (_children.TryGetValue(hover.Id, out var hb)) anchor = hb.Node.GlobalPosition + _camUp * (hb.Comp.Shape.Radius * hb.Node.Transform.Basis.Scale.X * 1.08f);
-            else if (_parent?.FolderId == hover.Id) anchor = _parent.Node.GlobalPosition;
-            else if (_current.Comp.SkyBodies.FirstOrDefault(k => k.InBelt && k.TargetId == hover.Id) is { } moon) anchor = Gd(moon.Position) + _camUp * (moon.Radius + 0.6f);
-            else if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == hover.Id) is { } hi) anchor = Gd(_current.Comp.Surface.PointAt(hi.Direction, 1.25f * hi.Scale + 0.3f));
-            else if (_current.Comp.Launchers.FirstOrDefault(l => l.TargetId == hover.Id) is { } hl) anchor = Gd(_current.Comp.Surface.PointAt(hl.Direction, 1.4f));
-            else anchor = _camera.GlobalPosition - _camera.GlobalBasis.Z * 10f;
-            var detail = hn.IsDirectory ? FolderSummary.Gate(hn, Listing.Of(hn)) + " · click: select · double-click: fly there" : SizeFormat.Short(hn.Size) + " · click: select · double-click: go to it";
-            _signs.Add(new SignCandidate(hn.Id, anchor, hn.Name, detail, new Color(1f, 0.95f, 0.75f), FileIcons.For(hn), true, 4f));
+            if (!tree.Contains(l.TargetId)) continue;
+            var anchor = Gd(surf.PointAt(l.Direction, 1.35f));
+            var d = camPos.DistanceTo(anchor);
+            var standing = _focusLauncher?.TargetId == l.TargetId;
+            var focus = standing || selected == l.TargetId || _hovered == l.TargetId;
+            if (d > 46f && !focus) continue;
+            var n = tree[l.TargetId];
+            var detail = l.IsParent ? "the way back" : l.IsLink ? PlaceText.LinkShort(tree, n) : FolderSummary.Gate(n, Listing.Of(n));
+            var color = l.IsParent ? new Color(0.8f, 0.86f, 1f) : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
+            var mark = ProminenceMark(l.TargetId);
+            var padHidden = RayPlanet(camPos, (anchor - camPos).Normalized(), groundTest) is { } ph && ph < d - 0.5f;
+            if (!padHidden && !_camera.IsPositionBehind(anchor)) padNamed.Add(l.TargetId);
+            _signs.Add(new SignCandidate(l.TargetId, anchor, mark + tree.DisplayName(l.TargetId), detail, color,
+                l.IsParent ? IconKind.Up : FileIcons.For(n), focus, 40f * Looked(anchor) + (mark.Length > 0 ? 6f : 0f), FixedAnchor: true));
         }
 
+        // Worlds in the sky: named when looked at, pointed at or selected (and all of them from the overlook).
         void AddWorld(Body b, bool isParent)
         {
             if (!tree.Contains(b.FolderId)) return;
             var scale = b.Node.Transform.Basis.Scale.X;
             var centre = b.Node.GlobalPosition;
-            var top = centre + _camUp * (b.Comp.Shape.Radius * scale * 1.08f);
-            var to = (centre - camPos).Normalized();
-            var focus = to.Dot(camFwd) > 0.97f || OnOverlook || _s.Selection.Selected == b.FolderId || _hovered == b.FolderId;
+            var top = centre + screenUp * (b.Comp.Shape.Radius * scale * 1.06f);
+            // A world high in the view: its top is off screen, so the name is pinned on the world itself.
+            if (!_camera.IsPositionBehind(top) && _camera.UnprojectPosition(top).Y < 60) top = centre;
+            var looked = Looked(centre);
+            var focus = selected == b.FolderId || _hovered == b.FolderId;
+            if (!focus && looked <= 0 && !OnOverlook) return;
+            if (!focus && padNamed.Contains(b.FolderId)) return; // its pad is named on screen already: one name per destination
             var detail = isParent ? "the way back" : FolderSummary.Gate(tree[b.FolderId], Listing.Of(tree[b.FolderId]));
             var color = PlanetArt.Palette(b.Comp.Theme).Accent.Lightened(0.35f);
-            _signs.Add(new SignCandidate(b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, focus ? 2f : 0f));
+            _signs.Add(new SignCandidate(-100_000 - b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, 60f * looked, FixedAnchor: true));
         }
 
         foreach (var b in _children.Values) AddWorld(b, false);
         if (_parent != null) AddWorld(_parent, true);
+
+        // Whatever else the mouse points at (a moon in the ring, an object) is named too.
+        if (_hovered >= 0 && _hovered != _focusItem?.NodeId && !_children.ContainsKey(_hovered) && _parent?.FolderId != _hovered && _current.Comp.Launchers.All(l => l.TargetId != _hovered))
+        {
+            var hn = tree[_hovered];
+            Godot.Vector3? anchor = null;
+            if (_current.Comp.SkyBodies.FirstOrDefault(k => k.InBelt && k.TargetId == _hovered) is { } moon) anchor = Gd(moon.Position) + screenUp * (moon.Radius + 0.4f);
+            else if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == _hovered) is { } hi) anchor = Gd(surf.PointAt(hi.Direction, 1.25f * hi.Scale + 0.3f));
+            if (anchor is { } a)
+            {
+                var detail = hn.IsDirectory ? FolderSummary.Gate(hn, Listing.Of(hn)) + " · double-click: fly there" : SizeFormat.Short(hn.Size) + " · double-click: go to it";
+                _signs.Add(new SignCandidate(hn.Id, a, hn.Name, detail, new Color(1f, 0.95f, 0.75f), FileIcons.For(hn), true, 8f, FixedAnchor: true));
+            }
+        }
+
         if (OnOverlook || _overlookRequested)
         {
             foreach (var g in _current.Comp.Groves)
             {
-                _signs.Add(new SignCandidate(-1000 - _signs.Count, Gd(_current.Comp.Surface.PointAt(g.CentreDirection, 2.6f)), g.Label, "", PlanetArt.CategoryColor(g.Category), FileIcons.For(g.Category), false));
+                _signs.Add(new SignCandidate(-1000 - _signs.Count, Gd(surf.PointAt(g.CentreDirection, 2.6f)), g.Label, "", PlanetArt.CategoryColor(g.Category), FileIcons.For(g.Category), false, FixedAnchor: true));
             }
         }
 
         if (_focusItem is { NodeId: >= 0 } fi && tree.Contains(fi.NodeId))
         {
             var n = tree[fi.NodeId];
-            _signs.Add(new SignCandidate(n.Id, Gd(_current.Comp.Surface.PointAt(fi.Direction, 1.25f * fi.Scale + 0.3f)), n.Name, SizeFormat.Short(n.Size), PlanetArt.CategoryColor(fi.Category), FileIcons.For(n), true, 3f));
+            _signs.Add(new SignCandidate(n.Id, Gd(surf.PointAt(fi.Direction, 1.25f * fi.Scale + 0.3f)), n.Name, SizeFormat.Short(n.Size), PlanetArt.CategoryColor(fi.Category), FileIcons.For(n), true, 3f, FixedAnchor: true));
         }
 
         var blocked = _s.Hud.BlockingRects.ToList();
         if (_previewPanel.Visible) blocked.Add(_previewPanel.GetGlobalRect());
         if (_contentsPanel.Visible) blocked.Add(_contentsPanel.GetGlobalRect());
         blocked.Add(_promptBox.GetGlobalRect());
-        _s.Signs.Layout(_camera, _signs, blocked);
+        // Hidden by the planet: the line from the camera to the thing meets the ground first.
+        var groundR = _current.Comp.Shape.Radius - 0.3f;
+        _s.Signs.Layout(_camera, _signs, blocked, (sign, distance) =>
+            RayPlanet(camPos, (sign.Anchor - camPos).Normalized(), groundR) is { } hit && hit < distance - 0.5f);
+        SignsOccludedTest = groundR;
+    }
+
+    /// <summary>The ground radius used for the occlusion test (probes).</summary>
+    public float SignsOccludedTest { get; private set; }
+
+    private PlanetTheme SkyTheme(PlanetLauncher l) =>
+        _current != null && l.SkyBody >= 0 && l.SkyBody < _current.Comp.SkyBodies.Count ? _current.Comp.SkyBodies[l.SkyBody].Theme : PlanetTheme.Veiled;
+
+    private string ProminenceMark(int id)
+    {
+        var p = _s.ProminenceOf(id);
+        return p.IsProminent ? p.Mark + " " : "";
     }
 
     // ------------------------------------------------------------------ thumbnails on the picture easels

@@ -572,7 +572,8 @@ public partial class Hud : CanvasLayer
         _hintLabel.Text = planets ? PlanetsHintText : places ? PlacesHintText : HintText;
         _homeButton.Visible = true;
         _overviewButton.Visible = !planets;
-        _flightButton.Visible = !planets;
+        _flightButton.Visible = true;
+        if (planets) SetPlanetsOverview(open: false);
     }
 
     public void SetQuality(string text) => _quality.Text = "Quality: " + text;
@@ -671,7 +672,7 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string PlanetsHintText = "WASD / arrows run · Space jump (again in the air: twirl higher) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · J list · N sound · F1 help";
+    public const string PlanetsHintText = "WASD / arrows run · Space jump (again in the air: twirl higher) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · T overview · J list · N sound · F1 help";
 
     public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
 
@@ -730,6 +731,15 @@ public partial class Hud : CanvasLayer
         _flightButton.Visible = places;
         _flightButton.SetPressedNoSignal(flying);
         _flightButton.Text = flying ? (landing ? "✈ Landing…" : "✈ Land (T)") : "✈ Flight (T)";
+    }
+
+    /// <summary>On the planets the flight button is the overview (2026-11-12).</summary>
+    public void SetPlanetsOverview(bool open)
+    {
+        _flightButton.Visible = true;
+        _flightButton.SetPressedNoSignal(open);
+        _flightButton.Text = open ? "✧ Back down (T)" : "✧ Overview (T)";
+        _flightButton.TooltipText = "The overview: zoom out to every folder FileScape knows, in 3D. Click a world, Enter to land there; T or Esc to come back down.";
     }
 
     public bool FlightButtonPressed => _flightButton.ButtonPressed;

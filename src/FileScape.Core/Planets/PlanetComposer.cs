@@ -15,7 +15,16 @@ public sealed record PlanetParams
     public static readonly PlanetParams Default = new();
 
     /// <summary>Child launchers at most; further child folders become belt moons.</summary>
-    public int MaxLaunchers { get; init; } = 10;
+    public int MaxLaunchers { get; init; } = 28;
+
+    /// <summary>The first launcher ring's distance from the arrival point along the surface, metres (2026-11-12: launchers in rings round the arrival).</summary>
+    public float RingFirst { get; init; } = 9f;
+
+    /// <summary>Distance between launcher rings, metres.</summary>
+    public float RingGap { get; init; } = 7f;
+
+    /// <summary>Least distance between neighbouring pads on a ring, metres (centre to centre).</summary>
+    public float RingSpacing { get; init; } = 6.4f;
 
     /// <summary>Belt moons at most; further child folders are counted in <see cref="PlanetComposition.OmittedFolders"/>.</summary>
     public int MaxBelt { get; init; } = 48;
@@ -325,7 +334,12 @@ public static class PlanetComposer
 
         // ---- arrival, landmark, overlook and its steps
         var pole = Vector3.UnitY;
-        var landmarkDir = PlanetFrame.FromPolar(Deg(p.LandmarkPolarDeg), 0);
+        var hasParent = !folder.IsRoot;
+        var rings = LauncherRings(launched.Count, hasParent, radius, p);
+        // The landmark stands ahead beyond the outermost ring (it used to stand at 40°, among the launchers).
+        var outer = rings.Count == 0 ? 0f : rings.Max(r => r.DistanceMetres);
+        var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + 4.5f) / radius);
+        var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(150f)), 0);
         var overlookDir = PlanetFrame.Move(landmarkDir, PlanetFrame.East(landmarkDir), p.LandmarkRadius + p.LandmarkOverlookGap + p.OverlookRadius, radius);
         var steps = new List<SurfaceObstacle>();
         {
@@ -348,7 +362,7 @@ public static class PlanetComposer
         var complexRadius = p.OverlookRadius + 2 * p.StepRadius; // the overlook with its ring of stones
 
         // ---- launcher directions
-        var launcherDirs = LauncherDirections(launched.Count, radius, landmarkDir, p.LandmarkRadius, overlookDir, complexRadius, p);
+        var launcherDirs = rings.Where(r => !r.Parent).Select(r => r.Direction).ToList();
         var launchers = new List<PlanetLauncher>();
         var sky = new List<SkyBody>();
         var paths = new List<PlanetPath>();
@@ -363,7 +377,11 @@ public static class PlanetComposer
             var h = SeedOf(c.Node.Name, c.Id);
             var lift = p.SkyHeightMin + (p.SkyHeightMax - p.SkyHeightMin) * Frac(h, 2);
             var jitter = (Frac(h, 3) - 0.5f) * 4f;
-            var pos = d * (radius + lift) + PlanetFrame.East(d) * jitter;
+            // On the same bearing as its pad but further out (2026-11-12): the worlds stand round the horizon as a crown
+            // you see from the arrival; walking towards one brings you to its pad on the ring.
+            var padPolar = PlanetFrame.PolarOf(d);
+            var skyDir = PlanetFrame.FromPolar(MathF.Min(padPolar + Deg(32f), Deg(84f)), PlanetFrame.AzimuthOf(d));
+            var pos = skyDir * (radius + lift) + PlanetFrame.East(skyDir) * jitter;
             sky.Add(new SkyBody(c.Id, pos, SkyRadius(c.Size, p), childTheme, childState, launchers.Count));
             launchers.Add(new PlanetLauncher(c.Id, d, p.PadRadius, p.PadTop, childState, c.Node.Name, sky.Count - 1,
                 IsLink: c.IsLink, Followable: c.Followable, LinkTargetId: c.LinkTargetId, Prominence: c.Prominence));
@@ -376,7 +394,8 @@ public static class PlanetComposer
             var parent = tree[folder.ParentId];
             // Behind and a little to the right of the arrival (2026-11-11, from the first-view screenshots: straight behind,
             // the chase camera stood over its petals, which filled the bottom of the first view).
-            var d = PlanetFrame.Move(pole, Vector3.Normalize(Vector3.UnitZ + 0.75f * Vector3.UnitX), p.ParentBehind, radius);
+            // The way back has a fixed place: on the first ring, straight behind the arrival (6 o'clock).
+            var d = rings.First(r => r.Parent).Direction;
             var parentSize = parent.SubtreeFileCount + parent.SubtreeDirCount;
             var pos = PlanetFrame.FromPolar(Deg(35f), MathF.PI) * (radius + 24f);
             sky.Add(new SkyBody(parent.Id, pos, MathF.Max(5f, SkyRadius(parentSize, p)), ThemeOf(tree, parent.Id, visible), Listing.Of(parent), launchers.Count, IsParent: true));
@@ -582,54 +601,54 @@ public static class PlanetComposer
         return shown;
     }
 
-    /// <summary>
-    /// Launcher directions in the band from the pole, at even azimuths outside the sector the landmark and the overlook
-    /// occupy (so every straight route from the arrival is clear). A few launchers fan out ahead, either side of the
-    /// landmark, where they are seen on arrival; more go evenly round.
-    /// </summary>
-    private static List<Vector3> LauncherDirections(int n, float radius, Vector3 landmarkDir, float landmarkRadius, Vector3 overlookDir, float complexRadius, PlanetParams p)
-    {
-        var dirs = new List<Vector3>(n);
-        if (n == 0) return dirs;
-        var margin = p.PathHalfWidth + 0.35f + 0.6f;
-        float lo = float.MaxValue, hi = float.MinValue;
-        foreach (var (c, rho) in new[] { (landmarkDir, landmarkRadius), (overlookDir, complexRadius) })
-        {
-            var az = PlanetFrame.AzimuthOf(c);
-            var sinPolar = MathF.Sin(PlanetFrame.PolarOf(c));
-            var half = MathF.Asin(MathF.Min(1, MathF.Sin((rho + margin) / radius) / sinPolar));
-            lo = MathF.Min(lo, az - half);
-            hi = MathF.Max(hi, az + half);
-        }
+    /// <summary>One slot on a launcher ring: its direction, its ring's surface distance from the arrival, and whether it is the way back.</summary>
+    private readonly record struct RingSlot(Vector3 Direction, float DistanceMetres, bool Parent);
 
-        var azimuths = new List<float>(n);
-        if (n <= 4)
+    /// <summary>
+    /// Launchers in rings round the arrival meadow, read like a clock (2026-11-12, DJ's playtest: on the Ubuntu root
+    /// "home" took a while to find): child folders in name order, clockwise from straight ahead (12 o'clock) on the
+    /// first ring, then the next ring out; the way back always at 6 o'clock on the first ring. Every pad is within a
+    /// few rings of where you land, so a named launcher is found from the arrival without circling the planet.
+    /// </summary>
+    private static List<RingSlot> LauncherRings(int n, bool hasParent, float radius, PlanetParams p)
+    {
+        var slots = new List<RingSlot>();
+        var remaining = n;
+        var distance = p.RingFirst;
+        var first = true;
+        while (remaining > 0 || (first && hasParent))
         {
-            const float step = 0.75f; // ≈ 43° between neighbours on one side
-            const float gap = 0.3f;
-            for (var i = 0; i < n; i++)
+            var polar = MathF.Min(distance / radius, Deg(120f));
+            var circumference = 2 * MathF.PI * radius * MathF.Sin(polar);
+            var capacity = Math.Max(4, (int)(circumference / p.RingSpacing));
+            var reserveBack = first && hasParent;
+            var here = Math.Min(remaining, capacity - (reserveBack ? 1 : 0));
+            var total = here + (reserveBack ? 1 : 0);
+            // Without the way back: even slots, the first name straight ahead, then clockwise (increasing azimuth = to your
+            // right as you stand). With it: the way back exactly behind (6 o'clock) and the names evenly across the rest,
+            // from behind-left round through straight ahead to behind-right, so they read left to right in front of you.
+            if (reserveBack)
             {
-                var k = i / 2;
-                azimuths.Add(i % 2 == 0 ? lo - gap - k * step : hi + gap + k * step);
+                var gap = MathF.PI / total;
+                for (var i = 0; i < here; i++)
+                {
+                    var az = -MathF.PI + gap + (2 * MathF.PI - 2 * gap) * (i + 0.5f) / here;
+                    slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, az), distance, false));
+                }
+
+                slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, MathF.PI), distance, true));
+            }
+            else
+            {
+                for (var i = 0; i < here; i++) slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, 2 * MathF.PI * i / here), distance, false));
             }
 
-            if (n == 1) azimuths[0] = lo - gap; // a single destination: front left, beside the landmark
-            azimuths.Sort();
-        }
-        else
-        {
-            const float gap = 0.12f;
-            var arc = 2 * MathF.PI - (hi - lo) - 2 * gap;
-            for (var i = 0; i < n; i++) azimuths.Add(hi + gap + (i + 0.5f) * arc / n);
+            remaining -= here;
+            distance += p.RingGap;
+            first = false;
         }
 
-        for (var i = 0; i < n; i++)
-        {
-            var polar = n <= 5 ? Deg(82f) : Deg(i % 2 == 0 ? 70f : 102f);
-            dirs.Add(PlanetFrame.FromPolar(polar, azimuths[i]));
-        }
-
-        return dirs;
+        return slots;
     }
 
     private delegate bool FreeCheck(Vector3 d, float r, float gap, List<Solid> extraZones);

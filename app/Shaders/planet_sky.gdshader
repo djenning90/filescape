@@ -4,7 +4,6 @@
 shader_type sky;
 
 uniform vec3 top_color : source_color = vec3(0.05, 0.04, 0.16);
-uniform vec3 horizon_color : source_color = vec3(0.24, 0.16, 0.42);
 uniform vec3 bottom_color : source_color = vec3(0.03, 0.02, 0.09);
 uniform vec3 nebula_a : source_color = vec3(0.85, 0.35, 0.75);
 uniform vec3 nebula_b : source_color = vec3(0.3, 0.45, 1.0);
@@ -78,8 +77,7 @@ vec3 galaxy(vec3 dir, vec3 centre, vec3 axis, float size, float tilt) {
 
 void sky() {
 	vec3 dir = EYEDIR;
-	vec3 col = mix(horizon_color, top_color, smoothstep(-0.05, 0.85, dir.y));
-	col = mix(col, bottom_color, smoothstep(0.0, -0.85, dir.y));
+	vec3 col = mix(bottom_color, top_color, 0.5 + 0.5 * dot(dir, normalize(vec3(0.35, 0.62, 0.7))));
 	vec3 bn = normalize(band_normal);
 	float band = exp(-pow(dot(dir, bn) / 0.45, 2.0));
 	float n1 = fbm(dir * 2.1 + vec3(3.1, 0.4, 7.0));

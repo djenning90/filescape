@@ -33,6 +33,9 @@ public interface IWorldSession
     /// <summary>The shared visibility rule (hidden and system entries unless shown with H).</summary>
     bool IsVisible(FsNode node);
 
+    /// <summary>Visited this session (the overview rings them).</summary>
+    bool Visited(int id);
+
     /// <summary>Into a child folder, through a link, up, or a jump elsewhere: the navigator decides, the world animates (Changed).</summary>
     bool TravelInto(int id);
 

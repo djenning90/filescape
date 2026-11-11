@@ -126,7 +126,10 @@ public class PlanetComposerTests
         c.Shape.FlatSpots.Should().Contain(f => f.Direction == Vector3.UnitY && f.Radius >= 3.5f, "the arrival meadow is flat");
 
         // Landmark straight ahead, 35–45° from the pole; the overlook beside it.
-        Deg(PlanetFrame.PolarOf(c.Landmark.Direction)).Should().BeInRange(35f, 45f);
+        // 2026-11-12: the landmark stands ahead beyond the launcher rings (at least 40°).
+        Deg(PlanetFrame.PolarOf(c.Landmark.Direction)).Should().BeGreaterThanOrEqualTo(39.9f);
+        var outerRing = c.Launchers.Max(l => c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY));
+        c.Surface.SurfaceDistance(c.Landmark.Direction, Vector3.UnitY).Should().BeGreaterThan(outerRing + P.PadRadius + c.Landmark.Radius);
         Deg(PlanetFrame.AzimuthOf(c.Landmark.Direction)).Should().BeApproximately(0f, 0.5f);
         c.Landmark.Top.Should().BeApproximately(10f, 0.01f);
         var o = c.Overlook;
@@ -146,7 +149,7 @@ public class PlanetComposerTests
         children.Select(l => l.TargetId).Should().BeEquivalentTo(tree.Root.Children.Where(id => tree[id].IsDirectory));
         foreach (var l in children)
         {
-            Deg(PlanetFrame.PolarOf(l.Direction)).Should().BeInRange(55f, 125f);
+            c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY).Should().BeApproximately(P.RingFirst, 0.05f, "five folders share the first ring round the arrival");
             l.PadRadius.Should().BeApproximately(1.3f, 0.01f);
             l.PadTop.Should().BeApproximately(0.2f, 0.01f);
             var body = c.SkyBodies[l.SkyBody];
@@ -154,7 +157,9 @@ public class PlanetComposerTests
             body.Launcher.Should().Be(c.Launchers.ToList().IndexOf(l));
             var lift = body.Position.Length() - R;
             lift.Should().BeInRange(17f, 31f);
-            Vector3.Dot(Vector3.Normalize(body.Position), l.Direction).Should().BeGreaterThan(0.97f, "it hangs above its launcher");
+            var bodyAz = PlanetFrame.AzimuthOf(Vector3.Normalize(body.Position));
+            MathF.Abs(MathF.IEEERemainder(bodyAz - PlanetFrame.AzimuthOf(l.Direction), 2 * MathF.PI)).Should().BeLessThan(0.15f, "it hangs on the same bearing as its launcher");
+            PlanetFrame.PolarOf(Vector3.Normalize(body.Position)).Should().BeGreaterThan(PlanetFrame.PolarOf(l.Direction), "beyond its pad, round the horizon");
             body.Radius.Should().BeInRange(3f, 8f);
             c.Signs.Should().Contain(s => s.TargetId == l.TargetId && s.Text == l.Name && s.Detail.Length > 0);
         }
@@ -191,9 +196,8 @@ public class PlanetComposerTests
         var c = PlanetComposer.Compose(tree, code);
         var back = c.ParentLauncher!;
         back.TargetId.Should().Be(0);
-        c.Surface.SurfaceDistance(back.Direction, Vector3.UnitY).Should().BeApproximately(PlanetParams.Default.ParentBehind, 0.05f);
-        Vector3.Dot(back.Direction, Vector3.UnitZ).Should().BeGreaterThan(0, "behind the arrival, which faces −Z");
-        Vector3.Dot(back.Direction, Vector3.UnitX).Should().BeGreaterThan(0, "and off to the side, so the chase camera does not stand over it on arrival");
+        c.Surface.SurfaceDistance(back.Direction, Vector3.UnitY).Should().BeApproximately(P.RingFirst, 0.05f, "on the first launcher ring");
+        MathF.Abs(MathF.Abs(PlanetFrame.AzimuthOf(back.Direction)) - MathF.PI).Should().BeLessThan(0.01f, "at 6 o'clock: behind the arrival, which faces −Z");
         var parentBody = c.SkyBodies[back.SkyBody];
         parentBody.IsParent.Should().BeTrue();
         parentBody.Position.Z.Should().BeGreaterThan(0);
@@ -275,17 +279,14 @@ public class PlanetComposerTests
         shown.Should().OnlyHaveUniqueItems();
         shown.Should().OnlyContain(id => tree[id].ParentId == wide);
         // Ranked by size: the shown launchers are the largest subtrees (all equal here, so by name).
-        children.Select(l => l.Name).Should().Equal(Enumerable.Range(0, 10).Select(i => $"child-{i:D4}"));
+        children.Select(l => l.Name).Should().Equal(Enumerable.Range(0, P.MaxLaunchers).Select(i => $"child-{i:D4}"));
         foreach (var b in belt)
         {
             var r = b.Position.Length();
             r.Should().BeGreaterThan(c.Shape.Radius * 2.2f);
         }
 
-        // Azimuths are evenly spread outside the landmark sector.
-        var az = children.Select(l => PlanetFrame.AzimuthOf(l.Direction)).Select(a => (a + 2 * MathF.PI) % (2 * MathF.PI)).OrderBy(a => a).ToList();
-        var gaps = az.Zip(az.Skip(1), (a, b) => b - a).ToList();
-        gaps.Max().Should().BeApproximately(gaps.Min(), 0.01f);
+        ShouldBeAClock(c);
         c.Counts.Folders.Should().Be(240);
         c.IsTruncated.Should().BeTrue();
         ShouldBeSane(c);
@@ -396,6 +397,64 @@ public class PlanetComposerTests
     }
 
     /// <summary>No two solids overlap (touching is allowed); no item stands in a pad, the arrival meadow or the overlook.</summary>
+    /// <summary>
+    /// The launcher clock (2026-11-12): every child launcher on a ring round the arrival (first ring at RingFirst, then
+    /// every RingGap), in name order clockwise from straight ahead, ring by ring; the way back at 6 o'clock.
+    /// </summary>
+    private static void ShouldBeAClock(PlanetComposition c)
+    {
+        var children = c.Launchers.Where(l => !l.IsParent).ToList();
+        var ringOf = children.Select(l => (int)MathF.Round((c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY) - P.RingFirst) / P.RingGap)).ToList();
+        for (var i = 0; i < children.Count; i++)
+        {
+            var d = c.Surface.SurfaceDistance(children[i].Direction, Vector3.UnitY);
+            d.Should().BeApproximately(P.RingFirst + ringOf[i] * P.RingGap, 0.05f, $"{children[i].Name} is on a ring");
+            if (i > 0)
+            {
+                ringOf[i].Should().BeGreaterThanOrEqualTo(ringOf[i - 1], "inner ring first");
+                // Clockwise from the way back (behind) when there is one, else from straight ahead.
+                var from = c.ParentLauncher != null && ringOf[i] == 0 ? MathF.PI : -0.001f; // only the first ring holds the way back
+                float Key(PlanetLauncher l) => ((PlanetFrame.AzimuthOf(l.Direction) - from) % (2 * MathF.PI) + 2 * MathF.PI) % (2 * MathF.PI);
+                var a0 = Key(children[i - 1]);
+                var a1 = Key(children[i]);
+                if (ringOf[i] == ringOf[i - 1]) a1.Should().BeGreaterThan(a0, "clockwise in name order");
+            }
+        }
+
+        children.Select(l => l.Name).Should().BeInAscendingOrder(NaturalNameOrder.Instance);
+        if (children.Count > 0 && c.ParentLauncher == null) MathF.Abs(PlanetFrame.AzimuthOf(children[0].Direction)).Should().BeLessThan(0.01f, "the first name straight ahead (12 o'clock)");
+    }
+
+    [Fact]
+    public void An_ubuntu_like_root_puts_every_folder_on_rings_round_the_arrival_home_included()
+    {
+        // DJ's playtest (2026-11-12): on the Ubuntu root, home took a while to find. A Linux root's folders (and its
+        // usr-merge links) all get a pad within three rings of the arrival, in name order like a clock.
+        var names = new[] { "bin", "boot", "dev", "etc", "home", "lib", "lib64", "lost+found", "media", "mnt", "opt", "proc", "root", "run", "sbin", "snap", "srv", "sys", "tmp", "usr", "var", "init" };
+        var spec = new Spec("/");
+        foreach (var n in names.Where(n => n != "init")) spec = spec.Dir(n == "usr" ? Spec.WithFiles(n, 40) : new Spec(n));
+        var tree = spec.File("init").File("swap.img").Build();
+        var c = PlanetComposer.Compose(tree, 0);
+        var pads = c.Launchers.Where(l => !l.IsParent).ToList();
+        pads.Should().HaveCount(21, "every folder has a pad");
+        var home = pads.Single(l => l.Name == "home");
+        c.Surface.SurfaceDistance(home.Direction, Vector3.UnitY).Should().BeLessThanOrEqualTo(P.RingFirst + 2 * P.RingGap + 0.05f, "home is a short walk from the arrival");
+        pads.Max(l => c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY)).Should().BeLessThanOrEqualTo(P.RingFirst + 2 * P.RingGap + 0.05f, "no more than three rings");
+        ShouldBeAClock(c);
+        ShouldBeSane(c);
+        ShouldBeReachable(c);
+    }
+
+    [Fact]
+    public void The_way_back_is_at_six_o_clock_even_with_no_folders()
+    {
+        var tree = new Spec("top").Dir(Spec.WithFiles("leaf", 3)).Build();
+        var c = PlanetComposer.Compose(tree, tree.Find("leaf").Id);
+        var back = c.ParentLauncher!;
+        MathF.Abs(MathF.Abs(PlanetFrame.AzimuthOf(back.Direction)) - MathF.PI).Should().BeLessThan(0.01f, "at 6 o'clock");
+        c.Surface.SurfaceDistance(back.Direction, Vector3.UnitY).Should().BeApproximately(P.RingFirst, 0.05f);
+    }
+
     private static void ShouldBeSane(PlanetComposition c)
     {
         var obs = c.Surface.Obstacles;

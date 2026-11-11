@@ -227,6 +227,12 @@ public partial class Main
     /// <summary>T / the Flight button: take off when walking, land when flying.</summary>
     public void ToggleFlight()
     {
+        if (_experience == Experience.Planets)
+        {
+            _planets.ToggleUniverse(); // on the planets the toolbar button (and T) is the overview
+            return;
+        }
+
         if (_experience != Experience.Places || _place == null || _transition != null) return;
         if (_guided) EndGuide();
         if (_locomotion == Locomotion.Walking) TakeOff();

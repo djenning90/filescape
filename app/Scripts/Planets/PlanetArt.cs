@@ -226,7 +226,6 @@ public static class PlanetArt
     {
         var m = new ShaderMaterial { Shader = Load("planet_sky") };
         m.SetShaderParameter("top_color", p.SkyTop);
-        m.SetShaderParameter("horizon_color", p.SkyHorizon.Darkened(0.38f));
         m.SetShaderParameter("bottom_color", p.SkyTop.Darkened(0.4f));
         m.SetShaderParameter("nebula_a", p.Accent.Lerp(C(0.85f, 0.35f, 0.8f), 0.6f));
         m.SetShaderParameter("nebula_b", C(0.30f, 0.42f, 1.0f).Lerp(p.SkyHorizon, 0.3f));
@@ -254,7 +253,7 @@ public static class PlanetArt
         GlowBloom = 0.04f,
         GlowHdrThreshold = 1.1f,
         GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
-        FogEnabled = true,
+        FogEnabled = false,
         FogLightColor = p.Fog,
         FogDensity = 0.0011f,
         FogSkyAffect = 0f,

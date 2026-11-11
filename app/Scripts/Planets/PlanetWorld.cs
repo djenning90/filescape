@@ -118,6 +118,7 @@ public partial class PlanetWorld : Node3D
     public void Deactivate()
     {
         if (!_active) return;
+        CloseUniverse(returnToSurface: false);
         _active = false;
         Visible = false;
         _camera.Current = false;
@@ -178,6 +179,7 @@ public partial class PlanetWorld : Node3D
 
         if (_current == null || (_current.FolderId != _s.Navigator.Current && !Busy))
         {
+            CloseUniverse(returnToSurface: false);
             // The folder changed while this world was not travelling (a new tree, a reset): arrive there directly.
             var first = _current == null;
             BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
@@ -187,6 +189,12 @@ public partial class PlanetWorld : Node3D
         }
 
         if (_orbiting && (blockedKeys || !Godot.Input.IsMouseButtonPressed(MouseButton.Right))) EndOrbit(); // a dialog, focus loss or a lost release
+        if (_universe != null)
+        {
+            UpdateUniverse(tree, dt, blockedKeys);
+            return;
+        }
+
         MaybeRecompose(tree);
         ApplyPendingRecompose(tree);
         switch (_phase)
@@ -209,6 +217,7 @@ public partial class PlanetWorld : Node3D
 
     private void ResetForTree(FsTree tree)
     {
+        CloseUniverse(returnToSurface: false);
         _tree = tree;
         var bodies = new List<Body>();
         if (_current != null) bodies.Add(_current);
@@ -490,6 +499,8 @@ public partial class PlanetWorld : Node3D
                 : DefaultParentPlacement(_current.Comp, pcomp);
             _parent = body;
         }
+
+        BuildDistantWorlds(tree, parentId);
     }
 
     /// <summary>

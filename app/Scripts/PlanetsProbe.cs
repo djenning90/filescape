@@ -76,6 +76,8 @@ public partial class PlanetsProbe : ProbeBase
     protected override async Task RunProbe()
     {
         if (Mode == "planets-fixture") await FixtureTour();
+        else if (Mode == "planets-discover") await DiscoverOnly();
+        else if (Mode == "planets-flows") await Flows();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
@@ -405,4 +407,219 @@ public partial class PlanetsProbe : ProbeBase
     }
 
     private static float Vector3Distance(NVector3 a, NVector3 b) => NVector3.Distance(a, b);
+
+    // ------------------------------------------------------------------ 2026-11-12: the three flows from DJ's playtest
+
+    private static string? Arg(string name) =>
+        OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith($"--{name}=", StringComparison.Ordinal))?[(name.Length + 3)..];
+
+    /// <summary>--automate=planets-discover --find=NAME [--root=…]: find a named launcher from the arrival (no launch).</summary>
+    private async Task DiscoverOnly()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        await Until(() => P.CameraSettled, 5);
+        // Let the listing of this folder finish (the ring is composed from it).
+        await Until(() => Tree[App.Navigator.Current].ScanState == DirScanState.Complete, 15);
+        await Seconds(1.5);
+        _recording = true;
+        await Shot("discover-arrival");
+        await FindLauncher(Arg("find") ?? "home", launch: false);
+    }
+
+    /// <summary>
+    /// Launcher discovery: from the arrival, turn the camera with the real mouse (right-drag) towards the named pad,
+    /// then walk onto it (camera-relative W). Checks: the pad is named on screen before you walk, the walk is a short
+    /// straight one (no circling the planet), and on the pad the prompt says Space flies there.
+    /// </summary>
+    private async Task<bool> FindLauncher(string name, bool launch)
+    {
+        var c = P.Composition!;
+        var here = App.Navigator.Current;
+        var pad = c.Launchers.FirstOrDefault(l => !l.IsParent && Tree.Contains(l.TargetId) && string.Equals(Tree[l.TargetId].Name, name, StringComparison.OrdinalIgnoreCase));
+        var ring = pad == null ? -1f : c.Surface.SurfaceDistance(pad.Direction, System.Numerics.Vector3.UnitY);
+        Log(F($"{Tree.FullPath(here)}: {c.Launchers.Count(l => !l.IsParent)} launchers on {c.Launchers.Select(l => MathF.Round(c.Surface.SurfaceDistance(l.Direction, System.Numerics.Vector3.UnitY))).Distinct().Count()} ring(s), {c.SkyBodies.Count(b => b.InBelt)} in the belt; looking for {name}"));
+        if (!Check(pad != null, $"{name} has a launcher on {Tree.DisplayName(here)} ({ring:0.0} m from the arrival)")) return false;
+        var namedAtArrival = App.Signs.ShownIds.Contains(pad!.TargetId);
+        // Turn the camera towards it with the real control, in steps (right-drag; ≈ 0.25°/px).
+        var turned = 0f;
+        for (var i = 0; i < 30 && MathF.Abs(P.CameraTurnTo(pad.Direction)) > 6f; i++)
+        {
+            var a = P.CameraTurnTo(pad.Direction);
+            var step = Math.Clamp(a, -40f, 40f);
+            turned += MathF.Abs(step);
+            await DragCamera(new Vector2(step / 0.25f, 0)); // dragging right turns the camera right
+            await Frames(6);
+        }
+
+        await Frames(10);
+        var named = App.Signs.ShownIds.Contains(pad.TargetId);
+        Check(named, F($"turning the camera {turned:0}° in place shows its name, pinned on its pad (named already at the arrival: {namedAtArrival})"));
+        await Shot($"discover-{name.Replace(' ', '-').ToLowerInvariant()}-in-view");
+        // Walk onto it: hold W (camera-relative), correcting the heading with the mouse now and then.
+        var start = P.Walker.Feet;
+        var walked = 0f;
+        var last = start;
+        for (var i = 0; i < 40 && P.FocusNodeId != pad.TargetId; i++)
+        {
+            var a = P.CameraTurnTo(pad.Direction);
+            if (MathF.Abs(a) > 8f) await DragCamera(new Vector2(Math.Clamp(a, -30f, 30f) / 0.25f, 0));
+            await Hold(0.25, Godot.Key.W);
+            walked += System.Numerics.Vector3.Distance(last, P.Walker.Feet);
+            last = P.Walker.Feet;
+        }
+
+        await Seconds(0.4);
+        var on = P.FocusNodeId == pad.TargetId;
+        Check(on && walked < ring * 1.6f + 3f, F($"walked straight onto it: {walked:0.0} m for a pad {ring:0.0} m away (no circling)"));
+        Check(P.PromptText.Contains(Tree[pad.TargetId].Name, StringComparison.Ordinal) && P.PromptText.StartsWith("Space", StringComparison.Ordinal), $"the prompt says what Space does: \"{P.PromptText}\"");
+        await Shot($"discover-on-{name.Replace(' ', '-').ToLowerInvariant()}");
+        if (launch) await Fly(Godot.Key.Space, pad.TargetId, Tree.DisplayName(pad.TargetId));
+        return on;
+    }
+
+    /// <summary>A real right-drag that turns the camera (the probe's own mouse, in window pixels).</summary>
+    private async Task DragCamera(Vector2 pixels, int steps = 8)
+    {
+        var centre = ToWindow(App.GetViewport().GetVisibleRect().Size / 2);
+        Mouse(MouseButton.Right, true, centre);
+        await Frames(2);
+        for (var i = 0; i < steps; i++) { Motion(pixels / steps); await Frames(1); }
+        Mouse(MouseButton.Right, false, centre);
+        await Frames(2);
+    }
+
+    /// <summary>--automate=planets-flows (Starter Sky): discovery on a crowded world, labels while the camera turns, the overview.</summary>
+    private async Task Flows()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        await Until(() => P.CameraSettled, 5);
+        _recording = true;
+        var root = App.Navigator.Current;
+
+        // 1. A crowded world: Constellations (36 folders: three rings of launchers and a belt of moons).
+        var crowded = Child(root, "Constellations");
+        Check(crowded >= 0, "the Starter Sky has Constellations");
+        await FindLauncher("Constellations", launch: true);
+        await Until(() => Tree[crowded].ScanState == DirScanState.Complete && !P.Busy, 10);
+        await Seconds(1.2);
+        await Shot("crowded-arrival");
+        await FindLauncher("Snail on a Leaf", launch: false);
+
+        // 2. Labels while the camera turns: every frame of a full turn, each name sits on its pad or world, nothing the
+        // planet hides is named, and names never overlap.
+        await Labels();
+
+        // 3. The overview: zoom out, select a world elsewhere in the tree, land there; Backspace back; out and back again.
+        await Overview(root);
+    }
+
+    private async Task Labels()
+    {
+        var c = P.Composition!;
+        var frames = 0;
+        var maxOffset = 0f;
+        var hiddenNamed = 0;
+        var overlapping = 0;
+        var padNamesSeen = new HashSet<int>();
+        var centre = ToWindow(App.GetViewport().GetVisibleRect().Size / 2);
+        Mouse(MouseButton.Right, true, centre);
+        await Frames(2);
+        for (var i = 0; i < 120; i++)
+        {
+            Motion(new Vector2(12, i < 60 ? 0.6f : -0.6f)); // a full turn (≈ 360°) with a little tilt, over ≈ 2 s
+            await Frames(1);
+            frames++;
+            foreach (var l in c.Launchers)
+            {
+                if (!App.Signs.ShownAnchors.TryGetValue(l.TargetId, out var shownAt)) continue;
+                padNamesSeen.Add(l.TargetId);
+                var (anchor, hidden) = P.PadAnchor(l);
+                if (hidden) hiddenNamed++;
+                if (!P.Camera.IsPositionBehind(anchor)) maxOffset = MathF.Max(maxOffset, P.Camera.UnprojectPosition(anchor).DistanceTo(shownAt));
+            }
+
+            var rects = App.Signs.ShownRects;
+            for (var a = 0; a < rects.Count; a++)
+            {
+                for (var b = a + 1; b < rects.Count; b++)
+                {
+                    if (rects[a].Intersects(rects[b])) overlapping++;
+                }
+            }
+
+            if (i == 30 || i == 90) await Shot($"labels-turning-{i}");
+        }
+
+        Mouse(MouseButton.Right, false, centre);
+        await Frames(3);
+        Check(maxOffset < 1.0f, F($"over {frames} frames of a full camera turn every pad name stayed on its pad (largest gap {maxOffset:0.00} px)"));
+        Check(hiddenNamed == 0, $"no pad hidden by the planet was named ({hiddenNamed} frames named one)");
+        Check(overlapping == 0, $"names never overlapped ({overlapping})");
+        Check(padNamesSeen.Count >= Math.Min(8, c.Launchers.Count), $"{padNamesSeen.Count} of {c.Launchers.Count} pads were named at some point of the turn");
+        // Selected wins: select a world in view and check its name is shown even among others.
+        var inView = P.WorldsInView();
+        if (inView.Count > 0)
+        {
+            var target = inView[^1];
+            App.Selection.Select(target); // [direct] as a click in the list
+            await Frames(4);
+            var shown = App.Signs.ShownAnchors.TryGetValue(-100_000 - target, out var at);
+            var (worldCentre, radiusPx) = P.WorldOnScreen(target);
+            var gap = shown ? at.DistanceTo(worldCentre) - radiusPx * 1.15f : 999f;
+            Check(shown && gap <= 1f, F($"the selected world ({Tree[target].Name}) is named, its name pinned on the world (anchor {at.DistanceTo(worldCentre):0} px from its centre, radius {radiusPx:0} px)"));
+            await Shot("labels-selected-wins");
+            App.Selection.Select(-1);
+        }
+    }
+
+    private async Task Overview(int root)
+    {
+        var before = App.Navigator.Current;
+        var feet = P.Walker.Feet;
+        var history = App.Navigator.History.Count;
+        await Key(Godot.Key.T);
+        await Seconds(1.6);
+        Check(P.UniverseOpen && P.UniverseBodyCount > 30, $"T opens the overview: {P.UniverseBodyCount} known folders as worlds ({P.UniverseCounts.Listed} listed, {P.UniverseCounts.Partial} partly, {P.UniverseCounts.Unknown} not listed yet, {P.UniverseCounts.Visited} visited)");
+        await Shot("overview-zoomed-out");
+        // Orbit and zoom with the real controls.
+        await DragCamera(new Vector2(180, 40), 12);
+        Inject(new InputEventMouseButton { ButtonIndex = MouseButton.WheelDown, Pressed = true, Position = ToWindow(App.GetViewport().GetVisibleRect().Size / 2) });
+        await Seconds(0.8);
+        await Shot("overview-orbited");
+        // Select a world elsewhere in the tree (not a neighbour): Star Archive/2025, by clicking it.
+        var archive = Child(root, "Star Archive");
+        var target = archive >= 0 ? Child(archive, "2025") : -1;
+        Check(target >= 0 && P.UniverseKnows(target), "Star Archive/2025 is in the overview");
+        if (target < 0) return;
+        P.SelectInUniverse(archive); // [direct] focus its system first so the small world is large enough to click
+        await Seconds(1.4);
+        if (P.UniverseScreen(target) is { } s) await Click(s / GetWindow().ContentScaleFactor);
+        await Seconds(1.2);
+        Check(P.UniverseSelected == target && App.Selection.Selected == target, $"clicking a world selects it (the shared selection: {(App.Selection.Selected >= 0 ? Tree[App.Selection.Selected].Name : "-")}) and zooms in on it");
+        await Shot("overview-selected");
+        await Key(Godot.Key.Enter);
+        await Until(() => !P.UniverseOpen, 3);
+        await Until(() => App.Navigator.Current == target && !P.Busy, 10);
+        await Frames(4);
+        Check(App.Navigator.Current == target && P.Composition?.FolderId == target && P.Walker.Grounded, $"Enter lands there: {Tree.FullPath(App.Navigator.Current)}");
+        Check(App.Navigator.History.Count == history + 1, $"the landing is in the history ({history} → {App.Navigator.History.Count})");
+        await Shot("overview-landed");
+        await Key(Godot.Key.Backspace);
+        await Until(() => P.Busy, 2);
+        await Until(() => !P.Busy, 10);
+        Check(App.Navigator.Current == before, $"Backspace returns to {Tree.DisplayName(before)}");
+        // Out and back: the overview returns you to where you stood.
+        var standing = P.Walker.Feet;
+        await Key(Godot.Key.T);
+        await Seconds(1.2);
+        await Key(Godot.Key.Escape);
+        await Until(() => !P.UniverseOpen, 2);
+        await Until(() => P.CameraSettled, 3);
+        await Frames(5);
+        Check(!P.UniverseOpen && System.Numerics.Vector3.Distance(standing, P.Walker.Feet) < 0.05f && App.Navigator.Current == before, "Esc leaves the overview and you are where you stood");
+        await Shot("overview-back-where-you-stood");
+        _ = feet;
+    }
 }

@@ -82,6 +82,7 @@ public partial class PlanetVisual : Node3D
         if (!full) return;
         BuildOverlook(surf);
         BuildLaunchers(tree, surf);
+        BuildRingLights(surf);
         var tLaunch = sw.Elapsed.TotalMilliseconds;
         BuildItems(tree, surf);
         var tItems = sw.Elapsed.TotalMilliseconds;
@@ -141,6 +142,33 @@ public partial class PlanetVisual : Node3D
             _ = toCentre;
             _ = tree;
         }
+    }
+
+    /// <summary>
+    /// The launcher rings drawn on the ground (2026-11-12): a circle of small lights through the pads of each ring round
+    /// the arrival, so the ring reads as one route you can follow from pad to pad; the way back's pad has its own colour.
+    /// </summary>
+    private void BuildRingLights(PlanetSurface surf)
+    {
+        var rings = _comp.Launchers.Select(l => MathF.Round(surf.SurfaceDistance(l.Direction, System.Numerics.Vector3.UnitY) * 4f) / 4f).Distinct().ToList();
+        if (rings.Count == 0) return;
+        var lights = new List<Transform3D>();
+        foreach (var dist in rings)
+        {
+            var polar = dist / surf.Radius;
+            var circumference = 2 * MathF.PI * surf.Radius * MathF.Sin(polar);
+            var n = Math.Max(12, (int)(circumference / 1.25f));
+            for (var i = 0; i < n; i++)
+            {
+                var d = PlanetFrame.FromPolar(polar, 2 * MathF.PI * i / n);
+                if (_comp.Launchers.Any(l => surf.SurfaceDistance(l.Direction, d) < l.PadRadius + 0.5f)) continue; // not under a pad
+                lights.Add(Stand(surf, d, PlanetFrame.North(d), 0.11f, height: 0.06f, sink: 0f));
+            }
+        }
+
+        var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = new SphereMesh { Radius = 1, Height = 1.2f, RadialSegments = 8, Rings = 4 }, InstanceCount = lights.Count };
+        for (var i = 0; i < lights.Count; i++) mm.SetInstanceTransform(i, lights[i]);
+        AddChild(new MultiMeshInstance3D { Name = "RingLights", Multimesh = mm, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, MaterialOverride = PlanetArt.GlowMaterial(_pal.Glow, 1.6f, pulse: 0.4f) });
     }
 
     private PlanetTheme SkyTheme(PlanetLauncher l) => l.SkyBody >= 0 && l.SkyBody < _comp.SkyBodies.Count ? _comp.SkyBodies[l.SkyBody].Theme : PlanetTheme.Veiled;
