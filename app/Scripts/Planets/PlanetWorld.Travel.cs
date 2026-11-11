@@ -179,6 +179,40 @@ public partial class PlanetWorld
         _sinceOrbitSeconds = 0;
     }
 
+    /// <summary>
+    /// Where to arrive, as Places does (PLACE-07, LINK-03): coming back up (or back to an ancestor), beside the launcher
+    /// of the world on the way to where you were, with that world selected; back through a link, beside the link's
+    /// launcher with the link selected; otherwise on the arrival meadow (the selection is kept).
+    /// </summary>
+    private int ArrivalFrom(FsTree tree, PlaceChange change, int fromId)
+    {
+        if (fromId < 0 || !tree.Contains(fromId)) return -1;
+        if (change.Move == PlaceMove.Back && change.ViaLink >= 0 && tree.Contains(change.ViaLink) && tree[change.ViaLink].ParentId == change.To)
+        {
+            _s.Select(change.ViaLink);
+            return change.ViaLink;
+        }
+
+        if (change.Move != PlaceMove.Link && (tree[fromId].ParentId == change.To || (change.Move != PlaceMove.Root && IsAncestor(tree, change.To, fromId))))
+        {
+            var child = PlaceNavigator.ChildToward(tree, change.To, fromId);
+            if (child >= 0) _s.Select(child);
+            return child;
+        }
+
+        return -1;
+    }
+
+    private static bool IsAncestor(FsTree tree, int ancestor, int id)
+    {
+        for (var p = tree[id].ParentId; p >= 0; p = tree[p].ParentId)
+        {
+            if (p == ancestor) return true;
+        }
+
+        return false;
+    }
+
     private bool IsParentTarget(FsTree tree, int id) => _current != null && tree.Contains(_current.FolderId) && tree[_current.FolderId].ParentId == id;
 
     private void CancelLaunch(string why)
@@ -210,8 +244,7 @@ public partial class PlanetWorld
         if (_children.TryGetValue(change.To, out var child)) body = child;
         else if (_parent != null && _parent.FolderId == change.To) body = _parent;
         var fromId = _current?.FolderId ?? -1;
-        var upward = body != null && body == _parent;
-        tr.ArriveFrom = upward || change.Move is PlaceMove.Up or PlaceMove.Back && body == _parent ? fromId : (change.ViaLink >= 0 ? -1 : -1);
+        tr.ArriveFrom = ArrivalFrom(tree, change, fromId);
         _audio.Launch();
         _avatar.Launch();
         Transfers++;
@@ -270,8 +303,7 @@ public partial class PlanetWorld
         // Up turns from where you left to where you land over the second half (feet first for the landing).
         var up = tr.FromUp.Slerp(tr.ToUp, Smooth(Mathf.Clamp((u - 0.35f) / 0.65f, 0, 1)));
         var fwd = vel.LengthSquared() > 1e-6f ? vel.Normalized() : tr.ToUp;
-        _avatar.Scale = new Godot.Vector3(s, s, s);
-        _avatar.SetFlying(pos, up, fwd, u);
+        _avatar.SetFlying(pos, up, fwd, u, s);
         _flightTrail.Add(pos, s);
         _audio.Fly(u);
         FlightCamera(pos, up, fwd, s, u, tr, dt);
@@ -353,8 +385,9 @@ public partial class PlanetWorld
                 // At the brightest moment the new world is built at the origin; you come down onto it from above.
                 var target = tr.Change?.To ?? tr.LaunchTarget;
                 BuildCurrent(tree, target, tr.ArriveFrom);
-                tr.LandUp = _current!.Comp.Arrival.Up;
-                tr.LandFacing = _current.Comp.Arrival.Facing;
+                var pose = tr.ArriveFrom >= 0 ? _current!.Comp.ArrivalFor(tr.ArriveFrom) : _current!.Comp.Arrival;
+                tr.LandUp = pose.Up;
+                tr.LandFacing = pose.Facing;
                 tr.To = Gd(_current.Comp.Surface.PointAt(tr.LandUp));
                 tr.ToUp = Gd(tr.LandUp);
                 tr.From = tr.To + tr.ToUp * 70f;

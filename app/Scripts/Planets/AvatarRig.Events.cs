@@ -23,12 +23,13 @@ public partial class AvatarRig
     }
 
     /// <summary>One frame in flight: streamlined along the direction of travel.</summary>
-    public void SetFlying(Vector3 position, Vector3 up, Vector3 forward, float progress01, float dt = 1f / 60)
+    public void SetFlying(Vector3 position, Vector3 up, Vector3 forward, float progress01, float scale = 1f, float dt = 1f / 60)
     {
         // In flight the body leans into the direction of travel: up is the local up, facing is the travel direction flattened.
         var f = forward - up * forward.Dot(up);
         if (f.LengthSquared() < 1e-5f) f = up.Cross(Vector3.Right).LengthSquared() > 1e-4f ? up.Cross(Vector3.Right) : up.Cross(Vector3.Forward);
         SetPose(position, up, f.Normalized());
+        Scale = new Vector3(scale, scale, scale); // after SetPose, which sets the whole transform (it used to undo the flight's scale)
         Animate(dt, new AvatarState(9f, false, 0f, false, false, false, 0f, Flying: true, Twirl: _pendingLaunch));
         _pendingLaunch = false;
     }

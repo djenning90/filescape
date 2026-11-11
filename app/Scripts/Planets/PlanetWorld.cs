@@ -132,6 +132,14 @@ public partial class PlanetWorld : Node3D
 
     private (float Blur, float NormalBias, float MaxDistance) _savedShadow = (1f, 1f, 160f);
 
+    public override void _ExitTree()
+    {
+        // Detached visuals in the cache are not in the tree: free them, and the shared meshes, so nothing leaks at exit.
+        foreach (var (_, v) in _visualCache) v.Free();
+        _visualCache.Clear();
+        PlanetVisual.ClearSharedMeshes();
+    }
+
     public void ApplyQuality(Quality q)
     {
         _quality = q;
@@ -161,6 +169,7 @@ public partial class PlanetWorld : Node3D
         }
 
         MaybeRecompose(tree);
+        ApplyPendingRecompose(tree);
         switch (_phase)
         {
             case Phase.Walking:
@@ -186,9 +195,23 @@ public partial class PlanetWorld : Node3D
         _lastSignatureCheck = now;
         var sig = PlanetComposer.Signature(tree, _current.FolderId);
         if (sig == _signature) return;
+        // The new planet's ground is made on a worker; the swap happens when it is ready (no hitch while you walk).
+        _signature = sig;
+        var comp = Compose(tree, _current.FolderId);
+        _pendingRecompose = (comp, GroundAsync(comp, full: true));
+    }
+
+    private (PlanetComposition Comp, Task<PlanetArt.GroundArrays> Ground)? _pendingRecompose;
+
+    private void ApplyPendingRecompose(FsTree tree)
+    {
+        if (_pendingRecompose is not { } pending || _current == null || Busy) return;
+        if (!pending.Ground.IsCompleted) return;
+        _pendingRecompose = null;
+        if (pending.Comp.FolderId != _current.FolderId) return;
         var up = _walker.Up;
         var facing = _walker.Facing;
-        BuildCurrent(tree, _current.FolderId, arriveFrom: -2);
+        BuildCurrent(tree, _current.FolderId, arriveFrom: -2, comp: pending.Comp);
         _walker.Teleport(_current.Comp.Surface, up, facing);
         UpdateDestinations();
     }
@@ -204,9 +227,10 @@ public partial class PlanetWorld : Node3D
     /// <paramref name="reuse"/> is a body already built for this folder (the one you just landed on); <paramref name="keep"/>
     /// the planet you left, kept in full as the new parent or child (its placement is the same transform it already has).
     /// </summary>
-    private void BuildCurrent(FsTree tree, int folderId, int arriveFrom, Body? reuse = null, Body? keep = null)
+    private void BuildCurrent(FsTree tree, int folderId, int arriveFrom, Body? reuse = null, Body? keep = null, PlanetComposition? comp = null)
     {
-        var comp = reuse?.Comp ?? Compose(tree, folderId);
+        comp ??= reuse?.Comp ?? Compose(tree, folderId);
+        _pendingRecompose = null;
         _signature = PlanetComposer.Signature(tree, folderId);
         var old = new List<Body>();
         if (_current != null) old.Add(_current);
@@ -264,10 +288,30 @@ public partial class PlanetWorld : Node3D
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var built = new PlanetVisual(tree, body.Comp, _quality, full) { Name = key };
+        var ground = GroundAsync(body.Comp, full);
+        var waited = ground.IsCompleted ? "ready" : "waited";
+        var built = new PlanetVisual(tree, body.Comp, _quality, full, ground.Result) { Name = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
-        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms ({built.BuildTimes})");
+        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
         return built;
+    }
+
+    /// <summary>Ground vertex data made on worker threads, by planet and what it shows (prefetched for every world in the sky).</summary>
+    private readonly Dictionary<string, Task<PlanetArt.GroundArrays>> _groundTasks = [];
+    private readonly Queue<string> _groundOrder = new();
+
+    private Task<PlanetArt.GroundArrays> GroundAsync(PlanetComposition comp, bool full)
+    {
+        var key = $"{comp.FolderId}:{comp.Signature}:{(full ? 1 : 0)}";
+        if (_groundTasks.TryGetValue(key, out var task)) return task;
+        var shape = comp.Shape;
+        var palette = PlanetArt.Palette(comp.Theme);
+        var subdivisions = full ? PlanetArt.SubdivisionsFor(shape.Radius) : 3;
+        task = Task.Run(() => PlanetArt.PlanetMeshArrays(shape, palette, subdivisions));
+        _groundTasks[key] = task;
+        _groundOrder.Enqueue(key);
+        while (_groundOrder.Count > 40) _groundTasks.Remove(_groundOrder.Dequeue());
+        return task;
     }
 
     private void BuildFull(FsTree tree, Body body)
@@ -335,6 +379,8 @@ public partial class PlanetWorld : Node3D
             {
                 body = new Body { FolderId = sky.TargetId, Comp = Compose(tree, sky.TargetId), Node = new Node3D { Name = $"Child-{sky.TargetId}" } };
                 AddChild(body.Node);
+                GroundAsync(body.Comp, full: false);
+                GroundAsync(body.Comp, full: true); // prefetched: ready by the time you stand on its launcher
                 BuildPreview(tree, body);
             }
 
@@ -354,6 +400,7 @@ public partial class PlanetWorld : Node3D
             {
                 body = new Body { FolderId = parentId, Comp = Compose(tree, parentId), Node = new Node3D { Name = $"Parent-{parentId}" } };
                 AddChild(body.Node);
+                GroundAsync(body.Comp, full: true);
                 BuildPreview(tree, body);
             }
 

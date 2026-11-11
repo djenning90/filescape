@@ -303,7 +303,32 @@ public static class PlanetArt
     /// clearings and worn paths around the flat spots and between the first flat spot (the arrival) and the others.
     /// Subdivisions 5 = 20,480 triangles, 4 = 5,120.
     /// </summary>
-    public static ArrayMesh PlanetMesh(PlanetShape shape, PlanetPalette palette, int subdivisions = 5)
+    public static ArrayMesh PlanetMesh(PlanetShape shape, PlanetPalette palette, int subdivisions = 5) =>
+        PlanetMesh(PlanetMeshArrays(shape, palette, subdivisions));
+
+    /// <summary>The ground's vertex data, computed from plain maths only (no engine objects), so it can be made on a worker thread.</summary>
+    public sealed record GroundArrays(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, int[] Indices);
+
+    /// <summary>Uploads ground vertex data as a mesh (main thread).</summary>
+    public static ArrayMesh PlanetMesh(GroundArrays g)
+    {
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = g.Vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = g.Normals;
+        arrays[(int)Mesh.ArrayType.Color] = g.Colors;
+        arrays[(int)Mesh.ArrayType.Index] = g.Indices;
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(0, SurfaceMaterial());
+        return mesh;
+    }
+
+    /// <summary>
+    /// The ground's vertices (each at <see cref="PlanetShape.GroundRadius"/>, so it matches walking exactly), normals and
+    /// colours. Thread-safe: plain maths on value types (2026-11-11: moved off the main thread, where it cost 40–140 ms).
+    /// </summary>
+    public static GroundArrays PlanetMeshArrays(PlanetShape shape, PlanetPalette palette, int subdivisions = 5)
     {
         var (dirs, tris) = Icosphere(Math.Clamp(subdivisions, 0, 6));
         var verts = new Vector3[dirs.Count];
@@ -348,16 +373,7 @@ public static class PlanetArt
             colors[i] = Linear(col);
         }
 
-        var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = verts;
-        arrays[(int)Mesh.ArrayType.Normal] = normals;
-        arrays[(int)Mesh.ArrayType.Color] = colors;
-        arrays[(int)Mesh.ArrayType.Index] = tris.ToArray();
-        var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-        mesh.SurfaceSetMaterial(0, SurfaceMaterial());
-        return mesh;
+        return new GroundArrays(verts, normals, colors, tris.ToArray());
     }
 
     /// <summary>Distance along the surface (metres) from <paramref name="p"/> to the great-circle arc a→b (beyond the ends: to the nearer end).</summary>

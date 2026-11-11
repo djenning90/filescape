@@ -37,10 +37,20 @@ public partial class PlanetVisual : Node3D
 
     public int ThumbnailsShown { get; private set; }
 
+    /// <summary>Drops the meshes shared between planets (at exit).</summary>
+    public static void ClearSharedMeshes()
+    {
+        FileMeshes.Clear();
+        DecorationMeshes.Clear();
+        LandmarkMeshes.Clear();
+        _launcherArt = null;
+        _overlookMesh = null;
+    }
+
     /// <summary>Where the build time went (diagnostics).</summary>
     public string BuildTimes { get; private set; } = "";
 
-    public PlanetVisual(FsTree tree, PlanetComposition comp, Quality quality, bool full)
+    public PlanetVisual(FsTree tree, PlanetComposition comp, Quality quality, bool full, PlanetArt.GroundArrays? ground = null)
     {
         _comp = comp;
         _full = full;
@@ -48,13 +58,15 @@ public partial class PlanetVisual : Node3D
         Name = full ? "PlanetVisual" : "PlanetPreview";
         var surf = comp.Surface;
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var ground = new MeshInstance3D
+        var groundNode = new MeshInstance3D
         {
             Name = "Ground",
-            Mesh = PlanetArt.PlanetMesh(comp.Shape, _pal, full ? PlanetArt.SubdivisionsFor(comp.Shape.Radius) : 3),
-            CastShadow = full ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+            Mesh = ground != null ? PlanetArt.PlanetMesh(ground) : PlanetArt.PlanetMesh(comp.Shape, _pal, full ? PlanetArt.SubdivisionsFor(comp.Shape.Radius) : 3),
+            // The ground never casts: a sphere shadowing itself at grazing sun angles made blocky acne on the near ground
+            // (2026-11-11); hills are gentle, and everything standing on the ground still casts onto it.
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
-        AddChild(ground);
+        AddChild(groundNode);
         // The atmosphere shell reads as a soft rim from outside; from inside (the planet you stand on) it would haze the
         // whole view, so only worlds in the sky get it.
         if (!full) AddChild(PlanetArt.Atmosphere(comp.Shape.Radius, _pal));
@@ -187,13 +199,13 @@ public partial class PlanetVisual : Node3D
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FontSize = 48,
                 OutlineSize = 12,
-                PixelSize = 0.0055f,
+                PixelSize = 0.0045f,
                 Modulate = new Color(1f, 0.95f, 0.84f),
                 OutlineModulate = new Color(0.08f, 0.05f, 0.16f, 0.85f),
                 Position = at,
                 VisibilityRangeBegin = 2.5f,
                 VisibilityRangeBeginMargin = 1.5f,
-                VisibilityRangeEnd = 26f,
+                VisibilityRangeEnd = 16f,
                 VisibilityRangeEndMargin = 6f,
                 VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self,
                 NoDepthTest = false,
