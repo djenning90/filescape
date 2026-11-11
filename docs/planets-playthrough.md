@@ -26,7 +26,8 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
    Box (bell flowers ring as you pass; E plays a song), Lantern Workshop (a code project; E on README.md reads it),
    Constellations (36 small worlds: ten launchers and a ring of moons), Quiet Moon (empty).
 9. **Your own files.** **Ctrl+O** (Open…) chooses This computer, a drive, a WSL distribution or a folder; the planets
-   work the same on them. **Esc** closes what is open; **F1** is help.
+   work the same on them. In your own folders FileScape reads a file's contents only when you ask (E), so an easel
+   shows its picture once you have looked at it; cloud files that are not on this PC are never downloaded for a preview. **Esc** closes what is open; **F1** is help.
 
 Keys: W/A/S/D or arrows run (Shift: faster) · Space jump / twirl / launch · E look closer · Enter open · Backspace
 back · U up · G fly to the selected world · J the planet's list · L locations · Ctrl+L go to path · V Places/Planets ·

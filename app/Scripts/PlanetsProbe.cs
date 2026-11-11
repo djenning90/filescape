@@ -75,7 +75,7 @@ public partial class PlanetsProbe : ProbeBase
     protected override async Task RunProbe()
     {
         if (Mode == "planets-fixture") await FixtureTour();
-        else await Journey();
+        else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
 
@@ -90,7 +90,8 @@ public partial class PlanetsProbe : ProbeBase
 
     // ------------------------------------------------------------------ the first minutes on the Starter Sky
 
-    private async Task Journey()
+    /// <summary>The first minutes; <paramref name="reel"/> stops after the flight home (a short recording: --write-movie).</summary>
+    private async Task Journey(bool reel = false)
     {
         await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
         await WaitSettled();
@@ -193,6 +194,14 @@ public partial class PlanetsProbe : ProbeBase
         var gl = P.Composition.Launchers.FirstOrDefault(l => l.TargetId == garden);
         var besides = gl != null ? PlanetShape.Angle(P.Walker.Up, gl.Direction) * P.Composition.Shape.Radius : 99;
         Check(besides < 5f, F($"back home beside the Garden Photos launcher ({besides:0.0} m)"));
+        Check(P.RememberedRouteCount >= 1 && P.RouteBeadCount > 0, $"the route you flew is remembered: a trail of light marks the Garden Photos launcher's arc ({P.RouteBeadCount} beads)");
+        if (reel)
+        {
+            await Hold(2.0, Godot.Key.W);
+            await Seconds(1.0);
+            return;
+        }
+
         await Shot("back-home");
 
         // The direct route to a world that is not in the sky: Go to path (a warp).

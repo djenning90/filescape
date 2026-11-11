@@ -120,7 +120,7 @@ if [[ "$TIER" == release ]]; then
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier"
   done
   recording_step planets-recording 400 "$OUT/planets-recording.avi" \
-    "$EXE" --write-movie "$OUTW\\planets-recording.avi" --fixed-fps 30 -- --automate=planets-journey --root=sample --vis=planets --test-shell=record "--out=$OUTW\\planets-recording" --window=1280x720 --ui-scale=1 --tier=functional
+    "$EXE" --write-movie "$OUTW\\planets-recording.avi" --fixed-fps 30 -- --automate=planets-reel --root=sample --vis=planets --test-shell=record "--out=$OUTW\\planets-recording" --window=1280x720 --ui-scale=1 --tier=functional
   recording_step recording 400 "$OUT/explore-recording.avi" \
     "$EXE" --write-movie "$OUTW\\explore-recording.avi" --fixed-fps 30 -- --automate=walk-explore "--root=$W" "--out=$OUTW\\recording" --window=1280x720 --ui-scale=1
 fi

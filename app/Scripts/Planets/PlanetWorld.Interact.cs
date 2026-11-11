@@ -158,6 +158,11 @@ public partial class PlanetWorld
 
         foreach (var l in _current.Comp.Launchers) Test(Gd(surf.PointAt(l.Direction, 0.3f)), 1.3f, l.TargetId, false);
         foreach (var (fid, body) in _children) Test(body.Node.GlobalPosition, body.Node.Transform.Basis.Scale.X * body.Comp.Shape.Radius * 1.05f, fid, true);
+        foreach (var moon in _current.Comp.SkyBodies)
+        {
+            if (moon.InBelt) Test(Gd(moon.Position), MathF.Max(moon.Radius * 1.4f, 1.2f), moon.TargetId, true); // the ring of small moons: click to select, G to go
+        }
+
         if (_parent != null) Test(_parent.Node.GlobalPosition, _parent.Node.Transform.Basis.Scale.X * _parent.Comp.Shape.Radius, _parent.FolderId, true);
         // The ground in front blocks what is behind it.
         var groundT = RayPlanet(o, d, surf.Radius);

@@ -242,6 +242,16 @@ public partial class PlanetWorld
         _previewPlayer.Stop();
         _previewPanel.Visible = true;
         if (!_s.IsLive || n.Kind != NodeKind.File) return; // sample data has no contents; links and folders are not previewed
+        if ((n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0)
+        {
+            // Reading a cloud placeholder would make its provider download it: never for a preview (Open asks first).
+            _previewText.Visible = true;
+            _previewText.Text = (n.Flags & NodeFlags.CloudPlaceholder) != 0
+                ? "A cloud file that is not on this PC: FileScape does not download it for a preview. Open (Enter) asks first."
+                : "A link: it is not read for a preview.";
+            return;
+        }
+
         var path = tree.FullPath(n.Id);
         var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
         if (ext is ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" && n.Size <= MaxImageBytes)
@@ -263,6 +273,7 @@ public partial class PlanetWorld
 
     private void ApplyPreviewImage(Image img, int id)
     {
+        _current?.Visual?.ShowThumbnail(id, img); // the easel shows the picture you looked at
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
         _previewImage.Texture = ImageTexture.CreateFromImage(img);
     }
@@ -349,6 +360,9 @@ public partial class PlanetWorld
     // ------------------------------------------------------------------ names in the sky (the shared sign layer)
 
     private TimeSpan _lastSigns;
+    private int _hovered = -1;
+
+    public int HoveredNodeId => _hovered;
     private readonly List<SignCandidate> _signs = [];
 
     private void UpdateSigns(FsTree tree)
@@ -365,6 +379,29 @@ public partial class PlanetWorld
         _signs.Clear();
         var camPos = _camera.GlobalPosition;
         var camFwd = -_camera.GlobalBasis.Z;
+        // Whatever the mouse points at is named (a world in the sky, a moon in the ring, an object): pointing is enough.
+        var mouse = GetViewport().GetMousePosition();
+        _hovered = -1;
+        if (!_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) && !OverOverlay(mouse) && Pick(mouse) is { Id: >= 0 } hover && tree.Contains(hover.Id))
+        {
+            _hovered = hover.Id;
+        }
+
+        if (_hovered >= 0 && _hovered != _focusItem?.NodeId && !_children.ContainsKey(_hovered) && _parent?.FolderId != _hovered)
+        {
+            var hover = (Id: _hovered, Sky: false);
+            var hn = tree[hover.Id];
+            Godot.Vector3 anchor;
+            if (_children.TryGetValue(hover.Id, out var hb)) anchor = hb.Node.GlobalPosition + _camUp * (hb.Comp.Shape.Radius * hb.Node.Transform.Basis.Scale.X * 1.08f);
+            else if (_parent?.FolderId == hover.Id) anchor = _parent.Node.GlobalPosition;
+            else if (_current.Comp.SkyBodies.FirstOrDefault(k => k.InBelt && k.TargetId == hover.Id) is { } moon) anchor = Gd(moon.Position) + _camUp * (moon.Radius + 0.6f);
+            else if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == hover.Id) is { } hi) anchor = Gd(_current.Comp.Surface.PointAt(hi.Direction, 1.25f * hi.Scale + 0.3f));
+            else if (_current.Comp.Launchers.FirstOrDefault(l => l.TargetId == hover.Id) is { } hl) anchor = Gd(_current.Comp.Surface.PointAt(hl.Direction, 1.4f));
+            else anchor = _camera.GlobalPosition - _camera.GlobalBasis.Z * 10f;
+            var detail = hn.IsDirectory ? FolderSummary.Gate(hn, Listing.Of(hn)) + " · click: select · double-click: fly there" : SizeFormat.Short(hn.Size) + " · click: select · double-click: go to it";
+            _signs.Add(new SignCandidate(hn.Id, anchor, hn.Name, detail, new Color(1f, 0.95f, 0.75f), FileIcons.For(hn), true, 4f));
+        }
+
         void AddWorld(Body b, bool isParent)
         {
             if (!tree.Contains(b.FolderId)) return;
@@ -372,7 +409,7 @@ public partial class PlanetWorld
             var centre = b.Node.GlobalPosition;
             var top = centre + _camUp * (b.Comp.Shape.Radius * scale * 1.08f);
             var to = (centre - camPos).Normalized();
-            var focus = to.Dot(camFwd) > 0.97f || OnOverlook || _s.Selection.Selected == b.FolderId;
+            var focus = to.Dot(camFwd) > 0.97f || OnOverlook || _s.Selection.Selected == b.FolderId || _hovered == b.FolderId;
             var detail = isParent ? "the way back" : FolderSummary.Gate(tree[b.FolderId], Listing.Of(tree[b.FolderId]));
             var color = PlanetArt.Palette(b.Comp.Theme).Accent.Lightened(0.35f);
             _signs.Add(new SignCandidate(b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, focus ? 2f : 0f));
@@ -406,7 +443,7 @@ public partial class PlanetWorld
     private void UpdateThumbnails()
     {
         if (_current?.Visual is not { } v || !_s.IsLive || _s.Tree is not { } tree) return;
-        v.PumpThumbnails(tree, maxConcurrent: 2);
+        v.PumpThumbnails(tree, maxConcurrent: 2, automatic: _current.AutoThumbnails);
     }
 
     // ------------------------------------------------------------------ travel effects

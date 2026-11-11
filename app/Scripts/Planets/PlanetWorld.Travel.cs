@@ -332,6 +332,7 @@ public partial class PlanetWorld
         _camera.GlobalTransform = camAfter;
         if (old != null) old.Node.Transform = inv * old.Node.Transform;
         LastFlightSeconds = tr.T;
+        if (old != null) RememberRoute(old.FolderId, body.FolderId);
         BuildCurrent(tree, body.FolderId, tr.ArriveFrom, reuse: body, keep: old);
         if (old != null && old != _parent && !_children.ContainsValue(old)) FreeBody(old);
         // Face where the camera looks (projected on the ground), so the view rolls onto the new surface instead of swinging.

@@ -314,8 +314,19 @@ public partial class PlanetVisual : Node3D
 
     // ------------------------------------------------------------------ real pictures on the easels
 
-    /// <summary>Loads picture thumbnails for the image objects (two at a time, off the main thread) and shows them.</summary>
-    public void PumpThumbnails(FsTree tree, int maxConcurrent)
+    /// <summary>A picture read deliberately (E) is shown on its easel too.</summary>
+    public void ShowThumbnail(int id, Image img)
+    {
+        lock (_thumbReady) _thumbReady.Add((id, img));
+        _thumbRequested.Add(id);
+    }
+
+    /// <summary>
+    /// Shows pictures on the easels: those read deliberately (<see cref="ShowThumbnail"/>), and, when
+    /// <paramref name="automatic"/> (only the app's own Starter Sky, FILE-02/DEV-02: your files' contents are read only
+    /// when you ask), loads the rest two at a time off the main thread. Cloud placeholders and links are never read.
+    /// </summary>
+    public void PumpThumbnails(FsTree tree, int maxConcurrent, bool automatic = true)
     {
         lock (_thumbReady)
         {
@@ -330,14 +341,14 @@ public partial class PlanetVisual : Node3D
             _thumbReady.Clear();
         }
 
-        if (_thumbLoading >= maxConcurrent) return;
+        if (!automatic || _thumbLoading >= maxConcurrent) return;
         foreach (var (id, e) in _items)
         {
             if (_thumbLoading >= maxConcurrent) break;
             if (id < 0 || e.Art.FaceSurface < 0 || _thumbRequested.Contains(id) || !tree.Contains(id)) continue;
             var n = tree[id];
             var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
-            if (n.Kind != NodeKind.File || ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp") || n.Size > 24L * 1024 * 1024) { _thumbRequested.Add(id); continue; }
+            if (n.Kind != NodeKind.File || (n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0 || ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp") || n.Size > 24L * 1024 * 1024) { _thumbRequested.Add(id); continue; }
             _thumbRequested.Add(id);
             _thumbLoading++;
             var path = tree.FullPath(id);

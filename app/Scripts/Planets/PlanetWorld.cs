@@ -49,6 +49,9 @@ public partial class PlanetWorld : Node3D
         public required Node3D Node;
         public bool Full;
         public PlanetVisual? Visual;
+
+        /// <summary>Easels load their pictures by themselves only inside the app's own Starter Sky (FILE-02/DEV-02).</summary>
+        public bool AutoThumbnails;
     }
 
     private Body? _current;
@@ -260,6 +263,7 @@ public partial class PlanetWorld : Node3D
 
         _current.Node.Transform = Transform3D.Identity;
         BuildNeighbours(tree, keep);
+        UpdateRouteBeads();
         ApplyAtmosphere(comp.Theme);
         _audio.SetTheme(comp.Theme);
         if (arriveFrom != -2)
@@ -324,6 +328,7 @@ public partial class PlanetWorld : Node3D
         body.Visual = TakeOrBuild(tree, body, full: true);
         body.Node.AddChild(body.Visual);
         body.Full = true;
+        body.AutoThumbnails = InStarterSky(tree, body.FolderId);
     }
 
     private void BuildPreview(FsTree tree, Body body)
@@ -352,6 +357,25 @@ public partial class PlanetWorld : Node3D
     {
         Release(b);
         if (GodotObject.IsInstanceValid(b.Node)) b.Node.QueueFree();
+    }
+
+    private readonly Dictionary<int, bool> _inSample = [];
+
+    /// <summary>True when the folder is inside the app's own Starter Sky (a marked folder FileScape wrote itself).</summary>
+    private bool InStarterSky(FsTree tree, int folderId)
+    {
+        if (!_s.IsLive) return false;
+        if (_inSample.TryGetValue(folderId, out var known)) return known;
+        var result = false;
+        for (var id = folderId; id >= 0 && tree.Contains(id); id = tree[id].ParentId)
+        {
+            if (tree[id].Name != FileScape.Core.Samples.SampleSky.RootName) continue;
+            try { result = FileScape.Core.Samples.SampleSky.IsSample(tree.FullPath(id)); }
+            catch (Exception) { result = false; }
+            break;
+        }
+
+        return _inSample[folderId] = result;
     }
 
     /// <summary>
