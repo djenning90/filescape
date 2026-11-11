@@ -48,7 +48,7 @@ public sealed record PlanetParams
     public float LauncherClearRadius { get; init; } = 3.3f;
 
     /// <summary>How far behind the arrival (along +Z) the way back stands, metres.</summary>
-    public float ParentBehind { get; init; } = 4f;
+    public float ParentBehind { get; init; } = 5.5f;
 
     /// <summary>The landmark's angle from the arrival pole straight ahead, degrees.</summary>
     public float LandmarkPolarDeg { get; init; } = 40f;
@@ -374,7 +374,9 @@ public static class PlanetComposer
         if (!folder.IsRoot)
         {
             var parent = tree[folder.ParentId];
-            var d = PlanetFrame.Move(pole, Vector3.UnitZ, p.ParentBehind, radius);
+            // Behind and a little to the right of the arrival (2026-11-11, from the first-view screenshots: straight behind,
+            // the chase camera stood over its petals, which filled the bottom of the first view).
+            var d = PlanetFrame.Move(pole, Vector3.Normalize(Vector3.UnitZ + 0.75f * Vector3.UnitX), p.ParentBehind, radius);
             var parentSize = parent.SubtreeFileCount + parent.SubtreeDirCount;
             var pos = PlanetFrame.FromPolar(Deg(35f), MathF.PI) * (radius + 24f);
             sky.Add(new SkyBody(parent.Id, pos, MathF.Max(5f, SkyRadius(parentSize, p)), ThemeOf(tree, parent.Id, visible), Listing.Of(parent), launchers.Count, IsParent: true));

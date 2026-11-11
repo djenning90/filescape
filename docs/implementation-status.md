@@ -8,7 +8,34 @@ Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** 
 
 DJ's brief: a playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* with original art, sound and interaction, on the shared session, alongside the flat world. Research: `docs/galaxy-research.md` (what was examined, what it changed). Requirements: PLANET-10..18. Decisions: AD-39..43. Guided first playthrough: `docs/planets-playthrough.md`. Evidence: `docs/evidence/2026-11-11-planets/`.
 
-**Status (filled in below with the final checks):** see "Planets: checks" and "Planets: open".
+**Build.** **`88899d32ccf3`** (clean tree) is verified (exported, files and hashes checked, smoke-launched) in `C:\Users\David\AppData\Local\FileScape\staging-20261111-064427-812106\`. It is **not promoted** into `build\` (KD-32): Windows refused to move the current `build` folder although no FileScape was running and no file in it was open; nothing was closed. The installed build is still `217a37f7ffa9`. Launch the planets directly from the staging folder (below) or run `tools/fs.sh promote staging-20261111-064427-812106` once the folder is free.
+
+**Launch:** `C:\Users\David\AppData\Local\FileScape\staging-20261111-064427-812106\FileScape.exe -- --root=sample --vis=planets` (or start it plainly and click **✦ Planets (V)**: from the sample data it opens the Starter Sky).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Research (Iwata Asks ×4 volumes + Galaxy 2, manual, wikis, decompilation, essays; no video could be played) | Done | `docs/galaxy-research.md` (sources, observations, experiments E1–E8, what changed) |
+| A world per folder, themes, landmarks, groves, launchers, sky (PLANET-10) | **Demonstrated** | Core tests (21 composer tests), journey screenshots of 7 distinct worlds |
+| Walking all round, jump + twirl in both worlds, camera with capped roll (PLANET-11) | **Demonstrated** (feel: unknown) | SphereWalker edge tests (±Y, antipodes, frame-rate), JumpModel tests, journey: 12.8 m walked, apex 2.6 m, roll ≤ 90°/s |
+| Launch travel: wind-up, arc, seamless landing, warp (PLANET-12) | **Demonstrated** | wind-up 0.32–0.49 s, flight 1.5–2.4 s, landing frame jump 0.1–0.6 % of the screen height; recorded reel watched frame by frame |
+| Inspect, preview, open real files (PLANET-13) | **Demonstrated** | picture, README text and WAV previews; Enter recorded by the test shell |
+| Direct routes (PLANET-14) | **Demonstrated** | J list of 1,501 entries with filtering; Go to path warps |
+| Starter Sky (PLANET-15) | **Demonstrated** | SampleSky tests; every journey runs on it |
+| Large, empty, linked, incomplete, WSL (PLANET-16) | **Demonstrated** | 1,500-file archive (64 objects + piles); Quiet Moon; junction followed; WSL fixture with Notes/notes and symlinks |
+| Switching worlds keeps folder, selection, history (PLANET-17) | **Demonstrated** | journey: V to Places and back |
+| Responsiveness on the Radeon 890M (PLANET-18) | **Demonstrated** (dev build) | flight frames max 16.7 ms; walking p99 18–25 ms; planet builds 3–17 ms on the main thread (ground on workers) |
+| Review | 27 confirmed findings fixed | an adversarially verified 5-dimension review (travel, session, Core, threads, safety): see the commit `89a83cb` |
+
+**Checks on the staged builds** (`docs/evidence/2026-11-11-planets/checks/`):
+
+| Check | Result |
+|---|---|
+| Core tests | Windows 309 passed / 19 skipped (`63dfed0`); WSL 313 passed / 17 skipped (HEAD) |
+| Smoke tier (`b714751`+) | explore 29/0, hub → project 19/0, planets 37/0 |
+| Full tier on `63dfed0` | 18 of 20 steps passed: planets 38/0, planets fixture (Wayfarer + WSL) 15/0, places, scan, navigation, map, planetoids, aerial limits, explore and places at 1.25 all 0 failures; **walk 99/2** (KD-31, intermittent, not reproduced in 3 reruns); planets at 1.25 37/1 (a Backspace wind-up of 0.25 s, by design then; all wind-ups are now 0.4 s) |
+| Full tier on the final `88899d3` | see below (filled in after the run) |
+
+**What changed after trying the build** (each from a screenshot, a measurement or a recorded reel): the camera's look is smoothed and keeps the traveller in frame (the traveller left the frame at launch); the flight camera travels with the traveller as an offset (it lagged at 30 m/s); the traveller keeps its flight scale (it popped to size at touchdown); the camera rides along with hops (it rolled behind); the wind-up turns the camera to the destination (the return flight came at the lens); the atmosphere shell only on worlds in the sky (it hazed the view from inside); no self-shadowing ground (blocky acne); grove signs small and close (they filled the screen); planet ground built on worker threads and prefetched (60–220 ms hitches); an establishing shot for the first world; six-petal launchers (five read as a star); a deeper Library palette; a slim flight trail (it read as a beam); +5 dB (the mix measured ≈ −28 dBFS); remembered routes; hover names; easels read pictures by themselves only in the Starter Sky (FILE-02).
 
 ## Correctness follow-up on build 8c18e8e3f107 (2026-11-06)
 
@@ -506,7 +533,14 @@ Other measurements:
   - **Reopen as a product defect:** if a fresh snapshot ever fails to show the capture.
 - **KD-29 Aerial limit, not exercised:** a real namespace of more than 4,000 places in the app, and the old build's failure in the app (it has no small-budget switch). With a budget too small for the way down, the aerial view is unavailable in that place by design.
 - **KD-30 Pin identity:** NTFS per-directory case sensitivity is not detected (AD-36). Two case-variant WSL folders were not pinned by hand in the app.
-- **KD-15 Content previews are not implemented** (future direction recorded in requirements and architecture: a per-file appearance provider fed by a separate, deliberate preview reader).
+- **KD-15 Content previews:** implemented in the planetary world only (PLANET-13: pictures, text, sound, on a deliberate E; Places still shows README text only).
+- **KD-31 Injected input intermittently ignored in tier runs (open, cause unknown, probably environment).**
+  - **Walk journey, full tier on `63dfed091e8b`:** two look-direction checks after closing Settings measured a smaller turn (−13.3° instead of −36.0°) and the wrong pitch sign for the left-drag. The same build passed alone, after the planets journey in the same order, and the previous build passed too (3 of 4 runs pass).
+  - **Explore journey, full tier on `88899d32ccf3`:** 9 checks in flight and over the aerial world saw keys and a click do nothing for a few seconds. The same build passed alone right after (1 of 2 runs pass).
+  - **Common symptom:** injected keys and mouse events have no effect for a stretch, which is what Places does by design while the window is not focused. No change to Places' input, look or flight code was found; the flat walker's only change is the shared jump model.
+  - **Diagnostics added:** probes now log every window focus change ("window focus LOST"). A recurrence next to such a line is the environment; one without it reopens this as a product defect.
+- **KD-32 Not promoted:** the planetary build is verified in its staging folder but could not be moved into `build`: Windows refused to move the current `build` folder (no file in it is open, so a folder handle is held, for example a terminal or Explorer window open inside it). Nothing was closed. `tools/fs.sh promote <staging-name>` installs it once the folder is free.
+- **KD-33 Planets, not established:** how it feels to a person (movement, camera, scale, sound: nobody has played or listened yet); real large trees in the app (Core composes 800 files in 2.6 ms); NTFS cloud placeholders in the app (they are never read; not exercised); the music on other audio devices; UI scale 1.5 and above.
 
 ## Provisional decisions to confirm with DJ
 

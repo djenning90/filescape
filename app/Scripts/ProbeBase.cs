@@ -94,7 +94,19 @@ public abstract partial class ProbeBase : Node
 
     private double _simSeconds;
 
-    public override void _Process(double delta) => _simSeconds += delta;
+    private bool _lastFocused = true;
+
+    public override void _Process(double delta)
+    {
+        _simSeconds += delta;
+        // KD-31 diagnostics: injected input does nothing while the window is not focused (by design), so every focus
+        // change is logged; a failure next to "lost focus" is the environment, not the product.
+        if (App.WindowFocused != _lastFocused)
+        {
+            _lastFocused = App.WindowFocused;
+            Log(_lastFocused ? "window focus regained" : "window focus LOST (injected input is ignored until it returns)");
+        }
+    }
 
     /// <summary>Holds keys together for a duration (pressed in order, released together).</summary>
     protected async Task Hold(double seconds, params Key[] keys)

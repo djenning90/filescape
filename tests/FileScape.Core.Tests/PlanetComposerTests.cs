@@ -191,8 +191,9 @@ public class PlanetComposerTests
         var c = PlanetComposer.Compose(tree, code);
         var back = c.ParentLauncher!;
         back.TargetId.Should().Be(0);
-        c.Surface.SurfaceDistance(back.Direction, Vector3.UnitY).Should().BeApproximately(4f, 0.05f);
+        c.Surface.SurfaceDistance(back.Direction, Vector3.UnitY).Should().BeApproximately(PlanetParams.Default.ParentBehind, 0.05f);
         Vector3.Dot(back.Direction, Vector3.UnitZ).Should().BeGreaterThan(0, "behind the arrival, which faces −Z");
+        Vector3.Dot(back.Direction, Vector3.UnitX).Should().BeGreaterThan(0, "and off to the side, so the chase camera does not stand over it on arrival");
         var parentBody = c.SkyBodies[back.SkyBody];
         parentBody.IsParent.Should().BeTrue();
         parentBody.Position.Z.Should().BeGreaterThan(0);
