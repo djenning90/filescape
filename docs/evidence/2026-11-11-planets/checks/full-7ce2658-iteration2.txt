@@ -1,0 +1,28 @@
+FileScape check full  2026-11-11T07:58:13Z  commit 7ce26585a597
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\full-20261111-075813
+build                            9.6s  exit 0
+tests-windows                   35.1s  exit 0
+tests-wsl                       25.3s  exit 0
+    Passed!  - Failed:     0, Passed:   325, Skipped:    20, Total:   345, Duration: 19 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   327, Skipped:    18, Total:   345, Duration: 17 s - FileScape.Core.Tests.dll (net10.0)
+stage                           23.4s  exit 0
+build: 7ce26585a597+15-uncommitted 2026-11-11T07:59:43Z  (C:\Users\David\AppData\Local\FileScape\staging-20261111-075923-865814\FileScape.exe)
+explore-ui1.0                   43.8s  ok     journey         29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    7.9s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   40.5s  ok     journey         39 PASS  0 FAIL  2 SKIP
+planets-flows                   29.8s  ok     journey         26 PASS  0 FAIL  2 SKIP
+walk-ui1.0                      86.1s  ok     journey        101 PASS  0 FAIL  2 SKIP
+places-connected                51.3s  ok     journey         53 PASS  0 FAIL  4 SKIP
+places-tree                     52.3s  ok     journey         52 PASS  0 FAIL  4 SKIP
+places-scan                      6.2s  ok     journey          8 PASS  0 FAIL  0 SKIP
+navigation                      42.4s  ok     journey         56 PASS  0 FAIL  0 SKIP
+map-journey                     15.2s  ok     journey         15 PASS  0 FAIL  0 SKIP
+planetoids                      15.0s  ok     journey          9 PASS  0 FAIL  0 SKIP
+aerial-limit-24                 13.9s  ok     journey         10 PASS  0 FAIL  0 SKIP
+aerial-limit-8                  15.7s  ok     journey         11 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  43.8s  ok     journey         29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   51.3s  ok     journey         53 PASS  0 FAIL  4 SKIP
+planets-fixture                 19.4s  ok     journey         15 PASS  0 FAIL  2 SKIP
+planets-discover-wsl-root       10.4s  ok     journey          4 PASS  0 FAIL  1 SKIP
+planets-ui1.25                  40.1s  ok     journey         39 PASS  0 FAIL  2 SKIP
+TOTAL                            680s  failing steps: 0

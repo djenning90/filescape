@@ -1,0 +1,56 @@
+[00:01:22.037] planets-flows probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[00:01:24.843] PASS the Starter Sky has Constellations
+[00:01:24.846] C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky: 8 launchers on 2 ring(s), 0 in the belt; looking for Constellations
+[00:01:24.846] PASS Constellations has a launcher on Starter Sky (9.0 m from the arrival)
+[00:01:26.199] PASS turning the camera 145° in place shows its name, pinned on its pad (named already at the arrival: False)
+[00:01:26.237] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/01-discover-constellations-in-view.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[00:01:28.650] PASS walked straight onto it: 8.7 m for a pad 9.0 m away (no circling)
+[00:01:28.650] PASS the prompt says what Space does: "Space · fly to Constellations"
+[00:01:28.686] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/02-discover-on-constellations.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[00:01:29.043] flight u=0.000 dt=16.7 ms avatar screen=(802,693) camera→avatar 8.2 m scale 1.00
+[00:01:29.052] flight u=0.011 dt=16.7 ms avatar screen=(814,663) camera→avatar 7.9 m scale 1.00
+[00:01:29.068] flight u=0.022 dt=16.7 ms avatar screen=(811,661) camera→avatar 7.6 m scale 1.00
+[00:01:29.084] flight u=0.033 dt=16.7 ms avatar screen=(809,659) camera→avatar 7.4 m scale 0.99
+[00:01:29.101] flight u=0.044 dt=16.7 ms avatar screen=(807,658) camera→avatar 7.2 m scale 0.99
+[00:01:29.118] flight u=0.056 dt=16.7 ms avatar screen=(805,656) camera→avatar 7.0 m scale 0.99
+[00:01:29.134] flight u=0.067 dt=16.7 ms avatar screen=(803,655) camera→avatar 6.8 m scale 0.98
+[00:01:29.151] flight u=0.078 dt=16.7 ms avatar screen=(802,653) camera→avatar 6.7 m scale 0.97
+[00:01:29.167] flight u=0.089 dt=16.7 ms avatar screen=(801,651) camera→avatar 6.6 m scale 0.96
+[00:01:29.184] flight u=0.100 dt=16.7 ms avatar screen=(800,650) camera→avatar 6.5 m scale 0.95
+[00:01:29.201] flight u=0.111 dt=16.7 ms avatar screen=(799,648) camera→avatar 6.5 m scale 0.94
+[00:01:30.728] PASS Space: flew to Constellations
+[00:01:30.728] PASS a visible wind-up first: 0.37 s (0.4 s, aligned to the beat ±0.09 s)
+[00:01:30.728] PASS a brisk crossing: 1.52 s
+[00:01:30.728] PASS the landing does not cut: the traveller moves 0.8 % of the screen height in the landing frame (flight frames ≤ 3.7 %, the largest at 0.01 of the way)
+[00:01:30.728] PASS landed on foot
+[00:01:31.970] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/03-crowded-arrival.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:31.971] C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations: 28 launchers on 3 ring(s), 8 in the belt; looking for Snail on a Leaf
+[00:01:31.971] PASS Snail on a Leaf has a launcher on Constellations (16.0 m from the arrival)
+[00:01:32.701] PASS turning the camera 73° in place shows its name, pinned on its pad (named already at the arrival: True)
+[00:01:32.737] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/04-discover-snail-on-a-leaf-in-view.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:36.202] PASS walked straight onto it: 14.8 m for a pad 16.0 m away (no circling)
+[00:01:36.202] PASS the prompt says what Space does: "Space · fly to Snail on a Leaf"
+[00:01:36.238] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/05-discover-on-snail-on-a-leaf.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:36.788] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/06-labels-turning-30.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:37.788] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/07-labels-turning-90.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:38.286] PASS over 120 frames of a full camera turn every pad name stayed on its pad (largest gap 0.00 px)
+[00:01:38.286] PASS no pad hidden by the planet was named (0 frames named one)
+[00:01:38.286] PASS names never overlapped (0)
+[00:01:38.286] PASS 16 of 29 pads were named at some point of the turn
+[00:01:38.354] PASS the selected destination (The Spinning Top) is named once, pinned on its pad (0.00 px)
+[00:01:38.388] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/08-labels-selected-wins.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=The Spinning Top
+[00:01:40.054] PASS T opens the overview: 62 known folders as worlds (51 listed, 0 partly, 11 not listed yet, 1 visited)
+[00:01:40.090] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/09-overview-zoomed-out.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:41.156] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/10-overview-orbited.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=-
+[00:01:41.157] PASS Star Archive/2025 is in the overview
+[00:01:43.871] PASS clicking a world selects it (the shared selection: 2025) and zooms in on it
+[00:01:43.907] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/11-overview-selected.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=2025
+[00:01:45.805] PASS Enter lands there: C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive\2025
+[00:01:45.805] PASS the landing is in the history (1 → 2)
+[00:01:45.841] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/12-overview-landed.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive\2025 selected=2025
+[00:01:47.789] PASS Backspace returns to Constellations
+[00:01:50.273] PASS Esc leaves the overview and you are where you stood
+[00:01:50.309] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-075813/planets-flows/13-overview-back-where-you-stood.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Constellations selected=2025
+[00:01:50.313] SKIP perf walking: 1228 frames, mean 16.8 ms, p95 16.7 ms, p99 16.7 ms, max 112.6 ms (functional tier: not a measurement)
+[00:01:50.313] SKIP perf flying: 91 frames, mean 16.7 ms, p95 16.7 ms, p99 16.7 ms, max 16.7 ms (functional tier: not a measurement)
+[00:01:50.415] done failures=0
