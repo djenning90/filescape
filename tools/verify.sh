@@ -86,6 +86,9 @@ if [[ "$TIER" != fast ]]; then
 
   journey explore-ui1.0 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1 "${F[@]}"
   journey project-ui1.0 walk-project.log 300 --automate=walk-project --root=hub "--project-root=$W\\Projects" --ui-scale=1 "${F[@]}"
+  # The planetary world (PLANET-10..16): the first minutes on the Starter Sky (the app's own sample of real files),
+  # opening recorded by the test shell (nothing starts).
+  journey planets-ui1.0 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
@@ -102,6 +105,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # UI scaling changes the HUD, signs, drawer and picking geometry: those journeys repeat at 1.25.
   journey explore-ui1.25 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1.25 --tier=functional
   journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
+  # The same planetary system on the bounded real fixture: links, an empty room, and a WSL folder.
+  journey planets-fixture planets-fixture.log 300 --automate=planets-fixture "--root=$W" --vis=planets --test-shell=record --ui-scale=1 "--wsl-root=${FILESCAPE_WSL_FIXTURE:-}" --tier=functional
+  journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
 fi
 
 if [[ "$TIER" == release ]]; then
@@ -113,6 +119,8 @@ if [[ "$TIER" == release ]]; then
     probe_step "os-ui$sc" 360 "$OUT/os-ui$sc/os-walk-results.txt" "real OS input" \
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier"
   done
+  recording_step planets-recording 400 "$OUT/planets-recording.avi" \
+    "$EXE" --write-movie "$OUTW\\planets-recording.avi" --fixed-fps 30 -- --automate=planets-journey --root=sample --vis=planets --test-shell=record "--out=$OUTW\\planets-recording" --window=1280x720 --ui-scale=1 --tier=functional
   recording_step recording 400 "$OUT/explore-recording.avi" \
     "$EXE" --write-movie "$OUTW\\explore-recording.avi" --fixed-fps 30 -- --automate=walk-explore "--root=$W" "--out=$OUTW\\recording" --window=1280x720 --ui-scale=1
 fi

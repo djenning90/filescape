@@ -230,7 +230,7 @@ public partial class PlanetWorld
             var what = l.IsParent ? $"Space · fly back up to {name}"
                 : l.IsLink ? (l.Followable ? $"Space · follow the link to {name}" : $"{name}: this link can't be followed ({PlaceText.LinkShort(tree, tree[l.TargetId])})")
                 : $"Space · fly to {name}";
-            SetPrompt(what, l.IsParent ? "the way back" : _s.Summary(l.TargetId));
+            SetPrompt(what, l.IsParent ? "the way back" : l.IsLink ? $"a link · {PlaceText.LinkShort(tree, tree[l.TargetId])}" : _s.Summary(l.TargetId));
         }
         else if (_focusItem is { } it2)
         {

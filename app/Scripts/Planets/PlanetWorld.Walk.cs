@@ -310,6 +310,20 @@ public partial class PlanetWorld
         var facing = h.ToUp - dir * NVector3.Dot(h.ToUp, dir);
         facing = facing.LengthSquared() > 1e-5f ? NVector3.Normalize(facing) : h.Facing;
         var feet = Gd(surf.PointAt(dir, height));
+        // The camera rides along rigidly (the same rotation as the traveller's up), so a hop across the planet never
+        // leaves the view rolled and catching up (the roll cap is for walking, not for a deliberate jump elsewhere).
+        var prevUp = Gd(_walker.Up);
+        var nowUp = Gd(dir);
+        var axis = prevUp.Cross(nowUp);
+        if (axis.LengthSquared() > 1e-12f)
+        {
+            var q = new Quaternion(axis.Normalized(), prevUp.AngleTo(nowUp));
+            _camPos = q * _camPos;
+            _camLook = q * _camLook;
+            _camUp = (q * _camUp).Normalized();
+            _camFwd = (q * _camFwd).Normalized();
+        }
+
         _avatar.SetPose(feet, Gd(dir), Gd(facing));
         _avatar.Drive(dt, 6f, false, (1 - 2 * u) * 6f);
         _walker.Teleport(surf, dir, facing);
