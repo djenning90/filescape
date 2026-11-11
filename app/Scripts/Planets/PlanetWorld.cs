@@ -1,0 +1,395 @@
+using FileScape.App.Visual;
+using FileScape.Core.Interaction;
+using FileScape.Core.Model;
+using FileScape.Core.Places;
+using FileScape.Core.Planets;
+using Godot;
+using NVector3 = System.Numerics.Vector3;
+
+namespace FileScape.App.Planets;
+
+/// <summary>
+/// The planetary world (PLANET-10.., AD-39): every folder is a small planet you can run all the way round, its child
+/// folders hang in the sky above bloom launchers, its files stand in groves by kind, and travel is a launch with a
+/// visible wind-up, a brisk arc and a landing that never cuts. It runs on the shared session (<see cref="IWorldSession"/>):
+/// the current folder, the selection, the history and every filesystem action belong to the session, so switching to
+/// Places (V) keeps them.
+/// <para>
+/// What varies here, and only here: the <b>surface and gravity</b> (<see cref="PlanetSurface"/> and
+/// <see cref="SphereWalker"/>: local up is away from the planet's centre, anywhere on it); the <b>camera frame</b> (a
+/// chase camera whose up follows the local up with a capped roll rate); <b>placement and travel</b>
+/// (<see cref="PlanetComposer"/>, launches between bodies with a floating origin and nested scale); and the <b>visual
+/// and audio treatment</b> (<see cref="PlanetArt"/>, <see cref="AvatarRig"/>, <see cref="SkyAudio"/>).
+/// </para>
+/// Frames: the current planet's centre is the world origin (a floating origin). A child body hangs at its composed
+/// sky position, drawn at a smaller scale (its preview radius over its real radius), so a whole neighbourhood fits in
+/// view; its parent is drawn at the inverse of that placement (larger, behind you). A transfer flies into the target's
+/// placement and, on touchdown, re-expresses everything in the target's frame, so nothing on screen jumps.
+/// </summary>
+public partial class PlanetWorld : Node3D
+{
+    private readonly IWorldSession _s;
+    private readonly SphereWalker _walker = new();
+    private Camera3D _camera = null!;
+    private AvatarRig _avatar = null!;
+    private SkyAudio _audio = null!;
+    private Godot.Environment _environment = null!;
+    private WorldEnvironment? _worldEnv;
+    private DirectionalLight3D? _sun;
+    private Godot.Environment? _savedEnvironment;
+    private bool _active;
+    private Quality _quality = Quality.High;
+
+    /// <summary>A planet in the scene: its composition, its node, and whether it is built in full or as a preview.</summary>
+    private sealed class Body
+    {
+        public required int FolderId;
+        public required PlanetComposition Comp;
+        public required Node3D Node;
+        public bool Full;
+        public PlanetVisual? Visual;
+    }
+
+    private Body? _current;
+    private Body? _parent;
+    private readonly Dictionary<int, Body> _children = [];
+    private TimeSpan _lastSignatureCheck;
+    private string _signature = "";
+
+    public PlanetWorld(IWorldSession session)
+    {
+        _s = session;
+        Visible = false;
+        ProcessMode = ProcessModeEnum.Always;
+    }
+
+    /// <summary>True while a launch (wind-up, flight or landing) is in progress: one place change at a time.</summary>
+    public bool Busy => _phase != Phase.Walking;
+
+    public SphereWalker Walker => _walker;
+    public PlanetComposition? Composition => _current?.Comp;
+    public Camera3D Camera => _camera;
+    public SkyAudio Audio => _audio;
+    public AvatarRig Avatar => _avatar;
+    public bool Active => _active;
+
+    public override void _Ready()
+    {
+        _camera = new Camera3D { Fov = 62, Near = 0.08f, Far = 4000, Current = false };
+        AddChild(_camera);
+        _avatar = new AvatarRig { Name = "Traveller" };
+        AddChild(_avatar);
+        _audio = new SkyAudio { Name = "SkyAudio" };
+        AddChild(_audio);
+        _environment = new Godot.Environment();
+        BuildOverlay();
+        BuildTravelFx();
+    }
+
+    // ------------------------------------------------------------------ activation (the shared session switches worlds)
+
+    /// <summary>Shows the planetary world at the session's current folder (arriving next to the selected file if it is here).</summary>
+    public void Activate(WorldEnvironment world, DirectionalLight3D sun, bool frame)
+    {
+        _worldEnv = world;
+        _sun = sun;
+        _savedEnvironment = world.Environment;
+        _active = true;
+        Visible = true;
+        _camera.Current = true;
+        _audio.SetActive(true);
+        _phase = Phase.Walking;
+        _transfer = null;
+        if (_s.Tree is { Count: > 0 } tree)
+        {
+            BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
+            ArriveBesideSelection(tree);
+            SnapCamera();
+            ShowTitleCard(tree, _s.Navigator.Current, frame ? "Planets" : null);
+        }
+    }
+
+    public void Deactivate()
+    {
+        if (!_active) return;
+        _active = false;
+        Visible = false;
+        _camera.Current = false;
+        _audio.SetActive(false);
+        EndOrbit();
+        _phase = Phase.Walking;
+        _transfer = null;
+        _s.Signs.Clear();
+        _overlay.Visible = false;
+        if (_worldEnv != null && _savedEnvironment != null) _worldEnv.Environment = _savedEnvironment;
+        if (_sun != null) _sun.Visible = true;
+    }
+
+    public void ApplyQuality(Quality q)
+    {
+        _quality = q;
+        if (_current != null) ApplyAtmosphere(_current.Comp.Theme);
+    }
+
+    // ------------------------------------------------------------------ per frame
+
+    public void Tick(double delta, bool blockedKeys)
+    {
+        if (!_active) return;
+        var dt = (float)delta;
+        _overlay.Visible = true;
+        var tree = _s.Tree;
+        if (tree == null || tree.Count == 0)
+        {
+            SetPrompt("");
+            return;
+        }
+
+        if (_current == null || (_current.FolderId != _s.Navigator.Current && !Busy))
+        {
+            // The folder changed while this world was not travelling (a new tree, a reset): arrive there directly.
+            BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
+            SnapCamera();
+            ShowTitleCard(tree, _s.Navigator.Current, null);
+        }
+
+        MaybeRecompose(tree);
+        switch (_phase)
+        {
+            case Phase.Walking:
+                UpdateWalking(dt, blockedKeys);
+                break;
+            default:
+                UpdateTravel(dt, blockedKeys);
+                break;
+        }
+
+        UpdateOverlay(dt);
+        UpdateSigns(tree);
+        UpdateThumbnails();
+        AnimateScene(dt);
+    }
+
+    /// <summary>A listing that arrives or grows changes what the planet shows: recompose (throttled), keep where you stand.</summary>
+    private void MaybeRecompose(FsTree tree)
+    {
+        if (_current == null || Busy) return;
+        var now = _s.Now;
+        if (now - _lastSignatureCheck < TimeSpan.FromSeconds(0.35)) return;
+        _lastSignatureCheck = now;
+        var sig = PlanetComposer.Signature(tree, _current.FolderId);
+        if (sig == _signature) return;
+        var up = _walker.Up;
+        var facing = _walker.Facing;
+        BuildCurrent(tree, _current.FolderId, arriveFrom: -2);
+        _walker.Teleport(_current.Comp.Surface, up, facing);
+        UpdateDestinations();
+    }
+
+    // ------------------------------------------------------------------ building planets
+
+    private PlanetComposition Compose(FsTree tree, int folderId) =>
+        PlanetComposer.Compose(tree, folderId, PlanetParams.Default, _s.IsVisible);
+
+    /// <summary>
+    /// Makes <paramref name="folderId"/> the current planet at the origin with its children and parent around it.
+    /// <paramref name="arriveFrom"/>: −1 the default arrival, −2 keep the walker (a recompose), else the folder you came from.
+    /// <paramref name="reuse"/> is a body already built for this folder (the one you just landed on); <paramref name="keep"/>
+    /// the planet you left, kept in full as the new parent or child (its placement is the same transform it already has).
+    /// </summary>
+    private void BuildCurrent(FsTree tree, int folderId, int arriveFrom, Body? reuse = null, Body? keep = null)
+    {
+        var comp = reuse?.Comp ?? Compose(tree, folderId);
+        _signature = PlanetComposer.Signature(tree, folderId);
+        var old = new List<Body>();
+        if (_current != null) old.Add(_current);
+        if (_parent != null) old.Add(_parent);
+        old.AddRange(_children.Values);
+        foreach (var b in old.Distinct())
+        {
+            if (b != reuse && b != keep) FreeBody(b);
+        }
+
+        _children.Clear();
+        _parent = null;
+        if (reuse is { Full: true })
+        {
+            _current = reuse;
+        }
+        else
+        {
+            if (reuse != null) FreeBody(reuse);
+            _current = new Body { FolderId = folderId, Comp = comp, Node = new Node3D { Name = $"Planet-{folderId}" } };
+            AddChild(_current.Node);
+            BuildFull(tree, _current);
+        }
+
+        _current.Node.Transform = Transform3D.Identity;
+        BuildNeighbours(tree, keep);
+        ApplyAtmosphere(comp.Theme);
+        _audio.SetTheme(comp.Theme);
+        if (arriveFrom != -2)
+        {
+            var (up, facing) = arriveFrom >= 0 ? comp.ArrivalFor(arriveFrom) : (comp.ArrivalDirection, comp.ArrivalFacing);
+            _walker.Teleport(comp.Surface, up, facing);
+        }
+
+        UpdateDestinations();
+    }
+
+    private void BuildFull(FsTree tree, Body body)
+    {
+        foreach (var child in body.Node.GetChildren()) child.QueueFree();
+        body.Visual = new PlanetVisual(tree, body.Comp, _quality, full: true);
+        body.Node.AddChild(body.Visual);
+        body.Full = true;
+    }
+
+    private void BuildPreview(FsTree tree, Body body)
+    {
+        body.Visual = new PlanetVisual(tree, body.Comp, _quality, full: false);
+        body.Node.AddChild(body.Visual);
+        body.Full = false;
+    }
+
+    private void FreeBody(Body b)
+    {
+        if (GodotObject.IsInstanceValid(b.Node)) b.Node.QueueFree();
+    }
+
+    /// <summary>Children as previews at their sky placements; the parent at the inverse of this planet's placement in it.</summary>
+    private void BuildNeighbours(FsTree tree, Body? keep)
+    {
+        if (_current == null) return;
+        foreach (var sky in _current.Comp.Sky)
+        {
+            if (sky.InBelt || sky.IsParent || sky.NodeId < 0 || !tree.Contains(sky.NodeId)) continue;
+            if (!tree[sky.NodeId].IsDirectory) continue;
+            Body body;
+            if (keep != null && keep.FolderId == sky.NodeId)
+            {
+                body = keep; // the planet you came up from, still in full detail, where it already is
+            }
+            else
+            {
+                body = new Body { FolderId = sky.NodeId, Comp = Compose(tree, sky.NodeId), Node = new Node3D { Name = $"Child-{sky.NodeId}" } };
+                AddChild(body.Node);
+                BuildPreview(tree, body);
+            }
+
+            body.Node.Transform = ChildPlacement(_current.Comp, sky, body.Comp);
+            _children[sky.NodeId] = body;
+        }
+
+        var parentId = tree[_current.FolderId].ParentId;
+        if (parentId >= 0 && tree.Contains(parentId) && tree[parentId].IsDirectory)
+        {
+            Body body;
+            if (keep != null && keep.FolderId == parentId)
+            {
+                body = keep; // the planet you came down from, in full detail
+            }
+            else
+            {
+                body = new Body { FolderId = parentId, Comp = Compose(tree, parentId), Node = new Node3D { Name = $"Parent-{parentId}" } };
+                AddChild(body.Node);
+                BuildPreview(tree, body);
+            }
+
+            var pcomp = body.Comp;
+            var mine = pcomp.Sky.FirstOrDefault(k => k.NodeId == _current.FolderId && !k.InBelt);
+            body.Node.Transform = mine != null
+                ? ChildPlacement(pcomp, mine, _current.Comp).AffineInverse()
+                : DefaultParentPlacement(_current.Comp, pcomp);
+            _parent = body;
+        }
+    }
+
+    /// <summary>
+    /// Where a child planet hangs in its parent's frame: at its composed sky position, at the scale that makes its real
+    /// radius look like its preview radius, turned so its arrival meadow faces back towards the parent at 45° (so on
+    /// arrival the parent hangs above the horizon behind you, not straight overhead).
+    /// </summary>
+    public static Transform3D ChildPlacement(PlanetComposition parent, PlanetSkyBody sky, PlanetComposition child)
+    {
+        var c = Gd(sky.Position);
+        var toParent = (-c).Normalized();
+        var (t, _) = Tangents(toParent);
+        var arrivalUp = (toParent + t).Normalized();
+        var back = (toParent - arrivalUp * toParent.Dot(arrivalUp)).Normalized();
+        var x = arrivalUp.Cross(back).Normalized();
+        var basis = new Basis(x, arrivalUp, back); // the child's +Y = its arrival meadow, +Z = behind you on arrival
+        var scale = MathF.Max(0.02f, sky.Radius / MathF.Max(1f, child.Shape.Radius));
+        return new Transform3D(basis.Scaled(new Godot.Vector3(scale, scale, scale)), c);
+    }
+
+    /// <summary>A parent we have no sky position for (it does not list us yet): large and behind the arrival meadow.</summary>
+    private static Transform3D DefaultParentPlacement(PlanetComposition current, PlanetComposition parent)
+    {
+        var dir = Gd(NVector3.Normalize(current.ArrivalDirection * 0.55f - current.ArrivalFacing)) ;
+        var scale = 2.2f;
+        var dist = current.Shape.Radius + parent.Shape.Radius * scale + 60f;
+        return new Transform3D(Basis.Identity.Scaled(new Godot.Vector3(scale, scale, scale)), dir * dist);
+    }
+
+    private static (Godot.Vector3 A, Godot.Vector3 B) Tangents(Godot.Vector3 up)
+    {
+        var refAxis = MathF.Abs(up.Y) < 0.9f ? Godot.Vector3.Up : Godot.Vector3.Right;
+        var a = refAxis.Cross(up).Normalized();
+        return (a, up.Cross(a));
+    }
+
+    /// <summary>The arrival when switching worlds: next to the selected file or folder if it is on this planet.</summary>
+    private void ArriveBesideSelection(FsTree tree)
+    {
+        if (_current == null) return;
+        var sel = _s.Selection.Selected;
+        if (sel < 0 || !tree.Contains(sel)) return;
+        var item = _current.Comp.Items.FirstOrDefault(i => i.NodeId == sel);
+        if (item != null)
+        {
+            StandFacing(item.Direction, item.Scale);
+            return;
+        }
+
+        var launcher = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == sel);
+        if (launcher != null) StandFacing(launcher.Direction, 1.4f);
+    }
+
+    /// <summary>Stands the traveller a short walk from a point on the surface, facing it.</summary>
+    private void StandFacing(NVector3 target, float size)
+    {
+        if (_current == null) return;
+        var surf = _current.Comp.Surface;
+        var up = target;
+        var (a, _) = PlanetShape.Tangents(up);
+        // Step back along the line from the arrival meadow, so you face it with the meadow behind you.
+        var away = _current.Comp.ArrivalDirection - up * NVector3.Dot(_current.Comp.ArrivalDirection, up);
+        away = away.LengthSquared() > 1e-6f ? NVector3.Normalize(away) : a;
+        var standOff = (1.6f + size * 0.6f) / surf.Radius;
+        var stand = NVector3.Normalize(up * MathF.Cos(standOff) + away * MathF.Sin(standOff));
+        var facing = NVector3.Normalize(target - stand * NVector3.Dot(target, stand));
+        _walker.Teleport(surf, stand, facing);
+    }
+
+    // ------------------------------------------------------------------ atmosphere
+
+    private void ApplyAtmosphere(PlanetTheme theme)
+    {
+        if (_worldEnv == null) return;
+        var pal = PlanetArt.Palette(theme);
+        PlanetArt.ConfigureEnvironment(_environment, pal, _quality == Quality.High);
+        _worldEnv.Environment = _environment;
+        if (_sun != null)
+        {
+            _sun.Visible = true;
+            _sun.LightColor = pal.Sun;
+            _sun.LightEnergy = 1.15f;
+            _sun.RotationDegrees = new Godot.Vector3(-38, 35, 0);
+            _sun.ShadowEnabled = _quality == Quality.High;
+        }
+    }
+
+    public static Godot.Vector3 Gd(NVector3 v) => new(v.X, v.Y, v.Z);
+    public static NVector3 Nv(Godot.Vector3 v) => new(v.X, v.Y, v.Z);
+}

@@ -33,6 +33,35 @@ public sealed class MockShellActions : IShellActions
         new(false, true, $"MOCK — would start {program} {string.Join(' ', args)}");
 }
 
+/// <summary>
+/// Test instrument (<c>--test-shell=record</c>): records what would be opened, revealed or started and launches nothing,
+/// so a journey can open a real file deliberately without starting another program on the desktop.
+/// </summary>
+public sealed class RecordingShellActions : IShellActions
+{
+    private readonly List<string> _log = [];
+
+    public IReadOnlyList<string> Log => _log;
+
+    public ShellResult Open(string path)
+    {
+        _log.Add("open " + path);
+        return new(true, false, $"TEST — would open {path} with its default program (nothing was started).");
+    }
+
+    public ShellResult RevealInExplorer(string path)
+    {
+        _log.Add("reveal " + path);
+        return new(true, false, $"TEST — would show {path} in File Explorer (nothing was started).");
+    }
+
+    public ShellResult Start(string program, IReadOnlyList<string> args)
+    {
+        _log.Add("start " + program);
+        return new(true, false, $"TEST — would start {program} {string.Join(' ', args)}");
+    }
+}
+
 /// <summary>Classifies paths that would run code if opened, so the UI can ask for confirmation first (FILE-03).</summary>
 public static class LaunchRisk
 {

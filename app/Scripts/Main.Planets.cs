@@ -1,0 +1,80 @@
+using FileScape.App.Planets;
+using FileScape.App.Ui;
+using FileScape.App.Visual;
+using FileScape.Core.Interaction;
+using FileScape.Core.Model;
+using FileScape.Core.Places;
+using FileScape.Core.Scanning;
+using Godot;
+
+namespace FileScape.App;
+
+/// <summary>
+/// The planetary world on the shared session (AD-39). <see cref="Main"/> keeps owning the tree, the scan, the
+/// explorer, the navigator (current folder and history), the selection, the shell actions, the HUD and the state file;
+/// <see cref="PlanetWorld"/> owns only what varies between the two walking worlds: the surface and gravity, the
+/// camera frame, placement and travel, and the visual and audio treatment. It talks to the session only through
+/// <see cref="IWorldSession"/>, so the same folder, selection and history carry over when you switch (V).
+/// </summary>
+public partial class Main : IWorldSession
+{
+    private PlanetWorld _planets = null!;
+
+    public PlanetWorld Planets => _planets;
+
+    private void BuildPlanets()
+    {
+        _planets = new PlanetWorld(this) { Name = "Planets" };
+        AddChild(_planets);
+    }
+
+    // ---------------------------------------------------------------- IWorldSession
+
+    PlaceNavigator IWorldSession.Navigator => _nav;
+    bool IWorldSession.IsLive => _tree?.Source.IsLive ?? false;
+    bool IWorldSession.IsVisible(FsNode node) => IsVisibleInPlace(node);
+    bool IWorldSession.TravelInto(int id) => TravelInto(id);
+    bool IWorldSession.TravelUp() => TravelUp();
+    bool IWorldSession.GoBack() => _nav.Back();
+    void IWorldSession.Select(int id) => Select(id);
+    void IWorldSession.OpenSelection() => RequestOpen();
+    void IWorldSession.Toast(string text) => _hud.Toast(text);
+    bool IWorldSession.ShowReadme() { ShowReadme(); return true; }
+    string IWorldSession.Summary(int id) => _tree == null ? "" : PlaceText.Summary(_tree, _tree[id]);
+    TimeSpan IWorldSession.Now => _clock.Elapsed;
+    SignLayer IWorldSession.Signs => _signs;
+
+    /// <summary>The commands that mean something different on a planet; the rest (open, back, up, J, L, Ctrl+L…) are shared.</summary>
+    private bool HandlePlanetCommand(InputEventKey key)
+    {
+        if (key.IsAction(InputBindings.Home)) { _planets.ReturnToArrival(); return true; }
+        if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
+        if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
+        if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
+        if (key.IsAction(InputBindings.FlightToggle)) { _hud.Toast("On the planets you travel by launcher: stand on one and press Space (or select a folder and press G)."); return true; }
+        return false;
+    }
+
+    /// <summary>The shared visibility rule, for probes.</summary>
+    public bool IsVisibleInPlaceForProbe(FsNode node) => IsVisibleInPlace(node);
+
+    /// <summary>
+    /// The curated first impression (PLANET-15): the Starter Sky, a small folder of real files FileScape writes for
+    /// itself into its own data folder (never anywhere else), so open and preview work on it like on any folder.
+    /// </summary>
+    public string EnsureStarterSky()
+    {
+        var parent = System.IO.Path.Combine(OS.GetUserDataDir(), "samples");
+        System.IO.Directory.CreateDirectory(parent);
+        return FileScape.Core.Samples.SampleSky.Create(parent);
+    }
+
+    private static IReadOnlyList<(Color, string)> PlanetLegend()
+    {
+        var list = Palette.Category.Select(kv => (kv.Value, PlaceText.CategoryName(kv.Key) + " (lantern colour)")).ToList();
+        list.Add((new Color(1f, 0.85f, 0.45f), "launcher: stand on it and press Space"));
+        list.Add((new Color(0.75f, 0.8f, 0.95f), "the way back: launcher by the arrival meadow"));
+        list.Add((new Color(0.55f, 0.6f, 0.75f), "veiled world: not listed yet (it lists as you approach)"));
+        return list;
+    }
+}

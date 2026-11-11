@@ -36,7 +36,7 @@ public partial class Hud : CanvasLayer
     private ProgressBar _progress = null!;
     private Button _cancel = null!;
     private Button _quality = null!;
-    private readonly Button[] _visButtons = new Button[3];
+    private readonly Button[] _visButtons = new Button[4];
     private Button _homeButton = null!, _overviewButton = null!, _flightButton = null!;
     private PanelContainer _inspector = null!;
     private RichTextLabel _inspectorBody = null!;
@@ -183,6 +183,19 @@ public partial class Hud : CanvasLayer
         row.AddChild(_cancel);
         row.AddChild(new VSeparator());
         var group = new ButtonGroup();
+        // The planetary world (AD-39) comes first: it is the new experience, easy to find; Places stays beside it to compare.
+        _visButtons[3] = new Button
+        {
+            Text = "✦ Planets (V)",
+            ToggleMode = true,
+            ButtonGroup = group,
+            TooltipText = "Planets: each folder is a small world you can run round. Its folders hang in the sky above launchers; files stand in groves. Same folder, selection and history as Places (V switches).",
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        _visButtons[3].AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.55f));
+        _visButtons[3].AddThemeColorOverride("font_pressed_color", new Color(1f, 0.93f, 0.7f));
+        _visButtons[3].Pressed += () => ExperienceRequested?.Invoke(3);
+        row.AddChild(_visButtons[3]);
         string[] names = ["Places", "Classic FSN", "District"];
         string[] tips =
         [
@@ -193,7 +206,7 @@ public partial class Hud : CanvasLayer
         for (var i = 0; i < 3; i++)
         {
             var index = i;
-            _visButtons[i] = new Button
+            _visButtons[index] = new Button
             {
                 Text = names[i],
                 ToggleMode = true,
@@ -540,7 +553,8 @@ public partial class Hud : CanvasLayer
     public void SetExperience(int experience)
     {
         for (var i = 0; i < _visButtons.Length; i++) _visButtons[i].SetPressedNoSignal(i == experience);
-        var places = experience == 0;
+        var planets = experience == 3;
+        var places = experience == 0 || planets;
         _homeButton.TooltipText = places ? "Back to this folder's arrival point (Home). Ctrl+Home: back to the chosen root." : "Recover the home view: root and its first row of children (Home).";
         _overviewButton.Text = places ? "Ascend (B)" : "Overview (B)";
         _overviewButton.TooltipText = places ? "Rise above this place to see its neighbourhood. The whole filesystem is on the maps (M)." : "Bird's-eye view of the whole tree (B).";
@@ -550,7 +564,10 @@ public partial class Hud : CanvasLayer
         ApplyLegendVisibility();
         if (!places) SetInspectorCard(false, true, "", null);
         if (!places) SetAscentChip(null);
-        _hintLabel.Text = places ? PlacesHintText : HintText;
+        _hintLabel.Text = planets ? PlanetsHintText : places ? PlacesHintText : HintText;
+        _homeButton.Visible = true;
+        _overviewButton.Visible = !planets;
+        _flightButton.Visible = !planets;
     }
 
     public void SetQuality(string text) => _quality.Text = "Quality: " + text;
@@ -649,7 +666,9 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
+    public const string PlanetsHintText = "WASD / arrows run · Space jump (again in the air: twirl higher) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · J destinations · F1 help";
+
+    public const string HintText = ""W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
 
     private void BuildHintAndFlyChip()
     {

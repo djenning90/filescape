@@ -13,12 +13,13 @@ using NVector3 = System.Numerics.Vector3;
 
 namespace FileScape.App;
 
-/// <summary>The three experiences over one model (AD-15).</summary>
+/// <summary>The experiences over one model (AD-15). Planets (2026-11-11, AD-39) is the planetary world on the same session.</summary>
 public enum Experience
 {
     Places,
     Classic,
     District,
+    Planets,
 }
 
 /// <summary>
@@ -139,11 +140,19 @@ public partial class Main
     public void SetExperience(Experience e)
     {
         if (e == _experience) return;
+        if (e == Experience.Planets && (_tree == null || !_tree.Source.IsLive))
+        {
+            // From the synthetic sample (the default start), the planets open on the curated Starter Sky: real files, so
+            // looking closer and opening work (PLANET-15). A live folder is kept as it is.
+            _hud.Toast("Opening the Starter Sky: a few sample worlds of real files FileScape keeps in its own folder. Open… (Ctrl+O) explores your own.", null, 7);
+            StartLive(EnsureStarterSky());
+        }
+
         var from = _experience;
         _experience = e;
-        if (e != Experience.Places) _visIndex = e == Experience.Classic ? 0 : 1;
+        if (e is Experience.Classic or Experience.District) _visIndex = e == Experience.Classic ? 0 : 1;
         ApplyExperience(frame: true, from);
-        if (e != Experience.Places && _explorer != null && !_mapNoteShown)
+        if (e is Experience.Classic or Experience.District && _explorer != null && !_mapNoteShown)
         {
             _mapNoteShown = true;
             _hud.Toast("This map shows the explored world (what you have visited). For the whole tree of one folder: Locations (L) › Scan this folder as a tree.", null, 8);
@@ -153,17 +162,24 @@ public partial class Main
     /// <summary>Map index (0 Classic, 1 District) → that map experience. Kept for the reference-view scripts.</summary>
     public void SetVisualization(int index) => SetExperience(index == 0 ? Experience.Classic : Experience.District);
 
-    public void ToggleMap() => SetExperience(_experience == Experience.Places ? (_visIndex == 0 ? Experience.Classic : Experience.District) : Experience.Places);
+    public void ToggleMap() => SetExperience(_experience is Experience.Places or Experience.Planets ? (_visIndex == 0 ? Experience.Classic : Experience.District) : Experience.Places);
+
+    /// <summary>V: between the two walking worlds (the flat Places and the Planets), keeping the folder, selection and history.</summary>
+    public void ToggleWorld() => SetExperience(_experience == Experience.Planets ? Experience.Places : Experience.Planets);
 
     private void ApplyExperience(bool frame, Experience? from = null)
     {
+        var planets = _experience == Experience.Planets;
         var places = _experience == Experience.Places;
         for (var i = 0; i < _visualizations.Length; i++)
         {
-            _visualizations[i].Root.Visible = !places && i == _visIndex;
+            _visualizations[i].Root.Visible = !places && !planets && i == _visIndex;
         }
 
         _placeWorld.Visible = places;
+        _ground.Visible = !planets;
+        _rig.Camera.Current = !planets;
+        if (!planets) _planets.Deactivate();
         _hereRing.Visible = false;
         _hereLabel.Visible = false;
         _beam.Visible = false;
@@ -182,7 +198,11 @@ public partial class Main
         _landing = null;
         _guided = false;
         UpdateFlightHud();
-        if (places)
+        if (planets)
+        {
+            _hud.SetLegend("Planets: each folder is a small world; its folders hang in the sky above their launchers; files stand in groves by kind", PlanetLegend(), "Object size follows log10 of the file's logical size. Exact bytes are in the card.", markers: false);
+        }
+        else if (places)
         {
             PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
             ApplyQualityToViewport();
@@ -205,6 +225,14 @@ public partial class Main
 
         _hud.SetExperience((int)_experience);
         _hud.SetQuality(_quality.ToString());
+        if (planets)
+        {
+            _planets.Activate(_world, _sun, frame);
+            UpdatePlaceHud();
+            UpdateInspector();
+            return;
+        }
+
         if (_tree == null || _tree.Count == 0)
         {
             return;
@@ -409,6 +437,14 @@ public partial class Main
             return;
         }
 
+        if (_experience == Experience.Planets)
+        {
+            if (_tree == null || _planets.Busy) return;
+            _selection.Select(id);
+            _planets.Approach(id); // walk-hop beside it (files) or face its world (folders)
+            return;
+        }
+
         if (_tree == null || _place == null || _transition != null) return;
         _selection.Select(id);
         var pose = _place.ParentGate?.TargetId == id
@@ -423,6 +459,17 @@ public partial class Main
         _guided = false;
         _riseRemaining = Meters.Zero;
         if (_tree == null) return;
+        if (_experience == Experience.Planets)
+        {
+            // The planetary world travels by launch (AD-39); the folder is listed now, so it is ready (or listing) on arrival.
+            _explorer?.Visit(change.To);
+            NoteVisited(change.To);
+            _selection.Hovered = -1;
+            _planets.OnNavChanged(change);
+            UpdatePlaceHud();
+            return;
+        }
+
         if (_experience != Experience.Places || _place == null)
         {
             UpdatePlaceHud();
@@ -629,6 +676,12 @@ public partial class Main
         var path = PlaceNavigator.Breadcrumb(_tree, cur).Select(id => (id, _tree.DisplayName(id))).ToList();
         _hud.SetPlace(path, PlaceText.Summary(_tree, _tree[cur]) + LocationNote(cur), canUp: !_tree[cur].IsRoot, atRoot: cur == _nav.Root);
         _hud.SetConnection(ConnectionText());
+        if (_experience == Experience.Planets)
+        {
+            _planets.UpdateDestinations();
+            return;
+        }
+
         if (_place == null) return;
         _hud.SetHiddenCount(_place.HiddenCount, _showHidden);
         _hud.SetProblems(PlaceProblems());

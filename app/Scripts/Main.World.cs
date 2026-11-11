@@ -192,7 +192,7 @@ public partial class Main
                 target = _tree[target].ParentId;
             }
 
-            if (_experience != Experience.Places) SetExperience(Experience.Places);
+            if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
             if (target == _nav.Current) _hud.Toast("You are already here.");
             else _nav.GoTo(_tree, target);
         }
@@ -290,7 +290,7 @@ public partial class Main
             return;
         }
 
-        if (_experience != Experience.Places) SetExperience(Experience.Places);
+        if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
         if (_nav.Current == 0) _hud.Toast($"You are already at {WorldExplorer.HubName}.");
         else _nav.GoTo(_tree, 0);
     }
@@ -305,7 +305,7 @@ public partial class Main
 
         _hud.HideLocations();
         if (_tree == null || !_tree.Contains(id)) return;
-        if (_experience != Experience.Places) SetExperience(Experience.Places);
+        if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
         if (id == _nav.Current) _hud.Toast("You are already here.");
         else _nav.GoTo(_tree, id);
     }

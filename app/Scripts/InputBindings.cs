@@ -38,6 +38,9 @@ public static class InputBindings
     // Prominence and projects (PROM-03, DEV-02).
     public const string Pin = "cmd_pin", Readme = "cmd_readme";
 
+    // The two walking worlds (AD-39): V switches between Places and Planets on the same folder.
+    public const string WorldToggle = "cmd_world_toggle";
+
     public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
 
     /// <summary>Human-readable bindings for Help.</summary>
@@ -89,6 +92,7 @@ public static class InputBindings
         Physical(Destinations, Key.J);
         Physical(Pin, Key.P);
         Physical(Readme, Key.R);
+        Physical(WorldToggle, Key.V);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

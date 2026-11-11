@@ -133,6 +133,7 @@ public partial class Main : Node3D
         }
 
         _testListDelayMs = args.TestListDelayMs ?? 0;
+        _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
         BuildScene();
@@ -149,6 +150,10 @@ public partial class Main : Node3D
         if (LocationRequest.Parse(args.Root) is { IsHub: true } && !args.BoundedTree)
         {
             StartLive(null); // --root=hub or --root="This PC": start at the hub (LOC-06)
+        }
+        else if (args.Root is "sample" or "starter-sky")
+        {
+            StartLive(EnsureStarterSky()); // the curated sample worlds (real files the app writes for itself)
         }
         else if (args.Root is { } root)
         {
@@ -174,6 +179,10 @@ public partial class Main : Node3D
         {
             AddChild(new PlacesProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), args.Automation));
         }
+        else if (args.Automation is { } planetsMode && planetsMode.StartsWith("planets-", StringComparison.Ordinal))
+        {
+            AddChild(new PlanetsProbe(this, args.OutputDirectory ?? OS.GetUserDataDir(), planetsMode));
+        }
         else if (args.Automation == "navigation")
         {
             AddChild(new NavigationProbe(this, args.OutputDirectory ?? OS.GetUserDataDir()));
@@ -188,6 +197,7 @@ public partial class Main : Node3D
     }
 
     private int _testListDelayMs;
+    private bool _recordShell;
     private bool _closing;
 
     /// <summary>
@@ -298,6 +308,7 @@ public partial class Main : Node3D
 
         BuildPlaceScene();
         BuildAerialScene();
+        BuildPlanets();
         CallDeferred(MethodName.BuildDialogs);
     }
 
@@ -326,7 +337,7 @@ public partial class Main : Node3D
         _session?.Dispose();
         _session = new ScanSession(source);
         _tree = new FsTree(_session.Source);
-        _shell = _tree.Source.IsLive ? new WindowsShellActions() : new MockShellActions();
+        _shell = _tree.Source.IsLive ? (_recordShell ? new RecordingShellActions() : new WindowsShellActions()) : new MockShellActions();
         _layout = null;
         _layoutTreeVersion = -1;
         _lastLayoutAt = TimeSpan.FromSeconds(-10);
@@ -416,6 +427,15 @@ public partial class Main : Node3D
 
         _now = _clock.Elapsed;
         DrainBatches();
+        if (_experience == Experience.Planets)
+        {
+            // The planetary world (AD-39) owns its camera, movement and signs; the session, HUD and state file stay shared.
+            var blockedKeys = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null;
+            _planets.Tick(delta, blockedKeys);
+            FinishFrame(now);
+            return;
+        }
+
         var places = _experience == Experience.Places;
         if (places)
         {
@@ -464,6 +484,12 @@ public partial class Main : Node3D
             }
         }
 
+        FinishFrame(now);
+    }
+
+    /// <summary>The per-frame bookkeeping every experience shares: status line, state file, stats.</summary>
+    private void FinishFrame(TimeSpan now)
+    {
         if (now - _lastStatusRefresh > StatusRefreshInterval)
         {
             _lastStatusRefresh = now;
@@ -563,7 +589,8 @@ public partial class Main : Node3D
     public void SetQuality(Quality q)
     {
         _quality = q;
-        if (_experience == Experience.Places) PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
+        if (_experience == Experience.Planets) _planets.ApplyQuality(_quality);
+        else if (_experience == Experience.Places) PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
         else ActiveVisualization.ConfigureEnvironment(_world, _sun, _ground, _quality);
         ApplyQualityToViewport();
         _hud.SetQuality(_quality.ToString());
@@ -585,6 +612,12 @@ public partial class Main : Node3D
     /// </summary>
     public void ResetView(bool snap = false)
     {
+        if (_experience == Experience.Planets)
+        {
+            _planets.ReturnToArrival();
+            return;
+        }
+
         if (_experience == Experience.Places)
         {
             if (_place != null && _transition == null) ArriveAt(_place.Arrival, snap);
@@ -797,6 +830,12 @@ public partial class Main : Node3D
     {
         if (_closing) return;
         if (_experimentOnly) return;
+        if (_experience == Experience.Planets)
+        {
+            if (_planets.Input(@event)) GetViewport().SetInputAsHandled();
+            return;
+        }
+
         // Releases first, whoever has focus.
         if (@event is InputEventKey { Pressed: false } up)
         {
@@ -875,6 +914,14 @@ public partial class Main : Node3D
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_experimentOnly) return;
+        if (_experience == Experience.Planets)
+        {
+            if (_planets.UnhandledInput(@event)) return;
+            if (@event is InputEventMouseButton { Pressed: true }) GetViewport().GuiReleaseFocus();
+            if (@event is InputEventKey { Pressed: true, Echo: false } pk) HandleCommand(pk);
+            return;
+        }
+
         switch (@event)
         {
             case InputEventMouseButton mb:
@@ -1010,15 +1057,19 @@ public partial class Main : Node3D
 
     private void HandleCommand(InputEventKey key)
     {
-        var places = _experience == Experience.Places;
+        var planets = _experience == Experience.Planets;
+        var places = _experience == Experience.Places || planets;
         if (_transition != null && !key.IsAction(InputBindings.Help)) return; // travel in progress: one place change at a time
+        if (planets && _planets.Busy && !key.IsAction(InputBindings.Help)) return; // a launch in progress: one at a time
+        if (key.IsAction(InputBindings.WorldToggle)) { ToggleWorld(); return; }
+        if (planets && HandlePlanetCommand(key)) return;
         if (key.IsAction(InputBindings.Open)) RequestOpen();
         else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); }
         else if (key.IsAction(InputBindings.Parent)) HandleEscape();
         else if (key.IsAction(InputBindings.RootPlace)) { if (places) TravelRoot(); else ResetView(); }
         else if (key.IsAction(InputBindings.Home)) ResetView();
         else if (key.IsAction(InputBindings.Overview)) Overview();
-        else if (key.IsAction(InputBindings.SwitchVis)) SetExperience((Experience)(((int)_experience + 1) % 3));
+        else if (key.IsAction(InputBindings.SwitchVis)) SetExperience(_experience == Experience.Planets ? Experience.Places : (Experience)(((int)_experience + 1) % 3));
         else if (key.IsAction(InputBindings.EnterFolder)) EnterSelection();
         else if (key.IsAction(InputBindings.UpPlace)) { if (places) TravelUp(); }
         else if (key.IsAction(InputBindings.MapToggle)) ToggleMap();
@@ -1052,7 +1103,8 @@ public partial class Main : Node3D
             return;
         }
 
-        if (_experience == Experience.Places)
+        if (_experience == Experience.Planets && _planets.CloseOverlay()) return;
+        if (_experience is Experience.Places or Experience.Planets)
         {
             // In a place, Esc closes the inspector card (clears the selection); it never moves you.
             if (_hud.DestinationsOpen) _hud.ToggleDestinations(focusFilter: false);
@@ -1137,7 +1189,7 @@ public partial class Main : Node3D
             System.FormattableString.Invariant($"\"selected\":{_selection.Selected},\"vis\":{_visIndex},\"hint\":{(_hud.HintVisible ? "true" : "false")},\"flyChip\":{(_hud.FlyChipVisible ? "true" : "false")},\"consumedEscapes\":{_consumedEscapes},") +
             System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
             System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\",") +
-            StateJsonSettings() + "}";
+            StateJsonSettings() + _planets.StateJson() + "}";
     }
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
@@ -1332,7 +1384,8 @@ public partial class Main : Node3D
 
     private void UpdateInspector()
     {
-        if (_experience == Experience.Places && (_tree == null || _tree.Count == 0 || _selection.Selected < 0))
+        var worldCard = _experience is Experience.Places or Experience.Planets;
+        if (worldCard && (_tree == null || _tree.Count == 0 || _selection.Selected < 0))
         {
             // Places: nothing selected → no card; the place bar and the plaque say where you are (VIEW-02).
             _hud.SetInspectorCard(compact: true, visible: false, "", null);
@@ -1353,7 +1406,7 @@ public partial class Main : Node3D
 
         var node = _tree[_selection.Selected];
         _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
-        if (_experience == Experience.Places)
+        if (worldCard)
         {
             var current = node.Id == _nav.Current ? _place != null && KindOf(node.Id) is { } k && (k.Kind != FileScape.Core.Places.PlaceKind.Ordinary || k.Overridden) ? $"You are here · {k.Label}: {string.Join(", ", k.Evidence)}\n" : "You are here\n" : "";
             _hud.SetInspectorCard(compact: true, visible: true, current + Brief(node), FileIcons.Get(FileIcons.For(node)));
@@ -1365,7 +1418,7 @@ public partial class Main : Node3D
         }
 
         _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
-        var places = _experience == Experience.Places;
+        var places = worldCard;
         _hud.SetWorldActions(_explorer != null && NeedsRetry(node), null);
         var enterable = (node.IsDirectory || (node.Kind == NodeKind.Link && node.Link is { CanFollow: true })) && node.Id != _nav.Current;
         _hud.SetEnterAction(enterable || (!places && !node.IsDirectory),

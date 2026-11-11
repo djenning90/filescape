@@ -54,6 +54,9 @@ public sealed record CommandLine
     /// the current place outside the breadth-first selection and exercise landing and recovery.</summary>
     public int? TestMaxIslands { get; init; }
 
+    /// <summary>Test instrument: <c>--test-shell=record</c> records Open/Reveal on live files and launches nothing.</summary>
+    public bool TestShellRecord { get; init; }
+
     /// <summary>--layout=spacious: the place layout before 2026-11-06, for comparison (KD-28). Default: compact.</summary>
     public bool SpaciousLayout { get; init; }
 
@@ -74,7 +77,7 @@ public sealed record CommandLine
             SyntheticNodes = Get("synthetic") is { } s ? int.Parse(s, CultureInfo.InvariantCulture) : null,
             SyntheticRate = Get("synthetic-rate") is { } r ? int.Parse(r, CultureInfo.InvariantCulture) : null,
             Visualization = Get("vis") switch { "district" => 1, "classic" => 0, _ => null },
-            Experience = Get("vis") switch { "places" => App.Experience.Places, "classic" => App.Experience.Classic, "district" => App.Experience.District, _ => null },
+            Experience = Get("vis") switch { "places" => App.Experience.Places, "classic" => App.Experience.Classic, "district" => App.Experience.District, "planets" => App.Experience.Planets, _ => null },
             Quality = Get("quality") switch { "low" => Visual.Quality.Low, "high" => Visual.Quality.High, _ => null },
             Automation = Get("automate"),
             OutputDirectory = Get("out"),
@@ -89,6 +92,7 @@ public sealed record CommandLine
             TestHold = Get("test-hold"),
             SpaciousLayout = Get("layout") == "spacious",
             TestMaxIslands = Get("test-max-islands") is { } mi ? int.Parse(mi, CultureInfo.InvariantCulture) : null,
+            TestShellRecord = Get("test-shell") == "record",
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
         };
     }
