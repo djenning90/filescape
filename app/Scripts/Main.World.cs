@@ -398,6 +398,7 @@ public partial class Main
         _showHidden = !_showHidden;
         _hud.SetHiddenToggle(_showHidden);
         if (_experience == Experience.Places && _place != null) Recompose(rebuildOnly: true);
+        if (_experience == Experience.Planets) _planets.Refresh();
         _hud.Toast(_showHidden ? "Showing hidden and system items." : "Hiding hidden and system items (as Explorer does by default). Totals still include them.");
     }
 

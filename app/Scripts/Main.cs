@@ -155,7 +155,8 @@ public partial class Main : Node3D
         }
         else if (args.Root is "sample" or "starter-sky")
         {
-            StartLive(EnsureStarterSky()); // the curated sample worlds (real files the app writes for itself)
+            if (TryStarterSky() is { } sky) StartLive(sky); // the curated sample worlds (real files the app writes for itself)
+            else StartScan(new SyntheticTreeSource());
         }
         else if (args.Root is { } root)
         {

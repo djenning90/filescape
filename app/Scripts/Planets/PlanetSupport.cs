@@ -49,11 +49,32 @@ public static class PlanetText
 /// </summary>
 public static class Thumbnails
 {
-    public static Task<Image?> LoadAsync(string path, int maxPixels) => Task.Run(() =>
+    /// <summary>
+    /// Reads at most <paramref name="maxBytes"/> of a file, sharing it with writers and deleters (read-only, never
+    /// blocking another program), or null if it is larger or cannot be read.
+    /// </summary>
+    public static byte[]? ReadBounded(string path, long maxBytes)
     {
         try
         {
-            var bytes = File.ReadAllBytes(path);
+            using var f = new FileStream(path, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
+            if (f.Length > maxBytes) return null;
+            var buf = new byte[f.Length];
+            var n = 0;
+            while (n < buf.Length && f.Read(buf, n, buf.Length - n) is var r and > 0) n += r;
+            return n == buf.Length ? buf : buf[..n];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    public static Task<Image?> LoadAsync(string path, int maxPixels, long maxBytes = 24L * 1024 * 1024) => Task.Run(() =>
+    {
+        try
+        {
+            if (ReadBounded(path, maxBytes) is not { } bytes) return null;
             var img = new Image();
             var ext = Path.GetExtension(path).ToLowerInvariant();
             var err = ext switch
@@ -65,6 +86,7 @@ public static class Thumbnails
                 _ => Error.FileUnrecognized,
             };
             if (err != Error.Ok || img.IsEmpty()) return null;
+            if ((long)img.GetWidth() * img.GetHeight() > 60_000_000) return null; // a pathological picture: not worth the memory
             var w = img.GetWidth();
             var h = img.GetHeight();
             var k = MathF.Min(1f, maxPixels / (float)Math.Max(w, h));

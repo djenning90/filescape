@@ -104,8 +104,9 @@ public partial class PlanetWorld : Node3D
         _audio.SetActive(true);
         _phase = Phase.Walking;
         _transfer = null;
-        if (_s.Tree is { Count: > 0 } tree)
+        if (_s.Tree is { Count: > 0 } tree && !_s.AwaitingArrival)
         {
+            if (!ReferenceEquals(tree, _tree)) ResetForTree(tree);
             BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
             var beside = ArriveBesideSelection(tree);
             SnapCamera();
@@ -122,8 +123,12 @@ public partial class PlanetWorld : Node3D
         _camera.Current = false;
         _audio.SetActive(false);
         EndOrbit();
+        ClosePreview(); // stops a sound preview and restores the music
+        _contentsPanel.Visible = false;
         _phase = Phase.Walking;
         _transfer = null;
+        _hop = null;
+        _warpFlash = 0;
         _s.Signs.Clear();
         _overlay.Visible = false;
         if (_worldEnv != null && _savedEnvironment != null) _worldEnv.Environment = _savedEnvironment;
@@ -156,12 +161,19 @@ public partial class PlanetWorld : Node3D
     {
         if (!_active) return;
         var dt = (float)delta;
+        RunDeliveries();
         _overlay.Visible = true;
         var tree = _s.Tree;
-        if (tree == null || tree.Count == 0)
+        if (tree == null || tree.Count == 0 || _s.AwaitingArrival)
         {
-            SetPrompt("");
+            SetPrompt(_s.AwaitingArrival ? "Arriving…" : "");
             return;
+        }
+
+        if (!ReferenceEquals(tree, _tree))
+        {
+            // A new tree (Open…, the Starter Sky, a rescan): node ids start again, so nothing built for the old one is kept.
+            ResetForTree(tree);
         }
 
         if (_current == null || (_current.FolderId != _s.Navigator.Current && !Busy))
@@ -174,6 +186,7 @@ public partial class PlanetWorld : Node3D
             ShowTitleCard(tree, _s.Navigator.Current, null);
         }
 
+        if (_orbiting && (blockedKeys || !Godot.Input.IsMouseButtonPressed(MouseButton.Right))) EndOrbit(); // a dialog, focus loss or a lost release
         MaybeRecompose(tree);
         ApplyPendingRecompose(tree);
         switch (_phase)
@@ -190,6 +203,39 @@ public partial class PlanetWorld : Node3D
         UpdateSigns(tree);
         UpdateThumbnails();
         AnimateScene(dt);
+    }
+
+    private FsTree? _tree;
+
+    private void ResetForTree(FsTree tree)
+    {
+        _tree = tree;
+        var bodies = new List<Body>();
+        if (_current != null) bodies.Add(_current);
+        if (_parent != null) bodies.Add(_parent);
+        bodies.AddRange(_children.Values);
+        foreach (var b in bodies.Distinct())
+        {
+            b.Visual?.QueueFree();
+            b.Visual = null;
+            if (GodotObject.IsInstanceValid(b.Node)) b.Node.QueueFree();
+        }
+
+        _current = null;
+        _parent = null;
+        _children.Clear();
+        foreach (var (_, v) in _visualCache) v.QueueFree();
+        _visualCache.Clear();
+        _groundTasks.Clear();
+        _groundOrder.Clear();
+        _inSample.Clear();
+        _flownRoutes.Clear();
+        _pendingRecompose = null;
+        _phase = Phase.Walking;
+        _transfer = null;
+        _hop = null;
+        _signature = "";
+        CloseOverlays();
     }
 
     /// <summary>A listing that arrives or grows changes what the planet shows: recompose (throttled), keep where you stand.</summary>
@@ -209,16 +255,21 @@ public partial class PlanetWorld : Node3D
 
     private (PlanetComposition Comp, Task<PlanetArt.GroundArrays> Ground)? _pendingRecompose;
 
+    /// <summary>Something the signature does not see changed (hidden entries shown or not): compose again.</summary>
+    public void Refresh()
+    {
+        _signature = "";
+        _lastSignatureCheck = TimeSpan.Zero;
+    }
+
     private void ApplyPendingRecompose(FsTree tree)
     {
         if (_pendingRecompose is not { } pending || _current == null || Busy) return;
         if (!pending.Ground.IsCompleted) return;
         _pendingRecompose = null;
         if (pending.Comp.FolderId != _current.FolderId) return;
-        var up = _walker.Up;
-        var facing = _walker.Facing;
         BuildCurrent(tree, _current.FolderId, arriveFrom: -2, comp: pending.Comp);
-        _walker.Teleport(_current.Comp.Surface, up, facing);
+        _walker.ChangeSurface(_current.Comp.Surface); // keeps speed and any jump in progress
         UpdateDestinations();
     }
 
@@ -237,7 +288,7 @@ public partial class PlanetWorld : Node3D
     {
         comp ??= reuse?.Comp ?? Compose(tree, folderId);
         _pendingRecompose = null;
-        _signature = PlanetComposer.Signature(tree, folderId);
+        _signature = comp.Signature; // what is shown (a body composed at launch may be older than the tree at landing)
         var old = new List<Body>();
         if (_current != null) old.Add(_current);
         if (_parent != null) old.Add(_parent);
@@ -295,9 +346,11 @@ public partial class PlanetWorld : Node3D
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var ground = GroundAsync(body.Comp, full);
-        var waited = ground.IsCompleted ? "ready" : "waited";
-        var built = new PlanetVisual(tree, body.Comp, _quality, full, ground.Result) { Name = key };
+        // A preview's ground is small (subdivision 3): made right here rather than queued behind full-size prefetches.
+        var ground = full ? GroundAsync(body.Comp, full) : null;
+        var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
+        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), 3);
+        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays) { Name = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
         if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
         return built;
@@ -406,7 +459,6 @@ public partial class PlanetWorld : Node3D
             {
                 body = new Body { FolderId = sky.TargetId, Comp = Compose(tree, sky.TargetId), Node = new Node3D { Name = $"Child-{sky.TargetId}" } };
                 AddChild(body.Node);
-                GroundAsync(body.Comp, full: false);
                 GroundAsync(body.Comp, full: true); // prefetched: ready by the time you stand on its launcher
                 BuildPreview(tree, body);
             }
@@ -524,7 +576,6 @@ public partial class PlanetWorld : Node3D
             _environments[theme] = env = PlanetArt.SkyEnvironment(pal);
         }
 
-        env.SsaoEnabled = _quality == Quality.High && env.SsaoEnabled;
         _worldEnv.Environment = env;
         if (_sun != null)
         {

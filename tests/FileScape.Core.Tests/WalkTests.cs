@@ -371,9 +371,11 @@ public class WalkTests
     public void A_running_jump_at_full_speed_into_file_towers_never_lands_on_them()
     {
         // Higher jumps must not make file towers (2 m and up) into platforms: approach the shortest ones at 30 m/s.
+        // 2026-11-11: this guards the single jump (the airborne boost is off here, AirJumps = 0); the boost's reach is
+        // its own test below, because with it a deliberate second press can reach a tower up to ≈ 2.7 m.
         var c = Sample();
         var t = c.Terrain;
-        var w = new Walker(W with { WalkSpeed = MetersPerSecond.Of(30f), RunSpeed = MetersPerSecond.Of(30f) });
+        var w = new Walker(W with { WalkSpeed = MetersPerSecond.Of(30f), RunSpeed = MetersPerSecond.Of(30f), AirJumps = 0 });
         foreach (var tower in t.Boxes.Where(b => b.Kind == TerrainKind.Tower && b.Top >= 2f).OrderBy(b => b.Top).Take(6))
         {
             var dir = Vector2.Normalize(tower.Center);
@@ -386,6 +388,33 @@ public class WalkTests
             }
 
             w.Support.Value.Should().BeLessThan(tower.Top - 0.01f, $"no landing on the {tower.Top:0.0} m tower");
+        }
+    }
+
+    [Fact]
+    public void The_airborne_boost_reaches_file_towers_up_to_about_2_7_m_and_no_taller()
+    {
+        // The boost (a second press at the apex) is a deliberate reach in the flat world too (AD-39): towers up to ≈ 2.7 m
+        // become reachable; anything taller never is. Documented as a design consequence for DJ to judge.
+        var c = Sample();
+        var t = c.Terrain;
+        var w = new Walker(W with { WalkSpeed = MetersPerSecond.Of(8f), RunSpeed = MetersPerSecond.Of(8f) });
+        foreach (var tower in t.Boxes.Where(b => b.Kind == TerrainKind.Tower && b.Top >= 3.0f).OrderBy(b => b.Top).Take(4))
+        {
+            var dir = Vector2.Normalize(tower.Center);
+            var start = tower.Center - dir * 6f;
+            w.Teleport(t, new Vector3(start.X, 0, start.Y), Deg(-PlaceTerrain.PlaceAngle(dir)), Deg(0));
+            var pressed = 0;
+            for (var i = 0; i < 360; i++)
+            {
+                var d = Vector2.Distance(Xz(w.Feet), tower.Center);
+                // One press to jump near the tower, one more at the apex: the most a player can do.
+                var press = (pressed == 0 && d < 3.5f && w.Grounded) || (pressed == 1 && !w.Grounded && w.VerticalVelocity.Value < 0.5f);
+                if (press) pressed++;
+                w.Update(t, new WalkInput(1, 0, 0, true, press), Frame120);
+            }
+
+            w.Support.Value.Should().BeLessThan(tower.Top - 0.01f, $"no landing on the {tower.Top:0.0} m tower, even with the boost");
         }
     }
 }

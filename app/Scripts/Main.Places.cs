@@ -144,8 +144,11 @@ public partial class Main
         {
             // From the synthetic sample (the default start), the planets open on the curated Starter Sky: real files, so
             // looking closer and opening work (PLANET-15). A live folder is kept as it is.
-            _hud.Toast("Opening the Starter Sky: a few sample worlds of real files FileScape keeps in its own folder. Open… (Ctrl+O) explores your own.", null, 7);
-            StartLive(EnsureStarterSky());
+            if (TryStarterSky() is { } sky)
+            {
+                _hud.Toast("Opening the Starter Sky: a few sample worlds of real files FileScape keeps in its own folder. Open… (Ctrl+O) explores your own.", null, 7);
+                StartLive(sky);
+            }
         }
 
         var from = _experience;
@@ -373,6 +376,7 @@ public partial class Main
     /// <summary>Travels into a folder: a child goes through its gate, any other folder jumps there.</summary>
     public bool TravelInto(int id)
     {
+        if (_experience == Experience.Planets) return !_planets.Busy && TravelIntoFromPlanets(id);
         if (_tree == null || !_tree.Contains(id) || _transition != null) return false;
         // From the air, another place is reached by flying there (arriving above it), not through a gate (AERIAL-03).
         if (_aerialShown && _tree[id].IsDirectory && AerialTravelTo(id, land: false)) return true;
@@ -401,6 +405,12 @@ public partial class Main
     public void EnterSelection()
     {
         if (_tree == null || _selection.Selected < 0) return;
+        if (_experience == Experience.Planets)
+        {
+            _planets.LaunchToSelection(); // the card's Go inside (G): fly there, staying on the planets
+            return;
+        }
+
         var id = _selection.Selected;
         if (_experience != Experience.Places)
         {

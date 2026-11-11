@@ -37,6 +37,12 @@ public interface IWorldSession
     bool TravelInto(int id);
 
     bool TravelUp();
+
+    /// <summary>A new world is starting and its arrival folder is not known yet (show nothing rather than the wrong place).</summary>
+    bool AwaitingArrival { get; }
+
+    /// <summary>Requests to the explorer still waiting for an answer (a link being resolved, a path).</summary>
+    int PendingRequests { get; }
     bool GoBack();
     void Select(int id);
 

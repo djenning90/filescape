@@ -341,18 +341,18 @@ public partial class PlanetVisual : Node3D
             _thumbReady.Clear();
         }
 
-        if (!automatic || _thumbLoading >= maxConcurrent) return;
+        if (!automatic || Volatile.Read(ref _thumbLoading) >= maxConcurrent) return;
         foreach (var (id, e) in _items)
         {
-            if (_thumbLoading >= maxConcurrent) break;
+            if (Volatile.Read(ref _thumbLoading) >= maxConcurrent) break;
             if (id < 0 || e.Art.FaceSurface < 0 || _thumbRequested.Contains(id) || !tree.Contains(id)) continue;
             var n = tree[id];
             var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
             if (n.Kind != NodeKind.File || (n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0 || ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp") || n.Size > 24L * 1024 * 1024) { _thumbRequested.Add(id); continue; }
             _thumbRequested.Add(id);
-            _thumbLoading++;
+            Interlocked.Increment(ref _thumbLoading);
             var path = tree.FullPath(id);
-            _ = Thumbnails.LoadAsync(path, 192).ContinueWith(t =>
+            _ = Thumbnails.LoadAsync(path, 192, maxBytes: 8L * 1024 * 1024).ContinueWith(t =>
             {
                 lock (_thumbReady)
                 {

@@ -201,7 +201,10 @@ public sealed class JumpModel
             return LastEvent = new JumpEvent(JumpEventKind.Jump);
         }
 
-        var aboutToLand = _verticalMetersPerSecond < 0 && clearanceMeters < _p.AirJumpGroundClearance.Value;
+        // A press that the landing will reach within the jump buffer stays a (buffered) ground jump: the boost must not
+        // take over the forgiving buffer (2026-11-11 review: at 7–9 m/s a fixed 0.35 m left only the last 0.05 s).
+        var landingWithinBuffer = -_verticalMetersPerSecond * _jumpBufferSeconds;
+        var aboutToLand = _verticalMetersPerSecond < 0 && clearanceMeters < MathF.Max(_p.AirJumpGroundClearance.Value, landingWithinBuffer);
         if (!Grounded && AirJumpsLeft > 0 && !aboutToLand)
         {
             _verticalMetersPerSecond = _p.AirJumpSpeed.Value;

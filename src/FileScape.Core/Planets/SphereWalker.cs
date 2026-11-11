@@ -174,6 +174,13 @@ public sealed class SphereWalker
     /// Places the walker standing at <paramref name="up"/> (any non-zero vector) on <paramref name="surface"/>, on the
     /// highest top under its disc (or the ground), facing <paramref name="facing"/> projected onto the tangent plane.
     /// </summary>
+    /// <summary>
+    /// Swaps the planet under the walker (the same planet recomposed: a listing arrived) without disturbing it: position,
+    /// height, facing, velocity and the jump in progress are kept; the next step stands it on the new support or pushes it
+    /// out of a new solid. Teleporting instead stopped the walker and cancelled jumps on every recompose.
+    /// </summary>
+    public void ChangeSurface(PlanetSurface surface) => _surface = surface;
+
     public void Teleport(PlanetSurface surface, Vector3 up, Vector3 facing)
     {
         _surface = surface;

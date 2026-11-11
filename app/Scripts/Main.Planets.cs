@@ -34,7 +34,9 @@ public partial class Main : IWorldSession
     PlaceNavigator IWorldSession.Navigator => _nav;
     bool IWorldSession.IsLive => _tree?.Source.IsLive ?? false;
     bool IWorldSession.IsVisible(FsNode node) => IsVisibleInPlace(node);
-    bool IWorldSession.TravelInto(int id) => TravelInto(id);
+    bool IWorldSession.TravelInto(int id) => TravelIntoFromPlanets(id);
+    int IWorldSession.PendingRequests => PendingRequests;
+    bool IWorldSession.AwaitingArrival => _awaitingArrival;
     bool IWorldSession.TravelUp() => TravelUp();
     bool IWorldSession.GoBack() => _nav.Back();
     void IWorldSession.Select(int id) => Select(id);
@@ -48,12 +50,26 @@ public partial class Main : IWorldSession
     /// <summary>The commands that mean something different on a planet; the rest (open, back, up, J, L, Ctrl+L…) are shared.</summary>
     private bool HandlePlanetCommand(InputEventKey key)
     {
+        if (key.IsAction(InputBindings.RootPlace) || key.CtrlPressed) return false; // Ctrl+Home (root), Ctrl+L, Ctrl+O: shared
         if (key.IsAction(InputBindings.Home)) { _planets.ReturnToArrival(); return true; }
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
         if (key.IsAction(InputBindings.FlightToggle)) { _hud.Toast("On the planets you travel by launcher: stand on one and press Space (or select a folder and press G)."); return true; }
         return false;
+    }
+
+    /// <summary>
+    /// Travel requested by the planets: into a child, through a link, or a jump elsewhere. Unlike <see cref="TravelInto"/>
+    /// it never consults the Places composition (its parent gate and aerial view can be stale while Planets is shown).
+    /// </summary>
+    private bool TravelIntoFromPlanets(int id)
+    {
+        if (_tree == null || !_tree.Contains(id)) return false;
+        if (_tree[id].Kind == NodeKind.Link) return FollowLink(id);
+        if (!_tree[id].IsDirectory) return false;
+        if (id == _tree[_nav.Current].ParentId) return TravelUp();
+        return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id);
     }
 
     /// <summary>The shared visibility rule, for probes.</summary>
@@ -68,6 +84,21 @@ public partial class Main : IWorldSession
         var parent = System.IO.Path.Combine(OS.GetUserDataDir(), "samples");
         System.IO.Directory.CreateDirectory(parent);
         return FileScape.Core.Samples.SampleSky.Create(parent);
+    }
+
+    /// <summary>The Starter Sky's path, or null (with a toast saying why) if it could not be written.</summary>
+    private string? TryStarterSky()
+    {
+        try
+        {
+            return EnsureStarterSky();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            GD.PrintErr($"[planets] the Starter Sky could not be prepared: {e.Message}");
+            _hud.Toast($"The Starter Sky could not be prepared ({e.Message}). The planets show the current data instead; Open… (Ctrl+O) explores a folder.", new Color(1f, 0.7f, 0.5f), 9);
+            return null;
+        }
     }
 
     private static IReadOnlyList<(Color, string)> PlanetLegend()

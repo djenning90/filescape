@@ -141,6 +141,23 @@ public class JumpModelTests
     }
 
     [Fact]
+    public void A_press_within_the_jump_buffer_of_a_fast_landing_is_buffered_not_the_boost()
+    {
+        // 2026-11-11 review: falling fast (a drop, a long fall), a fixed 0.35 m clearance left only the last ≈ 0.05 s for
+        // the buffer, so a press 0.1 s before landing became the boost. It must stay a ground jump on landing.
+        var c = new Column { HeightMeters = 3.0f };
+        c.M.LeaveGround();
+        // Fall until about 0.1 s from the ground at the current speed, then press.
+        while (!(c.M.VerticalVelocity.Value < 0 && c.HeightMeters + c.M.VerticalVelocity.Value * 0.1f <= 0)) c.Step();
+        c.M.VerticalVelocity.Value.Should().BeLessThan(-5f, "a fast landing");
+        c.Step(press: true).Kind.Should().Be(JumpEventKind.None);
+        var events = new List<JumpEventKind>();
+        for (var i = 0; i < 40; i++) events.Add(c.Step().Kind);
+        events.Should().ContainInOrder(JumpEventKind.Land, JumpEventKind.Jump);
+        c.M.AirJumps.Should().Be(0, "the press was kept for the landing, not spent in the air");
+    }
+
+    [Fact]
     public void A_press_just_before_landing_is_buffered_not_spent_as_the_boost()
     {
         var c = new Column();

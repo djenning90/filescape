@@ -226,7 +226,7 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ preview
 
-    private const long MaxImageBytes = 24L * 1024 * 1024, MaxTextBytes = 4L * 1024 * 1024, MaxAudioBytes = 16L * 1024 * 1024;
+    private const long MaxImageBytes = 24L * 1024 * 1024, MaxTextBytes = 4L * 1024 * 1024, MaxAudioBytes = 12L * 1024 * 1024;
 
     private void ShowPreview(FsTree tree, FsNode n)
     {
@@ -244,63 +244,98 @@ public partial class PlanetWorld
         if (!_s.IsLive || n.Kind != NodeKind.File) return; // sample data has no contents; links and folders are not previewed
         if ((n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0)
         {
-            // Reading a cloud placeholder would make its provider download it: never for a preview (Open asks first).
+            // Reading a cloud placeholder can make its provider download it: never for a preview (Open asks first).
             _previewText.Visible = true;
             _previewText.Text = (n.Flags & NodeFlags.CloudPlaceholder) != 0
-                ? "A cloud file that is not on this PC: FileScape does not download it for a preview. Open (Enter) asks first."
-                : "A link: it is not read for a preview.";
+                ? "A cloud file that may not be stored on this PC: FileScape does not read it for a preview, so nothing is downloaded. Open (Enter) asks first."
+                : "A reparse point (a link or a special file): FileScape does not read through it for a preview.";
             return;
         }
 
         var path = tree.FullPath(n.Id);
         var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
+        var id = n.Id;
         if (ext is ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" && n.Size <= MaxImageBytes)
         {
             _previewImage.Visible = true;
-            var id = n.Id;
-            _ = Thumbnails.LoadAsync(path, 512).ContinueWith(t => { if (t.Result is { } img) CallDeferred(MethodName.ApplyPreviewImage, img, id); });
+            _ = Thumbnails.LoadAsync(path, 512).ContinueWith(t => Deliver(() =>
+            {
+                if (t.Result is { } img) ApplyPreviewImage(img, id);
+                else PreviewSays(id, "This picture could not be shown here (Enter opens it with Windows).");
+            }));
         }
         else if (ext is ".wav" or ".ogg" or ".mp3" && n.Size <= MaxAudioBytes)
         {
-            PlayPreview(path, ext);
+            _previewText.Visible = true;
+            _previewText.Text = "♪ loading a preview…";
+            _ = Task.Run(() => Thumbnails.ReadBounded(path, MaxAudioBytes)).ContinueWith(t => Deliver(() => PlayPreview(id, t.Result, ext)));
         }
         else if (PlanetText.LooksLikeText(n.Name) && n.Size <= MaxTextBytes)
         {
             _previewText.Visible = true;
-            _previewText.Text = PlanetText.ReadPreview(path, 6000);
+            _previewText.Text = "…";
+            _ = Task.Run(() => PlanetText.ReadPreview(path, 6000)).ContinueWith(t => Deliver(() => PreviewSays(id, t.Result)));
         }
+        else
+        {
+            _previewText.Visible = true;
+            _previewText.Text = "No preview for this kind of file here. Enter opens it with Windows.";
+        }
+    }
+
+    // Results of reads made on worker threads come back to the main thread here (and only while this world exists).
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _deliveries = new();
+
+    private void Deliver(Action a) => _deliveries.Enqueue(a);
+
+    private void RunDeliveries()
+    {
+        while (_deliveries.TryDequeue(out var a)) a();
+    }
+
+    private void PreviewSays(int id, string text)
+    {
+        if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
+        _previewText.Visible = true;
+        _previewText.Text = text;
     }
 
     private void ApplyPreviewImage(Image img, int id)
     {
+        _previewImage.Visible = true;
         _current?.Visual?.ShowThumbnail(id, img); // the easel shows the picture you looked at
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
         _previewImage.Texture = ImageTexture.CreateFromImage(img);
     }
 
-    /// <summary>A few seconds of a sound file, the music ducked underneath (read-only; nothing is written).</summary>
-    private void PlayPreview(string path, string ext)
+    /// <summary>A few seconds of a sound file (read on a worker, bounded and shared), the music ducked underneath.</summary>
+    private void PlayPreview(int id, byte[]? bytes, string ext)
     {
+        if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
+        if (bytes == null)
+        {
+            PreviewSays(id, "This sound could not be read here (Enter opens it with Windows).");
+            return;
+        }
+
         try
         {
             AudioStream? stream = ext switch
             {
-                ".wav" => AudioStreamWav.LoadFromFile(path),
-                ".ogg" => AudioStreamOggVorbis.LoadFromFile(path),
-                ".mp3" => new AudioStreamMP3 { Data = System.IO.File.ReadAllBytes(path) },
+                ".wav" => AudioStreamWav.LoadFromBuffer(bytes),
+                ".ogg" => AudioStreamOggVorbis.LoadFromBuffer(bytes),
+                ".mp3" => new AudioStreamMP3 { Data = bytes },
                 _ => null,
             };
             if (stream == null) return;
             _previewPlayer.Stream = stream;
             _previewPlayer.Play();
             _audio.Duck(true);
-            _previewText.Visible = true;
-            _previewText.Text = "♪ playing a preview…  (E or Esc stops it)";
+            PreviewSays(id, "♪ playing a preview…  (E or Esc stops it)");
         }
         catch (Exception e)
         {
-            _previewText.Visible = true;
-            _previewText.Text = "This sound could not be played here: " + e.Message;
+            PreviewSays(id, "This sound could not be played here: " + e.Message);
         }
     }
 
@@ -382,9 +417,10 @@ public partial class PlanetWorld
         // Whatever the mouse points at is named (a world in the sky, a moon in the ring, an object): pointing is enough.
         var mouse = GetViewport().GetMousePosition();
         _hovered = -1;
-        if (!_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) && !OverOverlay(mouse) && Pick(mouse) is { Id: >= 0 } hover && tree.Contains(hover.Id))
+        if (!_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) && !OverOverlay(mouse))
         {
-            _hovered = hover.Id;
+            var picked = Pick(mouse);
+            if (picked.Id >= 0 && tree.Contains(picked.Id)) _hovered = picked.Id;
         }
 
         if (_hovered >= 0 && _hovered != _focusItem?.NodeId && !_children.ContainsKey(_hovered) && _parent?.FolderId != _hovered)

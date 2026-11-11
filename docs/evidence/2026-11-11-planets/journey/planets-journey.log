@@ -1,0 +1,103 @@
+[22:21:25.173] planets-journey probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:21:25.697] PASS the first world is introduced by an establishing shot (high over it, then down behind the traveller)
+[22:21:26.643] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/01-opening-establishing-shot.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:21:28.006] arrived: C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky theme=Library radius=22.0 m items=4 launchers=9 sky=9
+[22:21:28.006] PASS the title card introduces the world: "Starter Sky"
+[22:21:28.607] PASS a destination is in view from the arrival (E1): Constellations
+[22:21:28.608] PASS and named in the sky: Constellations
+[22:21:28.642] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/02-arrival-starter-sky.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:21:31.490] PASS walking on the planet: 13.0 m, feet on the surface (+0.000 m), grounded
+[22:21:31.491] PASS the camera's roll stays within the cap (E4): max 15.6°/s ≤ 90°/s
+[22:21:33.324] PASS jump and twirl: one air boost, apex 2.63 m (a single jump peaks ≈ 1.2 m)
+[22:21:33.360] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/03-after-twirl.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:21:34.975] PASS standing on the overlook
+[22:21:34.975] PASS from the overlook the worlds are named (3 of 9): Star Archive | Music Box | Quiet Moon | Images · 1 | Documents · 2 | Other files · 1
+[22:21:35.011] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/04-overlook.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:21:35.012] PASS the Starter Sky has Garden Photos
+[22:21:36.275] PASS on the launcher, the prompt says what Space does: "Space · fly to Garden Photos"
+[22:21:36.312] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/05-on-the-launcher.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:21:36.634] flight u=0.000 dt=16.7 ms avatar screen=(787,693) camera→avatar 8.8 m scale 1.00
+[22:21:36.644] flight u=0.011 dt=16.7 ms avatar screen=(788,663) camera→avatar 7.7 m scale 1.00
+[22:21:36.659] flight u=0.022 dt=16.7 ms avatar screen=(791,661) camera→avatar 6.9 m scale 1.00
+[22:21:36.676] flight u=0.033 dt=16.7 ms avatar screen=(793,659) camera→avatar 6.2 m scale 1.00
+[22:21:36.692] flight u=0.044 dt=16.7 ms avatar screen=(796,658) camera→avatar 5.5 m scale 0.99
+[22:21:36.709] flight u=0.056 dt=16.7 ms avatar screen=(798,656) camera→avatar 4.9 m scale 0.99
+[22:21:36.726] flight u=0.067 dt=16.7 ms avatar screen=(801,655) camera→avatar 4.4 m scale 0.98
+[22:21:36.742] flight u=0.078 dt=16.7 ms avatar screen=(803,653) camera→avatar 3.9 m scale 0.98
+[22:21:36.759] flight u=0.089 dt=16.7 ms avatar screen=(806,651) camera→avatar 3.4 m scale 0.97
+[22:21:36.776] flight u=0.100 dt=16.7 ms avatar screen=(808,650) camera→avatar 3.0 m scale 0.96
+[22:21:36.792] flight u=0.111 dt=16.7 ms avatar screen=(811,648) camera→avatar 2.7 m scale 0.95
+[22:21:38.212] PASS Space: flew to Garden Photos
+[22:21:38.213] PASS a visible wind-up first: 0.33 s (0.4 s, aligned to the beat ±0.09 s)
+[22:21:38.213] PASS a brisk crossing: 1.52 s
+[22:21:38.213] PASS the landing does not cut: the traveller moves 0.1 % of the screen height in the landing frame (flight frames ≤ 13.4 %, the largest at 0.20 of the way)
+[22:21:38.213] PASS landed on foot
+[22:21:38.213] PASS Garden Photos is a picture meadow (Meadow)
+[22:21:38.245] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/06-landed-garden-photos.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Garden Photos selected=-
+[22:21:38.246] PASS pictures stand on the meadow
+[22:21:38.748] PASS looking closer at the-garden-after-rain.png: selected, its picture shown
+[22:21:38.748] PASS the easels show the real pictures (16)
+[22:21:38.779] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/07-inspect-picture.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Garden Photos selected=the-garden-after-rain.png
+[22:21:38.892] PASS Enter opens it with Windows: TEST — would open C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Garden Photos\the-garden-after-rain.png with its default program (nothing was started).
+[22:21:39.942] PASS V: Places shows the same folder (Garden Photos), selection (the-garden-after-rain.png) and history (1)
+[22:21:39.979] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/08-switched-to-places.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Garden Photos selected=the-garden-after-rain.png
+[22:21:40.560] PASS V again: back on the planet beside the selection (2.2 m away)
+[22:21:40.597] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/09-switched-back.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Garden Photos selected=the-garden-after-rain.png
+[22:21:40.849] flight u=0.000 dt=16.7 ms avatar screen=(881,679) camera→avatar 7.1 m scale 1.00
+[22:21:40.860] flight u=0.007 dt=16.7 ms avatar screen=(885,646) camera→avatar 6.6 m scale 1.00
+[22:21:40.877] flight u=0.014 dt=16.7 ms avatar screen=(881,647) camera→avatar 6.2 m scale 1.00
+[22:21:40.895] flight u=0.021 dt=16.7 ms avatar screen=(877,647) camera→avatar 5.9 m scale 1.00
+[22:21:40.911] flight u=0.028 dt=16.7 ms avatar screen=(873,647) camera→avatar 5.7 m scale 1.00
+[22:21:40.927] flight u=0.034 dt=16.7 ms avatar screen=(871,647) camera→avatar 5.5 m scale 1.00
+[22:21:40.944] flight u=0.041 dt=16.7 ms avatar screen=(869,647) camera→avatar 5.3 m scale 1.01
+[22:21:40.961] flight u=0.048 dt=16.7 ms avatar screen=(867,646) camera→avatar 5.2 m scale 1.01
+[22:21:40.978] flight u=0.055 dt=16.7 ms avatar screen=(866,645) camera→avatar 5.1 m scale 1.01
+[22:21:40.994] flight u=0.062 dt=16.7 ms avatar screen=(866,644) camera→avatar 5.0 m scale 1.02
+[22:21:41.011] flight u=0.069 dt=16.7 ms avatar screen=(867,643) camera→avatar 4.9 m scale 1.02
+[22:21:41.027] flight u=0.076 dt=16.7 ms avatar screen=(869,641) camera→avatar 4.9 m scale 1.02
+[22:21:41.044] flight u=0.083 dt=16.7 ms avatar screen=(871,639) camera→avatar 4.9 m scale 1.03
+[22:21:41.061] flight u=0.089 dt=16.7 ms avatar screen=(874,637) camera→avatar 5.0 m scale 1.03
+[22:21:41.078] flight u=0.096 dt=16.7 ms avatar screen=(879,634) camera→avatar 5.0 m scale 1.04
+[22:21:41.094] flight u=0.103 dt=16.7 ms avatar screen=(884,631) camera→avatar 5.1 m scale 1.04
+[22:21:41.111] flight u=0.110 dt=16.7 ms avatar screen=(891,627) camera→avatar 5.1 m scale 1.05
+[22:21:41.127] flight u=0.117 dt=16.7 ms avatar screen=(891,612) camera→avatar 5.2 m scale 1.06
+[22:21:43.344] PASS Backspace: flew to Starter Sky
+[22:21:43.344] PASS a visible wind-up first: 0.30 s (0.4 s, aligned to the beat ±0.09 s)
+[22:21:43.344] PASS a brisk crossing: 2.43 s
+[22:21:43.344] PASS the landing does not cut: the traveller moves 0.4 % of the screen height in the landing frame (flight frames ≤ 26.5 %, the largest at 0.94 of the way)
+[22:21:43.344] PASS landed on foot
+[22:21:43.344] PASS back home beside the Garden Photos launcher (2.5 m)
+[22:21:43.380] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/10-back-home.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=Garden Photos
+[22:21:45.479] PASS Go to path: a warp to C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive\2025
+[22:21:45.515] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/11-warp-arrival.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive\2025 selected=Garden Photos
+[22:21:46.063] flight u=0.000 dt=16.7 ms avatar screen=(765,691) camera→avatar 8.3 m scale 1.00
+[22:21:46.079] flight u=0.007 dt=16.7 ms avatar screen=(773,662) camera→avatar 7.6 m scale 1.00
+[22:21:46.095] flight u=0.015 dt=16.7 ms avatar screen=(772,661) camera→avatar 7.1 m scale 1.00
+[22:21:46.112] flight u=0.022 dt=16.7 ms avatar screen=(772,659) camera→avatar 6.6 m scale 1.00
+[22:21:46.129] flight u=0.030 dt=16.7 ms avatar screen=(771,658) camera→avatar 6.3 m scale 1.00
+[22:21:46.146] flight u=0.037 dt=16.7 ms avatar screen=(770,657) camera→avatar 5.9 m scale 1.01
+[22:21:46.162] flight u=0.045 dt=16.7 ms avatar screen=(769,656) camera→avatar 5.6 m scale 1.01
+[22:21:46.179] flight u=0.052 dt=16.7 ms avatar screen=(768,654) camera→avatar 5.4 m scale 1.01
+[22:21:46.196] flight u=0.059 dt=16.7 ms avatar screen=(767,653) camera→avatar 5.2 m scale 1.02
+[22:21:46.212] flight u=0.067 dt=16.7 ms avatar screen=(767,652) camera→avatar 5.1 m scale 1.02
+[22:21:46.229] flight u=0.074 dt=16.7 ms avatar screen=(766,651) camera→avatar 5.0 m scale 1.02
+[22:21:49.362] PASS Star Archive: 1,500 files, 64 stand as objects and 1,436 are in 1 piles
+[22:21:49.398] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/12-archive-piles.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive selected=2025
+[22:21:49.513] PASS J lists every world and file here (1,501)
+[22:21:49.629] PASS typing filters the list (1 for "readings-0042")
+[22:21:49.665] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/13-archive-list.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Star Archive selected=2025
+[22:21:52.797] PASS Quiet Moon is an empty moon (Quiet, 0 objects); its title: a quiet moon: empty  ·  Here: empty
+[22:21:52.833] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/14-quiet-moon.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Quiet Moon selected=2025
+[22:21:55.832] PASS Lantern Workshop is a workshop world (Workshop)
+[22:21:55.868] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/15-lantern-workshop.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=2025
+[22:21:56.398] PASS the workshop's README reads as text in the preview
+[22:21:56.434] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/16-workshop-readme.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=README.md
+[22:21:59.600] PASS Music Box is a world of bell flowers (Chime)
+[22:21:59.636] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/17-music-box.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=README.md
+[22:22:01.067] PASS looking closer at goodnight-lanterns.wav plays it
+[22:22:01.102] screenshot C:/Users/David/AppData/Local/FileScape/evidence/checks/full-20261111-061916/planets-ui1.0/18-music-box.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=goodnight-lanterns.wav
+[22:22:02.350] bell flowers rung while walking: 3
+[22:22:02.354] launch log: warp-built@25.86, land@26.88, windup@28.08, release@28.33, warp@28.33, warp-built@28.91, land@29.92, windup@31.75, release@32.09, warp@32.09, warp-built@32.69, land@33.68
+[22:22:02.360] SKIP perf walking: 1070 frames, mean 16.7 ms, p95 16.7 ms, p99 18.1 ms, max 69.2 ms (functional tier: not a measurement)
+[22:22:02.360] SKIP perf flying: 370 frames, mean 16.8 ms, p95 16.7 ms, p99 19.4 ms, max 26.4 ms (functional tier: not a measurement)
+[22:22:02.361] done failures=0

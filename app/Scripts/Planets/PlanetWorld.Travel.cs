@@ -64,6 +64,7 @@ public partial class PlanetWorld
     private void BeginLaunch(int targetId, NVector3 padDirection, bool fromPad)
     {
         if (Busy || _current == null || _s.Tree == null) return;
+        _hop = null;
         _transfer = new Transfer { LaunchTarget = targetId, FromPad = fromPad, PadDirection = padDirection };
         _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: 0.09f);
         _phase = Phase.WindUp;
@@ -90,9 +91,10 @@ public partial class PlanetWorld
         }
 
         // Backspace, U, the breadcrumb, Destinations, Go to path: the same launch, from where you stand.
+        _hop = null;
         _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = false };
         Prepare(change.To); // build it now, at the start of the wind-up (the camera is still), not in the release frame
-        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds * 0.8f, maxShiftSeconds: 0.09f);
+        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: 0.09f);
         _phase = Phase.WindUp;
         _audio.WindUp(_transfer.WindUp);
         CloseOverlays();
@@ -151,7 +153,8 @@ public partial class PlanetWorld
                 tr.Await += dt;
                 PoseAvatar(dt, windUp: 1, hover: true);
                 UpdateCamera(dt, lookAt: TargetCentreForCamera(tr));
-                if (tr.Await > 5f) CancelLaunch("The link did not answer in time; you are still here.");
+                if (tr.Await > 0.25f && _s.PendingRequests == 0) CancelLaunch(null); // the session refused or already answered (it said why)
+                else if (tr.Await > 8f) CancelLaunch("The link has not answered yet; you are still here (it may still open later).");
                 break;
             case Phase.Flying:
                 UpdateFlight(tree, tr, dt);
@@ -215,10 +218,10 @@ public partial class PlanetWorld
 
     private bool IsParentTarget(FsTree tree, int id) => _current != null && tree.Contains(_current.FolderId) && tree[_current.FolderId].ParentId == id;
 
-    private void CancelLaunch(string why)
+    private void CancelLaunch(string? why)
     {
         _audio.Deny();
-        _s.Toast(why);
+        if (why != null) _s.Toast(why);
         _phase = Phase.Walking;
         _transfer = null;
         Mark("cancel");
@@ -358,10 +361,10 @@ public partial class PlanetWorld
         LastLandingCameraJump = 0; // measured by the probe across the frame (camera position before vs after)
         Mark("land");
         ShowTitleCard(tree, body.FolderId, null);
-        if (_s.Navigator.Current != body.FolderId)
+        if (_s.Navigator.Current != body.FolderId && tree.Contains(_s.Navigator.Current))
         {
-            // The navigator moved on while we flew (it never should: commands wait); go there next.
-            _s.Toast($"Going on to {tree.DisplayName(_s.Navigator.Current)}");
+            // The navigator moved on while we flew (a link answering late, say): launch on from here, never a cut.
+            OnNavChanged(new PlaceChange(body.FolderId, _s.Navigator.Current, PlaceMove.Jump));
         }
     }
 
