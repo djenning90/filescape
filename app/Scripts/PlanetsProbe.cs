@@ -43,6 +43,7 @@ public partial class PlanetsProbe : ProbeBase
 
     public override void _Process(double delta)
     {
+        base._Process(delta); // simulated time for recordings
         if (!_recording || !P.Active) return;
         var phase = P.PhaseName;
         _frames.Add((delta * 1000, phase));

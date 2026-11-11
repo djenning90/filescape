@@ -96,6 +96,10 @@ public partial class PlanetWorld
             case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.E }:
                 if (!Busy) InspectFocus();
                 return true;
+            case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
+                _audio.ToggleMute();
+                _s.Toast(_audio.Muted ? "Sound off (N turns it on)." : "Sound on.");
+                return true;
             case InputEventKey { Pressed: true, Echo: false } j when j.IsAction(InputBindings.Destinations):
                 ToggleContents();
                 return true;

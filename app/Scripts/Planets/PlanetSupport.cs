@@ -155,9 +155,12 @@ public partial class FlightTrail : MeshInstance3D
             var next = _points[Math.Min(i + 1, _points.Count - 1)].P;
             var prev = _points[Math.Max(i - 1, 0)].P;
             var along = (next - prev).Normalized();
-            var side = along.Cross((cam.GlobalPosition - p).Normalized()).Normalized() * (0.32f * w);
-            var fade = Mathf.Clamp(1f - age / (_flying ? 3.5f : 1.2f), 0, 1) * (i / (float)_points.Count);
-            var c = new Color(1f, 0.82f, 0.45f, 0.75f * fade);
+            // A slim ribbon (2026-11-11, after watching recorded flights: at 0.32 m × scale it read as a broad beam once the
+            // traveller grew into a parent's scale), fading out close to the camera so it never fills the view.
+            var side = along.Cross((cam.GlobalPosition - p).Normalized()).Normalized() * (0.11f * w);
+            var nearCamera = Mathf.Clamp((cam.GlobalPosition.DistanceTo(p) - 2f * w) / (4f * w), 0, 1);
+            var fade = Mathf.Clamp(1f - age / (_flying ? 3.5f : 1.2f), 0, 1) * (i / (float)_points.Count) * nearCamera;
+            var c = new Color(1f, 0.84f, 0.5f, 0.6f * fade);
             _mesh.SurfaceSetColor(c);
             _mesh.SurfaceAddVertex(p - side);
             _mesh.SurfaceSetColor(c);

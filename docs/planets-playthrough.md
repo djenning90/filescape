@@ -31,4 +31,4 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
 
 Keys: W/A/S/D or arrows run (Shift: faster) · Space jump / twirl / launch · E look closer · Enter open · Backspace
 back · U up · G fly to the selected world · J the planet's list · L locations · Ctrl+L go to path · V Places/Planets ·
-right-drag turn the camera · mouse wheel camera distance · Home back to the arrival meadow · F1 help.
+right-drag turn the camera · mouse wheel camera distance · Home back to the arrival meadow · N sound on/off · F1 help.

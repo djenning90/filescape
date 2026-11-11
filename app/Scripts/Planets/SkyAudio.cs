@@ -72,7 +72,8 @@ public partial class SkyAudio : Node
             MixRate = MixRateHz,
             BufferLength = BufferLength.ToSecondsF(),
         };
-        _player = new AudioStreamPlayer { Name = "SkyAudioPlayer", Stream = generator, VolumeDb = 0 };
+        // +5 dB (2026-11-11): measured in a recorded reel, the mix sat at ≈ −28 dBFS RMS (peaks ≤ 0.32), quiet for a game.
+        _player = new AudioStreamPlayer { Name = "SkyAudioPlayer", Stream = generator, VolumeDb = 5 };
         AddChild(_player);
         _player.Play();
         _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
@@ -101,7 +102,7 @@ public partial class SkyAudio : Node
     {
         if (_active == active) return;
         _active = active;
-        _synth.Mute(!active);
+        _synth.Mute(!active || Muted);
         if (_player == null) return;
         if (active)
         {
@@ -114,6 +115,15 @@ public partial class SkyAudio : Node
             _player.Stop();
             _playback = null;
         }
+    }
+
+    /// <summary>N: sound on or off (the music and effects; kept while FileScape runs).</summary>
+    public bool Muted { get; private set; }
+
+    public void ToggleMute()
+    {
+        Muted = !Muted;
+        _synth.Mute(Muted || !_active);
     }
 
     /// <summary>Lowers the music under a sound preview (and restores it).</summary>

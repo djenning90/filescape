@@ -82,12 +82,27 @@ public abstract partial class ProbeBase : Node
         await Frames(2);
     }
 
+    /// <summary>
+    /// Writing a movie (--write-movie with --fixed-fps) runs slower than real time: waits then count simulated time
+    /// (frame deltas), so a recorded journey moves exactly as a live one (2026-11-11). Live runs keep the wall clock.
+    /// </summary>
+    protected static bool RecordingMovie => !string.IsNullOrEmpty(Engine.GetWriteMoviePath());
+
+    /// <summary>Seconds since <paramref name="startTicksMsec"/>: wall clock live, simulated time while recording a movie.</summary>
+    private double Since(ulong startTicksMsec, double startSimSeconds) =>
+        RecordingMovie ? _simSeconds - startSimSeconds : (Time.GetTicksMsec() - startTicksMsec) / 1000.0;
+
+    private double _simSeconds;
+
+    public override void _Process(double delta) => _simSeconds += delta;
+
     /// <summary>Holds keys together for a duration (pressed in order, released together).</summary>
     protected async Task Hold(double seconds, params Key[] keys)
     {
         var start = Time.GetTicksMsec();
+        var sim = _simSeconds;
         foreach (var k in keys) Key1(k, true);
-        while ((Time.GetTicksMsec() - start) / 1000.0 < seconds) await Frames(1);
+        while (Since(start, sim) < seconds) await Frames(1);
         foreach (var k in keys) Key1(k, false);
         await Frames(1);
     }
@@ -137,13 +152,15 @@ public abstract partial class ProbeBase : Node
     protected async Task Seconds(double s)
     {
         var start = Time.GetTicksMsec();
-        while ((Time.GetTicksMsec() - start) / 1000.0 < s) await Frames(1);
+        var sim = _simSeconds;
+        while (Since(start, sim) < s) await Frames(1);
     }
 
     protected async Task Until(Func<bool> condition, double timeoutSeconds)
     {
         var start = Time.GetTicksMsec();
-        while (!condition() && (Time.GetTicksMsec() - start) / 1000.0 < timeoutSeconds) await Frames(1);
+        var sim = _simSeconds;
+        while (!condition() && Since(start, sim) < timeoutSeconds) await Frames(1);
     }
 
     protected async Task Shot(string name)
