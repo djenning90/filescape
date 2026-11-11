@@ -1,5 +1,6 @@
 using System.Numerics;
 using FileScape.Core.Interaction;
+using FileScape.Core.Movement;
 using FileScape.Core.Units;
 
 namespace FileScape.Core.Places;
@@ -84,6 +85,38 @@ public sealed record WalkParams
     /// <summary>A jump pressed this long before landing happens on landing (forgiving timing).</summary>
     public TimeSpan JumpBuffer { get; init; } = TimeSpan.FromSeconds(0.15);
 
+    /// <summary>
+    /// Airborne boosts per airtime (the double jump, <see cref="JumpParams.AirJumps"/>); re-armed on landing. 0 disables
+    /// it (the behaviour before 2026-11-11).
+    /// </summary>
+    public int AirJumps { get; init; } = JumpParams.Default.AirJumps;
+
+    /// <summary>The vertical speed a boost sets (<see cref="JumpParams.AirJumpSpeed"/>): jump + boost at the apex peaks ≈ 2.7 m.</summary>
+    public MetersPerSecond AirJumpSpeed { get; init; } = JumpParams.Default.AirJumpSpeed;
+
+    /// <summary>Falling within this of the support, a press is kept for the landing (<see cref="JumpParams.AirJumpGroundClearance"/>).</summary>
+    public Meters AirJumpGroundClearance { get; init; } = JumpParams.Default.AirJumpGroundClearance;
+
+    /// <summary>Speed a boost adds along the movement input (<see cref="JumpParams.AirJumpNudge"/>).</summary>
+    public MetersPerSecond AirJumpNudge { get; init; } = JumpParams.Default.AirJumpNudge;
+
+    /// <summary>The vertical parameters as the shared <see cref="JumpModel"/> takes them.</summary>
+    public JumpParams Jump => new()
+    {
+        Gravity = Gravity,
+        JumpSpeed = JumpSpeed,
+        ApexHangSpeed = ApexHangSpeed,
+        ApexGravityScale = ApexGravityScale,
+        ShortHopGravityScale = ShortHopGravityScale,
+        FallGravityScale = FallGravityScale,
+        CoyoteTime = CoyoteTime,
+        JumpBuffer = JumpBuffer,
+        AirJumps = AirJumps,
+        AirJumpSpeed = AirJumpSpeed,
+        AirJumpGroundClearance = AirJumpGroundClearance,
+        AirJumpNudge = AirJumpNudge,
+    };
+
     /// <summary>While airborne, a ledge up to this far above the feet can still be moved onto (a forgiving landing).</summary>
     public Meters AirLedgeTolerance { get; init; } = Meters.Of(0.3f);
 
@@ -132,6 +165,7 @@ public sealed record WalkParams
         Positive(SubStepsPerSecond, nameof(SubStepsPerSecond));
         if (!StepHeight.IsFinite || StepHeight < Meters.Zero) throw new ArgumentOutOfRangeException(nameof(StepHeight));
         if (!FallLimit.IsFinite) throw new ArgumentOutOfRangeException(nameof(FallLimit));
+        Jump.Validate();
         return this;
     }
 }
@@ -150,7 +184,8 @@ public readonly record struct WalkInput(float Forward, float Strafe, float Turn,
 /// <see cref="PlaceTerrain"/>. Heading (yaw) and gaze (look pitch) are separate: movement is always horizontal along
 /// the heading, whatever the gaze (WALK-02). Integration uses fixed sub-steps, so behaviour does not depend on the
 /// frame rate (WALK-04). Collision slides along solids; small steps are climbed and walkers stay grounded walking
-/// down stairs and ramps (WALK-05).
+/// down stairs and ramps (WALK-05). The vertical motion (jump, arc, double jump, landing) is the shared
+/// <see cref="JumpModel"/>.
 /// </summary>
 public sealed class Walker
 {
@@ -159,24 +194,20 @@ public sealed class Walker
     /// <summary>Frame time not yet integrated, in seconds (always less than one sub-step).</summary>
     private float _accumulatorSeconds;
 
-    /// <summary>Time since the walker last stood on something, in seconds (drives coyote time).</summary>
-    private float _sinceGroundedSeconds = 999f;
-
-    /// <summary>Time since Space was last pressed, in seconds (drives the jump buffer); 999 = not recently.</summary>
-    private float _sinceJumpPressedSeconds = 999f;
+    /// <summary>Take-off, arc, boost and landing (shared with the sphere walker).</summary>
+    private readonly JumpModel _jump;
 
     /// <summary>The smoothed eye height (world Y, metres) that the camera uses; it trails upward steps.</summary>
     private float _eyeY;
 
     // Durations converted once to float seconds for the per-sub-step arithmetic (TimeSpan→float costs a division).
-    private readonly float _stepSeconds, _coyoteSeconds, _jumpBufferSeconds, _maxFrameSeconds;
+    private readonly float _stepSeconds, _maxFrameSeconds;
 
     public Walker(WalkParams? parameters = null)
     {
         _p = (parameters ?? WalkParams.Default).Validate();
         _stepSeconds = 1f / _p.SubStepsPerSecond;
-        _coyoteSeconds = _p.CoyoteTime.ToSecondsF();
-        _jumpBufferSeconds = _p.JumpBuffer.ToSecondsF();
+        _jump = new JumpModel(_p.Jump);
         _maxFrameSeconds = _p.MaxFrame.ToSecondsF();
     }
 
@@ -201,15 +232,26 @@ public sealed class Walker
     public Vector2 HorizontalVelocity { get; private set; }
 
     /// <summary>Vertical velocity, positive upwards.</summary>
-    public MetersPerSecond VerticalVelocity { get; private set; }
+    public MetersPerSecond VerticalVelocity => _jump.VerticalVelocity;
 
-    public bool Grounded { get; private set; }
+    public bool Grounded => _jump.Grounded;
 
     /// <summary>The world height of the surface currently under the walker.</summary>
     public Meters Support { get; private set; }
 
-    public int Jumps { get; private set; }
-    public int Landings { get; private set; }
+    /// <summary>Take-offs from the ground (including coyote and buffered jumps).</summary>
+    public int Jumps => _jump.Jumps;
+
+    /// <summary>Airborne boosts (double jumps).</summary>
+    public int AirJumps => _jump.AirJumps;
+
+    public int Landings => _jump.Landings;
+
+    /// <summary>
+    /// The latest vertical event of the last <see cref="Update"/> (Jump, AirJump with its twirl, Land with its impact
+    /// speed), or None: a frame-level view of the sub-steps, for animation and sound.
+    /// </summary>
+    public JumpEvent LastEvent { get; private set; }
 
     /// <summary>Set when the feet fell below <see cref="WalkParams.FallLimit"/>; the owner should relocate the walker.</summary>
     public bool IsLost { get; private set; }
@@ -227,11 +269,9 @@ public sealed class Walker
         Yaw = yaw;
         LookPitch = CameraMath.ClampLookPitch(lookPitch);
         HorizontalVelocity = Vector2.Zero;
-        VerticalVelocity = MetersPerSecond.Zero;
-        Grounded = true;
+        _jump.Reset();
+        LastEvent = JumpEvent.None;
         IsLost = false;
-        _sinceGroundedSeconds = 0;
-        _sinceJumpPressedSeconds = 999f;
         _eyeY = s + _p.EyeHeight.Value;
         _accumulatorSeconds = 0;
     }
@@ -256,7 +296,8 @@ public sealed class Walker
     /// <summary>Integrates one frame of <paramref name="frame"/> length in fixed sub-steps.</summary>
     public void Update(PlaceTerrain terrain, WalkInput input, TimeSpan frame)
     {
-        if (input.JumpPressed) _sinceJumpPressedSeconds = 0;
+        if (input.JumpPressed) _jump.Press();
+        LastEvent = JumpEvent.None;
         _accumulatorSeconds += Math.Clamp(frame.ToSecondsF(), 0, _maxFrameSeconds);
         while (_accumulatorSeconds >= _stepSeconds)
         {
@@ -268,8 +309,6 @@ public sealed class Walker
     /// <summary>One fixed step. Plain floats inside, all in metres, seconds and degrees (named), for speed and clarity.</summary>
     private void Step(PlaceTerrain terrain, WalkInput input, float dtSeconds)
     {
-        _sinceJumpPressedSeconds += dtSeconds;
-        _sinceGroundedSeconds = Grounded ? 0 : _sinceGroundedSeconds + dtSeconds;
         Yaw += Degrees.Of(-input.Turn * _p.TurnRate.Value * dtSeconds);
 
         // Desired horizontal velocity along the heading (never along the gaze, WALK-02); diagonals normalised.
@@ -284,18 +323,20 @@ public sealed class Walker
         HorizontalVelocity = Vector2.Lerp(HorizontalVelocity, targetVelocity, response.SmoothingFactor(dtSeconds));
         if (Grounded && wish == Vector2.Zero && HorizontalVelocity.LengthSquared() < 0.0004f) HorizontalVelocity = Vector2.Zero; // below 2 cm/s: stopped
 
-        // Jump: on the ground or shortly after leaving it, pressed now or shortly before.
-        var verticalMetersPerSecond = VerticalVelocity.Value;
-        if (_sinceJumpPressedSeconds <= _jumpBufferSeconds && _sinceGroundedSeconds <= _coyoteSeconds && verticalMetersPerSecond <= 0.01f)
+        // Jump: on the ground or shortly after leaving it, pressed now or shortly before; airborne, the one boost.
+        var feet = Feet;
+        var e = _jump.BeginStep(dtSeconds, feet.Y - Support.Value);
+        if (e.Kind == JumpEventKind.AirJump && wish != Vector2.Zero)
         {
-            verticalMetersPerSecond = _p.JumpSpeed.Value;
-            Grounded = false;
-            _sinceGroundedSeconds = _coyoteSeconds + 1;
-            _sinceJumpPressedSeconds = 999f;
-            Jumps++;
+            // The twirl's small forward lean, never beyond the target speed.
+            var dir = Vector2.Normalize(wish);
+            var along = Vector2.Dot(HorizontalVelocity, dir);
+            var add = MathF.Min(_p.AirJumpNudge.Value, MathF.Max(0, speedMetersPerSecond - along));
+            HorizontalVelocity += dir * add;
         }
 
-        var feet = Feet;
+        if (e.Kind != JumpEventKind.None) LastEvent = e;
+
         var pos = new Vector2(feet.X, feet.Z);
         var radius = _p.Radius.Value;
 
@@ -350,24 +391,19 @@ public sealed class Walker
             if (support >= y - _p.SnapDown.Value && support <= y + _p.StepHeight.Value)
             {
                 y = support; // flat, step up, or down a stair/ramp
-                verticalMetersPerSecond = 0;
+                _jump.StayOnGround();
             }
             else
             {
-                Grounded = false; // walked off an edge
+                _jump.LeaveGround(); // walked off an edge
             }
         }
 
         if (!Grounded)
         {
-            // The arc (JUMP-01): full gravity while rising with Space held, a hang near the apex, a short hop when Space
-            // is released early, and slightly stronger gravity on the way down.
-            var g = _p.Gravity.Value;
-            if (verticalMetersPerSecond > 0 && input.JumpReleased) g *= _p.ShortHopGravityScale;
-            else if (MathF.Abs(verticalMetersPerSecond) < _p.ApexHangSpeed.Value && !input.JumpReleased) g *= _p.ApexGravityScale;
-            else if (verticalMetersPerSecond < 0) g *= _p.FallGravityScale;
-            verticalMetersPerSecond -= g * dtSeconds;
-            var rise = verticalMetersPerSecond * dtSeconds;
+            // The arc (JUMP-01, JumpModel): full gravity while rising with Space held, a hang near the apex, a short hop
+            // when Space is released early, and slightly stronger gravity on the way down.
+            var rise = _jump.IntegrateRiseMeters(dtSeconds, jumpHeld: !input.JumpReleased);
             if (rise > 0)
             {
                 // Head clearance: a solid whose underside is above the head stops the rise (no passing up through it).
@@ -378,23 +414,20 @@ public sealed class Walker
                     if (b.Bottom >= head - 0.01f && b.Bottom < head + rise && b.Overlaps(pos, radius))
                     {
                         rise = MathF.Max(0, b.Bottom - head);
-                        verticalMetersPerSecond = 0;
+                        _jump.StopRise();
                         HeadBumps++;
                     }
                 }
             }
 
             y += rise;
-            if (y <= support && verticalMetersPerSecond <= 0)
+            if (y <= support && _jump.VerticalVelocity.Value <= 0)
             {
                 y = support;
-                verticalMetersPerSecond = 0;
-                Grounded = true;
-                Landings++;
+                LastEvent = _jump.Land();
             }
         }
 
-        VerticalVelocity = MetersPerSecond.Of(verticalMetersPerSecond);
         Support = Meters.Of(support);
         Feet = new Vector3(pos.X, y, pos.Y);
         if (y < _p.FallLimit.Value) IsLost = true;
