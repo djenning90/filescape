@@ -130,7 +130,7 @@ public class PlanetComposerTests
         Deg(PlanetFrame.PolarOf(c.Landmark.Direction)).Should().BeGreaterThanOrEqualTo(39.9f);
         var outerRing = c.Launchers.Max(l => c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY));
         c.Surface.SurfaceDistance(c.Landmark.Direction, Vector3.UnitY).Should().BeGreaterThan(outerRing + P.PadRadius + c.Landmark.Radius);
-        Deg(PlanetFrame.AzimuthOf(c.Landmark.Direction)).Should().BeApproximately(0f, 0.5f);
+        foreach (var l in c.Launchers.Where(l => !l.IsParent)) MathF.Abs(MathF.IEEERemainder(PlanetFrame.AzimuthOf(c.Landmark.Direction) - PlanetFrame.AzimuthOf(l.Direction), 2 * MathF.PI)).Should().BeGreaterThan(0.1f, "the landmark stands between pads' bearings, so the walk out to it is clear");
         c.Landmark.Top.Should().BeApproximately(10f, 0.01f);
         var o = c.Overlook;
         o.Top.Should().BeApproximately(2.4f, 0.01f);
@@ -413,7 +413,9 @@ public class PlanetComposerTests
             {
                 ringOf[i].Should().BeGreaterThanOrEqualTo(ringOf[i - 1], "inner ring first");
                 // Clockwise from the way back (behind) when there is one, else from straight ahead.
-                var from = c.ParentLauncher != null && ringOf[i] == 0 ? MathF.PI : -0.001f; // only the first ring holds the way back
+                // Only the first ring holds the way back; each ring starts from its first name's bearing.
+                var firstOnRing = children.First(l => (int)MathF.Round((c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY) - P.RingFirst) / P.RingGap) == ringOf[i]);
+                var from = c.ParentLauncher != null && ringOf[i] == 0 ? MathF.PI : PlanetFrame.AzimuthOf(firstOnRing.Direction) - 0.001f;
                 float Key(PlanetLauncher l) => ((PlanetFrame.AzimuthOf(l.Direction) - from) % (2 * MathF.PI) + 2 * MathF.PI) % (2 * MathF.PI);
                 var a0 = Key(children[i - 1]);
                 var a1 = Key(children[i]);
@@ -440,6 +442,41 @@ public class PlanetComposerTests
         var home = pads.Single(l => l.Name == "home");
         c.Surface.SurfaceDistance(home.Direction, Vector3.UnitY).Should().BeLessThanOrEqualTo(P.RingFirst + 2 * P.RingGap + 0.05f, "home is a short walk from the arrival");
         pads.Max(l => c.Surface.SurfaceDistance(l.Direction, Vector3.UnitY)).Should().BeLessThanOrEqualTo(P.RingFirst + 2 * P.RingGap + 0.05f, "no more than three rings");
+        ShouldBeAClock(c);
+        ShouldBeSane(c);
+        ShouldBeReachable(c);
+    }
+
+    [Fact]
+    public void On_a_crowded_world_no_two_worlds_share_a_bearing_and_every_world_is_above_the_arrival_horizon()
+    {
+        var spec = new Spec("top");
+        var crowded = new Spec("crowded");
+        for (var i = 0; i < 28; i++) crowded = crowded.Dir(Spec.WithFiles($"w{i:D2}", 20 + i * 30));
+        var tree = spec.Dir(crowded).Build();
+        var c = PlanetComposer.Compose(tree, tree.Find("crowded").Id);
+        var pads = c.Launchers.Where(l => !l.IsParent).ToList();
+        for (var i = 0; i < pads.Count; i++)
+        {
+            for (var j = i + 1; j < pads.Count; j++)
+            {
+                var dAz = MathF.Abs(MathF.IEEERemainder(PlanetFrame.AzimuthOf(pads[i].Direction) - PlanetFrame.AzimuthOf(pads[j].Direction), 2 * MathF.PI));
+                dAz.Should().BeGreaterThan(0.03f, $"{pads[i].Name} and {pads[j].Name} on different bearings");
+            }
+        }
+
+        var eye = Vector3.UnitY * (c.Shape.Radius + 3.4f);
+        foreach (var body in c.SkyBodies.Where(b => !b.InBelt && !b.IsParent))
+        {
+            var to = body.Position - eye;
+            var dir = Vector3.Normalize(to);
+            // The ray from the arrival eye to the body's centre does not meet the planet.
+            var b = Vector3.Dot(eye, dir);
+            var disc = b * b - (eye.LengthSquared() - c.Shape.Radius * c.Shape.Radius);
+            var hit = disc >= 0 && -b - MathF.Sqrt(disc) > 0 && -b - MathF.Sqrt(disc) < to.Length();
+            hit.Should().BeFalse($"{tree[body.TargetId].Name}'s world is seen from the arrival");
+        }
+
         ShouldBeAClock(c);
         ShouldBeSane(c);
         ShouldBeReachable(c);

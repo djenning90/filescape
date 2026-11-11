@@ -339,7 +339,20 @@ public static class PlanetComposer
         // The landmark stands ahead beyond the outermost ring (it used to stand at 40°, among the launchers).
         var outer = rings.Count == 0 ? 0f : rings.Max(r => r.DistanceMetres);
         var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + 4.5f) / radius);
-        var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(150f)), 0);
+        // On the bearing near ahead farthest from every pad's bearing, so the walk out to it passes between pads.
+        var landmarkAz = 0f;
+        if (rings.Count > 0)
+        {
+            var best = -1f;
+            for (var deg = -60; deg <= 60; deg++)
+            {
+                var az = Deg(deg);
+                var clear = rings.Min(r => MathF.Abs(MathF.IEEERemainder(az - PlanetFrame.AzimuthOf(r.Direction), 2 * MathF.PI)) * r.DistanceMetres);
+                if (clear > best + 0.01f || (MathF.Abs(clear - best) <= 0.01f && MathF.Abs(az) < MathF.Abs(landmarkAz))) { best = clear; landmarkAz = az; }
+            }
+        }
+
+        var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(150f)), landmarkAz);
         var overlookDir = PlanetFrame.Move(landmarkDir, PlanetFrame.East(landmarkDir), p.LandmarkRadius + p.LandmarkOverlookGap + p.OverlookRadius, radius);
         var steps = new List<SurfaceObstacle>();
         {
@@ -380,7 +393,11 @@ public static class PlanetComposer
             // On the same bearing as its pad but further out (2026-11-12): the worlds stand round the horizon as a crown
             // you see from the arrival; walking towards one brings you to its pad on the ring.
             var padPolar = PlanetFrame.PolarOf(d);
-            var skyDir = PlanetFrame.FromPolar(MathF.Min(padPolar + Deg(32f), Deg(84f)), PlanetFrame.AzimuthOf(d));
+            // Kept above the arrival's horizon as the chase camera sees it (eye ≈ 3.4 m), whole body and a margin.
+            var bodyR = SkyRadius(c.Size, p);
+            var horizon = MathF.Acos(radius / (radius + 3.4f)) + MathF.Acos(radius / (radius + lift)) - MathF.Asin(MathF.Min(1, bodyR / (radius + lift))) - Deg(3f);
+            var skyPolar = MathF.Max(padPolar + Deg(4f), MathF.Min(MathF.Min(padPolar + Deg(32f), Deg(84f)), horizon));
+            var skyDir = PlanetFrame.FromPolar(skyPolar, PlanetFrame.AzimuthOf(d));
             var pos = skyDir * (radius + lift) + PlanetFrame.East(skyDir) * jitter;
             sky.Add(new SkyBody(c.Id, pos, SkyRadius(c.Size, p), childTheme, childState, launchers.Count));
             launchers.Add(new PlanetLauncher(c.Id, d, p.PadRadius, p.PadTop, childState, c.Node.Name, sky.Count - 1,
@@ -448,6 +465,7 @@ public static class PlanetComposer
         }
 
         var maxZone = keepOut.Max(z => z.Radius);
+        var ringDistances = rings.Select(r => r.DistanceMetres).Distinct().ToArray();
         // Distances are compared through dot products first (one multiply-add per solid), and measured exactly only
         // for the few candidates that are close: composition runs whenever a listing changes, so it must stay cheap.
         bool Free(Vector3 d, float r, float gap, List<Solid> extraZones)
@@ -461,6 +479,13 @@ public static class PlanetComposer
             foreach (var z in extraZones)
             {
                 if (PlanetShape.Angle(d, z.Direction) * radius < z.Radius + r) return false;
+            }
+
+            // The launcher rings are walking routes: nothing stands on them (2026-11-12 review).
+            var fromArrival = PlanetFrame.PolarOf(d) * radius;
+            foreach (var ringDistance in ringDistances)
+            {
+                if (MathF.Abs(fromArrival - ringDistance) < p.PathHalfWidth + r) return false;
             }
 
             var pathSin = MathF.Sin((p.PathHalfWidth + r) / radius);
@@ -616,6 +641,7 @@ public static class PlanetComposer
         var remaining = n;
         var distance = p.RingFirst;
         var first = true;
+        var ring = 0;
         while (remaining > 0 || (first && hasParent))
         {
             var polar = MathF.Min(distance / radius, Deg(120f));
@@ -640,12 +666,34 @@ public static class PlanetComposer
             }
             else
             {
-                for (var i = 0; i < here; i++) slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, 2 * MathF.PI * i / here), distance, false));
+                // Rings after the first are turned by the golden angle, so no outer pad shares an inner pad's bearing
+                // (their worlds would stack on one line of sight, and the straight walk out would cross inner pads).
+                var phase = 0f;
+                if (!first)
+                {
+                    // The phase (within one pitch) that keeps this ring's pads farthest from every bearing already used.
+                    var pitch = 2 * MathF.PI / here;
+                    var bestSep = -1f;
+                    for (var k = 0; k < 64; k++)
+                    {
+                        var ph = pitch * k / 64f;
+                        var sep = float.MaxValue;
+                        for (var i = 0; i < here && sep > bestSep; i++)
+                        {
+                            foreach (var used in slots) sep = MathF.Min(sep, MathF.Abs(MathF.IEEERemainder(ph + pitch * i - PlanetFrame.AzimuthOf(used.Direction), 2 * MathF.PI)));
+                        }
+
+                        if (sep > bestSep) { bestSep = sep; phase = ph; }
+                    }
+                }
+
+                for (var i = 0; i < here; i++) slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, phase + 2 * MathF.PI * i / here), distance, false));
             }
 
             remaining -= here;
             distance += p.RingGap;
             first = false;
+            ring++;
         }
 
         return slots;

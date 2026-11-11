@@ -865,8 +865,11 @@ public sealed class SkySynth
         else if (bar < deck.ThemeBars)
         {
             var drone = p.Pad != PadKind.Normal;
-            chord = drone ? p.Progression[0] : ThemeChordAt(p, bar);
-            holdSixteenths = drone ? 32 - pos % 32 : 16 - pos % 16;
+            // The augmented ending stretches bars 7–8 over 7–9: the harmony follows (V under the stretched approach, I under
+            // the last note), and a drone ends where the theme ends (2026-11-12 review).
+            var chordBar = deck.Variation == ThemeVariation.AugmentedEnding && bar >= 6 ? (bar < 8 ? 6 : 7) : bar;
+            chord = drone ? p.Progression[0] : ThemeChordAt(p, chordBar);
+            holdSixteenths = drone ? Math.Min(32 - pos % 32, deck.ThemeBars * 16 - pos) : 16 - pos % 16;
             change = drone ? pos % 32 == 0 : inBar == 0;
         }
         else
@@ -1331,6 +1334,7 @@ public sealed class SkySynth
             foreach (var v in _voices)
             {
                 if (!v.Active || v.Group == GroupSfx) continue;
+                if (v.Stage == Stage.Attack && v.Env == 0f) continue; // started this pass: never steal a note that has not sounded
                 var loud = v.Env * v.Level;
                 if (loud < quietest)
                 {
@@ -1349,6 +1353,7 @@ public sealed class SkySynth
             var best = float.MaxValue;
             foreach (var v in _voices)
             {
+                if (v.Stage == Stage.Attack && v.Env == 0f) continue; // started this pass
                 var loud = v.Env * v.Level;
                 if (loud < best)
                 {
@@ -1357,7 +1362,8 @@ public sealed class SkySynth
                 }
             }
 
-            _residualL[slot!.Group] += slot.LastL;
+            if (slot == null) return null; // every voice has only just started: drop this note
+            _residualL[slot.Group] += slot.LastL;
             _residualR[slot.Group] += slot.LastR;
         }
 

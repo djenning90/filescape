@@ -143,8 +143,9 @@ public partial class PlanetsProbe : ProbeBase
             P.ProbeStandOn(ov.Direction, ov.Top);
             await Seconds(1.6);
             Check(P.OnOverlook, "standing on the overlook");
-            var named = comp.SkyBodies.Count(k => !k.InBelt && App.Signs.ShownIds.Contains(k.TargetId));
-            Check(named >= Math.Min(3, comp.SkyBodies.Count(k => !k.InBelt)), $"from the overlook the worlds are named ({named} of {comp.SkyBodies.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Values.Take(8))}");
+            // A destination counts as named when its pad or its world is (one name per destination, 2026-11-12).
+            var named = comp.SkyBodies.Count(k => !k.InBelt && (App.Signs.ShownIds.Contains(k.TargetId) || App.Signs.ShownIds.Contains(-100_000 - k.TargetId)));
+            Check(named >= Math.Min(3, comp.SkyBodies.Count(k => !k.InBelt)), $"from the overlook the destinations are named ({named} of {comp.SkyBodies.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Values.Take(8))}");
             await Shot("overlook");
         }
 
@@ -533,11 +534,17 @@ public partial class PlanetsProbe : ProbeBase
             frames++;
             foreach (var l in c.Launchers)
             {
-                if (!App.Signs.ShownAnchors.TryGetValue(l.TargetId, out var shownAt)) continue;
+                if (!App.Signs.ShownRectById.TryGetValue(l.TargetId, out var rect)) continue;
                 padNamesSeen.Add(l.TargetId);
                 var (anchor, hidden) = P.PadAnchor(l);
                 if (hidden) hiddenNamed++;
-                if (!P.Camera.IsPositionBehind(anchor)) maxOffset = MathF.Max(maxOffset, P.Camera.UnprojectPosition(anchor).DistanceTo(shownAt));
+                if (P.Camera.IsPositionBehind(anchor)) continue;
+                // Measured independently of the layout: the sign's rectangle against the pad's freshly projected anchor
+                // (centred above it, its bottom 16 px over it), except where it was clamped at a screen edge.
+                var a = P.Camera.UnprojectPosition(anchor);
+                var vp = App.GetViewport().GetVisibleRect();
+                var clamped = rect.Position.X <= vp.Position.X + 3 || rect.End.X >= vp.End.X - 3 || rect.Position.Y <= vp.Position.Y + 3;
+                if (!clamped) maxOffset = MathF.Max(maxOffset, MathF.Max(MathF.Abs(rect.GetCenter().X - a.X), MathF.Abs(rect.End.Y + 16 - a.Y)));
             }
 
             var rects = App.Signs.ShownRects;

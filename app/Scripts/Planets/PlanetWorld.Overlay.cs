@@ -215,6 +215,7 @@ public partial class PlanetWorld
         _hintTime = MathF.Max(0, _hintTime - dt);
         _hint.Modulate = new Color(1, 1, 1, Mathf.Clamp(_hintTime / 0.8f, 0, 1));
         _promptBox.Visible = !Busy;
+        if (_phase == Phase.Walking && _transfer == null) _warpFlash = Mathf.MoveToward(_warpFlash, 0, dt * 2f); // a stray veil fades
         _flash.Color = new Color(1f, 0.95f, 0.86f, Mathf.Clamp(_warpFlash * _warpFlash * 0.85f, 0, 0.85f));
         if (Busy && _transfer?.Change is { } ch && _s.Tree is { } tree && tree.Contains(ch.To))
         {
@@ -452,7 +453,8 @@ public partial class PlanetWorld
             var color = l.IsParent ? new Color(0.8f, 0.86f, 1f) : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
             var mark = ProminenceMark(l.TargetId);
             var padHidden = RayPlanet(camPos, (anchor - camPos).Normalized(), groundTest) is { } ph && ph < d - 0.5f;
-            if (!padHidden && !_camera.IsPositionBehind(anchor)) padNamed.Add(l.TargetId);
+            // Counted as named only if it is on screen (else the world in the sky must carry the name).
+            if (!padHidden && !_camera.IsPositionBehind(anchor) && GetViewport().GetVisibleRect().Grow(-8).HasPoint(_camera.UnprojectPosition(anchor))) padNamed.Add(l.TargetId);
             _signs.Add(new SignCandidate(l.TargetId, anchor, mark + tree.DisplayName(l.TargetId), detail, color,
                 l.IsParent ? IconKind.Up : FileIcons.For(n), focus, 40f * Looked(anchor) + (mark.Length > 0 ? 6f : 0f), FixedAnchor: true));
         }

@@ -34,3 +34,26 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
 Keys: W/A/S/D or arrows run (Shift: faster) · Space jump / twirl / launch · E look closer · Enter open · Backspace
 back · U up · G fly to the selected world · J the planet's list · L locations · Ctrl+L go to path · V Places/Planets ·
 right-drag turn the camera · mouse wheel camera distance · Home back to the arrival meadow · N sound on/off · F1 help.
+
+## Second iteration (2026-11-12): three flows to try
+
+**1. Find a named launcher (try the Ubuntu root).** Ctrl+L, type `\\wsl.localhost\Ubuntu-24.04\` (or open it from
+Locations). You land in the middle of a ring of flower launchers: names go in order like a clock, the way back is
+behind you. Right-drag to turn the camera until you see **⌂ home**; walk straight to it (about 9 m). On the pad the
+prompt says *Space · fly to home*. (Constellations in the Starter Sky is the crowded case: 28 pads on three rings and
+a ring of moons for the rest.)
+
+**2. Watch the names while you turn.** Hold the right mouse button and sweep the camera all the way round. Each name
+stays pinned to its pad or world by a short stem; pads behind the curve of the planet lose their names; names never
+overlap, and the one you select (click) or point at wins.
+
+**3. The overview.** Press **T** (or ✧ Overview in the toolbar). You pull back out of a soft flash to every folder
+FileScape knows, as star systems in 3D: solid worlds are listed, pale ones not yet, ringed ones you have visited, the
+gold beacon is you. Right-drag orbits, middle-drag or WASD pans, the wheel zooms. Click a world (say Star Archive's
+**2025**): it is selected and the view zooms in on it. **Enter** lands you there. **Backspace** takes you back. Press
+**T** again and then **Esc**: you glide back down to exactly where you stood.
+
+**Music.** Listen for the tune that opens a world (on Hearth it starts A–C–F, rising) and comes back every 16 bars,
+each time a little different. Samples to compare: `%LOCALAPPDATA%\FileScape\evidence\2026-11-12-planets\music\`
+(`before\` and `after\`, and `after\hearth-theme-returns-89s.wav` for three returns of the theme; README.txt says what
+to listen for).

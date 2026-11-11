@@ -162,6 +162,7 @@ public partial class PlanetVisual : Node3D
             {
                 var d = PlanetFrame.FromPolar(polar, 2 * MathF.PI * i / n);
                 if (_comp.Launchers.Any(l => surf.SurfaceDistance(l.Direction, d) < l.PadRadius + 0.5f)) continue; // not under a pad
+                if (surf.Near(d, 0.3f).Any()) continue; // nor inside a file object or solid scenery
                 lights.Add(Stand(surf, d, PlanetFrame.North(d), 0.11f, height: 0.06f, sink: 0f));
             }
         }

@@ -230,6 +230,7 @@ public partial class Main
         if (_experience == Experience.Planets)
         {
             _planets.ToggleUniverse(); // on the planets the toolbar button (and T) is the overview
+            _hud.SetPlanetsOverview(_planets.UniverseOpen); // in step even when it could not open (mid-launch)
             return;
         }
 

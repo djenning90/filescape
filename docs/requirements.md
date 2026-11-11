@@ -278,6 +278,16 @@ A playable planetary FileScape, a spiritual descendant of *Super Mario Galaxy* w
 | PLANET-17 | Switching between Places and Planets (V or the toolbar) keeps the current folder, the selection and the history. | Journey: V to Places and back with the same folder, selection and history count; arrival beside the selected file. | **Demonstrated** |
 | PLANET-18 | Responsiveness: no hitch in flight; planet building off the main thread. | Journey on the Radeon 890M: flight frames p99 ≤ 17 ms; ground meshes made on worker threads and prefetched. | **Demonstrated** in the dev build (flight max 16.7 ms; walking p99 18 ms, rare spikes ≈ 110 ms at a warp) |
 
+## Planets, second iteration (PLANET-19..23, 2026-11-12, from DJ's playtest)
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-19 | Launchers have a predictable layout: rings round the arrival, read like a clock (names in order; the way back at 6 o'clock); up to 28 pads; worlds hang on their pads' bearings round the horizon. A named launcher is found from the arrival without circling the planet. | Core: clock order, ring distances, an Ubuntu-like root (21 folders, home within three rings). App: on the Ubuntu root and on a crowded world (Constellations, 36 folders: 3 rings + belt) the named pad is found by turning the camera in place and a straight walk of ≈ its ring distance. | **Demonstrated** (Ubuntu root: home 9 m away, 8.8 m walk; Snail on a Leaf: 16 m ring, 14.9 m walk) |
+| PLANET-20 | Names belong visibly to what they name: pinned with a stem on the pad or world, updated every frame as the camera turns, hidden when the planet blocks the thing, one name per destination, and the selected, pointed-at or looked-at one wins overlaps. | A full camera turn (120 frames): every pad name on its pad (0.00 px), none named while hidden, no overlaps; the selected destination named once. | **Demonstrated** |
+| PLANET-21 | The sky has no artificial horizon; folder worlds further away are drawn smaller and are not named. | Sky shader without the horizon band; distant worlds (≤ 120, 320–880 m) unnamed. | Implemented (visual) |
+| PLANET-22 | An overview of the known hierarchy in 3D: orbit, pan, zoom; discovered vs not shown; select, zoom in, land there through the navigator (history, Backspace); exit back to where you stood. | Journey: 62 worlds (51 listed, 11 not listed yet), click selects (shared selection) and zooms, Enter lands on Star Archive/2025 (history +1), Backspace returns, Esc returns where you stood. | **Demonstrated** |
+| PLANET-23 | Livelier music with a recognizable melody that returns with variations; launch cues keep their musical timing; before/after samples. | SkySynth tests (108 BPM, theme returns 4 of 4 with ≥ 3 variations, effect latency ≤ 70 ms, grid alignment); WAVs in `%LOCALAPPDATA%\FileScape\evidence\2026-11-12-planets\music\`. | **Demonstrated** offline; judged by ear: unknown |
+
 ## Later (not in this prototype)
 
 Search, watchers/live refresh, persistent scan caches, bookmarks, split views, mutations (copy/move/rename/delete), shell context menus, multi-select, rich previews, warp mode and other historical-fidelity features, themes as data packages, sound/weather, installers, signing, marketplaces.

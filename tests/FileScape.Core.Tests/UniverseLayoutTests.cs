@@ -65,4 +65,38 @@ public class UniverseLayoutTests
         bodies.Count(b => b.ParentId == wide.NodeId).Should().Be(UniverseLayout.MaxChildren);
         UniverseLayout.Compute(tree).Select(b => b.Position).Should().Equal(bodies.Select(b => b.Position), "deterministic");
     }
+
+    [Fact]
+    public void The_way_to_where_you_stand_is_never_cut_by_the_budget()
+    {
+        var tree = new Spec("top").Dir(Spec.WithDirs("wide", 200)).Build();
+        var deep = tree.Nodes.Where(n => n.IsDirectory && n.Name.StartsWith("child-", StringComparison.Ordinal)).OrderBy(n => n.Name).Last().Id;
+        var path = new HashSet<int>();
+        for (var a = deep; a >= 0; a = tree[a].ParentId) path.Add(a);
+        var bodies = UniverseLayout.Compute(tree, pinned: path);
+        bodies.Select(b => b.NodeId).Should().Contain(deep);
+        bodies.Count(b => b.ParentId == tree.Find("wide").Id).Should().Be(UniverseLayout.MaxChildren);
+    }
+
+    [Fact]
+    public void Large_sibling_systems_never_overlap()
+    {
+        var spec = new Spec("top");
+        for (var i = 0; i < 3; i++)
+        {
+            var big = new Spec($"big{i}");
+            for (var j = 0; j < 30; j++) big = big.Dir(Spec.WithFiles($"b{i}-{j}", 3));
+            spec = spec.Dir(big);
+        }
+
+        var tree = spec.Dir(new Spec("small")).Build();
+        var bodies = UniverseLayout.Compute(tree);
+        for (var i = 0; i < bodies.Count; i++)
+        {
+            for (var j = i + 1; j < bodies.Count; j++)
+            {
+                Vector3.Distance(bodies[i].Position, bodies[j].Position).Should().BeGreaterThan(bodies[i].Radius + bodies[j].Radius);
+            }
+        }
+    }
 }

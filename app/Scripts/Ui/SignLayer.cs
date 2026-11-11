@@ -58,6 +58,9 @@ public partial class SignLayer : Control
     /// <summary>Where each shown sign's anchor projected this frame (screen), for probes: a pinned sign sits right above it.</summary>
     public Dictionary<int, Vector2> ShownAnchors { get; } = [];
 
+    /// <summary>Each shown sign's rectangle by id (probes measure it against a freshly projected anchor).</summary>
+    public Dictionary<int, Rect2> ShownRectById { get; } = [];
+
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Ignore;
@@ -94,6 +97,7 @@ public partial class SignLayer : Control
         ShownRects.Clear();
         ShownText.Clear();
         ShownAnchors.Clear();
+        ShownRectById.Clear();
         var vp = GetViewportRect();
         var eye = camera.GlobalPosition;
         var ordered = new List<(SignCandidate C, float D, Vector2 S)>();
@@ -168,6 +172,7 @@ public partial class SignLayer : Control
             ShownRects.Add(r);
             ShownText[c.Id] = name;
             ShownAnchors[c.Id] = anchor;
+            ShownRectById[c.Id] = r;
             return true;
         }
 

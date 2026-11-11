@@ -37,8 +37,10 @@ public static class UniverseLayout
     /// <summary>Gap between neighbouring systems on a ring, metres (overview units).</summary>
     private const float Gap = 2.5f;
 
-    public static IReadOnlyList<UniverseBody> Compute(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0)
+    /// <param name="pinned">Folders that are always shown whatever the budget (the way to where you stand).</param>
+    public static IReadOnlyList<UniverseBody> Compute(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null)
     {
+        pinned ??= new HashSet<int>();
         if (tree.Count == 0 || !tree.Contains(root)) return [];
         visible ??= _ => true;
         // Breadth-first selection within the budget (the hierarchy near the root first).
@@ -49,9 +51,12 @@ public static class UniverseLayout
         queue.Enqueue(root);
         while (queue.TryDequeue(out var id))
         {
-            var all = tree[id].Children.Where(c => tree[c].IsDirectory && visible(tree[c])).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
-            var room = Math.Max(0, MaxBodies - order.Count);
-            var take = all.Take(Math.Min(MaxChildren, room)).ToList();
+            var all = tree[id].Children.Where(c => tree[c].IsDirectory && (visible(tree[c]) || pinned.Contains(c))).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
+            // Pinned folders first (never cut by the budget), then the rest in name order within what is left.
+            var mustHave = all.Where(pinned.Contains).ToList();
+            var room = Math.Max(0, MaxBodies - order.Count - pinned.Count(pid => !order.Contains(pid) && !mustHave.Contains(pid)));
+            var take = mustHave.Concat(all.Where(c => !pinned.Contains(c)).Take(Math.Max(0, Math.Min(MaxChildren, room) - mustHave.Count)))
+                .OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
             kids[id] = take;
             hidden[id] = all.Count - take.Count;
             foreach (var c in take)
@@ -83,6 +88,19 @@ public static class UniverseLayout
             var maxExt = children.Max(c => extent[c]);
             var around = children.Sum(c => 2 * extent[c] + Gap);
             var ring = MathF.Max(r + Gap + maxExt, around / (2 * MathF.PI));
+            if (children.Count >= 2)
+            {
+                // The chord between neighbours (not the arc) must hold both systems: R ≥ (e_i + e_j + gap) / (2 sin(Δθ/2)).
+                for (var k = 0; k < children.Count; k++)
+                {
+                    var a = children[k];
+                    var b = children[(k + 1) % children.Count];
+                    var dTheta = ((2 * extent[a] + Gap) + (2 * extent[b] + Gap)) / around * MathF.PI; // half of each share
+                    if (children.Count == 2) dTheta = MathF.PI;
+                    ring = MathF.Max(ring, (extent[a] + extent[b] + Gap) / (2 * MathF.Sin(MathF.Min(dTheta, MathF.PI) / 2)));
+                }
+            }
+
             ringRadius[id] = ring;
             extent[id] = ring + maxExt;
         }

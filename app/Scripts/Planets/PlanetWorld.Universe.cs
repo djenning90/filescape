@@ -29,7 +29,7 @@ public partial class PlanetWorld
     private float _uniYaw = 0.6f, _uniPitch = 0.55f, _uniDistance, _uniDistanceTarget;
     private int _uniSelected = -1, _uniHovered = -1;
     private bool _uniPanning;
-    private (int Id, float T)? _uniLanding;
+    private (int Id, float T, float Seconds)? _uniLanding;
     private MeshInstance3D? _uniSelectRing;
     private bool _arriveFromSky;
 
@@ -59,7 +59,7 @@ public partial class PlanetWorld
         // The way to where you stand is always shown, even through a hidden folder (AppData is hidden on Windows).
         var onTheWay = new HashSet<int>();
         for (var a = _current.FolderId; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
-        var bodies = UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id);
+        var bodies = UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay);
         if (bodies.Count == 0) return;
         _universe = new Node3D { Name = "Universe", Position = UniverseOrigin };
         AddChild(_universe);
@@ -213,6 +213,8 @@ public partial class PlanetWorld
         _s.Signs.Clear();
         _s.Hud.SetPlanetsOverview(open: false);
         SetPrompt("");
+        _warpFlash = 0; // the overview's veil never outlives it
+        _flash.Color = new Color(1f, 0.95f, 0.86f, 0f);
         if (returnToSurface)
         {
             _camBlendFrom = from;
@@ -227,9 +229,10 @@ public partial class PlanetWorld
         {
             // Flying into the chosen world before landing on it.
             var t = landing.T + dt;
-            _uniLanding = (landing.Id, t);
-            if (t >= 0.75f)
+            _uniLanding = (landing.Id, t, landing.Seconds);
+            if (t >= landing.Seconds)
             {
+                _audio.Launch(); // on the beat, as every launch
                 LandFromUniverse(landing.Id);
                 return;
             }
@@ -245,7 +248,7 @@ public partial class PlanetWorld
             if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * 0.9f * dt;
         }
 
-        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding != null ? Mathf.Clamp(_uniLanding.Value.T / 0.75f, 0, 1) : 0, dt * 1.6f);
+        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding is { } ul ? Mathf.Clamp(ul.T / ul.Seconds, 0, 1) : 0, dt * 1.6f);
         _flash.Color = new Color(1f, 0.95f, 0.86f, Mathf.Clamp(_warpFlash * _warpFlash * 0.85f, 0, 0.85f));
         var ease = 1 - Mathf.Exp(-dt * 6f);
         _uniFocus = _uniFocus.Lerp(_uniFocusTarget, ease);
@@ -338,8 +341,17 @@ public partial class PlanetWorld
             case InputEventKey { Pressed: true, Echo: false } key when key.Keycode is Key.Enter or Key.KpEnter || key.IsAction(InputBindings.EnterFolder):
                 BeginUniverseLanding(_uniSelected);
                 return true;
-            case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Home }:
+            case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Home, CtrlPressed: false }:
                 if (_current != null) SelectInUniverse(_current.FolderId);
+                return true;
+            case InputEventKey { Pressed: true, Echo: false } f when f.IsAction(InputBindings.Frame):
+                if (_uniSelected >= 0) SelectInUniverse(_uniSelected); // F frames the selected world again
+                return true;
+            case InputEventKey { Pressed: true, Echo: false } b when b.IsAction(InputBindings.Overview):
+                return true; // B (the overlook view) means nothing up here
+            case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
+                _audio.ToggleMute();
+                _s.Toast(_audio.Muted ? "Sound off (N turns it on)." : "Sound on.");
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click:
                 var id = PickUniverse(click.Position);
@@ -373,10 +385,11 @@ public partial class PlanetWorld
             return;
         }
 
-        _uniLanding = (id, 0f);
+        var seconds = _audio.AlignToSixteenth(0.75f, maxShiftSeconds: 0.09f);
+        _uniLanding = (id, 0f, seconds);
         _uniFocusTarget = _uniBodies[i].At;
         _uniDistanceTarget = _uniBodies[i].Body.Radius * 1.6f;
-        _audio.WindUp(0.75f);
+        _audio.WindUp(seconds);
     }
 
     /// <summary>
@@ -407,8 +420,12 @@ public partial class PlanetWorld
     {
         switch (e)
         {
-            case InputEventMouseButton { ButtonIndex: MouseButton.Middle } mb:
-                _uniPanning = mb.Pressed;
+            case InputEventMouseButton { ButtonIndex: MouseButton.Middle, Pressed: false }:
+                var wasPanning = _uniPanning;
+                _uniPanning = false;
+                return wasPanning;
+            case InputEventMouseButton { ButtonIndex: MouseButton.Middle, Pressed: true } mb when !OverHud(mb.Position):
+                _uniPanning = true;
                 return true;
             case InputEventMouseMotion mm when _uniPanning:
                 var right = _camera.GlobalBasis.X;
@@ -419,13 +436,16 @@ public partial class PlanetWorld
                 _uniYaw -= mm.ScreenRelative.X * 0.005f;
                 _uniPitch = Mathf.Clamp(_uniPitch + mm.ScreenRelative.Y * 0.005f, -1.45f, 1.45f);
                 return true;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel:
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
                 _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? 0.85f : 1.18f), 4f, 6000f);
                 return true;
         }
 
         return false;
     }
+
+    /// <summary>Over a HUD panel or the planet's own list or preview: the GUI gets the event (scrolling a list, say).</summary>
+    private bool OverHud(Vector2 p) => _s.Hud.BlockingRects.Any(r => r.HasPoint(p)) || OverOverlay(p);
 
     // Distant worlds: the folders around the neighbourhood (siblings of the parent's folders, children of the worlds in
     // the sky) drawn far off and small, so the space beyond reads as more of the same tree; never labelled.

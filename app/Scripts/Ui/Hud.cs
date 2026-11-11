@@ -224,7 +224,7 @@ public partial class Hud : CanvasLayer
         row.AddChild(_homeButton);
         _overviewButton = MakeButton("Overview", () => OverviewRequested?.Invoke(), "Bird's-eye view of the whole tree (B).");
         row.AddChild(_overviewButton);
-        _flightButton = MakeButton("✈ Flight (T)", () => FlightToggled?.Invoke(), "Equip flight: rise out of the place and fly freely (T). Press again to land safely on foot.");
+        _flightButton = MakeButton("✈ Flight (T)", () => FlightToggled?.Invoke(), FlightTooltip);
         _flightButton.ToggleMode = true;
         row.AddChild(_flightButton);
         // Quality lives in Settings (F2 still toggles it): the top bar must fit at 125 % UI scale with the Key button.
@@ -731,7 +731,10 @@ public partial class Hud : CanvasLayer
         _flightButton.Visible = places;
         _flightButton.SetPressedNoSignal(flying);
         _flightButton.Text = flying ? (landing ? "✈ Landing…" : "✈ Land (T)") : "✈ Flight (T)";
+        _flightButton.TooltipText = FlightTooltip; // the planets reuse this button for the overview
     }
+
+    private const string FlightTooltip = "Equip flight: rise out of the place and fly freely (T). Press again to land safely on foot.";
 
     /// <summary>On the planets the flight button is the overview (2026-11-12).</summary>
     public void SetPlanetsOverview(bool open)

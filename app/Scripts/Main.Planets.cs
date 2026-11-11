@@ -56,7 +56,7 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
-        if (key.IsAction(InputBindings.FlightToggle)) { _planets.ToggleUniverse(); return true; }
+        if (key.IsAction(InputBindings.FlightToggle)) { _planets.ToggleUniverse(); _hud.SetPlanetsOverview(_planets.UniverseOpen); return true; }
         return false;
     }
 
