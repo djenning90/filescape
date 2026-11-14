@@ -19,6 +19,7 @@ public sealed class Spec
     public DirScanState State { get; set; } = DirScanState.Complete;
     public NodeFlags Flags { get; set; }
     public bool IsLink { get; set; }
+    public LocationKind Location { get; set; }
 
     public Spec Dir(Spec d) { Dirs.Add(d); return this; }
     public Spec File(string name, long size = 100) { Files.Add((name, size)); return this; }
@@ -59,7 +60,7 @@ public sealed class Spec
         var tree = new FsTree(source ?? new DataSourceInfo(DataOrigin.Synthetic, "synthetic://test", "test"));
         var batch = new ScanBatch();
         var queue = new Queue<(Spec Spec, int Id, int Depth)>();
-        batch.NewNodes.Add(new NodeRecord(0, -1, Name, NodeKind.Directory, Flags, 0, 0, null, null, null, 0, State));
+        batch.NewNodes.Add(new NodeRecord(0, -1, Name, NodeKind.Directory, Flags, 0, 0, null, null, null, 0, State, Location: Location));
         queue.Enqueue((this, 0, 0));
         var next = 1;
         while (queue.Count > 0)
@@ -69,7 +70,7 @@ public sealed class Spec
             {
                 var kind = d.IsLink ? NodeKind.Link : NodeKind.Directory;
                 var flags = d.Flags | (d.IsLink ? NodeFlags.ReparsePoint | NodeFlags.DirectoryLink : 0);
-                batch.NewNodes.Add(new NodeRecord(next, id, d.Name, kind, flags, 0, 0, null, null, null, depth + 1, d.IsLink ? DirScanState.NotApplicable : d.State));
+                batch.NewNodes.Add(new NodeRecord(next, id, d.Name, kind, flags, 0, 0, null, null, null, depth + 1, d.IsLink ? DirScanState.NotApplicable : d.State, Location: d.Location));
                 if (!d.IsLink) queue.Enqueue((d, next, depth + 1));
                 next++;
             }
