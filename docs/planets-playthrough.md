@@ -62,15 +62,17 @@ to listen for).
 
 ## Third iteration (2026-11-14): controls, worlds with their own music and look, the workbench
 
-**Launch** (Command Prompt): see the build in `docs/implementation-status.md` (§ Planets, third iteration); the
-commands below assume `%FS%` is that `FileScape.exe`.
+**Launch** (Command Prompt), the installed build `1533fdf17515`:
+`"%LOCALAPPDATA%\FileScape\build\FileScape.exe" -- --root=hub --vis=planets` (this PC) or `… -- --root=sample --vis=planets`
+(any PC). Below, `%FS%` stands for `%LOCALAPPDATA%\FileScape\build\FileScape.exe`.
 
 ### On this PC (about 4 minutes): This computer → Ubuntu → a real repository → a child folder → back
 
 `"%FS%" -- --root=hub --vis=planets`
 
 1. **This computer.** You arrive at the hub: a calm world, a warm dawn low in the sky, the drives and distributions
-   hanging above their launchers. Hold the **left** mouse button and drag to look round (right-drag still works);
+   hanging above their launchers. The music is unhurried here, no drums: a question that only resolves when you leave.
+   Hold the **left** mouse button and drag to look round (right-drag still works);
    then stand still and hold **←** or **→**: the camera turns, you don't move. A plain click on a world selects it;
    a drag that starts on a world only turns the camera.
 2. **A filesystem root.** Fly to **Ubuntu-24.04** (stand on its launcher and press Space, or click its world and press G).

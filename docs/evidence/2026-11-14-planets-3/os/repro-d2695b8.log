@@ -1,0 +1,8 @@
+PASS OS arrives on the Starter Sky on foot (phase=Walking)
+PASS OS right-drag at arrival: a right-drag of 360 px changes the view (0.604 of the scene; no camera fields in this build's state)
+after the toolbar click: guiFocus=
+PASS OS right-drag after a toolbar click: a right-drag of 360 px changes the view (0.61 of the scene; no camera fields in this build's state)
+J: listOpen=True
+FAIL OS right-drag with the list open (its filter has focus): a right-drag of 360 px changes the view (0.015 of the scene; no camera fields in this build's state)
+Esc: listOpen=False
+PASS OS right-drag after Esc closed the list: a right-drag of 360 px changes the view (0.495 of the scene; no camera fields in this build's state)

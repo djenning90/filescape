@@ -1,0 +1,11 @@
+PASS OS arrives on the Starter Sky on foot (phase=Walking)
+PASS OS route: a left-drag look at the hub: a left-drag of 360 px turns the camera 93.5 deg (at least 30)
+PASS OS route: J, typed 'lantern', Enter: flew to the repository (Lantern Workshop, Repository)
+route: at the bench's edge? bearing -6.9 deg, 0.35 m
+PASS OS route: jumped onto the workbench with the keyboard: the project's key places come up (onBench=True, 6 places)
+PASS OS route: a spin from the bench opens the README (selected README.md)
+PASS OS route: E at the bench reads it too
+PASS OS route: <- looks round on the repository world (78.8 deg)
+PASS OS route: J, 'src', Enter: a folder inside the project (band 2)
+PASS OS route: Backspace back to the repository (arrival 2)
+PASS OS route: Backspace again: home at the hub

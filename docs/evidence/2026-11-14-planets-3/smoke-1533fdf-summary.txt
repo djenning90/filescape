@@ -1,0 +1,15 @@
+FileScape check smoke  2026-11-14T23:35:23Z  commit 1533fdf17515
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\smoke-20261114-233523
+build                            8.5s  exit 0
+tests-windows                   60.2s  exit 0
+tests-wsl                       51.2s  exit 0
+    Passed!  - Failed:     0, Passed:   376, Skipped:    20, Total:   396, Duration: 44 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   378, Skipped:    18, Total:   396, Duration: 44 s - FileScape.Core.Tests.dll (net10.0)
+stage                           22.2s  exit 0
+build: 1533fdf17515 2026-11-14T23:37:42Z  (C:\Users\David\AppData\Local\FileScape\staging-20261114-233724-194858\FileScape.exe)
+explore-ui1.0                   44.2s  ok     journey         29 PASS  0 FAIL  1 SKIP
+project-ui1.0                    7.6s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   39.6s  ok     journey         39 PASS  0 FAIL  2 SKIP
+planets-flows                   29.7s  ok     journey         28 PASS  0 FAIL  2 SKIP
+planets-route                   51.4s  ok     journey         63 PASS  0 FAIL  0 SKIP
+TOTAL                            315s  failing steps: 0
