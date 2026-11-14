@@ -166,7 +166,12 @@ case "$cmd" in
       exit 4
     fi
     if [[ -e "$OUT" ]]; then mv "$OUT" "$BASE/previous-$STAMP"; echo "fs.sh: previous build kept as $BASE_W\\previous-$STAMP"; fi
-    mv "$STAGE" "$OUT"
+    # 2026-11-14: the second rename can fail too (a transient handle on the new folder); then put the old build back, so
+    # build\ is never left missing, and say how to finish (fs.sh promote).
+    if ! mv "$STAGE" "$OUT"; then
+      [[ -e "$BASE/previous-$STAMP" && ! -e "$OUT" ]] && mv "$BASE/previous-$STAMP" "$OUT" && echo "fs.sh: put the previous build back in $BASE_W\\build" >&2
+      echo "fs.sh: could not move the staged build into place; it is verified in $STAGE_W. Run: tools/fs.sh promote $(basename "$STAGE")" >&2; exit 8
+    fi
     verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
     echo "fs.sh: export OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
   promote)
@@ -183,7 +188,10 @@ case "$cmd" in
     if grep -qiF "$OUT_W\\" <<<"$running"; then echo "fs.sh: FileScape is running from $OUT_W; not replacing it." >&2; exit 4; fi
     STAMP="$(date -u +%Y%m%d-%H%M%S)-$$"
     if [[ -e "$OUT" ]]; then mv "$OUT" "$BASE/previous-$STAMP" || { echo "fs.sh: could not move the current build aside (a file in it is open); nothing changed." >&2; exit 8; }; echo "fs.sh: previous build kept as $BASE_W\\previous-$STAMP"; fi
-    mv "$STAGE" "$OUT"
+    if ! mv "$STAGE" "$OUT"; then
+      [[ -e "$BASE/previous-$STAMP" && ! -e "$OUT" ]] && mv "$BASE/previous-$STAMP" "$OUT" && echo "fs.sh: put the previous build back in $OUT_W" >&2
+      echo "fs.sh: could not move $name into place; try again in a moment." >&2; exit 8
+    fi
     verify_build "$OUT" || { echo "fs.sh: promoted build failed verification at $OUT_W" >&2; exit 7; }
     echo "fs.sh: promote OK -> $OUT_W\\FileScape.exe ($(grep '^build ' "$OUT/build-info.txt" | cut -d' ' -f2-))" ;;
   check)

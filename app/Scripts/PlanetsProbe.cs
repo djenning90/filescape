@@ -548,9 +548,9 @@ public partial class PlanetsProbe : ProbeBase
         await Shot("route-bench-revealed");
         Check(!P.PreviewOpen, "landing reveals; it does not open anything");
 
-        // The spin: jump from the bench and twirl.
+        // The spin: jump from the bench and twirl (the second Space a quarter second later, in time: also when recording).
         await Key(Godot.Key.Space);
-        await Frames(12);
+        await Seconds(0.2);
         await Key(Godot.Key.Space);
         await Until(() => P.PreviewOpen, 2);
         await Until(() => P.Walker.Grounded, 3);
