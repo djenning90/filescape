@@ -155,12 +155,12 @@ Hold-Key 'T' 80; Wait-Settled 2500
 $s = State
 Check ($s.locomotion -eq 'Walking' -and $s.grounded -and -not $s.landing -and [math]::Abs($s.lookPitch) -lt 3) "T again lands on foot, view level again (feetY $($s.feetY), pitch $([math]::Round($s.lookPitch, 1)))"
 
-# Alt-Tab while walking: nothing held; still afterwards. (No mouse button is involved: a stray button release in
-# whichever window gains focus could open a context menu there.)
+# Focus lost while walking: nothing held; still afterwards. Focus goes to a window of the probe's own (2026-11-14: an
+# Alt-Tab brings someone else's window forward, and input meant for FileScape could land there).
 Key-Down 'W'; Start-Sleep -Milliseconds 300
-Key-Down 'Alt'; Hold-Key 'Tab' 80; Key-Up 'Alt'; Key-Up 'W'; Start-Sleep -Milliseconds 800
+$own = Lose-Focus-To-Own-Window 800; Key-Up 'W'
 $s = State
-Check (-not $s.focused -and $s.held.Count -eq 0 -and -not $s.lookCaptured) "Alt-Tab while walking: focus lost, nothing held or captured"
+Check ($own -and -not $s.focused -and $s.held.Count -eq 0 -and -not $s.lookCaptured) "focus lost while walking (to the probe's own window): nothing held or captured"
 Focus-Window $w; Start-Sleep -Milliseconds 700
 $before = (State).pos; Start-Sleep -Milliseconds 600; $after = (State).pos
 Check (($before -join ',') -eq ($after -join ',')) "after returning, you stand still (no stuck key)"

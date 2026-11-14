@@ -90,3 +90,16 @@ function Compare-Shots($a, $b) {
   }
   $x.Dispose(); $y.Dispose(); return [Math]::Round($changed / [double]$total, 3)
 }
+
+Add-Type -AssemblyName System.Windows.Forms
+# Focus loss without touching anyone else's window (2026-11-14: never Alt-Tab, which brings DJ's windows forward): a small window of the probe's own takes focus, then closes.
+function Lose-Focus-To-Own-Window([int]$ms = 900) {
+  $f = New-Object System.Windows.Forms.Form
+  $f.Text = 'FileScape probe: focus elsewhere'; $f.Width = 320; $f.Height = 120; $f.StartPosition = 'Manual'; $f.Left = 40; $f.Top = 40; $f.TopMost = $true
+  $f.Show(); [void]$f.Activate(); [System.Windows.Forms.Application]::DoEvents()
+  Start-Sleep -Milliseconds $ms; [System.Windows.Forms.Application]::DoEvents()
+  $own = ([FsInput]::GetForegroundWindow() -eq $f.Handle)
+  $f.Close(); $f.Dispose()
+  return $own
+}
+

@@ -91,6 +91,8 @@ if [[ "$TIER" != fast ]]; then
   journey planets-ui1.0 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   # 2026-11-11 (DJ's playtest): launcher discovery on a crowded world, labels during a full camera turn, overview travel.
   journey planets-flows planets-flows.log 300 --automate=planets-flows --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # 2026-11-14: world characters, the repository workbench (jump, spin, E) and the depth bands on the Starter Sky.
+  journey planets-route planets-route.log 300 --automate=planets-route --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
@@ -112,13 +114,15 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home).
   journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
+  # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
+  journey planets-route-hub planets-route-hub.log 300 --automate=planets-route-hub --root=hub --vis=planets --test-shell=record --ui-scale=1 "--repo=${FILESCAPE_WSL_FIXTURE:+$FILESCAPE_WSL_FIXTURE\\project}" --tier=functional
 fi
 
 if [[ "$TIER" == release ]]; then
   journey walk-ui1.25 walk.log 420 --automate=walk "--root=$W" --ui-scale=1.25 --tier=functional
   journey walk-perf walk-perf.log 200 --automate=walk-perf "--root=$W" --ui-scale=1
   grep -h 'perf ' "$OUT/walk-perf/walk-perf.log" 2>/dev/null | sed 's/^/    /' | tee -a "$SUM"
-  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$REPO"/tools/os-righthold-repeat.ps1 "$OUT/tools/"
+  TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$REPO"/tools/os-righthold-repeat.ps1 "$REPO"/tools/os-planets-probe.ps1 "$OUT/tools/"
   for sc in 1 1.25; do
     probe_step "os-ui$sc" 360 "$OUT/os-ui$sc/os-walk-results.txt" "real OS input" \
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier"
