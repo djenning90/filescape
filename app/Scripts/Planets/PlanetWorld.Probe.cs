@@ -75,6 +75,34 @@ public partial class PlanetWorld
         return (c, c.DistanceTo(edge));
     }
 
+    /// <summary>The biggest world in the sky that a click at its centre would pick (for the real-input probe), or null.</summary>
+    public (int Id, Vector2 Centre)? ClickableWorld()
+    {
+        (int, Vector2)? best = null;
+        var bestR = 0f;
+        var size = GetViewport().GetVisibleRect().Size;
+        foreach (var id in WorldsInView())
+        {
+            var (c, r) = WorldOnScreen(id);
+            if (r <= bestR || c.X < 60 || c.Y < 160 || c.X > size.X - 60 || c.Y > size.Y - 120 || OverHud(c)) continue;
+            if (Pick(c).Id != id) continue;
+            best = (id, c);
+            bestR = r;
+        }
+
+        return best;
+    }
+
+    /// <summary>The camera's heading on the ground, degrees from the local north, positive to the right (for probes).</summary>
+    public float CameraHeadingDegrees()
+    {
+        var up = Gd(_walker.Up);
+        var north = Gd(PlanetFrame.North(_walker.Up));
+        var f = _camFwd - up * _camFwd.Dot(up);
+        if (f.LengthSquared() < 1e-6f) return 0;
+        return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
+    }
+
     /// <summary>A world in the overview on screen (or null when behind the camera).</summary>
     public Vector2? UniverseScreen(int id)
     {

@@ -33,32 +33,76 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ input
 
-    /// <summary>From Main._Input: the camera drag and the wheel (before the GUI sees them).</summary>
+    /// <summary>A left press on the world, not yet a click or a drag (PLANET-24): it becomes a drag after
+    /// <see cref="DragThresholdPixels"/> of travel, otherwise a click on release.</summary>
+    private Vector2? _leftPress;
+    private bool _leftPressDouble;
+    private MouseButton _orbitButton = MouseButton.None;
+    private bool _pointerBlocked;
+
+    /// <summary>How far (screen pixels) a held left button travels before the press is a drag, not a click.</summary>
+    public const float DragThresholdPixels = 6f;
+
+    /// <summary>How fast ← → turn the camera (and orbit the overview), degrees per second.</summary>
+    public const float KeyLookDegreesPerSecond = 110f;
+
+    /// <summary>A left- or right-drag is looking around now (probes).</summary>
+    public bool Orbiting => _orbiting;
+
+    /// <summary>
+    /// From Main._Input: the camera drags and the wheel (before the GUI sees them). Left-drag and right-drag both look
+    /// around (AD-47); a left press over the world is only a click if it is released before it travels
+    /// <see cref="DragThresholdPixels"/>, and the click acts on release, so a drag never selects or launches whatever
+    /// happens to be under the cursor when it ends. Presses over the HUD and the planet's panels go to the GUI.
+    /// </summary>
     public bool Input(InputEvent e)
     {
-        if (_universe != null && e is not InputEventMouseButton { ButtonIndex: MouseButton.Right } && UniverseInput(e)) return true;
+        // Releases first, whatever else is going on: a drag always ends with its button.
+        if (e is InputEventMouseButton { Pressed: false } up && (up.ButtonIndex == MouseButton.Left || up.ButtonIndex == MouseButton.Right))
+        {
+            if (_orbiting && up.ButtonIndex == _orbitButton)
+            {
+                EndOrbit();
+                _leftPress = null;
+                return true;
+            }
+
+            if (up.ButtonIndex == MouseButton.Left && _leftPress is { } at)
+            {
+                _leftPress = null;
+                Click(at, _leftPressDouble);
+                return true;
+            }
+        }
+
+        if (_universe != null && UniverseInput(e)) return true;
         switch (e)
         {
-            case InputEventMouseButton { ButtonIndex: MouseButton.Right } rb:
-                if (rb.Pressed && !_s.Hud.BlockingRects.Any(r => r.HasPoint(rb.Position)) && !OverOverlay(rb.Position))
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right or MouseButton.Left } press when !_orbiting && !_pointerBlocked && !OverHud(press.Position):
+                // The world under the cursor: GUI keyboard focus (a list's filter, say) must not end the look (PLANET-25).
+                GetViewport().GuiReleaseFocus();
+                HurryBlend();
+                if (press.ButtonIndex == MouseButton.Right)
                 {
-                    _orbiting = true;
-                    _orbitStart = rb.Position;
-                    Godot.Input.MouseMode = Godot.Input.MouseModeEnum.Captured;
+                    BeginOrbit(MouseButton.Right, press.Position);
                     return true;
                 }
 
-                if (!rb.Pressed && _orbiting)
-                {
-                    EndOrbit();
-                    return true;
-                }
-
-                return false;
-            case InputEventMouseMotion mm when _orbiting:
-                OrbitCamera(mm.ScreenRelative);
+                _leftPress = press.Position;
+                _leftPressDouble = press.DoubleClick;
                 return true;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverOverlay(wheel.Position) && !_s.Hud.BlockingRects.Any(r => r.HasPoint(wheel.Position)):
+            case InputEventMouseMotion mm when _leftPress is { } from && !_orbiting:
+                if (mm.Position.DistanceTo(from) >= DragThresholdPixels)
+                {
+                    BeginOrbit(MouseButton.Left, from);
+                    Look(mm.Position - from);
+                }
+
+                return true;
+            case InputEventMouseMotion mm when _orbiting:
+                Look(mm.ScreenRelative);
+                return true;
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when _universe == null && !OverHud(wheel.Position):
                 _camDistance = Mathf.Clamp(_camDistance * (wheel.ButtonIndex == MouseButton.WheelUp ? 0.9f : 1.1f), 3.5f, 16f);
                 return true;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape } when _orbiting:
@@ -69,10 +113,51 @@ public partial class PlanetWorld
         return false;
     }
 
+    private void BeginOrbit(MouseButton button, Vector2 start)
+    {
+        _orbiting = true;
+        _orbitButton = button;
+        _orbitStart = start;
+        _leftPress = null;
+        Godot.Input.MouseMode = Godot.Input.MouseModeEnum.Captured;
+    }
+
+    /// <summary>Mouse travel while dragging: the overview orbits, the surface camera turns.</summary>
+    private void Look(Vector2 screenPixels)
+    {
+        if (_universe != null) OrbitUniverse(screenPixels);
+        else OrbitCamera(screenPixels);
+    }
+
+    /// <summary>A left click released without a drag: select what is under it (double-click: go there).</summary>
+    private void Click(Vector2 at, bool doubleClick)
+    {
+        if (_universe != null)
+        {
+            var uid = PickUniverse(at);
+            if (uid < 0) return;
+            SelectInUniverse(uid);
+            if (doubleClick) BeginUniverseLanding(uid);
+            return;
+        }
+
+        if (Busy) return;
+        var hit = Pick(at);
+        if (hit.Id < 0) return;
+        if (doubleClick) Activate(hit.Id, hit.Sky);
+        else
+        {
+            _s.Select(hit.Id);
+            _audio.Select();
+        }
+    }
+
     private void EndOrbit()
     {
+        _leftPress = null;
         if (!_orbiting) return;
         _orbiting = false;
+        _orbitButton = MouseButton.None;
         Godot.Input.MouseMode = Godot.Input.MouseModeEnum.Visible;
         if (_orbitStart != Vector2.Zero) Godot.Input.WarpMouse(_orbitStart);
     }
@@ -104,19 +189,6 @@ public partial class PlanetWorld
                 return true;
             case InputEventKey { Pressed: true, Echo: false } j when j.IsAction(InputBindings.Destinations):
                 ToggleContents();
-                return true;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click:
-                if (Busy) return true;
-                GetViewport().GuiReleaseFocus();
-                var hit = Pick(click.Position);
-                if (hit.Id < 0) return true;
-                if (click.DoubleClick) Activate(hit.Id, hit.Sky);
-                else
-                {
-                    _s.Select(hit.Id);
-                    _audio.Select();
-                }
-
                 return true;
         }
 
@@ -452,7 +524,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

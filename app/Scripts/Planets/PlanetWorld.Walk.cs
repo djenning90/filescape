@@ -84,8 +84,8 @@ public partial class PlanetWorld
         if (!blockedKeys)
         {
             fwd = Axis(InputBindings.Back, InputBindings.Forward);
-            strafe = Axis(InputBindings.Left, InputBindings.Right) + Axis(InputBindings.TurnLeft, InputBindings.TurnRight);
-            strafe = Mathf.Clamp(strafe, -1, 1);
+            strafe = Axis(InputBindings.Left, InputBindings.Right);
+            KeyboardLook(dt, Axis(InputBindings.TurnLeft, InputBindings.TurnRight));
             run = Godot.Input.IsActionPressed(InputBindings.Fast);
             jumpHeld = Godot.Input.IsActionPressed(InputBindings.Jump);
         }
@@ -151,6 +151,22 @@ public partial class PlanetWorld
     }
 
     private bool _overlookNoted;
+
+    private float _keyLook;
+
+    /// <summary>
+    /// ← → turn the camera (AD-47, as they turn the view in Places): standing still they look around; with W/S held the
+    /// walk curves, because movement follows the camera. Eased in over ≈ 0.12 s so a tap nudges and a hold sweeps.
+    /// </summary>
+    private void KeyboardLook(float dt, float axis)
+    {
+        _keyLook = Mathf.MoveToward(_keyLook, axis, dt / 0.12f);
+        if (MathF.Abs(_keyLook) < 1e-3f) return;
+        var up = Gd(_walker.Up);
+        var fast = Godot.Input.IsActionPressed(InputBindings.Fast) ? 1.6f : 1f;
+        _camFwd = _camFwd.Rotated(up, -_keyLook * fast * Mathf.DegToRad(KeyLookDegreesPerSecond) * dt).Normalized();
+        _sinceOrbitSeconds = 0;
+    }
 
     private static float Axis(string negative, string positive) =>
         (Godot.Input.IsActionPressed(positive) ? 1f : 0f) - (Godot.Input.IsActionPressed(negative) ? 1f : 0f);

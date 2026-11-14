@@ -399,9 +399,10 @@ public partial class Hud : CanvasLayer
             Text =
                 "[b]✦ Planets[/b] (V switches with Places; same folder, selection and history)\n" +
                 "  Each folder is a small world; its folders hang in the sky above flower launchers; files stand in groves.\n" +
-                "  WASD / arrows run (Shift faster) · [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there\n" +
+                "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
+                "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
-                "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound · right-drag turn the camera\n\n" +
+                "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n\n" +
                 "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
                 "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
@@ -672,7 +673,7 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string PlanetsHintText = "WASD / arrows run · Space jump (again in the air: twirl higher) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · T overview · J list · N sound · F1 help";
+    public const string PlanetsHintText = "WASD run · drag or ← → look · Space jump (again: twirl) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · T overview · J list · N sound · F1 help";
 
     public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
 

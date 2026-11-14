@@ -158,9 +158,13 @@ public partial class PlanetWorld : Node3D
 
     // ------------------------------------------------------------------ per frame
 
-    public void Tick(double delta, bool blockedKeys)
+    /// <param name="blockedKeys">Keys go elsewhere (a dialog, focus elsewhere, a GUI control with keyboard focus).</param>
+    /// <param name="pointerBlocked">The window lost focus or a dialog is open: drags end. GUI keyboard focus alone does
+    /// not end a drag (PLANET-25: a list's filter ended an orbit the frame it started).</param>
+    public void Tick(double delta, bool blockedKeys, bool pointerBlocked)
     {
         if (!_active) return;
+        _pointerBlocked = pointerBlocked;
         var dt = (float)delta;
         RunDeliveries();
         _overlay.Visible = true;
@@ -188,7 +192,8 @@ public partial class PlanetWorld : Node3D
             ShowTitleCard(tree, _s.Navigator.Current, null);
         }
 
-        if (_orbiting && (blockedKeys || !Godot.Input.IsMouseButtonPressed(MouseButton.Right))) EndOrbit(); // a dialog, focus loss or a lost release
+        if (_orbiting && (pointerBlocked || !Godot.Input.IsMouseButtonPressed(_orbitButton))) EndOrbit(); // a dialog, focus loss or a lost release
+        if (_leftPress != null && (pointerBlocked || !Godot.Input.IsMouseButtonPressed(MouseButton.Left))) _leftPress = null;
         if (_universe != null)
         {
             UpdateUniverse(tree, dt, blockedKeys);

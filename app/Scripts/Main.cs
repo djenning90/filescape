@@ -433,8 +433,9 @@ public partial class Main : Node3D
         if (_experience == Experience.Planets)
         {
             // The planetary world (AD-39) owns its camera, movement and signs; the session, HUD and state file stay shared.
-            var blockedKeys = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null;
-            _planets.Tick(delta, blockedKeys);
+            var pointerBlocked = !_windowFocused || ModalOpen;
+            var blockedKeys = pointerBlocked || GetViewport().GuiGetFocusOwner() != null;
+            _planets.Tick(delta, blockedKeys, pointerBlocked);
             // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
             // "You are in" empty, because the HUD was set before the root was listed). At most twice a second.
             if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= TimeSpan.FromSeconds(0.5))

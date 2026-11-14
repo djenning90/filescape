@@ -13,7 +13,7 @@ namespace FileScape.App.Planets;
 /// where you stand to the whole known folder hierarchy in 3D, laid out as nested star systems
 /// (<see cref="UniverseLayout"/>): a folder's subfolders orbit it on one tilted ring. Listed folders are solid worlds,
 /// partly listed ones dimmer, folders known only by name are pale ghosts; folders you have visited this session wear a
-/// ring; where you stand has a gold beacon. Right-drag orbits, middle-drag or WASD pans, the wheel zooms; click a world
+/// ring; where you stand has a gold beacon. Left- or right-drag (or ← →) orbits, middle-drag or WASD pans, the wheel zooms; click a world
 /// to select it (the shared selection: its card shows it) and zoom in on it; Enter or a double-click lands there, through
 /// the navigator, so history and Backspace work as everywhere; Esc or T returns to where you stood.
 /// </summary>
@@ -242,7 +242,8 @@ public partial class PlanetWorld
         {
             var right = new Vector3(Mathf.Cos(_uniYaw), 0, -Mathf.Sin(_uniYaw));
             var forward = Vector3.Up.Cross(right);
-            var move = right * (Axis(InputBindings.Left, InputBindings.Right) + Axis(InputBindings.TurnLeft, InputBindings.TurnRight))
+            _uniYaw -= Axis(InputBindings.TurnLeft, InputBindings.TurnRight) * KeyLookDegreesPerSecond * Mathf.Pi / 180f * dt; // ← → orbit (AD-47)
+            var move = right * Axis(InputBindings.Left, InputBindings.Right)
                 + forward * Axis(InputBindings.Back, InputBindings.Forward)
                 + Vector3.Up * (Axis(InputBindings.Down, InputBindings.Up));
             if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * 0.9f * dt;
@@ -309,7 +310,7 @@ public partial class PlanetWorld
         var selName = _uniSelected >= 0 && tree.Contains(_uniSelected) ? tree.DisplayName(_uniSelected) : "";
         var (listed, partial, unknown, visitedCount) = UniverseCounts;
         SetPrompt(_uniSelected == _current?.FolderId ? $"★ {selName}: you are here · click a world, then Enter to land there" : $"{selName} · Enter (or double-click) to land there",
-            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   right-drag orbit · middle-drag or WASD pan · wheel zoom · Esc or T: back");
+            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zoom · Esc or T: back");
     }
 
     private int PickUniverse(Vector2 screen)
@@ -352,12 +353,6 @@ public partial class PlanetWorld
             case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
                 _audio.ToggleMute();
                 _s.Toast(_audio.Muted ? "Sound off (N turns it on)." : "Sound on.");
-                return true;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click:
-                var id = PickUniverse(click.Position);
-                if (id < 0) return true;
-                SelectInUniverse(id);
-                if (click.DoubleClick) BeginUniverseLanding(id);
                 return true;
         }
 
@@ -432,16 +427,19 @@ public partial class PlanetWorld
                 var up = _camera.GlobalBasis.Y;
                 _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * 0.0016f;
                 return true;
-            case InputEventMouseMotion mm when _orbiting:
-                _uniYaw -= mm.ScreenRelative.X * 0.005f;
-                _uniPitch = Mathf.Clamp(_uniPitch + mm.ScreenRelative.Y * 0.005f, -1.45f, 1.45f);
-                return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
                 _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? 0.85f : 1.18f), 4f, 6000f);
                 return true;
         }
 
         return false;
+    }
+
+    /// <summary>A left- or right-drag in the overview: orbit round the focus.</summary>
+    private void OrbitUniverse(Vector2 screenPixels)
+    {
+        _uniYaw -= screenPixels.X * 0.005f;
+        _uniPitch = Mathf.Clamp(_uniPitch + screenPixels.Y * 0.005f, -1.45f, 1.45f);
     }
 
     /// <summary>Over a HUD panel or the planet's own list or preview: the GUI gets the event (scrolling a list, say).</summary>
