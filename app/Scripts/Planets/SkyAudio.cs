@@ -13,8 +13,9 @@ namespace FileScape.App.Planets;
 /// <see cref="TargetFill"/> queued, so an effect called this frame is heard after roughly that much (plus the
 /// driver's own output latency), while a hitch shorter than the buffer still does not underrun.
 /// <para>
-/// Cost: ≈ 735 frames per 60 Hz frame. The synth renders 1 s of music with six effects in ≈ 17–19 ms (Debug build,
-/// SkySynthTests), so ≈ 0.3 ms per frame, plus one span push. Nothing allocates per frame.
+/// Cost: ≈ 735 frames per 60 Hz frame. The synth renders 1 s of its busiest world (the underglow inside a project, drums and
+/// flight arpeggio) with six effects in ≈ 26 ms (Debug build, SkySynthTests, 2026-11-14), so ≈ 0.45 ms per frame, plus one
+/// span push. Nothing allocates per frame.
 /// </para>
 /// Call the effect methods from the main thread (the same thread as <c>_Process</c>).
 /// </summary>
@@ -133,19 +134,15 @@ public partial class SkyAudio : Node
     public int ChimeCount { get; private set; }
 
     /// <summary>
-    /// A duration near <paramref name="seconds"/> (within <paramref name="maxShiftSeconds"/>) that ends on the music's
-    /// sixteenth-note grid (108 BPM: 0.139 s), so a launch released after it lands on the beat (research E6). Measured in
-    /// synth time, which is the time the release sound is rendered at.
+    /// A duration near <paramref name="seconds"/> (within <paramref name="maxShiftSeconds"/>) that ends on the sixteenth-note
+    /// grid of the music playing then, at its own tempo (94–132 BPM: a sixteenth is 0.16–0.11 s), so a launch released after
+    /// it lands on the beat (research E6). Measured in synth time, which is the time the release sound is rendered at
+    /// (<see cref="SkySynth.AlignToGrid"/>).
     /// </summary>
     public float AlignToSixteenth(float seconds, float maxShiftSeconds)
     {
-        var sixteenth = 60f / SkySynth.TempoBeatsPerMinute / 4f;
-        var now = _synth.FramesRendered / (double)_synth.SampleRateHz;
-        var end = now + seconds;
-        var grid = Math.Round(end / sixteenth) * sixteenth;
-        var shift = (float)(grid - end);
-        if (MathF.Abs(shift) > maxShiftSeconds) shift = 0;
-        return MathF.Max(0.1f, seconds + shift);
+        var aligned = _synth.AlignToGrid(Durations.FromSeconds(seconds), Durations.FromSeconds(maxShiftSeconds));
+        return MathF.Max(0.1f, aligned.ToSecondsF());
     }
 
     public override void _ExitTree()
@@ -178,7 +175,15 @@ public partial class SkyAudio : Node
 
     // ---------------------------------------------------------------- music
 
-    /// <summary>Crossfades the music to a planet theme's key and character over ≈ 2 s.</summary>
+    /// <summary>
+    /// The music of a world, on every arrival: its theme (key), its character (hub, Windows volume, WSL distribution,
+    /// repository, or a folder's depth band) and how many times this folder has been arrived at this session (1 on the
+    /// first). The new world starts on the next beat at its own tempo; hops and returns stay musical (see
+    /// <see cref="SkySynth.SetWorld"/>).
+    /// </summary>
+    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits) => _synth.SetWorld(theme, character, visits);
+
+    /// <summary>Changes the key to a planet theme's and keeps the current world's character (see <see cref="SetWorld"/>).</summary>
     public void SetTheme(PlanetTheme theme) => _synth.SetTheme(theme);
 
     /// <summary>Flight intensity 0..1 (adds the rising arpeggio layer); set it every frame during a launch arc.</summary>
@@ -215,7 +220,7 @@ public partial class SkyAudio : Node
     /// <summary>The flight wind for arc progress 0..1; call every frame while flying. Immediate.</summary>
     public void Fly(float progress01) => _synth.Fly(progress01);
 
-    /// <summary>Arrival: a warm chord and a softer chime ≈ 120 ms later. Tempo-locked (≤ 90 ms).</summary>
+    /// <summary>Arrival: a warm chord and a softer chime ≈ 120 ms later. Tempo-locked (≤ 80 ms at every tempo).</summary>
     public void Arrive() => _synth.Arrive();
 
     /// <summary>Selection tick. Tempo-locked.</summary>
