@@ -561,7 +561,7 @@ public partial class PlanetsProbe : ProbeBase
         await Key(Godot.Key.Escape);
         await Frames(5);
         // The keyboard route: E at the bench.
-        if (!P.OnOverlook) P.ProbeStandOn(ov.Direction, ov.Top);
+        if (!P.StandingOnBench()) P.ProbeStandOn(ov.Direction, ov.Top);
         await Frames(10);
         await Key(Godot.Key.E);
         await Until(() => P.PreviewOpen, 2);

@@ -138,7 +138,8 @@ public partial class PlanetWorld
 
         PoseAvatar(dt);
         var onTop = _current.Comp.Overlook is { } ov && _walker.Support.Value > ov.Top - 0.3f && PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 0.3f;
-        var wantOverlook = onTop || _overlookRequested;
+        // The workbench keeps the chase camera: its cards rise round you and are read close up (the overlook view made them tiny).
+        var wantOverlook = (onTop && !OnBenchWorld) || _overlookRequested;
         if (onTop && !_overlookNoted && !OnBenchWorld)
         {
             _overlookNoted = true;

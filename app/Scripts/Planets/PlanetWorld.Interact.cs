@@ -319,7 +319,7 @@ public partial class PlanetWorld
                 }
             }
 
-            if (_focusItem == null && OnOverlook) _focusTelescope = true;
+            if (_focusItem == null && (OnOverlook || StandingOnBench())) _focusTelescope = true;
         }
 
         if (_focusLauncher is { } l && tree.Contains(l.TargetId))

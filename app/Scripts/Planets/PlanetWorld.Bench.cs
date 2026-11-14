@@ -62,7 +62,7 @@ public partial class PlanetWorld
     }
 
     /// <summary>Standing on the workbench deck now.</summary>
-    private bool StandingOnBench() =>
+    public bool StandingOnBench() =>
         OnBenchWorld && _current!.Comp.Overlook is { } ov && _walker.Grounded && _walker.Support.Value > ov.Top - 0.3f &&
         PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 0.3f;
 
@@ -74,7 +74,7 @@ public partial class PlanetWorld
         _benchPanel.AddThemeStyleboxOverride("panel", style);
         // Bottom right, under the selection card (which sits top right).
         _benchPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-        _benchPanel.OffsetLeft = -420; _benchPanel.OffsetRight = -12; _benchPanel.OffsetTop = -372; _benchPanel.OffsetBottom = -66;
+        _benchPanel.OffsetLeft = -420; _benchPanel.OffsetRight = -12; _benchPanel.OffsetTop = -296; _benchPanel.OffsetBottom = -66;
         root.AddChild(_benchPanel);
         var v = new VBoxContainer();
         v.AddThemeConstantOverride("separation", 6);
@@ -181,6 +181,7 @@ public partial class PlanetWorld
 
         FillBench(tree);
         _benchPanel.Visible = true;
+        _titleTime = MathF.Min(_titleTime, 0.4f); // the arrival title makes way for the cards' names
         GD.Print($"[planets] bench revealed ({how}): {string.Join(", ", _benchEntries.Select(e => $"{tree[e.NodeId].Name} ({e.Role})"))}");
     }
 
@@ -230,8 +231,10 @@ public partial class PlanetWorld
         var (t1, t2) = PlanetShape.Tangents(ov.Direction);
         var rise = Ease(Mathf.Clamp(_benchReveal01 * 1.4f - index * 0.06f, 0, 1));
         var a = _tileSpin + index * Mathf.Tau / Math.Max(1, count);
-        var radius = 0.4f + 2.0f * rise;
-        var height = ov.Top + 0.8f + 1.5f * rise + (index % 2) * 0.35f * rise;
+        // Wide and staggered in height, so their names have room even in a small window (2026-11-14: at 1280×720 only half
+        // the names fitted with a tighter ring).
+        var radius = 0.4f + 2.7f * rise;
+        var height = ov.Top + 0.7f + 0.8f * rise + (index % 3) * 0.45f * rise; // low enough to stay clear of the HUD at the top
         return Gd(surf.PointAt(ov.Direction, height)) + (Gd(t1) * Mathf.Cos(a) + Gd(t2) * Mathf.Sin(a)) * radius;
 
         static float Ease(float x) => 1 - (1 - x) * (1 - x) * (1 - x);
@@ -348,8 +351,11 @@ public partial class PlanetWorld
             var e = _benchEntries.First(x => x.NodeId == id);
             var n = tree[id];
             var where = BenchWhere(id) is { } w ? w.Label : "";
-            _signs.Add(new SignCandidate(-200_000 - id, tile.GlobalPosition + up * 0.5f, n.Name, e.Why + where, TileColor(e.Role).Lightened(0.2f), FileIcons.For(n),
-                _s.Selection.Selected == id || _hovered == id, e.Role == BenchRole.Readme ? 50f : 25f, FixedAnchor: true));
+            var focus = _s.Selection.Selected == id || _hovered == id;
+            // One line each (the panel has the reasons), two for the README and the one selected or pointed at.
+            var detail = focus || e.Role == BenchRole.Readme ? e.Why + where : "";
+            _signs.Add(new SignCandidate(-200_000 - id, tile.GlobalPosition + up * 0.5f, n.Name, detail, TileColor(e.Role).Lightened(0.2f), FileIcons.For(n),
+                focus, e.Role == BenchRole.Readme ? 50f : 25f, FixedAnchor: true));
         }
     }
 
