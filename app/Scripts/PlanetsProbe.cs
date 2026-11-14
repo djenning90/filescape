@@ -660,7 +660,7 @@ public partial class PlanetsProbe : ProbeBase
         var repo = Arg("repo");
         if (string.IsNullOrEmpty(repo))
         {
-            Log("SKIP no --repo given: the repository part of the route is not run");
+            Check(false, "a repository to visit (--repo=…, e.g. the WSL fixture's project): the route is incomplete without it");
             return;
         }
 

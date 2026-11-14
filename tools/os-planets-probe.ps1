@@ -25,26 +25,8 @@ public static class FsClient3 {
 [void][FsClient3]::SetProcessDPIAware()
 $script:Vk['J'] = 0x4A; $script:Vk['T'] = 0x54; $script:Vk['Backspace'] = 0x08; $script:Vk['Enter'] = 0x0D; $script:Vk['Space'] = 0x20
 foreach ($c in [char[]]'ABCDEFGHIKLMNOPRUVXYZ') { $script:Vk[[string]$c] = [int][char]$c }
-Add-Type -AssemblyName System.Windows.Forms
-# Never send input anywhere but the window this script launched (2026-11-14: an Alt-Tab left DJ's window in front and the
-# next drags and keys went there). Every key and mouse action checks the foreground window first and stops the probe if
-# it is not ours. Focus is taken away with a window of the probe's own, never with Alt-Tab.
-function Guard { if ($script:w -and [FsInput]::GetForegroundWindow() -ne $script:w) { throw "FileScape is not the foreground window: stopping before any input goes elsewhere" } }
-function Key-Down($name) { Guard; [FsInput]::Key([uint16]$script:Vk[$name], $false, $script:Extended -contains $name) }
-function Key-Up($name) { [FsInput]::Key([uint16]$script:Vk[$name], $true, $script:Extended -contains $name) }
-function Hold-Key($names, [int]$ms) { foreach ($n in @($names)) { Key-Down $n }; Start-Sleep -Milliseconds $ms; foreach ($n in @($names)) { Key-Up $n } }
-function Mouse-Move([int]$dx, [int]$dy) { Guard; [FsInput]::Mouse(0x0001, $dx, $dy, 0) }
-function Right-Down { Guard; [FsInput]::Mouse(0x0008, 0, 0, 0) }
-function Right-Up { [FsInput]::Mouse(0x0010, 0, 0, 0) }
-# Bring our own window forward without the shared helper's Alt tap (an Alt sent to someone else's window can open its
-# menu bar): ask once, then minimise and restore our window (which activates it). Returns whether it is in front.
-function Focus-Window($h) {
-  [void][FsInput]::ShowWindow($h, 5); [void][FsInput]::SetForegroundWindow($h); Start-Sleep -Milliseconds 300
-  if ([FsInput]::GetForegroundWindow() -eq $h) { return $true }
-  [void][FsInput]::ShowWindow($h, 6); Start-Sleep -Milliseconds 300; [void][FsInput]::ShowWindow($h, 9); Start-Sleep -Milliseconds 300
-  [void][FsInput]::SetForegroundWindow($h); Start-Sleep -Milliseconds 300
-  return ([FsInput]::GetForegroundWindow() -eq $h)
-}
+# Input safety (Guard, Guard-Pointer, held-key release, an Alt-free Focus-Window, focus loss to the probe's own window)
+# lives in os-input-probe.ps1 (2026-11-14).
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $state = Join-Path $Out 'state.json'
 $log = New-Object System.Collections.Generic.List[string]
@@ -53,8 +35,6 @@ function Log($s) { $script:log.Add($s); Write-Host $s }
 function Check($ok, $what) { if ($ok) { Log "PASS OS $what" } else { $script:fails++; Log "FAIL OS $what" } }
 function State { for ($i = 0; $i -lt 20; $i++) { try { $o = Get-Content $state -Raw | ConvertFrom-Json; if ($o) { return $o } } catch { }; Start-Sleep -Milliseconds 50 } }
 function Client-Pos($h, [int]$x, [int]$y) { Guard; $p = New-Object FsClient3+POINT; $p.X = $x; $p.Y = $y; [void][FsClient3]::ClientToScreen($h, [ref]$p); [void][FsInput]::SetCursorPos($p.X, $p.Y); Start-Sleep -Milliseconds 120 }
-function Left-Down { Guard; [FsInput]::Mouse(0x0002, 0, 0, 0) }
-function Left-Up { [FsInput]::Mouse(0x0004, 0, 0, 0) }
 function Client-Click($h, [int]$x, [int]$y) { Client-Pos $h $x $y; Left-Down; Start-Sleep -Milliseconds 60; Left-Up; Start-Sleep -Milliseconds 250 }
 function Client-DoubleClick($h, [int]$x, [int]$y) { Client-Pos $h $x $y; Left-Down; Start-Sleep -Milliseconds 40; Left-Up; Start-Sleep -Milliseconds 90; Left-Down; Start-Sleep -Milliseconds 40; Left-Up; Start-Sleep -Milliseconds 300 }
 # A slow, human drag: press, move in small steps (about 0.5 s), release.
@@ -146,7 +126,7 @@ try {
     Start-Sleep -Milliseconds 1200
     $s = State; Check ($s.planets.folder -eq $hubFolder -and $s.planets.character -eq 'Hub') "route: Backspace again: home at the hub"
     Shot 'route-home' | Out-Null
-    return
+    exit $fails
   }
 
   # The baseline and the defect: a right-drag; then click a toolbar button (it keeps keyboard focus) and right-drag again.
@@ -162,7 +142,7 @@ try {
     Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 500
     $s = State; Log "Esc: listOpen=$($s.planets.listOpen)"
     Drag-Turns 'right' 'right-drag after Esc closed the list' | Out-Null
-    return
+    exit $fails
   }
 
   # PLANET-24: left-drag looks; it never selects, even when it starts on a world; a click selects; a double-click launches.
@@ -205,17 +185,17 @@ try {
   Hold-Key 'T' 60; Start-Sleep -Milliseconds 1800
   $s = State; Check ($s.planets.overview) "T opens the overview"
   $u0 = $s.planets.uniYaw
+  $sel1 = $s.selected
   Client-Pos $w 800 600; Drag 'left' 300 0
   $s = State
   Check ([Math]::Abs($s.planets.uniYaw - $u0) -ge 0.5) "a left-drag orbits the overview (yaw $u0 -> $($s.planets.uniYaw) rad)"
-  $sel1 = $s.selected
   Shot 'overview-after-left-drag' | Out-Null
-  Check ($s.selected -eq $sel1) "the overview drag selects nothing"
+  Check ($s.selected -eq $sel1) "the overview drag selects nothing (selected $sel1 -> $($s.selected))"
   Hold-Key 'T' 60; Start-Sleep -Milliseconds 400; Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 2000
   $s = State; Check (-not $s.planets.overview) "back down on the surface"
   Drag-Turns 'left' 'left-drag after the overview round trip' | Out-Null
-  $own = Lose-Focus-To-Own-Window
-  $s = State; Check ($own -and -not $s.focused) "focus moved to the probe's own window (FileScape focused=$($s.focused))"
+  $away = Lose-Focus-To-Own-Window 900 { Start-Sleep -Milliseconds 300; State }
+  Check ($away.Own -and -not $away.Result.focused) "focus moved to the probe's own window (FileScape focused=$($away.Result.focused), read while it was away)"
   if (-not (Focus-Window $w)) { throw "could not bring FileScape back to the front: stopping" }
   Start-Sleep -Milliseconds 600
   Drag-Turns 'left' 'left-drag after focus left and came back' | Out-Null
@@ -240,6 +220,7 @@ try {
   Shot 'end' | Out-Null
 }
 finally {
+  Release-All-Held
   if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(5000)) { Stop-Process -Id $p.Id } }
   $log | Set-Content (Join-Path $Out 'os-planets.log')
   Log "OS planets probe: $fails failure(s)"

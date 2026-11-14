@@ -851,6 +851,7 @@ public partial class Main : Node3D
         if (_experimentOnly) return;
         if (_experience == Experience.Planets)
         {
+            _planets.PointerBlocked = !_windowFocused || ModalOpen;
             if (_planets.Input(@event)) GetViewport().SetInputAsHandled();
             return;
         }

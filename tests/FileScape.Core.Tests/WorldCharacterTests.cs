@@ -1,3 +1,4 @@
+using System.Numerics;
 using FileScape.Core.Model;
 using FileScape.Core.Planets;
 using FluentAssertions;
@@ -86,5 +87,55 @@ public class WorldCharacterTests
         WorldCharacter.Of(t, t.Find("Drafts").Id, 0).Should().Match<WorldCharacter>(c => c.Kind == WorldKind.Folder && c.Depth == 2 && c.Band == 2);
         WorldCharacter.Of(t, t.Find("Lantern Workshop").Id, 0).Kind.Should().Be(WorldKind.Repository);
         WorldCharacter.Of(t, t.Find("src").Id, 0).InsideRepository.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_repository_has_a_low_workbench_with_no_stepping_stones()
+    {
+        var t = new Spec("proj").Dir(new Spec(".git")).Dir(new Spec("src")).File("README.md").File("a.csproj").Build();
+        var c = PlanetComposer.Compose(t, 0);
+        c.Overlook.Top.Should().Be(PlanetComposer.RepositoryBenchTop);
+        c.Overlook.Steps.Should().BeEmpty("you jump onto the bench");
+        c.Paths.Should().Contain(p => p.TargetId == -1, "a route still leads to it");
+        var plain = PlanetComposer.Compose(new Spec("plain").Dir(new Spec("src")).File("README.md").Build(), 0);
+        plain.Overlook.Steps.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void A_start_folder_under_a_location_root_is_your_home_base()
+    {
+        var t = Computer();
+        var dj = t.Find("dj").Id;
+        var src = t[dj].Children.First(ch => t[ch].Name == "src"); // Ubuntu/home/dj/src, opened directly
+        WorldCharacter.Of(t, src, src).Kind.Should().Be(WorldKind.Hub, "where you started is home, whatever the tree shows above it");
+        WorldCharacter.Of(t, t.Find("filescape").Id, src).Should().Match<WorldCharacter>(c => c.Kind == WorldKind.Repository && c.Depth == 1, "depth counts from where you started");
+        var ubuntu = t.Find("Ubuntu").Id;
+        WorldCharacter.Of(t, ubuntu, ubuntu).Kind.Should().Be(WorldKind.WslRoot, "a root you start at keeps its own character");
+    }
+
+    [Theory]
+    [InlineData(false, false, false)] // walking into it: blocked
+    [InlineData(true, false, true)]   // a tapped hop lands on it
+    [InlineData(true, true, true)]    // a held jump too
+    public void The_workbench_is_reached_by_any_jump_and_not_by_walking(bool jump, bool hold, bool onTop)
+    {
+        var t = new Spec("proj").Dir(new Spec(".git")).File("README.md").Build();
+        var c = PlanetComposer.Compose(t, 0);
+        var ov = c.Overlook;
+        var r = c.Shape.Radius;
+        var w = new FileScape.Core.Planets.SphereWalker();
+        var start = PlanetFrame.Move(ov.Direction, c.Arrival.Up - ov.Direction, ov.Radius + 1.2f, r);
+        Vector3 Toward(Vector3 up) { var d = ov.Direction - up * Vector3.Dot(up, ov.Direction); return Vector3.Normalize(d); }
+        w.Teleport(c.Surface, start, Toward(start));
+        var frame = FileScape.Core.Units.Durations.FromSeconds(1 / 120.0);
+        for (var i = 0; i < 240; i++)
+        {
+            var press = jump && i == 8;
+            var held = jump && hold && i >= 8 && i < 70;
+            w.Update(new SphereWalkInput(Toward(w.Up), false, press, held || press), frame);
+        }
+
+        var onBench = w.Grounded && w.Support.Value > ov.Top - 0.05f;
+        onBench.Should().Be(onTop, $"support {w.Support.Value:0.00} m, deck {ov.Top} m");
     }
 }

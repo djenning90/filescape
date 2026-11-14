@@ -24,7 +24,7 @@ public static class SampleSky
     public const string MarkerName = ".filescape-sample";
 
     /// <summary>The content version written into the marker. Bump it when the generated content changes.</summary>
-    public const int Version = 2; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down
+    public const int Version = 3; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down. 3: waymark notes name the right bands
 
     private const string MarkerMagic = "FileScape sample folder";
     private const string JunctionName = "Shortcut to Garden";
@@ -257,11 +257,9 @@ public static class SampleSky
         Directory.CreateDirectory(Path.Combine(root, "Quiet Moon"));
 
         // Lantern Workshop is a repository (PLANET-27): an empty git repository's own files, so git itself would accept it.
-        Text(root, Path.Combine("Lantern Workshop", ".git", "HEAD"), "ref: refs/heads/main\n");
-        Text(root, Path.Combine("Lantern Workshop", ".git", "config"), "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
-        Text(root, Path.Combine("Lantern Workshop", ".git", "description"), "Lantern, the Starter Sky's tiny sample project.\n");
-        Directory.CreateDirectory(Path.Combine(root, "Lantern Workshop", ".git", "objects"));
-        Directory.CreateDirectory(Path.Combine(root, "Lantern Workshop", ".git", "refs", "heads"));
+        // Written only when there is no .git yet: a refresh never overwrites a repository someone has started using.
+        var git = Path.Combine(root, "Lantern Workshop", ".git");
+        if (!Directory.Exists(git) && !File.Exists(git)) WriteGitSkeleton(root);
 
         // The Long Way Down: six levels, one per step of the journey, so every depth band can be visited (AD-48).
         var path = "Long Way Down";
@@ -270,6 +268,15 @@ public static class SampleSky
             path = Path.Combine(path, name);
             Text(root, Path.Combine(path, "waymark.txt"), note);
         }
+    }
+
+    private static void WriteGitSkeleton(string root)
+    {
+        Text(root, Path.Combine("Lantern Workshop", ".git", "HEAD"), "ref: refs/heads/main\n");
+        Text(root, Path.Combine("Lantern Workshop", ".git", "config"), "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n");
+        Text(root, Path.Combine("Lantern Workshop", ".git", "description"), "Lantern, the Starter Sky's tiny sample project.\n");
+        Directory.CreateDirectory(Path.Combine(root, "Lantern Workshop", ".git", "objects"));
+        Directory.CreateDirectory(Path.Combine(root, "Lantern Workshop", ".git", "refs", "heads"));
     }
 
     private static void Text(string root, string relative, string content) =>
@@ -1668,12 +1675,12 @@ internal static class SampleTexts
     /// <summary>The Long Way Down: six nested folders, each with a waymark note (names and notes original).</summary>
     public static readonly (string Name, string Note)[] LongWayDown =
     [
-        ("Meadow Gate", "Waymark 1 — the outskirts. The path leaves the meadow here. One ring on the waymarker.\n"),
-        ("Fern Trail", "Waymark 2 — the trails. Amber light and a quicker step. Two rings.\n"),
-        ("Old Bridge", "Waymark 3 — still the trails. The tune you heard at the gate comes back, a little changed.\n"),
-        ("Deep Woods", "Waymark 4 — the deep woods. Violet sky, three rings.\n"),
-        ("Hollow Oak", "Waymark 5 — the woods go on. Listen for the gate's tune again.\n"),
-        ("Glowing Spring", "Waymark 6 — the underglow, as deep as this sample goes. Four rings. Backspace takes you home the way you came.\n"),
+        ("Meadow Gate", "Waymark 1 — the trails begin (the Long Way Down itself was the outskirts, one ring). Amber light and a quicker step: two rings.\n"),
+        ("Fern Trail", "Waymark 2 — still the trails. The tune you heard at the gate comes back, a little changed.\n"),
+        ("Old Bridge", "Waymark 3 — the deep woods. Violet sky, three rings.\n"),
+        ("Deep Woods", "Waymark 4 — the woods go on. Listen for the gate's tune again.\n"),
+        ("Hollow Oak", "Waymark 5 — the underglow. Cyan light, four rings.\n"),
+        ("Glowing Spring", "Waymark 6 — still the underglow, as deep as this sample goes. Backspace takes you home the way you came.\n"),
     ];
 
     public static readonly (string Path, string Text)[] Workshop =

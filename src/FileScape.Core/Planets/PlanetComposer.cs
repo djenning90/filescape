@@ -262,16 +262,20 @@ public static class PlanetComposer
     /// <summary>A solid already placed, for gap checks (items, solid scenery, the landmark complex).</summary>
     private readonly record struct Solid(Vector3 Direction, float Radius);
 
-    /// <summary>The repository workbench's deck height, metres: a held jump (peak ≈ 1.22 m) lands on it; walking does not climb it.</summary>
-    public const float RepositoryBenchTop = 1.0f;
+    /// <summary>
+    /// The repository workbench's deck height, metres: above the walker's step height (0.45 m), so walking does not climb
+    /// it, and within a tapped hop's reach (peak ≈ 0.5 m plus the 0.3 m air-ledge tolerance), so any jump lands on it.
+    /// </summary>
+    public const float RepositoryBenchTop = 0.7f;
 
     public static PlanetComposition Compose(FsTree tree, int folderId, PlanetParams? parameters = null, Func<FsNode, bool>? visible = null)
     {
         var p = parameters ?? PlanetParams.Default;
         var folder = tree[folderId];
         if (!folder.IsDirectory) throw new ArgumentException($"#{folderId} is not a directory", nameof(folderId));
-        // A repository's overlook is its workbench (AD-50): low enough for one plain jump.
-        if (WorldCharacter.RepositoryMarker(tree, folder) != null && p.OverlookTop > RepositoryBenchTop) p = p with { OverlookTop = RepositoryBenchTop };
+        // A repository's overlook is its workbench (AD-50): low enough for one plain jump, and no stepping stones (you jump on).
+        var bench = WorldCharacter.RepositoryMarker(tree, folder) != null;
+        if (bench && p.OverlookTop > RepositoryBenchTop) p = p with { OverlookTop = RepositoryBenchTop };
         if (p.StepCount < 1 || p.OverlookTop / (p.StepCount + 1) > p.MaxStepRise + 1e-4f)
         {
             throw new ArgumentException("The overlook's stepping stones would rise more than MaxStepRise.", nameof(parameters));
@@ -367,7 +371,7 @@ public static class PlanetComposer
             var stepAngle = 2 * MathF.Asin(p.StepRadius / ring) * 1.03f; // a hair more than touching: the sphere draws stones together
             var start = Deg(10f); // the first stone faces the arrival, a little away from the landmark (west)
             var rise = p.OverlookTop / (p.StepCount + 1);
-            for (var i = 0; i < p.StepCount; i++)
+            for (var i = 0; i < (bench ? 0 : p.StepCount); i++)
             {
                 var a = start + i * stepAngle;
                 var d = PlanetFrame.Move(overlookDir, north * MathF.Cos(a) + east * MathF.Sin(a), ring, radius);
@@ -442,11 +446,19 @@ public static class PlanetComposer
         }
 
         // The route to the overlook: from the arrival to just outside the first stone.
+        if (steps.Count > 0)
         {
             var foot = steps[0].Direction;
             var outward = foot - overlookDir;
             var footOut = PlanetFrame.Move(foot, outward - foot * Vector3.Dot(outward, foot), p.StepRadius + 0.8f, radius);
             paths.Add(new PlanetPath(-1, [pole, footOut, foot]));
+        }
+        else
+        {
+            // The workbench: the route ends a step from its rim, on the arrival's side (the jump is yours).
+            var towardPole = pole - overlookDir * Vector3.Dot(pole, overlookDir);
+            var foot = PlanetFrame.Move(overlookDir, towardPole, p.OverlookRadius + 0.8f, radius);
+            paths.Add(new PlanetPath(-1, [pole, foot]));
         }
 
         // ---- exclusion zones (no items or solid scenery)

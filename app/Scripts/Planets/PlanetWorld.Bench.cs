@@ -35,6 +35,11 @@ public partial class PlanetWorld
     private Label _benchTitle = null!;
     private ItemList _benchList = null!;
     private readonly List<int> _benchIds = [];
+    private int _benchPreviewId = -1;
+
+    /// <summary>Within a few metres of the bench (on it, jumping from it, or just stepped off).</summary>
+    private bool NearBench() =>
+        OnBenchWorld && _current!.Comp.Overlook is { } ov && PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 2.5f;
 
     /// <summary>The current world is a repository with its workbench.</summary>
     public bool OnBenchWorld => _character.Kind == WorldKind.Repository && _current?.Comp.Overlook != null;
@@ -78,13 +83,13 @@ public partial class PlanetWorld
         _benchList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single, FixedIconSize = new Vector2I(18, 18), FocusMode = Control.FocusModeEnum.None };
         _benchList.ItemSelected += i =>
         {
-            if (i < 0 || i >= _benchIds.Count) return;
+            if (_universe != null || !ReferenceEquals(_s.Tree, _tree) || i < 0 || i >= _benchIds.Count) return;
             _s.Select(_benchIds[(int)i]);
             _audio.Select();
         };
         _benchList.ItemActivated += i =>
         {
-            if (i < 0 || i >= _benchIds.Count) return;
+            if (_universe != null || !ReferenceEquals(_s.Tree, _tree) || i < 0 || i >= _benchIds.Count) return;
             BenchGoTo(_benchIds[(int)i]);
         };
         var hint = new Label
@@ -99,20 +104,32 @@ public partial class PlanetWorld
         v.AddChild(hint);
     }
 
-    /// <summary>A new world: forget the last bench, read this one's project (names only).</summary>
-    private void ResetBench(FsTree tree)
+    /// <summary>
+    /// A new world: forget the last bench and read this one's project (names only). On a recompose of the same world (the
+    /// listing changed under you) the reveal stays: only the entries are re-read and the cards rebuilt.
+    /// </summary>
+    private void ResetBench(FsTree tree, bool recompose = false)
     {
+        var entries = OnBenchWorld && _current != null ? ProjectBench.KeyLocations(tree, _current.FolderId, _s.IsVisible) : [];
+        _benchTiles?.QueueFree();
+        _benchTiles = null;
+        _tiles.Clear();
+        if (recompose && _benchRevealed && OnBenchWorld)
+        {
+            _benchEntries = entries;
+            FillBench(tree);
+            return;
+        }
+
         _benchRevealed = false;
         _benchReveal01 = 0;
         _wasOnBench = false;
         _jumpFromBench = false;
-        _benchTiles?.QueueFree();
-        _benchTiles = null;
-        _tiles.Clear();
+        _benchPreviewId = -1;
         _benchLamp?.QueueFree();
         _benchLamp = null;
         _benchPanel.Visible = false;
-        _benchEntries = OnBenchWorld && _current != null ? ProjectBench.KeyLocations(tree, _current.FolderId, _s.IsVisible) : [];
+        _benchEntries = entries;
     }
 
     /// <summary>Per frame while walking: landing on the bench reveals; a twirl from it reads the README.</summary>
@@ -355,27 +372,31 @@ public partial class PlanetWorld
         _s.Select(readme.NodeId);
         _audio.Open();
         ShowPreview(tree, tree[readme.NodeId]);
+        _benchPreviewId = readme.NodeId;
         if (_current?.Comp.Overlook is { } ov) _landFx.Burst(Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top + 1.2f)), Gd(ov.Direction), new Color(1f, 0.9f, 0.55f));
         var idx = _benchIds.IndexOf(readme.NodeId);
         if (idx >= 0) _benchList.Select(idx);
         GD.Print($"[planets] README read on the bench ({how}): {tree[readme.NodeId].Name}");
     }
 
-    /// <summary>From the bench's panel: go to a key location (stand by a file here, fly to a folder).</summary>
+    /// <summary>From the bench's panel: go to a key location (fly to a folder; stand by a file here; preview one further down).</summary>
     private void BenchGoTo(int id)
     {
-        if (_s.Tree is not { } tree || !tree.Contains(id)) return;
+        if (_universe != null || _s.Tree is not { } tree || !tree.Contains(id)) return;
         var n = tree[id];
         _s.Select(id);
         if (n.IsDirectory || n.Kind == NodeKind.Link)
         {
-            if (_current?.Comp.Launchers.Any(l => l.TargetId == id) == true) Approach(id);
-            else LaunchToSelection();
+            LaunchToSelection(); // leaves from its launcher's bearing when it has one
             return;
         }
 
         if (n.ParentId == _current?.FolderId) Approach(id);
-        else ShowPreview(tree, n); // a file one level down (src/Program.cs): previewed from here
+        else
+        {
+            ShowPreview(tree, n); // a file one level down (src/Program.cs): previewed from here
+            _benchPreviewId = id;
+        }
     }
 
     /// <summary>A click on the workbench itself (when nothing else is hit): the same as landing on it.</summary>
@@ -389,6 +410,9 @@ public partial class PlanetWorld
         var b = oc.Dot(d);
         var disc = b * b - (oc.LengthSquared() - ov.Radius * ov.Radius);
         if (disc < 0) return false;
+        var t = -b - MathF.Sqrt(disc);
+        if (t <= 0) return false; // behind the camera (or the camera is inside it)
+        if (RayPlanet(o, d, _current.Comp.Shape.Radius - 0.3f) is { } ground && ground < t - 0.5f) return false; // the planet is in the way
         RevealBench("click");
         return true;
     }

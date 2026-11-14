@@ -19,6 +19,7 @@
 param([string]$Exe, [string]$Root, [string]$Out, [int]$Cycles = 20, [double]$UiScale = 1, [int]$Launches = 1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
+trap { Release-All-Held; break } # never leave a key or button held down system-wide
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $state = Join-Path $Out 'state.json'
 $prefs = Join-Path $Out 'preferences.json'

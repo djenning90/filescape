@@ -64,8 +64,8 @@ public readonly record struct WorldCharacter(WorldKind Kind, int Depth, int Band
 
     /// <summary>
     /// The character of <paramref name="folderId"/>. <paramref name="startId"/> is where the navigator started (its root):
-    /// it counts as the hub when there is no "This computer" above it, and depth is measured from it when no location root
-    /// lies between. Links take the character of their target when it is in the tree.
+    /// it counts as the hub (unless it is a location root or a repository itself), and depth is measured from it when no
+    /// location root lies between. Links take the character of their target when it is in the tree.
     /// </summary>
     public static WorldCharacter Of(FsTree tree, int folderId, int startId = -1)
     {
@@ -79,6 +79,9 @@ public readonly record struct WorldCharacter(WorldKind Kind, int Depth, int Band
 
         var repo = RepositoryMarker(tree, node);
         if (node.IsHub) return new WorldCharacter(WorldKind.Hub, 0, 0, -1);
+        // The starting folder (the navigator's root) is your home base, whatever the tree shows above it for context (a
+        // path opened directly still has This computer and its drive above it): it is the hub unless it is itself the hub,
+        // a location root or a repository, and depth counts from it (2026-11-14 review: deliberate, see AD-48).
 
         // Depth below the nearest location root or the starting folder; the nearest repository on the way up.
         var depth = 0;

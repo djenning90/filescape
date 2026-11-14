@@ -201,7 +201,13 @@ public partial class PlanetWorld : Node3D
         }
 
         if (_orbiting && (pointerBlocked || !Godot.Input.IsMouseButtonPressed(_orbitButton))) EndOrbit(); // a dialog, focus loss or a lost release
-        if (_leftPress != null && (pointerBlocked || !Godot.Input.IsMouseButtonPressed(MouseButton.Left))) _leftPress = null;
+        if (_leftPress != null && (pointerBlocked || !Godot.Input.IsMouseButtonPressed(MouseButton.Left)))
+        {
+            _leftPress = null;
+            _lastLeftWasDrag = true; // dropped without a click: the next press is not the second of a double-click
+        }
+
+        if (blockedKeys || _universe != null || _phase != Phase.Walking || _hop != null) _keyLook = 0; // no turning on after the keys stop being read
         if (_universe != null)
         {
             UpdateUniverse(tree, dt, blockedKeys);
@@ -348,7 +354,7 @@ public partial class PlanetWorld : Node3D
         }
 
         UpdateDestinations();
-        ResetBench(tree);
+        ResetBench(tree, recompose: arriveFrom == -2);
     }
 
     /// <summary>Built planet visuals kept for a while after you leave (going back and forth reuses them; LRU, keyed by what they show).</summary>

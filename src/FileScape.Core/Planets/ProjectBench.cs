@@ -65,6 +65,7 @@ public static class ProjectBench
             if (list.Count < MaxEntries && list.All(e => e.NodeId != n.Id)) list.Add(new BenchEntry(n.Id, role, why));
         }
 
+        bool Shown(FsNode n) => visible == null || visible(n);
         var files = children.Where(n => n.Kind == NodeKind.File).OrderBy(n => n.Name, NaturalNameOrder.Instance).ToList();
         var dirs = children.Where(n => n.IsDirectory || n.Kind == NodeKind.Link).Where(n => visible == null || visible(n)).OrderBy(n => n.Name, NaturalNameOrder.Instance).ToList();
 
@@ -86,7 +87,7 @@ public static class ProjectBench
 
         // Entry files: here, or one level down in an already listed source folder.
         var sourceDirs = dirs.Where(d => FolderRoles.Any(f => f.Role == BenchRole.Source && f.Name.Equals(d.Name, StringComparison.OrdinalIgnoreCase))).ToList();
-        var entryCandidates = files.Concat(sourceDirs.Where(d => d.IsDirectory).SelectMany(d => d.Children.Select(c => tree[c]).Where(n => n.Kind == NodeKind.File)));
+        var entryCandidates = files.Where(Shown).Concat(sourceDirs.Where(d => d.IsDirectory).SelectMany(d => d.Children.Select(c => tree[c]).Where(n => n.Kind == NodeKind.File && Shown(n))));
         foreach (var e in entryCandidates.Where(n => EntryNames.Contains(n.Name, StringComparer.Ordinal)).Take(2))
         {
             Add(e, BenchRole.Entry, e.ParentId == folderId ? "where it starts" : $"where it starts (in {tree[e.ParentId].Name})");
@@ -97,12 +98,12 @@ public static class ProjectBench
             if (dirs.FirstOrDefault(d => d.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } d) Add(d, role, why);
         }
 
-        foreach (var b in files.Where(n => BuildNames.Contains(n.Name, StringComparer.OrdinalIgnoreCase)).Take(1))
+        foreach (var b in files.Where(Shown).Where(n => BuildNames.Contains(n.Name, StringComparer.OrdinalIgnoreCase)).Take(1))
         {
             Add(b, BenchRole.Build, "build recipe");
         }
 
-        foreach (var l in files.Where(n => n.Name.StartsWith("LICENSE", StringComparison.OrdinalIgnoreCase) || n.Name.StartsWith("COPYING", StringComparison.OrdinalIgnoreCase)).Take(1))
+        foreach (var l in files.Where(Shown).Where(n => n.Name.StartsWith("LICENSE", StringComparison.OrdinalIgnoreCase) || n.Name.StartsWith("COPYING", StringComparison.OrdinalIgnoreCase)).Take(1))
         {
             Add(l, BenchRole.License, "the licence");
         }

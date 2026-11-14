@@ -8,6 +8,7 @@
 param([string]$Exe, [string]$Root, [string]$Out, [switch]$OpenTest)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
+trap { Release-All-Held; break } # never leave a key or button held down system-wide
 Add-Type -TypeDefinition @"
 using System; using System.Runtime.InteropServices;
 public static class FsClient {

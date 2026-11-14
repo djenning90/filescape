@@ -80,7 +80,7 @@ commands below assume `%FS%` is that `FileScape.exe`.
 3. **A real repository.** Press **Ctrl+L** and go to `\\wsl.localhost\Ubuntu-24.04\home\david\src\filescape` (this
    project). It is a repository: the sky has a commit graph among the stars, the overlook is a low **workbench**, and
    the music has its own developer groove from the first bar.
-4. **The workbench.** Walk to it and **jump on** (one plain jump). The project's README and key places rise out of the
+4. **The workbench.** Walk to it and **jump on** (any jump, even a tap). The project's README and key places rise out of the
    bench as a ring of glowing cards, each named with what it is for, and the bench's panel lists them. **Spin**
    (jump from the bench, then Space again in the air): the README opens in the preview. **E** at the bench does the
    same without the jump; clicking the bench reveals; clicking a card selects it, double-clicking goes there.

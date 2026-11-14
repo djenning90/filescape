@@ -39,6 +39,10 @@ public partial class PlanetWorld
     private bool _leftPressDouble;
     private MouseButton _orbitButton = MouseButton.None;
     private bool _pointerBlocked;
+    private bool _lastLeftWasDrag;
+
+    /// <summary>Set by Main as each event arrives (focus can return with the very click that should start a look).</summary>
+    public bool PointerBlocked { set => _pointerBlocked = value; }
 
     /// <summary>How far (screen pixels) a held left button travels before the press is a drag, not a click.</summary>
     public const float DragThresholdPixels = 6f;
@@ -89,7 +93,10 @@ public partial class PlanetWorld
                 }
 
                 _leftPress = press.Position;
-                _leftPressDouble = press.DoubleClick;
+                // A double-click only counts when the press before it was a click too (a drag warps the cursor back to its
+                // start, so a click right after a quick drag would otherwise read as a double-click and launch).
+                _leftPressDouble = press.DoubleClick && !_lastLeftWasDrag;
+                _lastLeftWasDrag = false;
                 return true;
             case InputEventMouseMotion mm when _leftPress is { } from && !_orbiting:
                 if (mm.Position.DistanceTo(from) >= DragThresholdPixels)
@@ -115,6 +122,7 @@ public partial class PlanetWorld
 
     private void BeginOrbit(MouseButton button, Vector2 start)
     {
+        if (button == MouseButton.Left) _lastLeftWasDrag = true;
         _orbiting = true;
         _orbitButton = button;
         _orbitStart = start;
@@ -486,11 +494,14 @@ public partial class PlanetWorld
     private void CloseOverlays()
     {
         _contentsPanel.Visible = false;
+        _benchPanel.Visible = false;
         ClosePreview();
     }
 
     private void CloseOverlaysOnMove()
     {
+        // The README the bench showed stays open while you are at the bench (a spin is a move too).
+        if (_benchPreviewId >= 0 && _s.Selection.Selected == _benchPreviewId && NearBench()) return;
         if (_previewPanel.Visible && _s.Selection.Selected >= 0 && _focusItem?.NodeId != _s.Selection.Selected) ClosePreview();
     }
 

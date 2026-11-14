@@ -13,6 +13,7 @@
 param([string]$Exe, [string]$Root, [string]$Out, [double]$UiScale = 1, [string]$ChainRoot = '')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
+trap { Release-All-Held; break } # never leave a key or button held down system-wide
 Add-Type -TypeDefinition @"
 using System; using System.Runtime.InteropServices;
 public static class FsClient2 {
@@ -158,8 +159,8 @@ Check ($s.locomotion -eq 'Walking' -and $s.grounded -and -not $s.landing -and [m
 # Focus lost while walking: nothing held; still afterwards. Focus goes to a window of the probe's own (2026-11-14: an
 # Alt-Tab brings someone else's window forward, and input meant for FileScape could land there).
 Key-Down 'W'; Start-Sleep -Milliseconds 300
-$own = Lose-Focus-To-Own-Window 800; Key-Up 'W'
-$s = State
+$away = Lose-Focus-To-Own-Window 800 { Key-Up 'W'; Start-Sleep -Milliseconds 300; State }
+$own = $away.Own; $s = $away.Result
 Check ($own -and -not $s.focused -and $s.held.Count -eq 0 -and -not $s.lookCaptured) "focus lost while walking (to the probe's own window): nothing held or captured"
 Focus-Window $w; Start-Sleep -Milliseconds 700
 $before = (State).pos; Start-Sleep -Milliseconds 600; $after = (State).pos
