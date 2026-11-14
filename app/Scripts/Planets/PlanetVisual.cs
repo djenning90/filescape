@@ -25,6 +25,9 @@ public partial class PlanetVisual : Node3D
     private readonly PlanetComposition _comp;
     private readonly PlanetPalette _pal;
     private readonly bool _full;
+    private readonly WorldCharacter _character;
+    private MeshInstance3D? _cursor;
+    private static readonly Dictionary<string, ArrayMesh> CharacterMeshes = [];
     private readonly Dictionary<int, Node3D> _launchers = [];
     private readonly Dictionary<int, (MeshInstance3D Mesh, PlanetItem Item, FileArt Art)> _items = [];
     private readonly Dictionary<int, float> _rings = [];
@@ -43,6 +46,7 @@ public partial class PlanetVisual : Node3D
         FileMeshes.Clear();
         DecorationMeshes.Clear();
         LandmarkMeshes.Clear();
+        CharacterMeshes.Clear();
         _launcherArt = null;
         _overlookMesh = null;
     }
@@ -50,9 +54,10 @@ public partial class PlanetVisual : Node3D
     /// <summary>Where the build time went (diagnostics).</summary>
     public string BuildTimes { get; private set; } = "";
 
-    public PlanetVisual(FsTree tree, PlanetComposition comp, Quality quality, bool full, PlanetArt.GroundArrays? ground = null)
+    public PlanetVisual(FsTree tree, PlanetComposition comp, Quality quality, bool full, PlanetArt.GroundArrays? ground = null, WorldCharacter character = default)
     {
         _comp = comp;
+        _character = character;
         _full = full;
         _pal = PlanetArt.Palette(comp.Theme);
         Name = full ? "PlanetVisual" : "PlanetPreview";
@@ -74,13 +79,36 @@ public partial class PlanetVisual : Node3D
 
         if (comp.Landmark is { } lm)
         {
-            if (!LandmarkMeshes.TryGetValue(comp.Theme, out var mesh)) LandmarkMeshes[comp.Theme] = mesh = PlanetArt.Landmark(comp.Theme);
-            AddChild(new MeshInstance3D { Name = "Landmark", Mesh = mesh, Transform = Stand(surf, lm.Direction, PlanetFrame.North(lm.Direction), 1f, sink: 0.15f) });
+            // A root's landmark is its gateway (AD-48): the Windows volume's pane gate, the WSL distribution's terminal monolith.
+            var gate = _character.Kind switch
+            {
+                WorldKind.WindowsRoot => Shared("pane-gateway", () => PlanetArt.PaneGateway(_pal)),
+                WorldKind.WslRoot => Shared("terminal-monolith", () => PlanetArt.TerminalMonolith(_pal)),
+                _ => null,
+            };
+            if (gate == null && !LandmarkMeshes.TryGetValue(comp.Theme, out gate)) LandmarkMeshes[comp.Theme] = gate = PlanetArt.Landmark(comp.Theme);
+            // Gateways face the arrival.
+            var facing = PlanetFrame.North(lm.Direction);
+            if (_character.Kind is WorldKind.WindowsRoot or WorldKind.WslRoot)
+            {
+                var toArrival = comp.Arrival.Up - lm.Direction * NVector3.Dot(comp.Arrival.Up, lm.Direction);
+                if (toArrival.LengthSquared() > 1e-6f) facing = -NVector3.Normalize(toArrival);
+            }
+
+            var landmark = new MeshInstance3D { Name = "Landmark", Mesh = gate, Transform = Stand(surf, lm.Direction, facing, 1f, sink: 0.15f) };
+            AddChild(landmark);
+            if (_character.Kind == WorldKind.WslRoot)
+            {
+                var (cursorMesh, at) = PlanetArt.TerminalCursor();
+                _cursor = new MeshInstance3D { Name = "Cursor", Mesh = cursorMesh, Position = at };
+                landmark.AddChild(_cursor);
+            }
         }
 
         var tGround = sw.Elapsed.TotalMilliseconds;
         if (!full) return;
         BuildOverlook(surf);
+        BuildWaymarker(surf);
         BuildLaunchers(tree, surf);
         BuildRingLights(surf);
         var tLaunch = sw.Elapsed.TotalMilliseconds;
@@ -93,6 +121,27 @@ public partial class PlanetVisual : Node3D
         BuildTimes = $"ground+landmark {tGround:0} ms, overlook+launchers {tLaunch - tGround:0}, items {tItems - tLaunch:0}, decorations {tDeco - tItems:0}, signs+belt {sw.Elapsed.TotalMilliseconds - tDeco:0}";
         _selectRing = Ring(new Color(1f, 0.9f, 0.5f), 1.6f);
         _focusRing = Ring(new Color(0.75f, 0.9f, 1f), 0.9f);
+    }
+
+    private static ArrayMesh Shared(string key, Func<ArrayMesh> build)
+    {
+        if (!CharacterMeshes.TryGetValue(key, out var m)) CharacterMeshes[key] = m = build();
+        return m;
+    }
+
+    /// <summary>
+    /// The depth band's waymarker (AD-48) beside the arrival, ahead and to the left, inside the meadow (the first launcher
+    /// ring is 9 m out): one glowing ring per band, a teal bead inside a project.
+    /// </summary>
+    private void BuildWaymarker(PlanetSurface surf)
+    {
+        if (_character.Kind != WorldKind.Folder) return;
+        var up = _comp.Arrival.Up;
+        var facing = _comp.Arrival.Facing;
+        var left = NVector3.Normalize(NVector3.Cross(up, facing));
+        var r = _comp.Shape.Radius;
+        var dir = PlanetFrame.Move(PlanetFrame.Move(up, facing, 3.4f, r), left, 2.6f, r);
+        AddChild(new MeshInstance3D { Name = "Waymarker", Mesh = Shared($"waymarker-{_character.Band}-{_character.InsideRepository}", () => PlanetArt.Waymarker(_character.Band, _character.InsideRepository)), Transform = Stand(surf, dir, facing, 1f, sink: 0.12f) });
     }
 
     /// <summary>Stands a prop on the ground at a direction, facing a tangent, scaled; its base slightly sunk so it never floats on hills.</summary>
@@ -112,8 +161,9 @@ public partial class PlanetVisual : Node3D
     private void BuildOverlook(PlanetSurface surf)
     {
         if (_comp.Overlook is not { } ov) return;
-        _overlookMesh ??= PlanetArt.Overlook();
-        AddChild(new MeshInstance3D { Name = "Overlook", Mesh = _overlookMesh, Transform = Stand(surf, ov.Direction, PlanetFrame.North(ov.Direction), ov.Radius / 2.2f, sink: 0.1f) });
+        // On a repository world the overlook is the workbench (AD-50).
+        var mesh = _character.Kind == WorldKind.Repository ? Shared($"workbench-{ov.Top:0.00}", () => PlanetArt.Workbench(_pal, ov.Top)) : _overlookMesh ??= PlanetArt.Overlook();
+        AddChild(new MeshInstance3D { Name = _character.Kind == WorldKind.Repository ? "Workbench" : "Overlook", Mesh = mesh, Transform = Stand(surf, ov.Direction, PlanetFrame.North(ov.Direction), ov.Radius / 2.2f, sink: 0.1f) });
         var i = 0;
         foreach (var step in ov.Steps)
         {
@@ -285,6 +335,7 @@ public partial class PlanetVisual : Node3D
     public void Animate(float dt, NVector3 camera, int selected, int focus)
     {
         _time += dt;
+        if (_cursor != null) _cursor.Visible = (_time % 1.06f) < 0.6f; // the terminal's cursor blinks
         if (!_full) return;
         var surf = _comp.Surface;
         foreach (var (id, node) in _launchers)

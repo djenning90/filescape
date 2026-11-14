@@ -97,7 +97,7 @@ public sealed record LauncherArt(ArrayMesh Pad, ArrayMesh Core, IReadOnlyList<Ar
 /// −Z and its base is at y = 0. Meshes carry vertex colours; vertex alpha below 1 marks glowing parts (see
 /// planet_toon.gdshader). Builders allocate a new mesh per call; callers cache them.
 /// </summary>
-public static class PlanetArt
+public static partial class PlanetArt
 {
     // ------------------------------------------------------------------ palettes
 

@@ -128,6 +128,7 @@ public partial class PlanetWorld
                 break;
         }
 
+        UpdateBench(dt, ev.Kind);
         if (_walker.Footsteps != _lastFootsteps)
         {
             _lastFootsteps = _walker.Footsteps;
@@ -138,7 +139,7 @@ public partial class PlanetWorld
         PoseAvatar(dt);
         var onTop = _current.Comp.Overlook is { } ov && _walker.Support.Value > ov.Top - 0.3f && PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 0.3f;
         var wantOverlook = onTop || _overlookRequested;
-        if (onTop && !_overlookNoted)
+        if (onTop && !_overlookNoted && !OnBenchWorld)
         {
             _overlookNoted = true;
             _audio.Inspect();

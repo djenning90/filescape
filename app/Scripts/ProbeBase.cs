@@ -64,6 +64,9 @@ public abstract partial class ProbeBase : Node
             Unicode = pressed && !ctrl && key is >= Godot.Key.A and <= Godot.Key.Z ? char.ToLowerInvariant((char)key) : 0,
         });
 
+    /// <summary>Holds or releases a key (both its logical and physical code).</summary>
+    protected static void HoldKey(Key key, bool down) => Key1(key, down);
+
     protected async Task Key(Key key)
     {
         Key1(key, true);

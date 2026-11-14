@@ -78,6 +78,7 @@ public partial class PlanetsProbe : ProbeBase
         if (Mode == "planets-fixture") await FixtureTour();
         else if (Mode == "planets-discover") await DiscoverOnly();
         else if (Mode == "planets-flows") await Flows();
+        else if (Mode == "planets-route") await Route();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
@@ -490,6 +491,114 @@ public partial class PlanetsProbe : ProbeBase
         for (var i = 0; i < steps; i++) { Motion(pixels / steps); await Frames(1); }
         Mouse(MouseButton.Right, false, centre);
         await Frames(2);
+    }
+
+    /// <summary>
+    /// --automate=planets-route (Starter Sky, PLANET-27..30): the hub, into the repository (Lantern Workshop), onto its
+    /// workbench by a real jump (reveal), a spin from it (README), E there (README again), into a child folder (inside the
+    /// project), back, then down the Long Way Down through every depth band, and home. Each world's character is checked
+    /// and photographed.
+    /// </summary>
+    private async Task Route()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        await Seconds(3.5); // the establishing shot
+        var root = App.Navigator.Current;
+        Check(P.Character.Kind == WorldKind.Hub, $"the Starter Sky is the hub here: {P.Character.Describe()}");
+        await Shot("route-hub");
+
+        async Task Go(int id, string what)
+        {
+            App.Selection.Select(id); // [direct] the selection a click makes
+            await Frames(2);
+            await Fly(Godot.Key.G, id, what);
+            await Seconds(1.2);
+        }
+
+        var workshop = Child(root, "Lantern Workshop");
+        await Go(workshop, "Lantern Workshop");
+        var c = P.Character;
+        Check(c.Kind == WorldKind.Repository && P.OnBenchWorld, $"Lantern Workshop is a repository with a workbench: {c.Describe()}");
+        Check(P.Composition!.Overlook.Top <= PlanetComposer.RepositoryBenchTop + 1e-3f, F($"the workbench is low: {P.Composition.Overlook.Top:0.00} m"));
+        Check(P.BenchEntries.Count >= 5 && Tree[P.BenchEntries[0].NodeId].Name == "README.md", $"the bench reads the project: {string.Join(", ", P.BenchEntries.Select(e => $"{Tree[e.NodeId].Name} ({e.Role})"))}");
+        await Shot("route-repository-arrival");
+
+        // A real jump onto the bench: stand a step from its edge, face it, run and jump.
+        var ov = P.Composition.Overlook;
+        var r = P.Composition.Shape.Radius;
+        var near = PlanetFrame.Move(ov.Direction, P.Walker.Up - ov.Direction, ov.Radius + 1.4f, r);
+        var toward = ov.Direction - near * System.Numerics.Vector3.Dot(ov.Direction, near);
+        P.Walker.Teleport(P.Composition.Surface, near, System.Numerics.Vector3.Normalize(toward));
+        P.FaceCameraAlong(System.Numerics.Vector3.Normalize(toward));
+        await Frames(10);
+        Check(!P.BenchRevealed, "nothing is revealed before you get onto the bench");
+        HoldKey(Godot.Key.W, true);
+        await Frames(6);
+        await Key(Godot.Key.Space);
+        await Until(() => P.BenchRevealed, 3);
+        HoldKey(Godot.Key.W, false);
+        await Until(() => P.Walker.Grounded, 2);
+        await Frames(10);
+        Check(P.BenchRevealed && P.BenchPanelOpen, $"jumping onto the bench reveals the project's key places (panel open: {P.BenchPanelOpen})");
+        await Seconds(1.2);
+        var named = P.BenchEntries.Count(e => App.Signs.ShownIds.Contains(-200_000 - e.NodeId));
+        Check(named >= P.BenchEntries.Count - 1, $"the key places rise over the bench, named: {named} of {P.BenchEntries.Count} ({string.Join(" | ", App.Signs.ShownText.Values.Take(10))})");
+        await Shot("route-bench-revealed");
+        Check(!P.PreviewOpen, "landing reveals; it does not open anything");
+
+        // The spin: jump from the bench and twirl.
+        await Key(Godot.Key.Space);
+        await Frames(12);
+        await Key(Godot.Key.Space);
+        await Until(() => P.PreviewOpen, 2);
+        await Until(() => P.Walker.Grounded, 3);
+        var readme = P.BenchEntries[0].NodeId;
+        Check(P.PreviewOpen && App.Selection.Selected == readme, $"a spin from the bench opens the README preview (selected {Tree[App.Selection.Selected >= 0 ? App.Selection.Selected : root].Name})");
+        Check(App.ShellLog.Count == 0, $"nothing was opened with Windows ({App.ShellLog.Count} shell requests)");
+        await Shot("route-bench-spin-readme");
+        await Key(Godot.Key.Escape);
+        await Frames(5);
+        // The keyboard route: E at the bench.
+        if (!P.OnOverlook) P.ProbeStandOn(ov.Direction, ov.Top);
+        await Frames(10);
+        await Key(Godot.Key.E);
+        await Until(() => P.PreviewOpen, 2);
+        Check(P.PreviewOpen && App.Selection.Selected == readme, $"E at the bench does the same (prompt was \"{P.PromptText}\")");
+        await Key(Godot.Key.Escape);
+        await Frames(5);
+
+        // Into a child folder of the project, then back.
+        var src = Child(workshop, "src");
+        await Go(src, "src");
+        c = P.Character;
+        Check(c.Kind == WorldKind.Folder && c.InsideRepository && c.RepositoryId == workshop, $"src is a folder inside the project: {c.Describe()} (band {c.Band})");
+        await Shot("route-inside-project");
+        await Key(Godot.Key.Backspace);
+        await Until(() => App.Navigator.Current == workshop && !P.Busy, 10);
+        await Seconds(1);
+        Check(P.Arrivals(workshop) >= 2, $"back at the workshop: arrival {P.Arrivals(workshop)} (the music develops on a return)");
+        await Key(Godot.Key.Backspace);
+        await Until(() => App.Navigator.Current == root && !P.Busy, 10);
+        await Seconds(1);
+        Check(P.Character.Kind == WorldKind.Hub, "home at the hub");
+
+        // The Long Way Down: every depth band in turn.
+        var at = Child(root, "Long Way Down");
+        var bands = new List<int>();
+        for (var depth = 1; depth <= 7 && at >= 0; depth++)
+        {
+            await Go(at, Tree[at].Name);
+            bands.Add(P.Character.Band);
+            if (depth is 1 or 2 or 4 or 7) await Shot($"route-band-{P.Character.Band}-depth-{depth}");
+            at = Tree[at].Children.FirstOrDefault(ch => Tree[ch].IsDirectory, -1);
+        }
+
+        Check(bands.SequenceEqual([1, 2, 2, 3, 3, 4, 4]), $"the Long Way Down passes every band in order: {string.Join(" ", bands)}");
+        await KeyCombo(Godot.Key.Home, ctrl: true);
+        await Until(() => App.Navigator.Current == root && !P.Busy, 15);
+        await Seconds(1);
+        Check(P.Character.Kind == WorldKind.Hub, "Ctrl+Home: back to the hub");
     }
 
     /// <summary>--automate=planets-flows (Starter Sky): discovery on a crowded world, labels while the camera turns, the overview.</summary>

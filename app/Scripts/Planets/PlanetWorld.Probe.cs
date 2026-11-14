@@ -114,6 +114,17 @@ public partial class PlanetWorld
     public bool UniverseKnows(int id) => _uniIndex.ContainsKey(id);
 
     /// <summary>[direct] Stands the traveller on a raised top (the overlook) at a surface direction.</summary>
+    /// <summary>Turns the chase camera to look along a surface direction (probes).</summary>
+    public void FaceCameraAlong(NVector3 tangent)
+    {
+        var up = Gd(_walker.Up);
+        var f = Gd(tangent);
+        f -= up * f.Dot(up);
+        if (f.LengthSquared() > 1e-6f) _camFwd = f.Normalized();
+        _sinceOrbitSeconds = 0;
+        SnapCamera();
+    }
+
     public void ProbeStandOn(NVector3 up, float top)
     {
         if (_current == null) return;

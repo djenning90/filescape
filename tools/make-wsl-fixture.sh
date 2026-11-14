@@ -4,7 +4,7 @@
 #   tools/make-wsl-fixture.sh --delete <dir>
 # Contents: case pairs (Notes/notes, README.md/readme.md), Linux symlinks (to a folder, a file, a missing target,
 # an absolute path, a loop, and /mnt/c), a FIFO, an executable script (never run by FileScape), and a small project
-# (Cargo.toml + README.md + src/). Only this directory is created or deleted.
+# (Cargo.toml + README.md + src/ + docs/, a real git repository) with a linked worktree. Only this directory is created or deleted.
 set -euo pipefail
 if [[ "${1:-}" == "--delete" ]]; then
   d="${2:?dir}"; [[ -f "$d/.filescape-wsl-fixture" ]] || { echo "refusing: $d is not a FileScape WSL fixture" >&2; exit 2; }
@@ -33,6 +33,15 @@ mkfifo pipe
 printf '[package]\nname = "demo"\nversion = "0.1.0"\n' > project/Cargo.toml
 echo "# Demo project" > project/README.md
 echo 'fn main() {}' > project/src/main.rs
-mkdir -p project/.git && echo "ref: refs/heads/main" > project/.git/HEAD
+mkdir -p project/docs && echo "# Notes" > project/docs/notes.md
+# A real repository (git init + one commit by a fixture identity) and a linked worktree, whose .git is a file (PLANET-27).
+if command -v git >/dev/null 2>&1; then
+  git -C project init -q -b main
+  git -C project add -A
+  git -C project -c user.name=fixture -c user.email=fixture@example.invalid commit -qm "fixture"
+  git -C project worktree add -q ../project-worktree -b side
+else
+  mkdir -p project/.git && echo "ref: refs/heads/main" > project/.git/HEAD
+fi
 distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
 echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"

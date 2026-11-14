@@ -34,7 +34,15 @@ public partial class PlanetWorld : Node3D
     private Camera3D _camera = null!;
     private AvatarRig _avatar = null!;
     private SkyAudio _audio = null!;
-    private readonly Dictionary<PlanetTheme, Godot.Environment> _environments = [];
+    private readonly Dictionary<(PlanetTheme, WorldKind, int, bool), Godot.Environment> _environments = [];
+    private WorldCharacter _character;
+    private readonly Dictionary<int, int> _arrivals = [];
+
+    /// <summary>The current world's character (PLANET-27).</summary>
+    public WorldCharacter Character => _character;
+
+    /// <summary>How many times a folder's world has been arrived at in this session (the music develops with it).</summary>
+    public int Arrivals(int folderId) => _arrivals.GetValueOrDefault(folderId);
     private WorldEnvironment? _worldEnv;
     private DirectionalLight3D? _sun;
     private Godot.Environment? _savedEnvironment;
@@ -153,7 +161,7 @@ public partial class PlanetWorld : Node3D
     public void ApplyQuality(Quality q)
     {
         _quality = q;
-        if (_current != null) ApplyAtmosphere(_current.Comp.Theme);
+        if (_current != null) ApplyAtmosphere(_current.Comp.Theme, _character);
     }
 
     // ------------------------------------------------------------------ per frame
@@ -329,7 +337,9 @@ public partial class PlanetWorld : Node3D
         _current.Node.Transform = Transform3D.Identity;
         BuildNeighbours(tree, keep);
         UpdateRouteBeads();
-        ApplyAtmosphere(comp.Theme);
+        var character = CharacterOf(folderId);
+        ApplyAtmosphere(comp.Theme, character);
+        if (arriveFrom != -2) _arrivals[folderId] = _arrivals.GetValueOrDefault(folderId) + 1;
         _audio.SetTheme(comp.Theme);
         if (arriveFrom != -2)
         {
@@ -338,6 +348,7 @@ public partial class PlanetWorld : Node3D
         }
 
         UpdateDestinations();
+        ResetBench(tree);
     }
 
     /// <summary>Built planet visuals kept for a while after you leave (going back and forth reuses them; LRU, keyed by what they show).</summary>
@@ -346,7 +357,10 @@ public partial class PlanetWorld : Node3D
 
     public double LastBuildMs { get; private set; }
 
-    private static string VisualKey(Body b, bool full) => $"{b.FolderId}:{b.Comp.Signature}:{(full ? 1 : 0)}";
+    private string VisualKey(Body b, bool full) => $"{b.FolderId}:{b.Comp.Signature}:{(full ? 1 : 0)}:{CharacterOf(b.FolderId)}";
+
+    /// <summary>The character of a folder's world (PLANET-27): what kind of place it is, from the tree and where you started.</summary>
+    public WorldCharacter CharacterOf(int folderId) => _s.Tree is { } t && t.Contains(folderId) ? WorldCharacter.Of(t, folderId, _s.Navigator.Root) : new WorldCharacter(WorldKind.Folder, 1, 1, -1);
 
     private PlanetVisual TakeOrBuild(FsTree tree, Body body, bool full)
     {
@@ -364,7 +378,7 @@ public partial class PlanetWorld : Node3D
         var ground = full ? GroundAsync(body.Comp, full) : null;
         var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
         var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), 3);
-        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays) { Name = key };
+        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
         if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
         return built;
@@ -583,20 +597,23 @@ public partial class PlanetWorld : Node3D
 
     // ------------------------------------------------------------------ atmosphere
 
-    private void ApplyAtmosphere(PlanetTheme theme)
+    private void ApplyAtmosphere(PlanetTheme theme, WorldCharacter character = default)
     {
         if (_worldEnv == null) return;
         var pal = PlanetArt.Palette(theme);
-        if (!_environments.TryGetValue(theme, out var env))
+        var key = (theme, character.Kind, character.Band, character.InsideRepository);
+        if (!_environments.TryGetValue(key, out var env))
         {
-            _environments[theme] = env = PlanetArt.SkyEnvironment(pal);
+            _environments[key] = env = PlanetArt.SkyEnvironment(pal, character);
         }
+
+        _character = character;
 
         _worldEnv.Environment = env;
         if (_sun != null)
         {
             _sun.Visible = true;
-            _sun.LightColor = pal.Sun;
+            _sun.LightColor = pal.Sun.Lerp(PlanetArt.Look(character).Sun, 0.5f);
             _sun.LightEnergy = 1.15f;
             _sun.RotationDegrees = new Godot.Vector3(-38, 35, 0);
             _sun.ShadowEnabled = _quality == Quality.High;

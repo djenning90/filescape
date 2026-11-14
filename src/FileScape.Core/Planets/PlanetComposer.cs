@@ -262,11 +262,16 @@ public static class PlanetComposer
     /// <summary>A solid already placed, for gap checks (items, solid scenery, the landmark complex).</summary>
     private readonly record struct Solid(Vector3 Direction, float Radius);
 
+    /// <summary>The repository workbench's deck height, metres: a held jump (peak ≈ 1.22 m) lands on it; walking does not climb it.</summary>
+    public const float RepositoryBenchTop = 1.0f;
+
     public static PlanetComposition Compose(FsTree tree, int folderId, PlanetParams? parameters = null, Func<FsNode, bool>? visible = null)
     {
         var p = parameters ?? PlanetParams.Default;
         var folder = tree[folderId];
         if (!folder.IsDirectory) throw new ArgumentException($"#{folderId} is not a directory", nameof(folderId));
+        // A repository's overlook is its workbench (AD-50): low enough for one plain jump.
+        if (WorldCharacter.RepositoryMarker(tree, folder) != null && p.OverlookTop > RepositoryBenchTop) p = p with { OverlookTop = RepositoryBenchTop };
         if (p.StepCount < 1 || p.OverlookTop / (p.StepCount + 1) > p.MaxStepRise + 1e-4f)
         {
             throw new ArgumentException("The overlook's stepping stones would rise more than MaxStepRise.", nameof(parameters));

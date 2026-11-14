@@ -61,7 +61,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     public void The_tree_has_the_curated_structure_and_counts()
     {
         Files(sky.Root).Should().BeEquivalentTo(SampleSky.MarkerName, "README.md", "notes.txt", "sky-map.png");
-        var expectedDirs = new[] { "Constellations", "Garden Photos", "Lantern Workshop", "Letters", "Music Box", "Quiet Moon", "Star Archive" };
+        var expectedDirs = new[] { "Constellations", "Garden Photos", "Lantern Workshop", "Letters", "Long Way Down", "Music Box", "Quiet Moon", "Star Archive" };
         Dirs(sky.Root).Except(["Shortcut to Garden"]).Should().BeEquivalentTo(expectedDirs);
 
         File.ReadAllLines(P("README.md")).Count(l => l.Length > 0 && !l.StartsWith('#')).Should().BeInRange(3, 6);
@@ -74,7 +74,20 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
         Directory.GetFiles(P("Lantern Workshop"), "*", NoLinks)
             .Select(f => Path.GetRelativePath(P("Lantern Workshop"), f).Replace('\\', '/'))
             .Should().BeEquivalentTo("README.md", "Lantern.csproj", "Lantern.sln", "src/Lantern.cs", "src/Wick.cs", "src/Glow.cs",
-                "tests/LanternTests.cs", "docs/design.md", ".gitignore");
+                "tests/LanternTests.cs", "docs/design.md", ".gitignore", ".git/HEAD", ".git/config", ".git/description");
+        Directory.Exists(P("Lantern Workshop", ".git", "objects")).Should().BeTrue("an empty repository git would accept");
+        Directory.Exists(P("Lantern Workshop", ".git", "refs", "heads")).Should().BeTrue();
+
+        // The Long Way Down: six nested folders, each with its waymark (every depth band).
+        var down = P("Long Way Down");
+        for (var depth = 1; depth <= 6; depth++)
+        {
+            Directory.GetDirectories(down).Should().HaveCount(1, $"one way on at depth {depth}");
+            down = Directory.GetDirectories(down)[0];
+            File.Exists(Path.Combine(down, "waymark.txt")).Should().BeTrue();
+        }
+
+        Directory.GetDirectories(down).Should().BeEmpty();
 
         Files(P("Music Box")).Where(n => n.EndsWith(".wav")).Should().HaveCount(6);
         Files(P("Music Box")).Should().Contain(["playlist.m3u", "liner-notes.txt"]).And.HaveCount(8);

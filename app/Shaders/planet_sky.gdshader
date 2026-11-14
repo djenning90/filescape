@@ -12,6 +12,17 @@ uniform float star_brightness = 1.8;
 uniform float twinkle_speed = 1.0;          // twinkle rate multiplier (radians per second at 1)
 uniform vec3 band_normal = vec3(0.35, 0.62, 0.7);
 uniform vec3 galaxy_color : source_color = vec3(1.0, 0.86, 0.95);
+// World character (PLANET-28, AD-48): a few sky details that say what kind of place this is.
+uniform vec3 dawn_color : source_color = vec3(1.0, 0.7, 0.45);   // the hub: a warm dawn low on one side, journeys ahead
+uniform float dawn_strength = 0.0;
+uniform vec3 dawn_dir = vec3(0.8, 0.05, -0.6);
+uniform vec3 aurora_color : source_color = vec3(0.3, 0.8, 1.0);  // roots: aurora curtains over the gateway
+uniform vec3 aurora_color_b : source_color = vec3(0.6, 0.4, 1.0);
+uniform float aurora_strength = 0.0;
+uniform float lattice_strength = 0.0;                            // a Windows volume: faint window panes of light
+uniform float scan_strength = 0.0;                               // a WSL distribution: a phosphor shimmer of scanlines
+uniform float graph_strength = 0.0;                              // a repository: a commit graph among the stars
+uniform vec3 graph_color : source_color = vec3(0.45, 1.0, 0.8);
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.11, 0.17, 0.13));
@@ -75,6 +86,52 @@ vec3 galaxy(vec3 dir, vec3 centre, vec3 axis, float size, float tilt) {
 	return galaxy_color * (disc * 0.35 + core * 0.9);
 }
 
+
+// Aurora: soft vertical curtains along a ring round the sky, rippling slowly.
+vec3 aurora(vec3 dir, float time) {
+	float lat = dir.y;
+	float lon = atan(dir.z, dir.x);
+	float wave = sin(lon * 3.0 + time * 0.15) * 0.08 + sin(lon * 7.0 - time * 0.23) * 0.04;
+	float band = exp(-pow((lat - 0.32 - wave) / 0.14, 2.0));
+	float rays = 0.55 + 0.45 * sin(lon * 38.0 + vnoise(vec3(lon * 4.0, time * 0.2, 0.0)) * 6.0);
+	float fade = smoothstep(-0.05, 0.25, lat);
+	vec3 c = mix(aurora_color, aurora_color_b, smoothstep(0.2, 0.55, lat + wave));
+	return c * band * rays * fade;
+}
+
+// A commit graph: three branch lines of beads across one part of the sky, joined where they merge.
+float segment(vec3 dir, vec3 a, vec3 b, float w) {
+	a = normalize(a); b = normalize(b);
+	vec3 n = normalize(cross(a, b));
+	float off = abs(dot(dir, n));
+	vec3 d = dir - n * dot(dir, n);
+	float inside = step(0.0, dot(cross(a, d), n)) * step(0.0, dot(cross(d, b), n)) * step(0.0, dot(d, a + b));
+	return smoothstep(w, w * 0.3, off) * inside;
+}
+float bead(vec3 dir, vec3 c, float r) { return exp(-pow(acos(clamp(dot(dir, normalize(c)), -1.0, 1.0)) / r, 2.0)); }
+vec3 graph(vec3 dir, float time) {
+	vec3 base = vec3(-0.75, 0.5, -0.45);
+	vec3 right = normalize(cross(base, vec3(0.0, 1.0, 0.0)));
+	vec3 up = normalize(cross(right, base));
+	float g = 0.0;
+	float beads = 0.0;
+	for (int i = 0; i < 7; i++) {
+		float x = float(i) * 0.09 - 0.27;
+		vec3 p = base + right * x;
+		vec3 q = base + right * (x + 0.09);
+		g += segment(dir, p, q, 0.0022);
+		beads += bead(dir, p, 0.007);
+		if (i == 1 || i == 4) {
+			vec3 bp = p + up * 0.08;
+			vec3 bq = base + right * (x + 0.18) + up * 0.08;
+			g += segment(dir, p, bp, 0.0018) + segment(dir, bp, bq, 0.0018) + segment(dir, bq, base + right * (x + 0.27), 0.0018);
+			beads += bead(dir, bp, 0.006) + bead(dir, bq, 0.006);
+		}
+	}
+	float pulse = 0.75 + 0.25 * sin(time * 1.3);
+	return graph_color * (g * 0.35 + beads * 0.9 * pulse);
+}
+
 void sky() {
 	vec3 dir = EYEDIR;
 	vec3 col = mix(bottom_color, top_color, 0.5 + 0.5 * dot(dir, normalize(vec3(0.35, 0.62, 0.7))));
@@ -86,8 +143,31 @@ void sky() {
 	vec3 ncol = mix(nebula_a, nebula_b, smoothstep(0.3, 0.7, n2));
 	col += ncol * neb * nebula_strength * (0.6 + 0.4 * n2);
 	col *= 1.0 - 0.35 * smoothstep(0.55, 0.72, n2) * band;
+	// The hub's dawn: a warm glow low on one side of the sky.
+	float dawn = pow(max(dot(dir, normalize(dawn_dir)), 0.0), 3.0) * smoothstep(-0.3, 0.15, dir.y) * (1.0 - smoothstep(0.2, 0.75, dir.y));
+	col += dawn_color * dawn * dawn_strength;
 	if (!AT_CUBEMAP_PASS) {
 		float t = TIME;
+		if (aurora_strength > 0.0) col += aurora(dir, t) * aurora_strength;
+		if (lattice_strength > 0.0) {
+			// Window panes: a 2×2 cross of light lines in a big square frame, high in one quarter of the sky.
+			vec3 c = normalize(vec3(0.55, 0.45, 0.7));
+			vec3 r = normalize(cross(c, vec3(0.0, 1.0, 0.0)));
+			vec3 u = normalize(cross(r, c));
+			vec2 q = vec2(dot(dir, r), dot(dir, u)) / 0.16;
+			if (dot(dir, c) > 0.9) {
+				float frame = max(abs(q.x), abs(q.y));
+				float lines = smoothstep(0.035, 0.0, abs(frame - 1.0)) + smoothstep(0.03, 0.0, abs(q.x)) * step(frame, 1.0) + smoothstep(0.03, 0.0, abs(q.y)) * step(frame, 1.0);
+				float glass = step(frame, 1.0) * 0.12;
+				col += aurora_color * (lines * 0.8 + glass) * lattice_strength;
+			}
+		}
+		if (scan_strength > 0.0) {
+			float scan = 0.5 + 0.5 * sin(dir.y * 420.0 - t * 2.5);
+			float glow = smoothstep(-0.1, 0.5, dir.y) * (1.0 - smoothstep(0.5, 0.95, dir.y));
+			col += aurora_color * scan * glow * 0.05 * scan_strength;
+		}
+		if (graph_strength > 0.0) col += graph(dir, t) * graph_strength;
 		col += stars(dir, 55.0, 0.93, 0.06, t) * star_brightness;
 		col += stars(dir, 130.0, 0.86, 0.075, t * 0.7) * star_brightness * 0.4 * (0.5 + 0.9 * band);
 		col += galaxy(dir, vec3(0.62, 0.55, -0.56), vec3(0.2, 1.0, 0.1), 0.045, 0.42);

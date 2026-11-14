@@ -201,6 +201,9 @@ public partial class Main : Node3D
 
     private int _testListDelayMs;
     private bool _recordShell;
+
+    /// <summary>What the recording test shell was asked to do (probes; empty with the real shell).</summary>
+    public IReadOnlyList<string> ShellLog => (_shell as FileScape.Core.Shell.RecordingShellActions)?.Log ?? [];
     private bool _closing;
 
     /// <summary>

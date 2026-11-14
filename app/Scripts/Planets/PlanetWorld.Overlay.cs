@@ -81,6 +81,7 @@ public partial class PlanetWorld
 
         BuildPreviewPanel(root);
         BuildContentsPanel(root);
+        BuildBenchPanel(root);
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
     }
@@ -172,7 +173,7 @@ public partial class PlanetWorld
     }
 
     private bool OverOverlay(Vector2 p) =>
-        (_previewPanel.Visible && _previewPanel.GetGlobalRect().HasPoint(p)) || (_contentsPanel.Visible && _contentsPanel.GetGlobalRect().HasPoint(p));
+        (_previewPanel.Visible && _previewPanel.GetGlobalRect().HasPoint(p)) || (_contentsPanel.Visible && _contentsPanel.GetGlobalRect().HasPoint(p)) || (_benchPanel.Visible && _benchPanel.GetGlobalRect().HasPoint(p));
 
     // ------------------------------------------------------------------ title card, prompt, hint
 
@@ -430,6 +431,7 @@ public partial class PlanetWorld
         {
             var picked = Pick(mouse);
             if (picked.Id >= 0 && tree.Contains(picked.Id)) _hovered = picked.Id;
+            else if (PickBenchTile(mouse) is >= 0 and var tileId) _hovered = tileId;
         }
 
         var selected = _s.Selection.Selected;
@@ -508,7 +510,9 @@ public partial class PlanetWorld
             _signs.Add(new SignCandidate(n.Id, Gd(surf.PointAt(fi.Direction, 1.25f * fi.Scale + 0.3f)), n.Name, SizeFormat.Short(n.Size), PlanetArt.CategoryColor(fi.Category), FileIcons.For(n), true, 3f, FixedAnchor: true));
         }
 
+        AddBenchSigns(tree);
         var blocked = _s.Hud.BlockingRects.ToList();
+        if (_benchPanel.Visible) blocked.Add(_benchPanel.GetGlobalRect());
         if (_previewPanel.Visible) blocked.Add(_previewPanel.GetGlobalRect());
         if (_contentsPanel.Visible) blocked.Add(_contentsPanel.GetGlobalRect());
         blocked.Add(_promptBox.GetGlobalRect());
