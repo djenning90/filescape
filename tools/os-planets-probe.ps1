@@ -6,9 +6,12 @@
   app's state file (camera heading, selection, folder) when it has them; on older builds (no camera fields) from the
   change between window screenshots. Moves the real mouse and takes focus; closes only the process it started.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly]
+  -Route plays the Starter Sky route instead (PLANET-30): J-list travel typed on the keyboard, steering to the
+  repository's workbench with the arrow keys and W, a real jump onto it, a spin, E, a child folder, and back.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly)
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -20,7 +23,8 @@ public static class FsClient3 {
 }
 "@
 [void][FsClient3]::SetProcessDPIAware()
-$script:Vk['J'] = 0x4A; $script:Vk['T'] = 0x54; $script:Vk['Backspace'] = 0x08
+$script:Vk['J'] = 0x4A; $script:Vk['T'] = 0x54; $script:Vk['Backspace'] = 0x08; $script:Vk['Enter'] = 0x0D; $script:Vk['Space'] = 0x20
+foreach ($c in [char[]]'ABCDEFGHIKLMNOPRUVXYZ') { $script:Vk[[string]$c] = [int][char]$c }
 Add-Type -AssemblyName System.Windows.Forms
 # Never send input anywhere but the window this script launched (2026-11-14: an Alt-Tab left DJ's window in front and the
 # next drags and keys went there). Every key and mouse action checks the foreground window first and stops the probe if
@@ -90,6 +94,60 @@ try {
   Start-Sleep -Seconds 3 # the establishing shot
   $s = State
   Check ($s.planets -and $s.planets.phase -eq 'Walking') "arrives on the Starter Sky on foot (phase=$($s.planets.phase))"
+
+  if ($Route) {
+    function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
+    function Wait-Walking($folderNot) { for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.planets.folder -ne $folderNot) { return $s }; Start-Sleep -Milliseconds 200 }; return State }
+    function Go-By-List($name) {
+      $from = (State).planets.folder
+      Hold-Key 'J' 60; Start-Sleep -Milliseconds 500
+      Type-Text $name; Start-Sleep -Milliseconds 300
+      Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+      Start-Sleep -Milliseconds 600
+      $s = Wait-Walking $from; Start-Sleep -Milliseconds 1500; return (State)
+    }
+    $home = (State).planets.folder
+    Drag-Turns 'left' 'route: a left-drag look at the hub' | Out-Null
+    $s = Go-By-List 'lantern'
+    Check ($s.planets.character -eq 'Repository' -and $s.planets.benchWorld) "route: J, typed 'lantern', Enter: flew to the repository ($($s.currentName), $($s.planets.character))"
+    Shot 'route-repository' | Out-Null
+    # Steer to the bench with the arrow keys and W, as a player would.
+    for ($i = 0; $i -lt 60; $i++) {
+      $s = State; $b = [double]$s.planets.benchBearing; $d = [double]$s.planets.benchDistance
+      if ($s.planets.onBench -or $d -lt 1.3) { break }
+      if ([Math]::Abs($b) -gt 12) { $ms = [int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000); Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) $ms }
+      else { Hold-Key 'W' ([int][Math]::Min(500, 120 + $d * 60)) }
+      Start-Sleep -Milliseconds 120
+    }
+    $s = State; Log "route: at the bench's edge? bearing $($s.planets.benchBearing) deg, $($s.planets.benchDistance) m"
+    Key-Down 'W'; Start-Sleep -Milliseconds 120; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 700; Key-Up 'W'; Start-Sleep -Milliseconds 700
+    $s = State
+    if (-not $s.planets.benchRevealed) { Key-Down 'W'; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 800; Key-Up 'W'; Start-Sleep -Milliseconds 600; $s = State }
+    Check ($s.planets.benchRevealed -and $s.planets.benchPanel) "route: jumped onto the workbench with the keyboard: the project's key places come up (onBench=$($s.planets.onBench), $($s.planets.benchEntries) places)"
+    Shot 'route-bench' | Out-Null
+    Hold-Key 'Space' 80; Start-Sleep -Milliseconds 260; Hold-Key 'Space' 80; Start-Sleep -Milliseconds 1200
+    $s = State
+    Check ($s.planets.previewOpen -and $s.selectedName -like 'README*') "route: a spin from the bench opens the README (selected $($s.selectedName))"
+    Shot 'route-spin-readme' | Out-Null
+    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400
+    if ((State).planets.onBench) { Hold-Key 'E' 60; Start-Sleep -Milliseconds 500; $s = State; Check ($s.planets.previewOpen) "route: E at the bench reads it too"; Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400 }
+    else { Log "SKIP route: E at the bench (no longer on the bench after the spin)" }
+    $a = Heading; Hold-Key 'Left' 700; Start-Sleep -Milliseconds 200
+    Check ((Turned $a (Heading)) -ge 40) "route: <- looks round on the repository world ($([Math]::Round((Turned $a (Heading)),1)) deg)"
+    $repo = (State).planets.folder
+    $s = Go-By-List 'src'
+    Check ($s.planets.character -eq 'Folder' -and $s.planets.band -ge 1) "route: J, 'src', Enter: a folder inside the project (band $($s.planets.band))"
+    Shot 'route-src' | Out-Null
+    Hold-Key 'Backspace' 60; $s = Wait-Walking -1; Start-Sleep -Milliseconds 1500
+    for ($i = 0; $i -lt 40 -and (State).planets.folder -ne $repo; $i++) { Start-Sleep -Milliseconds 200 }
+    $s = State; Check ($s.planets.folder -eq $repo -and $s.planets.arrivals -ge 2) "route: Backspace back to the repository (arrival $($s.planets.arrivals))"
+    Hold-Key 'Backspace' 60; Start-Sleep -Milliseconds 800
+    for ($i = 0; $i -lt 60 -and (State).planets.folder -ne $home; $i++) { Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Milliseconds 1200
+    $s = State; Check ($s.planets.folder -eq $home -and $s.planets.character -eq 'Hub') "route: Backspace again: home at the hub"
+    Shot 'route-home' | Out-Null
+    return
+  }
 
   # The baseline and the defect: a right-drag; then click a toolbar button (it keeps keyboard focus) and right-drag again.
   Drag-Turns 'right' 'right-drag at arrival' | Out-Null

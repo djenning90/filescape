@@ -31,9 +31,11 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
    work the same on them. In your own folders FileScape reads a file's contents only when you ask (E), so an easel
    shows its picture once you have looked at it; cloud files that are not on this PC are never downloaded for a preview. **Esc** closes what is open; **F1** is help.
 
-Keys: W/A/S/D or arrows run (Shift: faster) · Space jump / twirl / launch · E look closer · Enter open · Backspace
-back · U up · G fly to the selected world · J the planet's list · L locations · Ctrl+L go to path · V Places/Planets ·
-right-drag turn the camera · mouse wheel camera distance · Home back to the arrival meadow · N sound on/off · F1 help.
+Keys (2026-11-14): W/A/S/D or ↑ ↓ run (Shift: faster) · **drag with the left or right mouse button, or ← →, to look
+around** (also while running) · click selects (on release), double-click goes there · Space jump / twirl / launch ·
+E look closer · Enter open · Backspace back · U up · G fly to the selected world · T overview · J the planet's list ·
+L locations · Ctrl+L go to path · V Places/Planets · mouse wheel camera distance · Home back to the arrival meadow ·
+N sound on/off · F1 help.
 
 ## Second iteration (2026-11-11): three flows to try
 
@@ -57,3 +59,46 @@ gold beacon is you. Right-drag orbits, middle-drag or WASD pans, the wheel zooms
 each time a little different. Samples to compare: `%LOCALAPPDATA%\FileScape\evidence\2026-11-11-planets-2\music\`
 (`before\` and `after\`, and `after\hearth-theme-returns-89s.wav` for three returns of the theme; README.txt says what
 to listen for).
+
+## Third iteration (2026-11-14): controls, worlds with their own music and look, the workbench
+
+**Launch** (Command Prompt): see the build in `docs/implementation-status.md` (§ Planets, third iteration); the
+commands below assume `%FS%` is that `FileScape.exe`.
+
+### On this PC (about 4 minutes): This computer → Ubuntu → a real repository → a child folder → back
+
+`"%FS%" -- --root=hub --vis=planets`
+
+1. **This computer.** You arrive at the hub: a calm world, a warm dawn low in the sky, the drives and distributions
+   hanging above their launchers. Hold the **left** mouse button and drag to look round (right-drag still works);
+   then stand still and hold **←** or **→**: the camera turns, you don't move. A plain click on a world selects it;
+   a drag that starts on a world only turns the camera.
+2. **A filesystem root.** Fly to **Ubuntu-24.04** (stand on its launcher and press Space, or click its world and press G).
+   On landing, an amber aurora and a dark terminal monolith with a blinking `>_` stand beside you: a Linux
+   distribution. The music changes from the hub's open, unhurried tune to a quicker gateway groove. (C:\ is a Windows
+   volume: a four-pane glass gateway under a blue aurora; try it if you like — the checks never enter C:\.)
+3. **A real repository.** Press **Ctrl+L** and go to `\\wsl.localhost\Ubuntu-24.04\home\david\src\filescape` (this
+   project). It is a repository: the sky has a commit graph among the stars, the overlook is a low **workbench**, and
+   the music has its own developer groove from the first bar.
+4. **The workbench.** Walk to it and **jump on** (one plain jump). The project's README and key places rise out of the
+   bench as a ring of glowing cards, each named with what it is for, and the bench's panel lists them. **Spin**
+   (jump from the bench, then Space again in the air): the README opens in the preview. **E** at the bench does the
+   same without the jump; clicking the bench reveals; clicking a card selects it, double-clicking goes there.
+   Nothing is opened with Windows unless you press Enter (or the Open button) yourself.
+5. **A child folder.** Fly into **docs** (or **src**): the world keeps a quiet echo of the project — a teal bead on its
+   waymarker, a faint commit graph — and the music keeps a hint of the repository's motif over the depth band's groove.
+6. **Back again.** **Backspace** to the repository (the music picks up where it was and develops on a return),
+   **Backspace** again, then **Ctrl+Home** to This computer.
+
+### On any PC: the Starter Sky (about 3 minutes)
+
+`"%FS%" -- --root=sample --vis=planets`
+
+1. The Starter Sky is your starting point, so it is the hub here (calm, a dawn).
+2. **Lantern Workshop** is a small repository: jump onto its workbench, spin to read its README, press E, click a card.
+3. **src** inside it: the trails band, with the project's echo.
+4. **Long Way Down** goes six levels deep: Meadow Gate (the outskirts, one ring on the waymarker), Fern Trail and Old
+   Bridge (the trails, amber), Deep Woods and Hollow Oak (the deep woods, violet), Glowing Spring (the underglow,
+   cyan, four rings). Listen for the band motif returning as you go down; **Backspace** a few times quickly and back
+   in again to hear how quick hops and returns sound.
+5. Throughout: left-drag and ← → to look, **T** for the overview (left-drag orbits it too), Esc back down.

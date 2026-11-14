@@ -46,6 +46,16 @@ public partial class PlanetWorld
 
     public bool BenchPanelOpen => _benchPanel.Visible;
 
+    /// <summary>The bench from where you stand: signed bearing from the camera's heading (degrees, + to the right) and
+    /// distance to its edge along the ground (metres); (0, −1) when there is no bench (probes steer by it).</summary>
+    public (float Degrees, float Metres) BenchBearing()
+    {
+        if (!OnBenchWorld || _current!.Comp.Overlook is not { } ov) return (0, -1);
+        var r = _current.Comp.Shape.Radius;
+        var dist = PlanetShape.Angle(_walker.Up, ov.Direction) * r - ov.Radius;
+        return (CameraTurnTo(ov.Direction), dist);
+    }
+
     /// <summary>Standing on the workbench deck now.</summary>
     private bool StandingOnBench() =>
         OnBenchWorld && _current!.Comp.Overlook is { } ov && _walker.Grounded && _walker.Support.Value > ov.Top - 0.3f &&
