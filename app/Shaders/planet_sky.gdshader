@@ -92,9 +92,9 @@ vec3 aurora(vec3 dir, float time) {
 	float lat = dir.y;
 	float lon = atan(dir.z, dir.x);
 	float wave = sin(lon * 3.0 + time * 0.15) * 0.08 + sin(lon * 7.0 - time * 0.23) * 0.04;
-	float band = exp(-pow((lat - 0.32 - wave) / 0.14, 2.0));
+	float band = exp(-pow((lat - 0.2 - wave) / 0.16, 2.0));
 	float rays = 0.55 + 0.45 * sin(lon * 38.0 + vnoise(vec3(lon * 4.0, time * 0.2, 0.0)) * 6.0);
-	float fade = smoothstep(-0.05, 0.25, lat);
+	float fade = smoothstep(-0.12, 0.12, lat);
 	vec3 c = mix(aurora_color, aurora_color_b, smoothstep(0.2, 0.55, lat + wave));
 	return c * band * rays * fade;
 }

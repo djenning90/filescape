@@ -27,8 +27,8 @@ public static partial class PlanetArt
     public static CharacterLook Look(WorldCharacter c) => c.Kind switch
     {
         WorldKind.Hub => new(C(0.95f, 0.62f, 0.5f), 0.18f, C(1f, 0.86f, 0.7f), C(1f, 0.75f, 0.45f), C(1f, 0.7f, 0.45f), C(1f, 0.5f, 0.6f), Dawn: 0.75f, Aurora: 0, Lattice: 0, Scan: 0, Graph: 0, Stars: 1f),
-        WorldKind.WindowsRoot => new(C(0.25f, 0.5f, 0.95f), 0.32f, C(0.85f, 0.93f, 1f), C(0.45f, 0.8f, 1f), C(0.35f, 0.75f, 1f), C(0.55f, 0.5f, 1f), Dawn: 0, Aurora: 0.55f, Lattice: 0.9f, Scan: 0, Graph: 0, Stars: 1.1f),
-        WorldKind.WslRoot => new(C(0.55f, 0.18f, 0.32f), 0.32f, C(1f, 0.84f, 0.66f), C(1f, 0.58f, 0.25f), C(1f, 0.55f, 0.2f), C(0.85f, 0.3f, 0.55f), Dawn: 0, Aurora: 0.5f, Lattice: 0, Scan: 1f, Graph: 0, Stars: 1.1f),
+        WorldKind.WindowsRoot => new(C(0.25f, 0.5f, 0.95f), 0.32f, C(0.85f, 0.93f, 1f), C(0.45f, 0.8f, 1f), C(0.35f, 0.75f, 1f), C(0.55f, 0.5f, 1f), Dawn: 0, Aurora: 0.8f, Lattice: 0.9f, Scan: 0, Graph: 0, Stars: 1.1f),
+        WorldKind.WslRoot => new(C(0.55f, 0.18f, 0.32f), 0.32f, C(1f, 0.84f, 0.66f), C(1f, 0.58f, 0.25f), C(1f, 0.55f, 0.2f), C(0.85f, 0.3f, 0.55f), Dawn: 0, Aurora: 0.8f, Lattice: 0, Scan: 1f, Graph: 0, Stars: 1.1f),
         WorldKind.Repository => new(C(0.1f, 0.42f, 0.4f), 0.3f, C(0.9f, 1f, 0.92f), C(0.4f, 1f, 0.75f), C(0.35f, 1f, 0.75f), C(0.4f, 0.6f, 1f), Dawn: 0, Aurora: 0.15f, Lattice: 0, Scan: 0, Graph: 1f, Stars: 1.2f),
         _ => BandLook(c.Band, c.InsideRepository),
     };
@@ -126,7 +126,7 @@ public static partial class PlanetArt
     }
 
     /// <summary>
-    /// The Windows volume's gateway (stands where the landmark would, ≈ 7 m): a tall arch framing four panes of glass,
+    /// The Windows volume's gateway (≈ 7 m at full size; stands beside the arrival at 0.55): a tall arch framing four panes of glass,
     /// lit from within — a gateway into the volume, in the planets' rounded style.
     /// </summary>
     public static ArrayMesh PaneGateway(PlanetPalette palette)

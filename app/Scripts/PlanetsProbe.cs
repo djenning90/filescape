@@ -79,6 +79,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-discover") await DiscoverOnly();
         else if (Mode == "planets-flows") await Flows();
         else if (Mode == "planets-route") await Route();
+        else if (Mode == "planets-route-hub") await HubRoute();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
@@ -599,6 +600,114 @@ public partial class PlanetsProbe : ProbeBase
         await Until(() => App.Navigator.Current == root && !P.Busy, 15);
         await Seconds(1);
         Check(P.Character.Kind == WorldKind.Hub, "Ctrl+Home: back to the hub");
+
+        // The two roots' looks, photographed here with a probe-only override (no Windows volume is entered or listed).
+        foreach (var kind in new[] { WorldKind.WindowsRoot, WorldKind.WslRoot })
+        {
+            P.ProbeCharacter = new WorldCharacter(kind, 0, 0, -1);
+            P.ProbeRebuild();
+            await Seconds(1.5);
+            Check(P.Character.Kind == kind, $"[instrument: override] the {P.Character.Describe()} look on the Starter Sky");
+            await Shot($"route-look-{kind.ToString().ToLowerInvariant()}-override");
+        }
+
+        P.ProbeCharacter = null;
+        P.ProbeRebuild();
+    }
+
+    /// <summary>
+    /// --automate=planets-route-hub --root=hub --repo=&lt;a repository path, e.g. the WSL fixture's project&gt; (PLANET-27..30):
+    /// This computer (calm hub); a Windows drive's world seen from the hub (its pane gateway; never entered, never listed);
+    /// the WSL distribution's root (its terminal monolith); the repository by Ctrl+L (its workbench, by a real jump); a child
+    /// folder inside it; Backspace back through each; home.
+    /// </summary>
+    private async Task HubRoute()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        await Seconds(3.5);
+        var hub = App.Navigator.Current;
+        Check(Tree[hub].IsHub && P.Character.Kind == WorldKind.Hub, $"arrives at This computer, the hub ({P.Character.Describe()})");
+        await Shot("hub-this-computer");
+        var drives = Tree[hub].Children.Where(ch => Tree[ch].Location == LocationKind.Drive).ToList();
+        var distros = Tree[hub].Children.Where(ch => Tree[ch].Location == LocationKind.Wsl).ToList();
+        Check(drives.All(d => P.CharacterOf(d).Kind == WorldKind.WindowsRoot) && distros.All(d => P.CharacterOf(d).Kind == WorldKind.WslRoot),
+            $"the hub's worlds: {drives.Count} Windows volumes, {distros.Count} WSL distributions, each with its own character");
+        if (drives.Count > 0)
+        {
+            // Look at a drive's world in the sky: its gateway shows on the world itself; nothing is listed or entered.
+            var d = drives[0];
+            App.Selection.Select(d); // [direct] a click on it
+            await Key(Godot.Key.F); // face the selection
+            await Seconds(1.5);
+            await Shot("hub-windows-volume-in-the-sky");
+        }
+
+        var ubuntu = distros.FirstOrDefault(ch => Tree[ch].Name.StartsWith("Ubuntu", StringComparison.OrdinalIgnoreCase), distros.FirstOrDefault(-1));
+        if (ubuntu < 0)
+        {
+            Check(false, "a WSL distribution to visit");
+            return;
+        }
+
+        App.Selection.Select(ubuntu);
+        await Frames(2);
+        await Fly(Godot.Key.G, ubuntu, Tree[ubuntu].Name);
+        await Seconds(1.5);
+        Check(P.Character.Kind == WorldKind.WslRoot, $"{Tree[ubuntu].Name}: {P.Character.Describe()}");
+        await Shot("wsl-root");
+
+        var repo = Arg("repo");
+        if (string.IsNullOrEmpty(repo))
+        {
+            Log("SKIP no --repo given: the repository part of the route is not run");
+            return;
+        }
+
+        await GoToPath(repo);
+        await Until(() => !P.Busy && P.Composition != null && Tree[App.Navigator.Current].ScanState == DirScanState.Complete, 15);
+        await Seconds(1.5);
+        var repoId = App.Navigator.Current;
+        var c = P.Character;
+        Check(c.Kind == WorldKind.Repository && P.OnBenchWorld, $"{Tree[repoId].Name} is a repository ({c.Describe()}, depth {c.Depth} below {Tree[ubuntu].Name})");
+        await Shot("repository");
+        var ov = P.Composition!.Overlook;
+        var r = P.Composition.Shape.Radius;
+        var near = PlanetFrame.Move(ov.Direction, P.Walker.Up - ov.Direction, ov.Radius + 1.4f, r);
+        var toward = ov.Direction - near * System.Numerics.Vector3.Dot(ov.Direction, near);
+        P.Walker.Teleport(P.Composition.Surface, near, System.Numerics.Vector3.Normalize(toward));
+        P.FaceCameraAlong(System.Numerics.Vector3.Normalize(toward));
+        await Frames(10);
+        HoldKey(Godot.Key.W, true);
+        await Frames(6);
+        await Key(Godot.Key.Space);
+        await Until(() => P.BenchRevealed, 3);
+        HoldKey(Godot.Key.W, false);
+        await Until(() => P.Walker.Grounded, 2);
+        await Seconds(1.2);
+        Check(P.BenchRevealed, $"the workbench shows the project: {string.Join(", ", P.BenchEntries.Select(e => $"{Tree[e.NodeId].Name} ({e.Role})"))}");
+        await Shot("repository-bench");
+        var docs = Tree[repoId].Children.FirstOrDefault(ch => Tree[ch].IsDirectory && !Tree[ch].Name.StartsWith('.'), -1);
+        if (docs >= 0)
+        {
+            App.Selection.Select(docs);
+            await Frames(2);
+            await Fly(Godot.Key.G, docs, Tree[docs].Name);
+            await Seconds(1.2);
+            Check(P.Character.InsideRepository, $"{Tree[docs].Name}: {P.Character.Describe()}");
+            await Shot("inside-repository");
+            await Key(Godot.Key.Backspace);
+            await Until(() => App.Navigator.Current == repoId && !P.Busy, 10);
+            await Seconds(1);
+        }
+
+        await Key(Godot.Key.Backspace);
+        await Until(() => !P.Busy, 10);
+        await Seconds(1);
+        await KeyCombo(Godot.Key.Home, ctrl: true);
+        await Until(() => App.Navigator.Current == hub && !P.Busy, 15);
+        await Seconds(1);
+        Check(P.Character.Kind == WorldKind.Hub, "Ctrl+Home: back at This computer");
     }
 
     /// <summary>--automate=planets-flows (Starter Sky): discovery on a crowded world, labels while the camera turns, the overview.</summary>

@@ -40,6 +40,9 @@ public partial class PlanetVisual : Node3D
 
     public int ThumbnailsShown { get; private set; }
 
+    /// <summary>The cache key it was built under (what it shows), kept so a release never files it under another key.</summary>
+    public string CacheKey { get; init; } = "";
+
     /// <summary>Drops the meshes shared between planets (at exit).</summary>
     public static void ClearSharedMeshes()
     {
@@ -79,36 +82,14 @@ public partial class PlanetVisual : Node3D
 
         if (comp.Landmark is { } lm)
         {
-            // A root's landmark is its gateway (AD-48): the Windows volume's pane gate, the WSL distribution's terminal monolith.
-            var gate = _character.Kind switch
-            {
-                WorldKind.WindowsRoot => Shared("pane-gateway", () => PlanetArt.PaneGateway(_pal)),
-                WorldKind.WslRoot => Shared("terminal-monolith", () => PlanetArt.TerminalMonolith(_pal)),
-                _ => null,
-            };
-            if (gate == null && !LandmarkMeshes.TryGetValue(comp.Theme, out gate)) LandmarkMeshes[comp.Theme] = gate = PlanetArt.Landmark(comp.Theme);
-            // Gateways face the arrival.
-            var facing = PlanetFrame.North(lm.Direction);
-            if (_character.Kind is WorldKind.WindowsRoot or WorldKind.WslRoot)
-            {
-                var toArrival = comp.Arrival.Up - lm.Direction * NVector3.Dot(comp.Arrival.Up, lm.Direction);
-                if (toArrival.LengthSquared() > 1e-6f) facing = -NVector3.Normalize(toArrival);
-            }
-
-            var landmark = new MeshInstance3D { Name = "Landmark", Mesh = gate, Transform = Stand(surf, lm.Direction, facing, 1f, sink: 0.15f) };
-            AddChild(landmark);
-            if (_character.Kind == WorldKind.WslRoot)
-            {
-                var (cursorMesh, at) = PlanetArt.TerminalCursor();
-                _cursor = new MeshInstance3D { Name = "Cursor", Mesh = cursorMesh, Position = at };
-                landmark.AddChild(_cursor);
-            }
+            if (!LandmarkMeshes.TryGetValue(comp.Theme, out var mesh)) LandmarkMeshes[comp.Theme] = mesh = PlanetArt.Landmark(comp.Theme);
+            AddChild(new MeshInstance3D { Name = "Landmark", Mesh = mesh, Transform = Stand(surf, lm.Direction, PlanetFrame.North(lm.Direction), 1f, sink: 0.15f) });
         }
 
         var tGround = sw.Elapsed.TotalMilliseconds;
         if (!full) return;
         BuildOverlook(surf);
-        BuildWaymarker(surf);
+        BuildArrivalMark(surf);
         BuildLaunchers(tree, surf);
         BuildRingLights(surf);
         var tLaunch = sw.Elapsed.TotalMilliseconds;
@@ -130,18 +111,37 @@ public partial class PlanetVisual : Node3D
     }
 
     /// <summary>
-    /// The depth band's waymarker (AD-48) beside the arrival, ahead and to the left, inside the meadow (the first launcher
-    /// ring is 9 m out): one glowing ring per band, a teal bead inside a project.
+    /// What the place is, standing beside the arrival (AD-48), ahead and to the left inside the meadow (the first launcher
+    /// ring is 9 m out), facing you as you land: a Windows volume's pane gateway, a WSL distribution's terminal monolith
+    /// (its cursor blinks), or a folder's depth-band waymarker (one glowing ring per band; a teal bead inside a project).
     /// </summary>
-    private void BuildWaymarker(PlanetSurface surf)
+    private void BuildArrivalMark(PlanetSurface surf)
     {
-        if (_character.Kind != WorldKind.Folder) return;
         var up = _comp.Arrival.Up;
         var facing = _comp.Arrival.Facing;
         var left = NVector3.Normalize(NVector3.Cross(up, facing));
         var r = _comp.Shape.Radius;
-        var dir = PlanetFrame.Move(PlanetFrame.Move(up, facing, 3.4f, r), left, 2.6f, r);
-        AddChild(new MeshInstance3D { Name = "Waymarker", Mesh = Shared($"waymarker-{_character.Band}-{_character.InsideRepository}", () => PlanetArt.Waymarker(_character.Band, _character.InsideRepository)), Transform = Stand(surf, dir, facing, 1f, sink: 0.12f) });
+        var root = _character.Kind is WorldKind.WindowsRoot or WorldKind.WslRoot;
+        var dir = PlanetFrame.Move(PlanetFrame.Move(up, facing, root ? 4.6f : 3.4f, r), left, root ? 3.6f : 2.6f, r);
+        var towardArrival = up - dir * NVector3.Dot(up, dir);
+        towardArrival = towardArrival.LengthSquared() > 1e-8f ? NVector3.Normalize(towardArrival) : facing;
+        switch (_character.Kind)
+        {
+            case WorldKind.Folder:
+                AddChild(new MeshInstance3D { Name = "Waymarker", Mesh = Shared($"waymarker-{_character.Band}-{_character.InsideRepository}", () => PlanetArt.Waymarker(_character.Band, _character.InsideRepository)), Transform = Stand(surf, dir, facing, 1f, sink: 0.12f) });
+                break;
+            case WorldKind.WindowsRoot:
+                AddChild(new MeshInstance3D { Name = "Gateway", Mesh = Shared("pane-gateway", () => PlanetArt.PaneGateway(_pal)), Transform = Stand(surf, dir, towardArrival, 0.55f, sink: 0.12f) });
+                break;
+            case WorldKind.WslRoot:
+                // The prompt is on the monolith's +Z face: turned so that face looks at the arrival.
+                var monolith = new MeshInstance3D { Name = "Monolith", Mesh = Shared("terminal-monolith", () => PlanetArt.TerminalMonolith(_pal)), Transform = Stand(surf, dir, -towardArrival, 0.55f, sink: 0.12f) };
+                AddChild(monolith);
+                var (cursorMesh, at) = PlanetArt.TerminalCursor();
+                _cursor = new MeshInstance3D { Name = "Cursor", Mesh = cursorMesh, Position = at };
+                monolith.AddChild(_cursor);
+                break;
+        }
     }
 
     /// <summary>Stands a prop on the ground at a direction, facing a tangent, scaled; its base slightly sunk so it never floats on hills.</summary>

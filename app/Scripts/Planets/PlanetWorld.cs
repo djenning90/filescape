@@ -360,7 +360,12 @@ public partial class PlanetWorld : Node3D
     private string VisualKey(Body b, bool full) => $"{b.FolderId}:{b.Comp.Signature}:{(full ? 1 : 0)}:{CharacterOf(b.FolderId)}";
 
     /// <summary>The character of a folder's world (PLANET-27): what kind of place it is, from the tree and where you started.</summary>
-    public WorldCharacter CharacterOf(int folderId) => _s.Tree is { } t && t.Contains(folderId) ? WorldCharacter.Of(t, folderId, _s.Navigator.Root) : new WorldCharacter(WorldKind.Folder, 1, 1, -1);
+    public WorldCharacter CharacterOf(int folderId) =>
+        ProbeCharacter is { } forced && folderId == _current?.FolderId ? forced
+        : _s.Tree is { } t && t.Contains(folderId) ? WorldCharacter.Of(t, folderId, _s.Navigator.Root) : new WorldCharacter(WorldKind.Folder, 1, 1, -1);
+
+    /// <summary>Probes only: show the current world with this character (to photograph a Windows volume without entering one).</summary>
+    public WorldCharacter? ProbeCharacter { get; set; }
 
     private PlanetVisual TakeOrBuild(FsTree tree, Body body, bool full)
     {
@@ -378,7 +383,7 @@ public partial class PlanetWorld : Node3D
         var ground = full ? GroundAsync(body.Comp, full) : null;
         var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
         var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), 3);
-        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key };
+        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key, CacheKey = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
         if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
         return built;
@@ -424,7 +429,7 @@ public partial class PlanetWorld : Node3D
     {
         if (b.Visual == null || !GodotObject.IsInstanceValid(b.Visual)) return;
         b.Visual.GetParent()?.RemoveChild(b.Visual);
-        _visualCache.Add((VisualKey(b, b.Full), b.Visual));
+        _visualCache.Add((b.Visual.CacheKey.Length > 0 ? b.Visual.CacheKey : VisualKey(b, b.Full), b.Visual));
         while (_visualCache.Count > VisualCacheSize)
         {
             _visualCache[0].Visual.QueueFree();

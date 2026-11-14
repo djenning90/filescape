@@ -125,6 +125,14 @@ public partial class PlanetWorld
         SnapCamera();
     }
 
+    /// <summary>Rebuilds the current world where you stand (probes: after <see cref="ProbeCharacter"/> changes).</summary>
+    public void ProbeRebuild()
+    {
+        if (_s.Tree is not { } tree || _current == null) return;
+        BuildCurrent(tree, _current.FolderId, arriveFrom: -2);
+        SnapCamera();
+    }
+
     public void ProbeStandOn(NVector3 up, float top)
     {
         if (_current == null) return;
