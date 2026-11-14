@@ -340,7 +340,7 @@ public partial class PlanetWorld : Node3D
         var character = CharacterOf(folderId);
         ApplyAtmosphere(comp.Theme, character);
         if (arriveFrom != -2) _arrivals[folderId] = _arrivals.GetValueOrDefault(folderId) + 1;
-        _audio.SetTheme(comp.Theme);
+        _audio.SetWorld(comp.Theme, character, Math.Max(1, Arrivals(folderId))); // before Arrive(): the arrival chord sounds in the new key (AD-49)
         if (arriveFrom != -2)
         {
             var (up, facing) = arriveFrom >= 0 ? comp.ArrivalFor(arriveFrom) : comp.Arrival;
