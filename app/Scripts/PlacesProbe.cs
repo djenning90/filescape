@@ -70,12 +70,15 @@ public partial class PlacesProbe : Node
         // Live data is explored on demand (AD-17): wait until the explorer is idle rather than "finished".
         // Bounded (2026-11-14: an unbounded wait hung the full tier with no result): after 60 s, say which condition is false.
         var waitStart = Time.GetTicksMsec();
-        while (!ScanSettled || _main.Place == null || _main.AwaitingArrival || _main.Place.TreeVersion != _main.Tree!.Version)
+        // "Up to date" is the app's own test: the place shows what the tree now says (its signature), not "composed at the
+        // latest tree version": late updates that change nothing shown do not recompose (MaybeRecompose), and waiting for the
+        // exact version hung the full tier on a release build whose batches happened to arrive that way (2026-11-14).
+        while (!ScanSettled || _main.Place == null || _main.AwaitingArrival || _main.Place.Signature != PlaceComposer.Signature(_main.Tree!, _main.Navigator.Current))
         {
             if (Time.GetTicksMsec() - waitStart > 60_000)
             {
                 var snap = _main.Session?.Snapshot();
-                Check(false, F($"the place settles after the scan (settled={ScanSettled} finished={_main.Session?.IsFinished} pending={_main.Session?.HasPendingBatches} idle={snap?.Idle} explorer={_main.Explorer != null} place={_main.Place != null} awaiting={_main.AwaitingArrival} placeVersion={_main.Place?.TreeVersion} treeVersion={_main.Tree?.Version} state={snap?.State})"));
+                Check(false, F($"the place settles after the scan (signature {(_main.Place != null && _main.Place.Signature == PlaceComposer.Signature(_main.Tree!, _main.Navigator.Current) ? "current" : "stale")}, settled={ScanSettled} finished={_main.Session?.IsFinished} pending={_main.Session?.HasPendingBatches} idle={snap?.Idle} explorer={_main.Explorer != null} place={_main.Place != null} awaiting={_main.AwaitingArrival} placeVersion={_main.Place?.TreeVersion} treeVersion={_main.Tree?.Version} state={snap?.State})"));
                 break;
             }
 
