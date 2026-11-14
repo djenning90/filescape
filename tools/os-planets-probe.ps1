@@ -67,7 +67,7 @@ function Drag($button, [int]$dx, [int]$dy) {
 function Heading { $s = State; if ($s.planets -and $null -ne $s.planets.camYaw) { return [double]$s.planets.camYaw } else { return $null } }
 function Turned($before, $after) { if ($null -eq $before -or $null -eq $after) { return $null }; $d = [Math]::Abs($after - $before) % 360; if ($d -gt 180) { $d = 360 - $d }; return $d }
 $shot = 0
-function Shot($name) { $script:shot++; $p = Join-Path $Out ('os-{0:D2}-{1}.png' -f $script:shot, $name); Save-WindowShot $script:w $p; return $p }
+function Shot($name) { $script:shot++; $p = Join-Path $Out ('os-{0:D2}-{1}.png' -f $script:shot, ($name -replace '[^\w\-]+', '-')); Save-WindowShot $script:w $p; return $p }
 # One drag judged by the camera heading (new builds) or by how much of the view changed (older builds).
 function Drag-Turns($button, $what, [int]$dx = 360, [double]$minDegrees = 30) {
   $a = Heading; $sa = Shot "$what-before"
@@ -106,7 +106,7 @@ try {
       Start-Sleep -Milliseconds 600
       $s = Wait-Walking $from; Start-Sleep -Milliseconds 1500; return (State)
     }
-    $home = (State).planets.folder
+    $hubFolder = (State).planets.folder
     Drag-Turns 'left' 'route: a left-drag look at the hub' | Out-Null
     $s = Go-By-List 'lantern'
     Check ($s.planets.character -eq 'Repository' -and $s.planets.benchWorld) "route: J, typed 'lantern', Enter: flew to the repository ($($s.currentName), $($s.planets.character))"
@@ -142,9 +142,9 @@ try {
     for ($i = 0; $i -lt 40 -and (State).planets.folder -ne $repo; $i++) { Start-Sleep -Milliseconds 200 }
     $s = State; Check ($s.planets.folder -eq $repo -and $s.planets.arrivals -ge 2) "route: Backspace back to the repository (arrival $($s.planets.arrivals))"
     Hold-Key 'Backspace' 60; Start-Sleep -Milliseconds 800
-    for ($i = 0; $i -lt 60 -and (State).planets.folder -ne $home; $i++) { Start-Sleep -Milliseconds 200 }
+    for ($i = 0; $i -lt 60 -and (State).planets.folder -ne $hubFolder; $i++) { Start-Sleep -Milliseconds 200 }
     Start-Sleep -Milliseconds 1200
-    $s = State; Check ($s.planets.folder -eq $home -and $s.planets.character -eq 'Hub') "route: Backspace again: home at the hub"
+    $s = State; Check ($s.planets.folder -eq $hubFolder -and $s.planets.character -eq 'Hub') "route: Backspace again: home at the hub"
     Shot 'route-home' | Out-Null
     return
   }
