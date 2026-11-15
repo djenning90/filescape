@@ -24,7 +24,7 @@ public static class SampleSky
     public const string MarkerName = ".filescape-sample";
 
     /// <summary>The content version written into the marker. Bump it when the generated content changes.</summary>
-    public const int Version = 3; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down. 3: waymark notes name the right bands
+    public const int Version = 4; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down. 3: waymark notes name the right bands. 4 (2026-11-15): Event Horizon, the sample hazard world (PLANET-34)
 
     private const string MarkerMagic = "FileScape sample folder";
     private const string JunctionName = "Shortcut to Garden";
@@ -263,6 +263,13 @@ public static class SampleSky
         // Written only when there is no .git yet: a refresh never overwrites a repository someone has started using.
         var git = Path.Combine(root, "Lantern Workshop", ".git");
         if (!Directory.Exists(git) && !File.Exists(git)) WriteGitSkeleton(root);
+
+        // Event Horizon: the sample hazard world (PLANET-34, AD-53), marked so HazardRules breaks its shell. The marker is
+        // honoured only inside a marked sample, so copying this folder elsewhere makes an ordinary world.
+        foreach (var (rel, text) in SampleTexts.EventHorizon)
+        {
+            Text(root, Path.Combine("Event Horizon", rel), text);
+        }
 
         // The Long Way Down: six levels, one per step of the journey, so every depth band can be visited (AD-48).
         var path = "Long Way Down";
@@ -1708,6 +1715,8 @@ internal static class SampleTexts
         - Garden Photos is a meadow of pictures. Music Box rings. Letters is a quiet library.
         - The Star Archive holds far too many small files to show one by one; see how it copes.
         - Quiet Moon is empty on purpose. Somebody has to keep the silence.
+        - Event Horizon is a broken world over a black hole. The paths are solid; the edges are not.
+          Step off one and you fall, spin, and land back here. Nothing happens to any file.
 
         """;
 
@@ -1732,6 +1741,53 @@ internal static class SampleTexts
         or hum them to a plant. They will not mind.
 
         """;
+
+    /// <summary>
+    /// Event Horizon, the sample hazard (PLANET-34): its marker (<c>.filescape-hazard</c>, the name HazardRules looks for),
+    /// a few notes and two small child worlds, so it has destinations and a way back like any other. Original text.
+    /// </summary>
+    public static readonly (string Path, string Text)[] EventHorizon =
+    [
+        (".filescape-hazard", "FileScape sample hazard: this world is drawn as a broken shell over a black hole.\nIt is honoured only inside a FileScape sample folder. Safe to delete.\n"),
+        ("README.txt", """
+            Event Horizon
+            =============
+
+            This world is broken. Big pieces of its shell have fallen in, and a small black hole
+            spins at its heart, eating starlight.
+
+            The launchers and the paths between them stand on solid rock, well back from any edge.
+            The danger lives out past the rings: walk far enough and the ground simply stops.
+
+            If you step off, you fall. The fall bends into a spiral round the black hole, the light
+            flares, and you are put back down in the Starter Sky, right beside this world's launcher.
+            Step on and come back whenever you like.
+
+            Falling is only a way of travelling. It never moves, changes or deletes a file.
+
+            """),
+        ("caution.txt", """
+            CAUTION - FALLING ROCK, FALLING YOU
+
+            1. The rim glows and hums when you are near an edge.
+            2. A quick jump or a twirl can still save you just after you step off.
+            3. After that, enjoy the ride.
+
+            """),
+        ("orbit-log.csv", "minute,distance_km,spin_rpm,note\n0,4200,1180,calm\n1,4180,1190,a pebble went in\n2,4150,1205,another pebble\n3,4110,1230,the rim creaked\n4,4060,1260,someone stepped too close\n5,4000,1300,they came back laughing\n"),
+        (Path.Combine("Accretion Disc", "spin-notes.md"), """
+            # Spin notes
+
+            The disc turns faster the closer it gets to the middle. Nothing here is real physics,
+            only a picture of it: hot gold near the centre, cooling to violet at the rim.
+
+            """),
+        (Path.Combine("Photon Sphere", "postcard.txt"), """
+            Wish you were here. Actually, wish I were there: the light goes round and round
+            and I can see the back of my own head.
+
+            """),
+    ];
 
     /// <summary>The Long Way Down: six nested folders, each with a waymark note (names and notes original).</summary>
     public static readonly (string Name, string Note)[] LongWayDown =

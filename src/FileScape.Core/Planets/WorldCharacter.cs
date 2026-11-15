@@ -117,6 +117,10 @@ public readonly record struct WorldCharacter(WorldKind Kind, int Depth, int Band
             }
         }
 
+        // A hazard (PLANET-34, AD-53) wins over every other kind but the hub: being system-managed (or the marked sample)
+        // is what matters about the place, even when it is the folder you started from or holds a .git. HazardRules never
+        // matches a location root, so the roots below are unaffected.
+        if (HazardRules.Classify(tree, folderId) != null) return new WorldCharacter(WorldKind.Hazard, depth, Math.Max(1, BandOf(depth)), repositoryId);
         if (repo is { } marker) return new WorldCharacter(WorldKind.Repository, depth, 0, folderId, Worktree: marker.Kind == NodeKind.File);
         if (node.Location is LocationKind.Wsl) return new WorldCharacter(WorldKind.WslRoot, 0, 0, -1);
         if (node.Location is LocationKind.Drive or LocationKind.Volume or LocationKind.Network) return new WorldCharacter(WorldKind.WindowsRoot, 0, 0, -1);

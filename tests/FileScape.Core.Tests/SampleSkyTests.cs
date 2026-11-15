@@ -2,7 +2,9 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using FileScape.Core.Planets;
 using FileScape.Core.Samples;
+using FileScape.Core.Scanning;
 
 namespace FileScape.Core.Tests;
 
@@ -61,7 +63,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     public void The_tree_has_the_curated_structure_and_counts()
     {
         Files(sky.Root).Should().BeEquivalentTo(SampleSky.MarkerName, "README.md", "notes.txt", "sky-map.png");
-        var expectedDirs = new[] { "Constellations", "Garden Photos", "Lantern Workshop", "Letters", "Long Way Down", "Music Box", "Quiet Moon", "Star Archive" };
+        var expectedDirs = new[] { "Constellations", "Garden Photos", "Lantern Workshop", "Event Horizon", "Letters", "Long Way Down", "Music Box", "Quiet Moon", "Star Archive" };
         Dirs(sky.Root).Except(["Shortcut to Garden"]).Should().BeEquivalentTo(expectedDirs);
 
         File.ReadAllLines(P("README.md")).Count(l => l.Length > 0 && !l.StartsWith('#')).Should().BeInRange(3, 6);
@@ -114,6 +116,25 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
         }
 
         Directory.EnumerateFileSystemEntries(P("Quiet Moon")).Should().BeEmpty();
+
+        // Event Horizon, the sample hazard (PLANET-34): its marker, notes, and two child worlds to travel to.
+        Files(P("Event Horizon")).Should().BeEquivalentTo(HazardRules.SampleMarkerName, "README.txt", "caution.txt", "orbit-log.csv");
+        Dirs(P("Event Horizon")).Should().BeEquivalentTo("Accretion Disc", "Photon Sphere");
+        Files(P("Event Horizon", "Accretion Disc")).Should().Equal("spin-notes.md");
+        Files(P("Event Horizon", "Photon Sphere")).Should().Equal("postcard.txt");
+        HazardRules.SampleRootMarkerName.Should().Be(SampleSky.MarkerName, "the hazard rule recognises the sample by the sample's own marker");
+    }
+
+    [Fact]
+    public void The_written_sample_classifies_event_horizon_and_nothing_else_as_a_hazard()
+    {
+        var (tree, _) = ScanRunner.Run(new DirectoryScanner(sky.Root));
+        var hazards = tree.Nodes.Where(n => n.IsDirectory && HazardRules.IsHazard(tree, n.Id)).Select(n => n.Name).ToList();
+        hazards.Should().Equal("Event Horizon");
+        var comp = PlanetComposer.Compose(tree, tree.Nodes.First(n => n.Name == "Event Horizon").Id);
+        comp.Hazard!.Rule.Should().Be(HazardRule.Sample);
+        comp.Surface.Shell.Should().NotBeNull();
+        comp.Launchers.Should().HaveCount(3, "two child worlds and the way back");
     }
 
     [Fact]

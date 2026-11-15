@@ -204,7 +204,9 @@ public sealed class SphereWalker
         Up = up.LengthSquared() > 0 ? Vector3.Normalize(up) : Vector3.UnitY;
         var f = facing - Up * Vector3.Dot(facing, Up);
         Facing = f.LengthSquared() > 1e-8f ? Vector3.Normalize(f) : PlanetShape.Tangents(Up).A;
-        var s = surface.SupportAt(Up, _p.BodyRadius.Value, float.MaxValue, 0);
+        // Over a hole (a hop's arc across a broken world) it stands at the rim's level, not on "no ground" 1 km down; the
+        // next step finds nothing under it and it falls. On whole planets s is never negative, so this changes nothing.
+        var s = MathF.Max(0, surface.SupportAt(Up, _p.BodyRadius.Value, float.MaxValue, 0));
         Height = Meters.Of(s);
         Support = Meters.Of(s);
         Velocity = Vector3.Zero;

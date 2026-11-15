@@ -356,7 +356,8 @@ public static partial class PlanetArt
     /// The ground's vertices (each at <see cref="PlanetShape.GroundRadius"/>, so it matches walking exactly), normals and
     /// colours. Thread-safe: plain maths on value types (2026-11-11: moved off the main thread, where it cost 40–140 ms).
     /// </summary>
-    public static GroundArrays PlanetMeshArrays(PlanetShape shape, PlanetPalette palette, int subdivisions = 5)
+    /// <param name="shell">A hazard world's broken shell (PLANET-34): its holes are cut out and the crust added (<see cref="BreakShell"/>).</param>
+    public static GroundArrays PlanetMeshArrays(PlanetShape shape, PlanetPalette palette, int subdivisions = 5, BrokenShell? shell = null)
     {
         var (dirs, tris) = Icosphere(Math.Clamp(subdivisions, 0, 6));
         var verts = new Vector3[dirs.Count];
@@ -409,7 +410,8 @@ public static partial class PlanetArt
             colors[i] = Linear(col);
         }
 
-        return new GroundArrays(verts, normals, colors, tris.ToArray());
+        var ground = new GroundArrays(verts, normals, colors, tris.ToArray());
+        return shell != null ? BreakShell(ground, shape, shell) : ground;
     }
 
     /// <summary>Distance along the surface (metres) from <paramref name="p"/> to the great-circle arc a→b (beyond the ends: to the nearer end).</summary>
