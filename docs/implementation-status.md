@@ -4,6 +4,20 @@ Last updated: 2026-11-14 (later), after the documentation pass; before that 2026
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Music arrangements and hazard cues (2026-11-15, PLANET-35, AD-52)
+
+Three original arrangements of the FileScape theme replace the plainest folder-band ones: **festival** in band 2 (the trails: drop, breakdown, build; a flight out of it builds and the next arrival drops), **orchestral** in band 3 (the deep woods), **drum and bass** in band 4 (the underglow); a **hazard** identity for `WorldKind.Hazard`; hazard cues `HazardWarning`, `FallStart`, `Fall`, `FallReturn` on `SkySynth` and `SkyAudio`. The hub, roots, repositories and band 1 are bit-identical (behaviour baseline audio hashes).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Arrangements keep the theme, placed per AD-52 | **Demonstrated offline**; by ear: DJ | SkySynth tests: the theme as written on arrival and ≥ 86 % on the next return in every new arrangement and key tested |
+| Festival build on flight, drop on arrival (existing calls only) | **Demonstrated offline** | the build's high-frequency energy ×2.7 through a 2 s flight; the drop's first theme note 0.5 s after `Arrive` (≥ 0.15 s, on the beat); no drop after a hop |
+| Loudness, clipping, clicks, rapid hops, backtracking, a minute per world, cost | **Demonstrated offline** | −27.1…−27.3 LUFS vs −26.9 reference; music peaks ≤ 0.37; voices ≤ 28/40; 26–27 ms per second of audio (bound 60) |
+| Hazard warning (self-throttled), fall, return; room in the mix | **Demonstrated offline**; in the app: pending the hazard world | pulses 12 in 3 s at the edge whether called once or 50× per frame; fall pitch falls ×9, spiral speeds up; every cue ≥ 4.4 dB over the ducked music in every world |
+| Samples | written | `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt) |
+
+**Unknown:** nobody has listened yet. Not exported or installed by this slice.
+
 ## Documentation and readability pass (2026-11-14, later)
 
 Every hand-written type now has a header saying what it owns, why FileScape needs it and what a change must preserve (340 of 340, was 277 of 339). Methods are documented where the reasoning is not obvious (layout maths, camera and input, traversal, scanning, world transitions), and tuning values are named with units next to their use. Values with no recorded reason say "(rationale not recorded)". Conventions for new code: `docs/code-documentation.md` (linked from CLAUDE.md).

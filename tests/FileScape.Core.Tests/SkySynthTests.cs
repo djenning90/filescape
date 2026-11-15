@@ -29,6 +29,18 @@ public sealed class SkySynthEvidenceFactAttribute : FactAttribute
     }
 }
 
+/// <summary>Runs only when SKYSYNTH_ARRANGEMENTS_DIR names an output folder (PLANET-35's listening samples, AD-52); otherwise skipped.</summary>
+public sealed class SkySynthArrangementsFactAttribute : FactAttribute
+{
+    public SkySynthArrangementsFactAttribute()
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SKYSYNTH_ARRANGEMENTS_DIR")))
+        {
+            Skip = "Set SKYSYNTH_ARRANGEMENTS_DIR to a folder to render the AD-52 arrangement and hazard samples.";
+        }
+    }
+}
+
 /// <summary>The Planets audio synth (pure DSP; PLANET-23, PLANET-28, AD-49): safety, determinism, latency, smooth crossfades, the worlds' music and cost.</summary>
 public class SkySynthTests(ITestOutputHelper output)
 {
@@ -339,6 +351,7 @@ public class SkySynthTests(ITestOutputHelper output)
     private static readonly WorldCharacter Wsl = new(WorldKind.WslRoot, 0, 0, -1);
     private static readonly WorldCharacter Repo = new(WorldKind.Repository, 3, 0, 42);
     private static readonly WorldCharacter Worktree = new(WorldKind.Repository, 3, 0, 43, Worktree: true);
+    private static readonly WorldCharacter HazardWorld = new(WorldKind.Hazard, 2, 0, -1);
 
     private static WorldCharacter Band(int band, int repositoryId = -1) =>
         new(WorldKind.Folder, band switch { 1 => 1, 2 => 2, 3 => 4, _ => 6 }, band, repositoryId);
@@ -352,6 +365,7 @@ public class SkySynthTests(ITestOutputHelper output)
         MusicIdentity.WindowsRoot => Windows,
         MusicIdentity.WslRoot => Wsl,
         MusicIdentity.Repository => Repo,
+        MusicIdentity.Hazard => HazardWorld,
         _ => Band(id - MusicIdentity.Outskirts + 1),
     };
 
@@ -374,7 +388,16 @@ public class SkySynthTests(ITestOutputHelper output)
         SkySynth.TempoFor(MusicIdentity.WslRoot).Should().BeInRange(110, 118);
         SkySynth.TempoFor(MusicIdentity.Repository).Should().BeInRange(122, 128);
         var bands = new[] { MusicIdentity.Outskirts, MusicIdentity.Trails, MusicIdentity.DeepWoods, MusicIdentity.Underglow }.Select(SkySynth.TempoFor).ToList();
-        bands.Should().BeInAscendingOrder("deeper is more adventurous, not slower").And.OnlyContain(b => b >= 120 && b <= 132);
+        bands.Should().BeInAscendingOrder("deeper is more adventurous, not slower").And.OnlyContain(b => b >= 120);
+        // AD-52: the festival at big-room tempo, the orchestra's ostinato at 144 under a 72 BPM theme, drum and bass at 172 under an 86 BPM theme.
+        SkySynth.TempoFor(MusicIdentity.Trails).Should().BeInRange(124, 128);
+        SkySynth.TempoFor(MusicIdentity.DeepWoods).Should().BeInRange(136, 150);
+        SkySynth.TempoFor(MusicIdentity.Underglow).Should().BeInRange(170, 175);
+        SkySynth.ThemeTempoFor(MusicIdentity.Underglow).Should().Be(SkySynth.TempoFor(MusicIdentity.Underglow) / 2, "drum and bass: the theme at half time");
+        SkySynth.ThemeTempoFor(MusicIdentity.Trails).Should().Be(SkySynth.TempoFor(MusicIdentity.Trails));
+        // The hazard world: a slow, heavy theme (half time) on a pulse quick enough for the effects' grid.
+        SkySynth.ThemeTempoFor(MusicIdentity.Hazard).Should().BeLessThan(SkySynth.ThemeTempoFor(MusicIdentity.Hub), "the hazard is the slowest, heaviest theme");
+        SkySynth.TempoFor(MusicIdentity.Hazard).Should().BeGreaterThanOrEqualTo(SkySynth.TempoFor(MusicIdentity.Hub));
         SkySynth.TempoFor(MusicIdentity.WindowsRoot).Should().NotBe(SkySynth.TempoFor(MusicIdentity.WslRoot));
 
         // The synth follows: the old tempo until the new world's first downbeat (≤ one beat), then the new one.
@@ -401,6 +424,8 @@ public class SkySynthTests(ITestOutputHelper output)
         SkySynth.IdentityOf(Band(3)).Should().Be(MusicIdentity.DeepWoods);
         SkySynth.IdentityOf(Band(4)).Should().Be(MusicIdentity.Underglow);
         SkySynth.IdentityOf(new WorldCharacter(WorldKind.Folder, 0, 0, -1)).Should().Be(MusicIdentity.Outskirts);
+        SkySynth.IdentityOf(HazardWorld).Should().Be(MusicIdentity.Hazard);
+        SkySynth.KeyFor(PlanetTheme.Hearth, HazardWorld).Mode.Should().StartWith("phrygian");
         SkySynth.KeyFor(PlanetTheme.Hearth, Windows).Mode.Should().StartWith("lydian");
         SkySynth.KeyFor(PlanetTheme.Hearth, Wsl).Mode.Should().StartWith("dorian");
         SkySynth.KeyFor(PlanetTheme.Meadow, Repo).RootMidiNote.Should().Be(SkySynth.KeyFor(PlanetTheme.Meadow).RootMidiNote, "the theme keeps the root");
@@ -665,7 +690,11 @@ public class SkySynthTests(ITestOutputHelper output)
         foreach (var (id, f) in features)
         {
             if (id == MusicIdentity.Hub) continue;
-            f.Onsets.Should().BeGreaterThan(hub.Onsets * 2, $"{id} has more bounce and momentum than the hub");
+            // The orchestra (AD-52) moves on its string ostinato under a broad, legato half-time theme; this detector (jumps in
+            // the left channel's high frequencies) mostly hears the sustained sections over the spiccato, so it is held to
+            // more onsets than the hub rather than twice as many (a measurement limit, not a judgement by ear).
+            var factor = id == MusicIdentity.DeepWoods ? 1.1 : 2;
+            f.Onsets.Should().BeGreaterThan(hub.Onsets * factor, $"{id} has more bounce and momentum than the hub");
             f.Bpm.Should().BeGreaterThan(hub.Bpm + 10);
         }
 
@@ -729,7 +758,8 @@ public class SkySynthTests(ITestOutputHelper output)
         s.SetWorld(PlanetTheme.Meadow, Band(2), 2);
         RenderSeconds(s, 4);
         var bar = 16 * FramesPerSixteenth(MusicIdentity.Trails);
-        var firstBars = parts.Where(n => n.Frame < back + bar * 2.5).ToList();
+        var repoBeat = 4 * FramesPerSixteenth(MusicIdentity.Repository); // the repository plays on to its next beat: its notes are not the return's
+        var firstBars = parts.Where(n => n.Frame > back + repoBeat + 1 && n.Frame < back + bar * 2.5).ToList();
         output.WriteLine($"after the return: {string.Join(", ", firstBars.Take(8).Select(n => n.Part))}");
         firstBars.Should().NotBeEmpty();
         firstBars.Should().NotContain(n => n.Part == MelodyPart.Theme, "it resumes in its own material (bar 9), not at the top of the theme");
@@ -982,6 +1012,522 @@ public class SkySynthTests(ITestOutputHelper output)
         output.WriteLine($"seed 1: {string.Join(", ", one)}; seed 2: {string.Join(", ", two)}");
     }
 
+    // ---------------------------------------------------------------- AD-52: the arrangements and the hazard cues (PLANET-35)
+
+    private static readonly MusicIdentity[] NewArrangements = [MusicIdentity.Trails, MusicIdentity.DeepWoods, MusicIdentity.Underglow, MusicIdentity.Hazard];
+
+    /// <summary>The identities whose AD-49 arrangements are still in use: the reference for loudness.</summary>
+    private static readonly MusicIdentity[] CurrentArrangements = [MusicIdentity.Hub, MusicIdentity.WindowsRoot, MusicIdentity.WslRoot, MusicIdentity.Repository, MusicIdentity.Outskirts];
+
+    public static TheoryData<MusicIdentity> NewArrangementIds() => new(NewArrangements);
+
+    /// <summary>Frames per sixteenth of the theme (the score: half the pulse in a half-time arrangement).</summary>
+    private static double ThemeFramesPerSixteenth(MusicIdentity id, int rate = Rate) => rate * 60.0 / (SkySynth.ThemeTempoFor(id) * 4.0);
+
+    /// <summary>
+    /// Integrated loudness after ITU-R BS.1770 (K-weighting, 400 ms blocks with 75 % overlap, the −70 LUFS absolute and
+    /// −10 LU relative gates), in LUFS, of interleaved stereo at <see cref="Rate"/>.
+    /// </summary>
+    private static double Lufs(float[] s)
+    {
+        // The K-weighting filter's two biquads (the high shelf and the RLB high-pass), designed for this sample rate.
+        static (double B0, double B1, double B2, double A1, double A2) Shelf()
+        {
+            const double f0 = 1681.974450955533, g = 3.999843853973347, q = 0.7071752369554196;
+            var k = Math.Tan(Math.PI * f0 / Rate);
+            var vh = Math.Pow(10, g / 20);
+            var vb = Math.Pow(vh, 0.4996667741545416);
+            var a0 = 1 + k / q + k * k;
+            return ((vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0);
+        }
+
+        static (double B0, double B1, double B2, double A1, double A2) HighPass()
+        {
+            const double f0 = 38.13547087602444, q = 0.5003270373238773;
+            var k = Math.Tan(Math.PI * f0 / Rate);
+            var a0 = 1 + k / q + k * k;
+            return (1, -2, 1, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0);
+        }
+
+        var frames = s.Length / 2;
+        var weighted = new double[2][];
+        foreach (var ch in new[] { 0, 1 })
+        {
+            var x = new double[frames];
+            for (var i = 0; i < frames; i++) x[i] = s[2 * i + ch];
+            foreach (var (b0, b1, b2, a1, a2) in new[] { Shelf(), HighPass() })
+            {
+                double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+                for (var i = 0; i < frames; i++)
+                {
+                    var y = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                    x2 = x1;
+                    x1 = x[i];
+                    y2 = y1;
+                    y1 = y;
+                    x[i] = y;
+                }
+            }
+
+            weighted[ch] = x;
+        }
+
+        var block = (int)(0.4 * Rate);
+        var hop = block / 4;
+        var powers = new List<double>();
+        for (var start = 0; start + block <= frames; start += hop)
+        {
+            double sum = 0;
+            for (var i = start; i < start + block; i++) sum += weighted[0][i] * weighted[0][i] + weighted[1][i] * weighted[1][i];
+            powers.Add(sum / block);
+        }
+
+        static double L(double power) => -0.691 + 10 * Math.Log10(Math.Max(1e-12, power));
+        var absolute = powers.Where(z => L(z) > -70).ToList();
+        if (absolute.Count == 0) return -70;
+        var relative = L(absolute.Average()) - 10;
+        var gated = absolute.Where(z => L(z) > relative).ToList();
+        return L(gated.Average());
+    }
+
+    [Theory]
+    [MemberData(nameof(NewArrangementIds))]
+    public void Every_new_arrangement_keeps_the_theme_recognisable_and_returning(MusicIdentity id)
+    {
+        var fps = ThemeFramesPerSixteenth(id);
+        foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Library, PlanetTheme.Theatre }) // 7-note keys: ThemeMatch maps degrees directly
+        {
+            var character = CharacterOf(id);
+            var key = SkySynth.KeyFor(theme, character);
+            var s = new SkySynth(seed: 2026, theme, Rate, character);
+            var lead = new List<MelodyNote>();
+            s.MelodyObserver = n =>
+            {
+                if (n.Part == MelodyPart.Theme) lead.Add(n);
+            };
+            var total = (int)Math.Round(33 * 16 * fps); // two cycles and the next return's first bar
+            var buffer = new float[4096 * 2];
+            for (var done = 0; done < total; done += 4096) s.Render(buffer);
+            var first = ThemeMatch(lead, key, 0, fps);
+            var second = ThemeMatch(lead, key, SkySynth.CycleBars, fps);
+            output.WriteLine($"{id} in {theme} ({key.Mode}, theme at {SkySynth.ThemeTempoFor(id)} BPM over a {SkySynth.TempoFor(id)} BPM pulse): first return {first:P0}, second {second:P0} ({lead.LastOrDefault().Variation})");
+            first.Should().Be(1, $"{id} states the theme as written on arrival");
+            second.Should().BeGreaterThanOrEqualTo(0.7, $"{id}'s second return is still the theme");
+        }
+    }
+
+    [Fact]
+    public void Every_arrangement_is_as_loud_as_the_others_within_2_dB_and_never_clips()
+    {
+        var results = new Dictionary<MusicIdentity, (double Lufs, double Rms, float Peak)>();
+        foreach (var id in Enum.GetValues<MusicIdentity>())
+        {
+            var lufs = new List<double>();
+            var rms = new List<double>();
+            float peak = 0;
+            foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Workshop, PlanetTheme.Vault })
+            {
+                var s = new SkySynth(seed: 77, theme, Rate, CharacterOf(id));
+                var buf = RenderSeconds(s, 32);
+                lufs.Add(Lufs(buf));
+                var m = Measure(buf);
+                rms.Add(Db(m.Rms));
+                peak = MathF.Max(peak, m.Peak);
+            }
+
+            results[id] = (lufs.Average(), rms.Average(), peak);
+            output.WriteLine($"{id,-12} {results[id].Lufs:0.0} LUFS (K-weighted, gated), {results[id].Rms:0.0} dBFS RMS, peak {peak:0.000} ({Db(peak):0.0} dBFS)");
+        }
+
+        var reference = CurrentArrangements.Average(id => results[id].Lufs);
+        output.WriteLine($"reference (the AD-49 arrangements still in use): {reference:0.0} LUFS");
+        foreach (var id in NewArrangements)
+        {
+            results[id].Lufs.Should().BeInRange(reference - 2, reference + 2, $"{id} sits with the others");
+        }
+
+        var all = NewArrangements.Concat(CurrentArrangements).Select(id => results[id].Lufs).ToList();
+        (all.Max() - all.Min()).Should().BeLessThanOrEqualTo(4, "every arrangement within ±2 dB of the middle");
+        // The limiter (threshold 0.8) never has to act on the music alone, so nothing is ever squashed or clipped.
+        foreach (var (id, r) in results) r.Peak.Should().BeLessThan(0.8f, $"{id}'s music leaves headroom");
+    }
+
+    [Theory]
+    [MemberData(nameof(NewArrangementIds))]
+    public void Switching_into_and_out_of_each_arrangement_never_clicks(MusicIdentity id)
+    {
+        var s = new SkySynth(seed: 13, PlanetTheme.Hearth, Rate, Band(1));
+        s.SetMasterVolume(1);
+        var steady = Measure(RenderSeconds(s, 3));
+        float worst = 0;
+        foreach (var (theme, character) in new[] { (PlanetTheme.Library, CharacterOf(id)), (PlanetTheme.Hearth, Band(1)), (PlanetTheme.Crystal, CharacterOf(id)), (PlanetTheme.Crystal, Repo) })
+        {
+            s.SetWorld(theme, character, 1);
+            s.Arrive();
+            var change = Measure(RenderSeconds(s, 1.5));
+            worst = MathF.Max(worst, change.MaxJump);
+            RenderSeconds(s, 2);
+        }
+
+        var alone = new SkySynth(seed: 13, PlanetTheme.Library, Rate, CharacterOf(id));
+        alone.SetMasterVolume(1);
+        var own = Measure(RenderSeconds(alone, 6));
+        output.WriteLine($"{id}: max sample-to-sample jump across changes {worst:0.000} (steady outskirts {steady.MaxJump:0.000}, its own music {own.MaxJump:0.000})");
+        worst.Should().BeLessThan(MathF.Max(steady.MaxJump, own.MaxJump) * 1.6f + 0.02f, "no clicks beyond the music's own transients");
+    }
+
+    [Fact]
+    public void Rapid_hops_through_every_arrangement_and_back_stay_within_budget_and_click_free()
+    {
+        WorldCharacter[] route = [Band(2), Band(3), HazardWorld, Band(4), Repo, Band(2, 42), Windows, Band(3)];
+        PlanetTheme[] themes = [PlanetTheme.Library, PlanetTheme.Theatre, PlanetTheme.Vault, PlanetTheme.Crystal, PlanetTheme.Workshop, PlanetTheme.Workshop, PlanetTheme.Hearth, PlanetTheme.Meadow];
+        var s = new SkySynth(seed: 31, PlanetTheme.Hearth, Rate, Hub);
+        s.SetMasterVolume(1);
+        var steady = Measure(RenderSeconds(s, 3));
+        float peak = 0, jump = 0;
+        int maxMusic = 0, maxVoices = 0;
+        double sum = 0;
+        var n = 0;
+        for (var i = 0; i < 16 * 60; i++) // 16 s in 60 Hz frames: 8 hops in 2 s, then backtracking through them, a hop every 0.75 s
+        {
+            if (i < 120 && i % 15 == 0)
+            {
+                s.SetWorld(themes[i / 15], route[i / 15], visits: 1);
+                s.Arrive();
+            }
+            else if (i >= 240 && i < 240 + 8 * 45 && (i - 240) % 45 == 0)
+            {
+                var back = 7 - (i - 240) / 45; // the way back, most recent first (returns resume)
+                s.SetWorld(themes[back], route[back], visits: 2);
+                s.Arrive();
+            }
+
+            var buf = s.Render(735);
+            foreach (var x in buf)
+            {
+                float.IsFinite(x).Should().BeTrue();
+                peak = MathF.Max(peak, MathF.Abs(x));
+                sum += x * (double)x;
+                n++;
+            }
+
+            jump = MathF.Max(jump, Measure(buf).MaxJump);
+            maxMusic = Math.Max(maxMusic, s.ActiveMusicVoices);
+            maxVoices = Math.Max(maxVoices, s.ActiveVoices);
+        }
+
+        var settled = Measure(RenderSeconds(s, 4));
+        // The music's own transients, world by world (a click is a jump beyond them).
+        var own = route.Select((c, i) =>
+        {
+            var alone = new SkySynth(seed: 31, themes[i], Rate, c);
+            alone.SetMasterVolume(1);
+            return Measure(RenderSeconds(alone, 6)).MaxJump;
+        }).Max();
+        output.WriteLine($"the worlds' own largest jump {own:0.000}; steady jump {steady.MaxJump:0.000}, settled jump {settled.MaxJump:0.000}; hops and backtracking: peak {peak:0.000}, jump {jump:0.000}, rms {Math.Sqrt(sum / n):0.0000} (settled {settled.Rms:0.0000}), music voices ≤ {maxMusic}, voices ≤ {maxVoices}; ends in {s.Identity}");
+        peak.Should().BeLessThan(1f);
+        maxMusic.Should().BeLessThanOrEqualTo(SkySynth.MaxMusicVoices);
+        maxVoices.Should().BeLessThanOrEqualTo(SkySynth.MaxVoices);
+        jump.Should().BeLessThan(MathF.Max(own, MathF.Max(steady.MaxJump, settled.MaxJump)) * 1.6f + 0.02f, "no clicks beyond the music's own transients");
+        Math.Sqrt(sum / n).Should().BeLessThan(settled.Rms * 2, "hops do not pile up into mush");
+        s.Identity.Should().Be(MusicIdentity.Trails, "the way back ends where the hops began");
+    }
+
+    [Theory]
+    [MemberData(nameof(NewArrangementIds))]
+    public void A_full_minute_in_one_arrangement_varies_and_never_runs_away(MusicIdentity id)
+    {
+        var s = new SkySynth(seed: 60, PlanetTheme.Library, Rate, CharacterOf(id));
+        var parts = new List<MelodyNote>();
+        s.MelodyObserver = parts.Add;
+        var windows = new List<double>();
+        var voices = new List<int>();
+        var all = new List<float>(Rate * 2 * 60);
+        for (var w = 0; w < 12; w++)
+        {
+            var chunk = new float[Frames(5) * 2];
+            for (var done = 0; done < chunk.Length; done += 735 * 2)
+            {
+                s.Render(chunk.AsSpan(done, Math.Min(735 * 2, chunk.Length - done)));
+                voices.Add(s.ActiveMusicVoices);
+            }
+
+            windows.Add(Db(Measure(chunk).Rms));
+            all.AddRange(chunk);
+        }
+
+        var half = Frames(30);
+        string Fingerprint(IEnumerable<MelodyNote> notes) => string.Join(",", notes.Select(n => n.MidiNote));
+        var firstHalf = Fingerprint(parts.Where(n => n.Frame < half && n.Part == MelodyPart.Theme));
+        var secondHalf = Fingerprint(parts.Where(n => n.Frame >= half && n.Part == MelodyPart.Theme));
+        var kinds = parts.Select(n => n.Part).Distinct().ToList();
+        var (peak, jump, _) = Measure([.. all]);
+        output.WriteLine($"{id}: 5 s windows {string.Join(" ", windows.Select(x => x.ToString("0.0")))} dBFS; music voices mean {voices.Average():0.0}, max {voices.Max()}; parts {string.Join("/", kinds)}; peak {peak:0.000}, jump {jump:0.000}");
+        kinds.Should().Contain(MelodyPart.Theme).And.Contain(MelodyPart.Motif, "the theme and the world's own material");
+        secondHalf.Should().NotBe(firstHalf, "the minute is not one loop");
+        (windows.Max() - windows.Min()).Should().BeGreaterThan(1, "the dynamics move (a build, a breakdown, a tutti)");
+        voices.Max().Should().BeLessThanOrEqualTo(SkySynth.MaxMusicVoices);
+        voices.Average().Should().BeLessThan(SkySynth.MaxMusicVoices * 0.85, "the voice budget is not saturated all the time");
+        voices.TakeLast(60).Average().Should().BeLessThan(SkySynth.MaxMusicVoices, "no voices pile up over the minute");
+        peak.Should().BeLessThan(0.8f);
+    }
+
+    [Theory]
+    [MemberData(nameof(NewArrangementIds))]
+    public void Rendering_each_arrangement_with_cues_is_cheap(MusicIdentity id)
+    {
+        var best = double.MaxValue;
+        for (var run = 0; run < 3; run++)
+        {
+            var s = new SkySynth(seed: run, PlanetTheme.Wild, Rate, CharacterOf(id) with { RepositoryId = id == MusicIdentity.Hazard ? -1 : 42 });
+            s.Render(Frames(14)); // into the busiest part of the cycle
+            var buffer = new float[Frames(1) * 2];
+            var sw = Stopwatch.StartNew();
+            s.Launch();
+            s.Arrive();
+            s.AirJump();
+            s.FallStart();
+            s.Chime(1);
+            s.Open();
+            for (var chunk = 0; chunk < 20; chunk++)
+            {
+                s.Fly(chunk / 20f);
+                s.Fall(chunk / 20f);
+                s.HazardWarning(0.8f);
+                s.Render(buffer.AsSpan(chunk * buffer.Length / 20, buffer.Length / 20));
+            }
+
+            sw.Stop();
+            best = Math.Min(best, sw.Elapsed.TotalMilliseconds);
+        }
+
+        output.WriteLine($"{id}: best {best:0.00} ms per second of audio (music, flight build, fall, warning and six effects)");
+        best.Should().BeLessThan(60, "the same bound as the busiest AD-49 world (6 % of a core, Debug)");
+    }
+
+    [Fact]
+    public void A_flight_out_of_the_festival_builds_and_the_arrival_drops_into_the_theme()
+    {
+        var key = SkySynth.KeyFor(PlanetTheme.Library, Band(2));
+        var beat = 4 * FramesPerSixteenth(MusicIdentity.Trails);
+        (List<MelodyNote> Notes, long Arrival, double Early, double Late) Fly(bool flight, PlanetTheme to, WorldCharacter where)
+        {
+            var s = new SkySynth(seed: 9, PlanetTheme.Library, Rate, Band(2));
+            var notes = new List<MelodyNote>();
+            s.MelodyObserver = notes.Add;
+            RenderSeconds(s, 20); // into the breakdown (bar 11 of 16)
+            var windUp = s.AlignToGrid(TimeSpan.FromSeconds(0.4), TimeSpan.FromSeconds(0.09));
+            s.WindUp(windUp);
+            RenderSeconds(s, windUp.TotalSeconds);
+            s.Launch();
+            var audio = new List<float>();
+            for (var f = 0; f < 120; f++) // a 2 s flight in 60 Hz frames
+            {
+                if (flight) s.Fly(f / 120f);
+                audio.AddRange(s.Render(735));
+            }
+
+            s.Fly(1);
+            s.Land(8);
+            s.SetWorld(to, where, 1);
+            var arrival = s.FramesRendered;
+            s.Arrive();
+            RenderSeconds(s, 3);
+            // The build's energy above ≈ 1 kHz (first differences): the roll thickens and the riser opens.
+            double Hf(int from, int count)
+            {
+                double e = 0;
+                for (var i = from * 2 + 2; i < (from + count) * 2; i++) e += Math.Pow(audio[i] - audio[i - 2], 2);
+                return e / count;
+            }
+
+            return (notes, arrival, Hf(Frames(0.1), Frames(0.5)), Hf(Frames(1.4), Frames(0.5)));
+        }
+
+        // A flight to a sibling of the same world: it keeps its groove and the arrival drops into the top of the theme.
+        var (notes, arrival, early, late) = Fly(true, PlanetTheme.Library, Band(2) with { Depth = 3 });
+        var drop = notes.FirstOrDefault(n => n.Part == MelodyPart.Theme && n.Frame >= arrival);
+        output.WriteLine($"build: high-frequency energy {early:0.000e0} early in the flight, {late:0.000e0} late; the drop's first theme note {(drop.Frame - arrival) * 1000.0 / Rate:0} ms after the arrival (MIDI {drop.MidiNote})");
+        late.Should().BeGreaterThan(early * 1.5, "the build grows through the flight");
+        (drop.Frame - arrival).Should().BeInRange(Frames(0.15) - 2, Frames(0.15) + (long)beat + 2, "the drop lands on the first beat after the arrival (≥ 0.15 s)");
+        (drop.MidiNote % 12).Should().Be(Midi(key, 2) % 12, "the drop starts the theme from its first note");
+
+        // Without the flight (a hop), the same arrival keeps its place in the breakdown: no drop.
+        var (hopNotes, hopArrival, _, _) = Fly(false, PlanetTheme.Library, Band(2) with { Depth = 3 });
+        hopNotes.Should().NotContain(n => n.Part == MelodyPart.Theme && n.Frame >= hopArrival && n.Frame < hopArrival + Frames(1.5), "a hop is not a build");
+
+        // A flight to another festival world (another key): its first downbeat is the drop, at least 0.15 s after the arrival.
+        var (newNotes, newArrival, _, _) = Fly(true, PlanetTheme.Meadow, Band(2));
+        var first = newNotes.First(n => n.Part == MelodyPart.Theme && n.Frame >= newArrival);
+        output.WriteLine($"into a new festival world: the theme {(first.Frame - newArrival) * 1000.0 / Rate:0} ms after the arrival");
+        (first.Frame - newArrival).Should().BeInRange(Frames(0.15) - 2, Frames(0.15) + (long)beat + 2);
+        (first.MidiNote % 12).Should().Be(Midi(SkySynth.KeyFor(PlanetTheme.Meadow, Band(2)), 2) % 12);
+    }
+
+    [Fact]
+    public void The_hazard_warning_throttles_itself_and_falls_silent_when_the_calls_stop()
+    {
+        int Pulses(float nearness, int framesAt60Hz, int callsPerFrame = 1)
+        {
+            var s = new SkySynth(seed: 3, PlanetTheme.Vault, LowRate, HazardWorld) { MusicVolume = 0 };
+            s.Render(LowRate);
+            for (var f = 0; f < framesAt60Hz; f++)
+            {
+                for (var c = 0; c < callsPerFrame; c++) s.HazardWarning(nearness);
+                s.Render(LowRate / 60);
+            }
+
+            return s.WarningPulses;
+        }
+
+        var edge = Pulses(1f, 180);
+        var near = Pulses(0.3f, 180);
+        var far = Pulses(0f, 180);
+        var hammered = Pulses(1f, 180, callsPerFrame: 50);
+        output.WriteLine($"pulses in 3 s: at the edge {edge}, nearness 0.3 {near}, far {far}, at the edge called 50× per frame {hammered}");
+        edge.Should().BeInRange(9, 13, "every ≈ 0.25 s at the edge");
+        near.Should().BeInRange(3, 6, "slower when further away");
+        far.Should().Be(0);
+        hammered.Should().Be(edge, "calling it more often changes nothing");
+
+        // When the calls stop, the rumble and pulses fade within a second.
+        var t = new SkySynth(seed: 3, PlanetTheme.Vault, Rate, HazardWorld) { MusicVolume = 0 };
+        t.Render(Rate);
+        for (var f = 0; f < 60; f++)
+        {
+            t.HazardWarning(0.9f);
+            t.Render(735);
+        }
+
+        t.Render(Frames(1.2));
+        Measure(t.Render(Frames(0.3))).Peak.Should().BeLessThan(1e-3f, "nothing drones on after the warning stops");
+    }
+
+    [Fact]
+    public void The_fall_spirals_downwards_and_the_return_brings_the_music_back()
+    {
+        var s = new SkySynth(seed: 5, PlanetTheme.Hearth, Rate, HazardWorld) { MusicVolume = 0 };
+        s.Render(Frames(2));
+        s.FallStart();
+        var fall = new List<float>();
+        for (var f = 0; f < 150; f++) // a 2.5 s fall
+        {
+            s.Fall(f / 150f);
+            fall.AddRange(s.Render(735));
+        }
+
+        // Pitch from zero crossings of the left channel over 0.4 s windows: it falls.
+        double Crossings(int from)
+        {
+            var c = 0;
+            for (var i = from + 1; i < from + Frames(0.4); i++)
+            {
+                if (Math.Sign(fall[2 * i]) != Math.Sign(fall[2 * i - 2])) c++;
+            }
+
+            return c / 0.4;
+        }
+
+        // The spiral: the balance between left and right swings back and forth, faster towards the end.
+        int Swings(int from, int to)
+        {
+            var swings = 0;
+            var last = 0;
+            for (var w = from; w + 441 <= to; w += 441)
+            {
+                double l = 0, r = 0;
+                for (var i = w; i < w + 441; i++)
+                {
+                    l += fall[2 * i] * fall[2 * i];
+                    r += fall[2 * i + 1] * fall[2 * i + 1];
+                }
+
+                var side = l > r * 1.2 ? -1 : r > l * 1.2 ? 1 : 0;
+                if (side != 0 && side != last)
+                {
+                    if (last != 0) swings++;
+                    last = side;
+                }
+            }
+
+            return swings;
+        }
+
+        var early = Crossings(Frames(0.4));
+        var late = Crossings(Frames(2.0));
+        var swingsEarly = Swings(0, Frames(1.25));
+        var swingsLate = Swings(Frames(1.25), Frames(2.5));
+        output.WriteLine($"fall: {early:0} crossings/s early, {late:0} late; left-right swings {swingsEarly} in the first half, {swingsLate} in the second");
+        late.Should().BeLessThan(early * 0.6, "the whoosh falls in pitch");
+        swingsLate.Should().BeGreaterThan(swingsEarly, "the spiral turns faster");
+
+        // The music: ducked deep during the fall, back near its level within half a second of the return.
+        float[] Music(bool ret)
+        {
+            var m = new SkySynth(seed: 5, PlanetTheme.Hearth, Rate, HazardWorld);
+            m.Render(Frames(8));
+            m.FallStart();
+            for (var f = 0; f < 150; f++)
+            {
+                m.Fall(f / 150f);
+                m.Render(735);
+            }
+
+            if (ret) m.FallReturn();
+            m.Render(Frames(0.6));
+            return m.Render(Frames(1));
+        }
+
+        var quiet = new SkySynth(seed: 5, PlanetTheme.Hearth, Rate, HazardWorld);
+        quiet.Render(Frames(10.5));
+        var reference = Measure(quiet.Render(Frames(1))).Rms;
+        var after = Measure(Music(true)).Rms;
+        output.WriteLine($"music after the return {Db(after):0.0} dBFS (undisturbed {Db(reference):0.0})");
+        after.Should().BeGreaterThan(reference * 0.5, "the music comes back after the return");
+    }
+
+    [Theory]
+    [MemberData(nameof(Identities))]
+    public void Hazard_cues_stand_clear_of_every_world_s_music(MusicIdentity id)
+    {
+        (string Name, Action<SkySynth> Start, Action<SkySynth, int> Frame, double Seconds)[] cues =
+        [
+            ("warning", _ => { }, (s, f) => s.HazardWarning(1f), 0.6),
+            ("fall", s => s.FallStart(), (s, f) => s.Fall(f / 60f), 1.0),
+            ("return", s => s.FallReturn(), (_, _) => { }, 0.4),
+        ];
+        foreach (var (name, start, frame, seconds) in cues)
+        {
+            float[] Run(float music)
+            {
+                var s = new SkySynth(seed: 30, PlanetTheme.Hearth, Rate, CharacterOf(id)) { MusicVolume = music };
+                s.Render(Frames(4.0));
+                start(s);
+                var all = new List<float>();
+                for (var f = 0; f < (int)(seconds * 60); f++)
+                {
+                    frame(s, f);
+                    all.AddRange(s.Render(735));
+                }
+
+                return [.. all];
+            }
+
+            var cue = Run(0);
+            var with = Run(1);
+            double c = 0, m = 0;
+            for (var i = 0; i < cue.Length; i++)
+            {
+                c += cue[i] * (double)cue[i];
+                m += Math.Pow(with[i] - cue[i], 2);
+            }
+
+            var snr = 10 * Math.Log10(c / Math.Max(1e-12, m));
+            output.WriteLine($"{id}: {name} {snr:+0.0;-0.0} dB over the ducked music");
+            snr.Should().BeGreaterThan(4, $"{id}'s music leaves room for the {name} cue");
+        }
+    }
+
     // ---------------------------------------------------------------- listening evidence (opt-in)
 
     [SkySynthWavFact]
@@ -1083,6 +1629,159 @@ public class SkySynthTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// The listening samples for PLANET-35 (SKYSYNTH_ARRANGEMENTS_DIR): each new arrangement with launches and arrivals, the
+    /// theme's first 8 bars in each arrangement back to back, the hazard world with its warning, fall and return, rapid hops
+    /// and backtracking. Launches here follow the app (a 0.4 s wind-up aligned to the grid, a 2 s flight, landing impact 8 m/s,
+    /// SetWorld then Arrive; no SetFlight, which the app does not call).
+    /// </summary>
+    [SkySynthArrangementsFact]
+    public void Render_arrangement_samples_to_wav()
+    {
+        var dir = Environment.GetEnvironmentVariable("SKYSYNTH_ARRANGEMENTS_DIR")!;
+        Directory.CreateDirectory(dir);
+
+        {
+            // The festival: a flight in from the outskirts (its first downbeat drops), the drop, the breakdown, then a flight to a
+            // sibling folder at ≈ 23 s (the build in the air, the drop on arrival), the drop again, the breakdown,
+            // and the cycle's own build and drop (≈ 56 s).
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Meadow, Rate, Band(1)));
+            r.Walk(1.5);
+            r.Flight(PlanetTheme.Library, Band(2), 1);
+            r.Walk(23 - r.T);
+            r.Flight(PlanetTheme.Library, Band(2) with { Depth = 3 }, 1);
+            r.Walk(58 - r.T);
+            Save(r, Path.Combine(dir, "festival-trails-58s.wav"));
+        }
+
+        {
+            // The orchestra: arriving from the outskirts, one full cycle (the theme passed from woodwind to violins to horns to
+            // the tutti, the cellos' motif, the horn call and the bar-14 climax), then a flight to another deep-woods world.
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Meadow, Rate, Band(1)));
+            r.Walk(1.5);
+            r.Flight(PlanetTheme.Theatre, Band(3), 1);
+            r.Walk(52 - r.T);
+            r.Flight(PlanetTheme.Hearth, Band(3), 1);
+            r.Until(60);
+            Save(r, Path.Combine(dir, "orchestral-deep-woods-60s.wav"));
+        }
+
+        {
+            // Drum and bass: a flight out of the festival (its build) lands in the underglow (its first downbeat hits with the
+            // impact), the half-breakdown at bars 9–10, then a flight to another underglow world.
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Library, Rate, Band(2)));
+            r.Walk(3);
+            r.Flight(PlanetTheme.Crystal, Band(4), 1);
+            r.Walk(44 - r.T);
+            r.Flight(PlanetTheme.Vault, Band(4), 1);
+            r.Until(56);
+            Save(r, Path.Combine(dir, "dnb-underglow-56s.wav"));
+        }
+
+        {
+            // The same melody across the arrangements: the theme's first 8 bars in each, back to back (fresh synths, the
+            // first downbeat at the top of each part, Library's B♭ root throughout).
+            var all = new List<float>();
+            foreach (var id in new[] { MusicIdentity.Trails, MusicIdentity.Underglow, MusicIdentity.DeepWoods })
+            {
+                var s = new SkySynth(seed: 2026, PlanetTheme.Library, Rate, CharacterOf(id));
+                var frames = (int)Math.Round(8 * 16 * ThemeFramesPerSixteenth(id)) + Frames(0.4);
+                var part = new float[frames * 2];
+                for (var done = 0; done < part.Length; done += 735 * 2) s.Render(part.AsSpan(done, Math.Min(735 * 2, part.Length - done)));
+                // A 0.3 s fade at the end of each part, so the cut to the next is a breath rather than a click.
+                var fade = Frames(0.3);
+                for (var i = 0; i < fade; i++)
+                {
+                    var g = 1f - (i + 1) / (float)fade;
+                    part[(frames - fade + i) * 2] *= g;
+                    part[(frames - fade + i) * 2 + 1] *= g;
+                }
+
+                all.AddRange(part);
+                output.WriteLine($"theme A/B: {id} from {all.Count / 2 / (double)Rate - frames / (double)Rate:0.0} s");
+            }
+
+            WriteWav(Path.Combine(dir, "theme-across-arrangements-60s.wav"), all, Rate);
+            var (peak, jump, rms) = Measure([.. all]);
+            output.WriteLine($"wrote theme-across-arrangements-60s.wav: {all.Count / 2 / (double)Rate:0.0} s, peak {peak:0.000}, rms {Db(rms):0.0} dBFS, max jump {jump:0.000}");
+        }
+
+        {
+            // The hazard world: arriving, walking, nearing an edge (the warning speeds up), backing off, nearing again, the
+            // fall (crack, the spiral down), the return at the parent (the outskirts), then a flight back into the hazard world.
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Meadow, Rate, Band(1)));
+            var s = r.Synth;
+            r.Walk(1.5);
+            r.Flight(PlanetTheme.Vault, HazardWorld, 1);
+            r.Walk(15 - r.T);
+            var t0 = r.T;
+            r.Events.Add($"warning rises {r.T:0.00} s");
+            r.Until(t0 + 6, now => s.HazardWarning((float)((now - t0) / 6)));
+            t0 = r.T;
+            r.Events.Add($"backs off {r.T:0.00} s");
+            r.Until(t0 + 3, now => s.HazardWarning(1f - (float)((now - t0) / 3)));
+            r.Walk(2);
+            t0 = r.T;
+            r.Until(t0 + 3, now => s.HazardWarning(0.4f + 0.6f * (float)((now - t0) / 3)));
+            s.FallStart();
+            r.Events.Add($"fall {r.T:0.00} s");
+            t0 = r.T;
+            r.Until(t0 + 2.5, now => s.Fall((float)((now - t0) / 2.5)));
+            s.Fall(1);
+            s.SetWorld(PlanetTheme.Meadow, Band(1), 2);
+            s.FallReturn();
+            s.Arrive();
+            r.Events.Add($"return {r.T:0.00} s");
+            r.Walk(42 - r.T);
+            r.Flight(PlanetTheme.Vault, HazardWorld, 2);
+            r.Walk(52 - r.T);
+            t0 = r.T;
+            r.Until(t0 + 4, now => s.HazardWarning(0.7f));
+            r.Until(60);
+            Save(r, Path.Combine(dir, "hazard-60s.wav"));
+        }
+
+        {
+            // Rapid hops: 8 worlds in 2 s through every arrangement, then settling in the last.
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Hearth, Rate, Hub));
+            r.Walk(4);
+            (PlanetTheme, WorldCharacter)[] hops =
+            [
+                (PlanetTheme.Library, Band(2)), (PlanetTheme.Theatre, Band(3)), (PlanetTheme.Crystal, Band(4)), (PlanetTheme.Vault, HazardWorld),
+                (PlanetTheme.Workshop, Repo), (PlanetTheme.Meadow, Band(1)), (PlanetTheme.Hearth, Wsl), (PlanetTheme.Library, Band(2) with { Depth = 3 }),
+            ];
+            var start = r.T;
+            for (var i = 0; i < hops.Length; i++)
+            {
+                r.Until(start + 0.25 * i);
+                r.Hop(hops[i].Item1, hops[i].Item2, 1);
+            }
+
+            r.Until(20);
+            Save(r, Path.Combine(dir, "rapid-hops-20s.wav"));
+        }
+
+        {
+            // Backtracking: out from the hub through the festival, the orchestra and drum and bass by flights, then back the
+            // same way by quick returns (Backspace: each world resumes where it was), ending at the hub.
+            var r = new Route(new SkySynth(seed: 2026, PlanetTheme.Hearth, Rate, Hub));
+            r.Walk(2);
+            r.Flight(PlanetTheme.Library, Band(2), 1);
+            r.Walk(4);
+            r.Flight(PlanetTheme.Theatre, Band(3), 1);
+            r.Walk(4);
+            r.Flight(PlanetTheme.Crystal, Band(4), 1);
+            r.Walk(4);
+            r.Flight(PlanetTheme.Theatre, Band(3), 2);
+            r.Walk(1.6);
+            r.Hop(PlanetTheme.Library, Band(2), 2);
+            r.Walk(1.6);
+            r.Hop(PlanetTheme.Hearth, Hub, 2);
+            r.Until(30);
+            Save(r, Path.Combine(dir, "backtrack-30s.wav"));
+        }
+    }
+
     private void Save(Route r, string path)
     {
         WriteWav(path, r.Samples, Rate);
@@ -1139,6 +1838,26 @@ public class SkySynthTests(ITestOutputHelper output)
             s.Fly(1);
             s.SetFlight(0);
             s.Land(6);
+            s.SetWorld(theme, character, visits);
+            s.Arrive();
+            Events.Add($"land {T:0.00} s ({SkySynth.IdentityOf(character)})");
+        }
+
+        /// <summary>The synth the route drives (for cues the route has no method for).</summary>
+        public SkySynth Synth => s;
+
+        /// <summary>A launch as the app makes it (AD-52 samples): a 0.4 s wind-up on the grid, a flight calling Fly every frame, landing at 8 m/s, SetWorld, Arrive.</summary>
+        public void Flight(PlanetTheme theme, WorldCharacter character, int visits, double flightSeconds = 2.0)
+        {
+            var windUp = s.AlignToGrid(TimeSpan.FromSeconds(0.4), TimeSpan.FromSeconds(0.09));
+            s.WindUp(windUp);
+            Until(T + windUp.TotalSeconds);
+            s.Launch();
+            Events.Add($"launch {T:0.00} s");
+            var t0 = T;
+            Until(t0 + flightSeconds, now => s.Fly((float)((now - t0) / flightSeconds)));
+            s.Fly(1);
+            s.Land(8);
             s.SetWorld(theme, character, visits);
             s.Arrive();
             Events.Add($"land {T:0.00} s ({SkySynth.IdentityOf(character)})");

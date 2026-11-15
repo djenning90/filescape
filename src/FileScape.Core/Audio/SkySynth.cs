@@ -82,23 +82,43 @@ public enum MusicIdentity
     /// <summary>Folder band 1 (the outskirts): a bouncy swung groove with marimba.</summary>
     Outskirts,
 
-    /// <summary>Folder band 2 (the trails): four on the floor, offbeat bass, dotted plucks.</summary>
+    /// <summary>
+    /// Folder band 2 (the trails), the festival arrangement (AD-52): a pumping big-room drop with the theme on a supersaw,
+    /// a breakdown, a build (snare roll, riser, filter opening) and the drop again; a flight out of it builds, and the
+    /// arrival drops.
+    /// </summary>
     Trails,
 
-    /// <summary>Folder band 3 (the deep woods): tribal toms and wood, dorian.</summary>
+    /// <summary>
+    /// Folder band 3 (the deep woods), the orchestral arrangement (AD-52): strings, horns, woodwinds, timpani and harp in
+    /// dorian, the theme passed between them with dynamics that rise and fall across the cycle; a broad half-time theme
+    /// over an eighth-note string ostinato.
+    /// </summary>
     DeepWoods,
 
-    /// <summary>Folder band 4 (the underglow): fast and glowing, sixteenth pulse, lydian dominant.</summary>
+    /// <summary>
+    /// Folder band 4 (the underglow), the drum-and-bass arrangement (AD-52): 172 BPM breakbeats under a half-time theme,
+    /// a detuned reese bass and sub, airy strings and a glowing lead, dorian.
+    /// </summary>
     Underglow,
+
+    /// <summary>
+    /// A hazard world (<see cref="WorldKind.Hazard"/>, AD-52): ominous and unstable but still the theme, in phrygian at half
+    /// time over a beating drone, a heartbeat and ticking metal; with its own warning and fall cues (<see cref="SkySynth.HazardWarning"/>).
+    /// </summary>
+    Hazard,
 }
 
 /// <summary>
 /// The Planets experience's original procedural audio ("Lantern Cosmos"): generative music and pitched sound effects,
 /// synthesised from scratch in plain C# (no engine types, no samples), so it can be rendered offline and tested.
 /// <para>
-/// <b>Worlds (AD-49).</b> The music has a family of eight identities (<see cref="MusicIdentity"/>), chosen from a world's
+/// <b>Worlds (AD-49, AD-52).</b> The music has a family of nine identities (<see cref="MusicIdentity"/>), chosen from a world's
 /// <see cref="WorldCharacter"/> by <see cref="IdentityOf"/>, each with its own tempo (<see cref="TempoFor"/>: the hub 94 BPM,
-/// roots 112–116, the repository 126, folder bands 120 → 132), groove, instruments and motif; the key's root comes from the
+/// roots 112–116, the repository 126, folder bands 120 → 172, the hazard world 140), groove, instruments and motif. Three
+/// folder bands and the hazard world are AD-52's arrangements (SkySynth.Arrangements.cs): the trails a festival drop and
+/// build, the deep woods an orchestra, the underglow drum and bass, the hazard world an uneasy half-time drone; three of them
+/// play the theme at half their pulse (<see cref="ThemeTempoFor"/>). The key's root comes from the
 /// world's <see cref="PlanetTheme"/> and the mode from the theme or the identity (<see cref="KeyFor(PlanetTheme, WorldCharacter)"/>).
 /// <see cref="SetWorld"/> is called on every arrival. A new world starts on the next beat of the music playing (its own
 /// first downbeat, then its own clock); the old deck stops there and its tails fade (equal power, <see cref="ThemeCrossfade"/>).
@@ -124,11 +144,16 @@ public enum MusicIdentity
 /// <see cref="Inspect"/>, <see cref="Open"/>, <see cref="Deny"/>, <see cref="Chime"/>) wait for the next point of the
 /// playing music's 32nd-note grid (79.8 ms at 94 BPM, 56.8 ms at 132), so they lock to its tempo and never wait longer than
 /// <see cref="QuantisedLatencyBound"/>. <see cref="AlignToGrid"/> stretches a wind-up so the launch lands on a sixteenth.
-/// The launch, landing and arrival cues duck the music briefly, so the drums never mask them.
+/// The launch, landing and arrival cues duck the music briefly, so the drums never mask them. In a festival world a flight
+/// (<see cref="Fly"/>) plays a build and the next <see cref="Arrive"/> releases it as a drop (AD-52). The hazard cues
+/// (<see cref="HazardWarning"/>, self-throttling, every frame near an edge; <see cref="FallStart"/>, <see cref="Fall"/> every
+/// frame of the fall, <see cref="FallReturn"/>) duck the music under them, deep for the fall.
 /// </para>
 /// <para>
 /// <b>Engine.</b> A pool of <see cref="MaxVoices"/> voices (sine, triangle, soft band-limited square, 2-operator FM bell,
-/// state-variable-filtered noise) with ADSR envelopes and exact-duration pitch glides; equal-power pan; a light
+/// state-variable-filtered noise, and a polyBLEP saw stack of up to three detuned copies through a two-pole filter) with
+/// ADSR envelopes, exact-duration pitch glides, optional tone sweeps and vibrato; per deck a plain and a "pumped" voice
+/// group (the festival's sidechain, <see cref="PumpGain"/>); equal-power pan; a light
 /// Freeverb-style reverb (4 combs + 2 allpasses per channel); a peak limiter followed by a soft clipper, so every output
 /// sample satisfies |x| &lt; 1. Rendering is block-based (64 frames), allocation-free in steady state, and deterministic
 /// for a seed. Not thread-safe: call everything from one thread (the Godot node calls it from <c>_Process</c>).
@@ -180,9 +205,12 @@ public sealed partial class SkySynth
     private const int Block = 64;
 
     // Voice groups: each deck's music, the flight arpeggio and the effects mix into their own buffers so each can be faded alone.
-    private const int GroupCount = 4; // DeckA, DeckB, Flight, Sfx
+    // Each deck has a second, "pumped" group (its index + GroupPumpOffset): the voices an arrangement sidechains to its kick
+    // (the festival's pads, supersaws and bass, AD-52), so the kick and the lead are not pumped with them.
+    private const int GroupCount = 6; // DeckA, DeckB, Flight, Sfx, DeckA pumped, DeckB pumped
     private const int GroupFlight = 2;
     private const int GroupSfx = 3;
+    private const int GroupPumpOffset = 4;
 
     /// <summary>Envelope level (≈ −66 dB) below which a decaying or released voice is finished and frees its slot.</summary>
     private const float EndLevel = 0.0005f;
@@ -225,6 +253,9 @@ public sealed partial class SkySynth
 
     /// <summary>The flight wind releases itself when <see cref="Fly"/> has not been called for this long, seconds (a dropped flight never drones on).</summary>
     private const float FlyTimeoutSeconds = 0.3f;
+
+    /// <summary>Time constant of the music's return at a festival drop, seconds: much quicker than <see cref="DuckReleaseSeconds"/>, so the drop slams in.</summary>
+    private const float DropDuckReleaseSeconds = 0.03f;
 
     /// <summary>The downward touchdown speed that gives the loudest, lowest landing, m/s (≈ a big drop); harder landings sound the same.</summary>
     private const float HardestLandingMetersPerSecond = 12f;
@@ -269,12 +300,14 @@ public sealed partial class SkySynth
     private float _limiterEnv;
     private Voice? _flyVoice;
     private int _flyGeneration;
-    private long _lastFlyFrame;
+    private long _lastFlyFrame = long.MinValue / 2;
+    private float _flyProgress = 1f;
     private bool _stepLeft;
     private float _duck;
     private float _duckDepth;
     private long _duckUntil;
     private float _duckAttackSeconds = DefaultDuckAttackSeconds;
+    private float _duckReleaseSeconds = DuckReleaseSeconds;
 
     /// <summary>Creates a synth playing <paramref name="theme"/>'s music from the first frame.</summary>
     /// <param name="seed">Chooses the melodies and noise; the same seed and calls give the same samples.</param>
@@ -400,7 +433,8 @@ public sealed partial class SkySynth
 
     /// <summary>
     /// A duration near <paramref name="duration"/> (within <paramref name="maxShift"/>) that ends on the sixteenth-note
-    /// grid of the music that will be playing then (the current world's own clock once its first downbeat has come), so a
+    /// grid of the music that will be playing then (the current world's own clock once its first downbeat has come; the pulse's
+    /// sixteenths, which in a half-time arrangement are its theme's thirty-seconds), so a
     /// launch released after it lands on the beat at any tempo. Measured from the render cursor (synth time, the time the
     /// release sound is rendered at). Returns <paramref name="duration"/> unchanged when no grid point is within the shift.
     /// A half sixteenth is at most 80 ms (94 BPM), so a shift of ≥ 0.08 s always lands.
@@ -411,7 +445,7 @@ public sealed partial class SkySynth
         if (!double.IsFinite(frames) || frames < 0) return duration;
         var end = _frame + frames;
         var d = ClockAt((long)Math.Round(end));
-        var fps = d.FramesPerSixteenth;
+        var fps = d.GridFramesPerSixteenth;
         var k = Math.Round((end - d.Origin) / fps);
         var grid = d.Origin + Math.Ceiling(k * fps - 1e-6);
         if (grid <= _frame) grid = d.Origin + Math.Ceiling((k + 1) * fps - 1e-6);
@@ -431,6 +465,7 @@ public sealed partial class SkySynth
         _duckDepth = active ? MathF.Max(_duckDepth, depth) : depth;
         _duckUntil = Math.Max(_duckUntil, _frame + Frames(seconds));
         _duckAttackSeconds = active ? MathF.Min(_duckAttackSeconds, attackSeconds) : attackSeconds;
+        _duckReleaseSeconds = DuckReleaseSeconds;
     }
 
     // ---------------------------------------------------------------- movement effects (immediate)
@@ -519,6 +554,7 @@ public sealed partial class SkySynth
     {
         var p = Clamp01(progress01);
         _lastFlyFrame = _frame;
+        _flyProgress = p;
         var v = _flyVoice != null && _flyVoice.Active && _flyVoice.Generation == _flyGeneration && !_flyVoice.Released ? _flyVoice : null;
         if (p >= 1f)
         {
@@ -544,6 +580,225 @@ public sealed partial class SkySynth
         v.SetCutoffTarget(cutoff, 1f - Coef(0.08f));
     }
 
+    // ---------------------------------------------------------------- hazard cues (AD-52)
+
+    /// <summary>Nearness (0..1) below which <see cref="HazardWarning"/> is silent: the edge is not yet a concern.</summary>
+    private const float WarningFromNearness = 0.05f;
+
+    /// <summary>Seconds between warning pulses just past <see cref="WarningFromNearness"/>: a slow, patient reminder.</summary>
+    private const float WarningSlowestIntervalSeconds = 1.0f;
+
+    /// <summary>Seconds between warning pulses at the very edge (nearness 1): urgent, but never a buzz.</summary>
+    private const float WarningFastestIntervalSeconds = 0.25f;
+
+    /// <summary>How deep the music ducks at the edge (nearness 1), 0..1 (≈ −7 dB): the warning is heard over any world, the music does not stop.</summary>
+    private const float WarningDuckDepth = 0.6f;
+
+    /// <summary>How deep the music ducks while falling, 0..1 (≈ −14 dB): the fall is the event; the music waits under it.</summary>
+    private const float FallDuckDepth = 0.8f;
+
+    /// <summary>The warning rumble and the fall's voices release when their method has not been called for this long, seconds.</summary>
+    private const float SteeredCueTimeoutSeconds = 0.3f;
+
+    /// <summary>The fall's pitch: it starts this many semitones above the key's root …</summary>
+    private const float FallFromSemitones = 24f;
+
+    /// <summary>… and falls this far by the end (three octaves: from two above the root to one below).</summary>
+    private const float FallSpanSemitones = 36f;
+
+    /// <summary>The spiral's rotation (the fall's two voices trading places left and right): turns per second at the start, and added by the end.</summary>
+    private const float FallSpinStartHz = 0.6f, FallSpinAddedHz = 4.4f;
+
+    private Voice? _warnVoice, _fallNoise, _fallLeft, _fallRight;
+    private int _warnGeneration, _fallNoiseGeneration, _fallLeftGeneration, _fallRightGeneration;
+    private long _lastWarnFrame = long.MinValue / 2, _nextWarningFrame = long.MinValue / 2, _lastFallFrame = long.MinValue / 2;
+    private float _fallSpin;
+
+    /// <summary>Warning pulses scheduled so far (diagnostics: the throttle's test).</summary>
+    public int WarningPulses { get; private set; }
+
+    /// <summary>
+    /// The edge warning, for a hazard world: call it every frame while the player is near an edge, with
+    /// <paramref name="nearness01"/> 0 (far) … 1 (at the edge). A low rumble follows the nearness, and a falling tritone pulse
+    /// (a warning, deliberately outside the key) repeats faster the nearer you are (every 1 s at the threshold, 0.25 s at
+    /// the edge), on the music's 32nd grid; the music ducks a little with it. Self-throttling and O(1) per call: calling
+    /// it every frame never stacks pulses, and when the calls stop (or nearness falls to ≈ 0) it falls silent within 0.3 s.
+    /// </summary>
+    public void HazardWarning(float nearness01)
+    {
+        var k = Clamp01(nearness01);
+        if (k < WarningFromNearness)
+        {
+            ReleaseSteered(ref _warnVoice, _warnGeneration);
+            return;
+        }
+
+        _lastWarnFrame = _frame;
+        DuckMusic(WarningDuckDepth * k, 0.2f, attackSeconds: 0.03f);
+        var level = 0.04f + 0.08f * k * k;
+        var cutoff = 90f + 260f * k;
+        var v = Steered(_warnVoice, _warnGeneration);
+        if (v == null)
+        {
+            v = StartVoice(NoteSpec.Noise(cutoff, cutoff, 0, q: 1.1f, lowpass: true) with
+            {
+                Attack = 0.15f, Sustain = 1f, Decay = 0.1f, Hold = 3600f, Release = 0.4f, Gain = level, Send = 0.3f, Group = GroupSfx,
+            }, 0);
+            if (v != null)
+            {
+                v.LevelK = 1f - Coef(0.12f);
+                _warnVoice = v;
+                _warnGeneration = v.Generation;
+            }
+        }
+
+        if (v != null)
+        {
+            v.LevelTarget = level;
+            v.SetCutoffTarget(cutoff, 1f - Coef(0.12f));
+        }
+
+        if (_frame < _nextWarningFrame) return;
+        var at = NextGridFrame();
+        var root = ClockAt(_frame).Profile.Root;
+        // The falling tritone, in two registers: "careful".
+        Enqueue(at, NoteSpec.Bell(MidiHz(root + 30), ratio: 2f, index: 1.3f, indexDecay: 0.1f) with { Attack = 0.002f, Decay = 0.35f, Gain = 0.06f + 0.05f * k, Pan = -0.1f, Send = 0.25f });
+        Enqueue(at, NoteSpec.Tone(Wave.Triangle, MidiHz(root + 18)) with { Attack = 0.004f, Decay = 0.3f, Gain = 0.07f + 0.05f * k, ToneHz = 1600, Send = 0.1f });
+        var second = at + GridStepFrames(at) * 2;
+        Enqueue(second, NoteSpec.Bell(MidiHz(root + 24), ratio: 2f, index: 1.3f, indexDecay: 0.1f) with { Attack = 0.002f, Decay = 0.45f, Gain = 0.055f + 0.045f * k, Pan = 0.1f, Send = 0.3f });
+        Enqueue(second, NoteSpec.Tone(Wave.Triangle, MidiHz(root + 12)) with { Attack = 0.004f, Decay = 0.35f, Gain = 0.065f + 0.045f * k, ToneHz = 1400, Send = 0.1f });
+        var interval = WarningSlowestIntervalSeconds + (WarningFastestIntervalSeconds - WarningSlowestIntervalSeconds) * k;
+        _nextWarningFrame = at + Frames(interval);
+        WarningPulses++;
+    }
+
+    /// <summary>
+    /// The start of a fall (the ground gave way at an edge): a crack, falling glass shards and a dropping thud, and the music
+    /// ducks deep (≈ −14 dB) for the fall. Immediate. Then call <see cref="Fall"/> every frame, and <see cref="FallReturn"/>
+    /// when the player reappears.
+    /// </summary>
+    public void FallStart()
+    {
+        var now = _frame;
+        _fallSpin = 0;
+        _lastFallFrame = now;
+        ReleaseSteered(ref _warnVoice, _warnGeneration);
+        _nextWarningFrame = now + Frames(1f); // no warning pulse on top of the fall
+        DuckMusic(FallDuckDepth, 0.6f, attackSeconds: 0.01f);
+        var root = ClockAt(now).Profile.Root;
+        Enqueue(now, NoteSpec.Noise(5200, 1400, 0.18f, q: 1.4f) with { Attack = 0.001f, Decay = 0.25f, Gain = 0.12f, Send = 0.3f });
+        // Shards: inharmonic, out of the key (the shell is broken), scattered across the field.
+        ReadOnlySpan<(int Semitones, float Delay, float Pan)> shards = [(42, 0f, -0.5f), (37, 0.025f, 0.45f), (46, 0.055f, -0.1f)];
+        foreach (var (semis, delay, pan) in shards)
+        {
+            Enqueue(now + Frames(delay), NoteSpec.Bell(MidiHz(root + semis), ratio: 2.76f, index: 1.6f, indexDecay: 0.08f) with { Attack = 0.001f, Decay = 0.5f, Gain = 0.045f, Pan = pan, Send = 0.45f });
+        }
+
+        Enqueue(now, NoteSpec.Tone(Wave.Sine, MidiHz(root)) with { GlideToHz = MidiHz(root - 24), Glide = 0.45f, Attack = 0.002f, Decay = 0.7f, Gain = 0.13f, Send = 0.15f });
+    }
+
+    /// <summary>
+    /// The fall (or the spiral into the black hole), following <paramref name="progress01"/> 0 (the start) … 1 (the end):
+    /// a whoosh whose pitch falls three octaves in the key (two above the root to one below, faster towards the end), its
+    /// two voices circling left and right ever faster, over wind that darkens. Call it every frame while falling; it keeps
+    /// the music ducked, and fades by itself at 1 or ≈ 0.3 s after the last call.
+    /// </summary>
+    public void Fall(float progress01)
+    {
+        var p = Clamp01(progress01);
+        var dt = Math.Clamp((_frame - _lastFallFrame) * _invRate, 0f, 0.1f);
+        _lastFallFrame = _frame;
+        if (p >= 1f)
+        {
+            ReleaseFall();
+            return;
+        }
+
+        DuckMusic(FallDuckDepth, 0.3f, attackSeconds: 0.03f);
+        var root = ClockAt(_frame).Profile.Root;
+        var semis = FallFromSemitones - FallSpanSemitones * MathF.Pow(p, 1.3f);
+        var hz = 440f * MathF.Pow(2f, (root + semis - 69) / 12f);
+        _fallSpin += dt * (FallSpinStartHz + FallSpinAddedHz * p);
+        _fallSpin -= MathF.Floor(_fallSpin);
+        var c = MathF.Cos(2f * MathF.PI * _fallSpin);
+        var level = 0.03f + 0.03f * p;
+        var wind = 0.04f + 0.04f * MathF.Sin(MathF.PI * p);
+        var cutoff = 160f + 4000f * MathF.Pow(1f - p, 1.6f);
+        var left = SteerFallVoice(ref _fallLeft, ref _fallLeftGeneration, NoteSpec.Saw(hz, 2, 18f, 1600f) with { Pan = -0.85f, Send = 0.4f }, level * (0.55f + 0.45f * c));
+        left?.SetFreqTarget(hz, 1f - Coef(0.08f));
+        var right = SteerFallVoice(ref _fallRight, ref _fallRightGeneration, NoteSpec.Saw(hz * 1.004f, 2, 18f, 1600f) with { Pan = 0.85f, Send = 0.4f }, level * (0.55f - 0.45f * c));
+        right?.SetFreqTarget(hz * 1.004f, 1f - Coef(0.08f));
+        var noise = SteerFallVoice(ref _fallNoise, ref _fallNoiseGeneration, NoteSpec.Noise(cutoff, cutoff, 0, q: 0.9f) with { Send = 0.35f }, wind);
+        noise?.SetCutoffTarget(cutoff, 1f - Coef(0.08f));
+    }
+
+    /// <summary>
+    /// Back from a fall: the player reappears at the parent world. The fall's voices stop, an upward pop and a bright
+    /// tonic chord in the key of the world arrived at sound at once, and the music comes back up: a short duck (0.7 for 0.4 s,
+    /// room for the pop) replaces the fall's deep one. Immediate; <see cref="Arrive"/> may follow as usual.
+    /// </summary>
+    public void FallReturn()
+    {
+        var now = _frame;
+        ReleaseFall();
+        _lastFallFrame = long.MinValue / 2;
+        _duckDepth = 0.7f;
+        _duckUntil = now + Frames(0.4f);
+        _duckReleaseSeconds = DuckReleaseSeconds;
+        var arriving = _decks[_current].Profile;
+        var len = arriving.Scale.Length;
+        Enqueue(now, NoteSpec.Tone(Wave.Sine, PitchHz(arriving, 0, -1)) with { GlideToHz = PitchHz(arriving, len == 5 ? 3 : 4, 1), Glide = 0.12f, Attack = 0.002f, Decay = 0.3f, Gain = 0.12f, Send = 0.2f });
+        Enqueue(now, NoteSpec.Noise(300, 6000, 0.2f, q: 1.2f) with { Attack = 0.12f, Decay = 0.15f, Gain = 0.07f, Send = 0.3f });
+        // The tonic, its fifth and the octave in any scale (the fifth is degree 4 of seven, 3 of a pentatonic).
+        ReadOnlySpan<(int Degree, float Pan)> chord = [(0, -0.3f), (len == 5 ? 3 : 4, 0.3f), (len, 0f)];
+        foreach (var (degree, pan) in chord)
+        {
+            Enqueue(now + Frames(0.08f), NoteSpec.Bell(PitchHz(arriving, degree, 1), ratio: 2f, index: 1.1f, indexDecay: 0.25f) with { Attack = 0.003f, Decay = 1.1f, Gain = 0.07f, Pan = pan, Send = 0.45f });
+        }
+    }
+
+    /// <summary>A steered cue voice if it is still the one we started (not stolen, not released), else null.</summary>
+    private static Voice? Steered(Voice? v, int generation) => v != null && v.Active && v.Generation == generation && !v.Released ? v : null;
+
+    /// <summary>Releases a steered cue voice (if it is still ours) and forgets it.</summary>
+    private static void ReleaseSteered(ref Voice? v, int generation)
+    {
+        Steered(v, generation)?.Release();
+        v = null;
+    }
+
+    private void ReleaseFall()
+    {
+        ReleaseSteered(ref _fallLeft, _fallLeftGeneration);
+        ReleaseSteered(ref _fallRight, _fallRightGeneration);
+        ReleaseSteered(ref _fallNoise, _fallNoiseGeneration);
+    }
+
+    /// <summary>Starts (held, its level smoothed over T60 60 ms) or steers one of the fall's voices to <paramref name="level"/>.</summary>
+    private Voice? SteerFallVoice(ref Voice? slot, ref int generation, NoteSpec spec, float level)
+    {
+        var v = Steered(slot, generation);
+        if (v == null)
+        {
+            v = StartVoice(spec with { Attack = 0.06f, Sustain = 1f, Decay = 0.1f, Hold = 3600f, Release = 0.25f, Gain = level, Group = GroupSfx }, 0);
+            if (v == null) return null;
+            v.LevelK = 1f - Coef(0.06f);
+            slot = v;
+            generation = v.Generation;
+        }
+
+        v.LevelTarget = level;
+        return v;
+    }
+
+    /// <summary>The warning rumble and the fall's voices release themselves when their methods stop being called (a dropped cue never drones on).</summary>
+    private void ReleaseStaleHazardVoices()
+    {
+        var timeout = (long)(SteeredCueTimeoutSeconds * _rate);
+        if (_warnVoice != null && _frame - _lastWarnFrame > timeout) ReleaseSteered(ref _warnVoice, _warnGeneration);
+        if ((_fallLeft != null || _fallRight != null || _fallNoise != null) && _frame - _lastFallFrame > timeout) ReleaseFall();
+    }
+
     // ---------------------------------------------------------------- interface effects (tempo-locked)
 
     /// <summary>
@@ -553,7 +808,16 @@ public sealed partial class SkySynth
     public void Arrive()
     {
         var at = NextGridFrame();
+        var drop = ArrivalDrop();
         DuckMusic(0.35f, 0.45f);
+        if (drop >= 0)
+        {
+            // A festival build is being released (AD-52): the cue duck (this one and the landing's) ends at the drop and lets
+            // the music straight back in, so the drop lands at full level instead of swelling up out of the duck.
+            _duckUntil = Math.Min(_duckUntil, drop);
+            _duckReleaseSeconds = DropDuckReleaseSeconds;
+        }
+
         var arriving = _decks[_current].Profile;
         int[] chord = [0, 2, 4];
         for (var i = 0; i < chord.Length; i++)
@@ -661,6 +925,8 @@ public sealed partial class SkySynth
             _flyVoice = null;
         }
 
+        ReleaseStaleHazardVoices();
+
         for (var g = 0; g < GroupCount; g++)
         {
             Array.Clear(_gL[g], 0, n);
@@ -679,7 +945,7 @@ public sealed partial class SkySynth
         // The cue duck: towards its depth while a cue sounds, back up over ≈ 0.25 s after it.
         var music0 = Clamp01(MusicVolume) * (1f - _duck);
         var duckTarget = _frame < _duckUntil ? _duckDepth : 0f;
-        var duckTau = duckTarget > _duck ? MathF.Max(MinDuckAttackSeconds, _duckAttackSeconds) : DuckReleaseSeconds;
+        var duckTau = duckTarget > _duck ? MathF.Max(MinDuckAttackSeconds, _duckAttackSeconds) : _duckReleaseSeconds;
         // Exponential smoothing over the block's n frames with time constant duckTau (closes 63 % per tau, whatever the block size).
         _duck += (duckTarget - _duck) * (1f - MathF.Exp(-n / (duckTau * _rate)));
         var music1 = Clamp01(MusicVolume) * (1f - _duck);
@@ -688,10 +954,13 @@ public sealed partial class SkySynth
         for (var d = 0; d < 2; d++)
         {
             var deck = _decks[d];
-            g0[d] = MathF.Sin(deck.Fade * MathF.PI * 0.5f) * music0;
+            g0[d] = MathF.Sin(deck.Fade * MathF.PI * 0.5f) * music0 * deck.Level;
             var step = deck.FadeTarget > deck.Fade ? _fadeInStepPerFrame : _fadeOutStepPerFrame;
             deck.Fade = MoveTowards(deck.Fade, deck.FadeTarget, step * n);
-            g1[d] = MathF.Sin(deck.Fade * MathF.PI * 0.5f) * music1;
+            g1[d] = MathF.Sin(deck.Fade * MathF.PI * 0.5f) * music1 * deck.Level;
+            // The deck's pumped voices follow its sidechain (1 when the arrangement does not pump).
+            g0[d + GroupPumpOffset] = g0[d] * PumpGain(deck, _frame);
+            g1[d + GroupPumpOffset] = g1[d] * PumpGain(deck, blockEnd);
         }
 
         g0[GroupFlight] = _flight * music0;
@@ -814,6 +1083,8 @@ public sealed partial class SkySynth
         var noise = v.NoiseState;
         float fk = v.FilterK, a1 = v.A1, a2 = v.A2, a3 = v.A3, ic1 = v.Ic1, ic2 = v.Ic2;
         var lowpass = v.Lowpass;
+        float lp2 = v.ToneState2, toneHz = v.ToneHz, vibPhase = v.VibPhase;
+        var toneRemaining = v.ToneRemaining;
         var done = false;
         var i = start;
         while (i < n && !done)
@@ -861,10 +1132,33 @@ public sealed partial class SkySynth
                 glide -= s;
             }
 
+            if (v.FreqK > 0)
+            {
+                // Steered pitch (SetFreqTarget): exponential smoothing in log frequency, so a fall sounds even across octaves.
+                freq *= MathF.Pow(v.FreqTarget / freq, full ? v.FreqKControl : 1f - MathF.Pow(1f - v.FreqK, m));
+            }
+
+            if (toneRemaining > 0)
+            {
+                // A tone sweep: the filter's cutoff moves by a constant ratio per frame, its coefficient recomputed per control period.
+                var s = Math.Min(m, toneRemaining);
+                toneHz *= s == ControlFrames ? v.ToneRatioControl : MathF.Pow(v.ToneRatio, s);
+                toneRemaining -= s;
+                lpA = 1f - MathF.Exp(-2f * MathF.PI * toneHz * invRate);
+            }
+
+            var vib = 1f;
+            if (v.VibDepth > 0)
+            {
+                vibPhase += v.VibInc * m;
+                if (vibPhase >= 1f) vibPhase -= (int)vibPhase;
+                vib = 1f + v.VibDepth * MathF.Sin(2f * MathF.PI * vibPhase);
+            }
+
             var levelEnd = v.LevelK != 0 ? level + (v.LevelTarget - level) * (1f - MathF.Pow(1f - v.LevelK, m)) : level;
             var amp = env * level;
             var dAmp = (envEnd * levelEnd - amp) / m;
-            var inc = freq * invRate;
+            var inc = freq * vib * invRate;
             var end = i + m;
 
             switch (wave)
@@ -947,6 +1241,40 @@ public sealed partial class SkySynth
                     break;
                 }
 
+                case Wave.Saw:
+                {
+                    // Up to three detuned polyBLEP saws (the third weighted 0 for a pair), scaled by 1/√copies, through two
+                    // one-pole low-passes in series (12 dB per octave: a sweep of it is a recognisable filter opening).
+                    float p0 = v.U0, p1 = v.U1, p2 = v.U2;
+                    float i0 = inc * v.D0, i1 = inc * v.D1, i2 = inc * v.D2;
+                    float w2 = v.W2, norm = v.UnisonNorm;
+                    var single = v.D1 == 1f && w2 == 0f;
+                    for (; i < end; i++)
+                    {
+                        var x = BlepSaw(p0, i0);
+                        p0 += i0;
+                        if (p0 >= 1f) p0 -= 1f;
+                        if (!single)
+                        {
+                            x += BlepSaw(p1, i1) + w2 * BlepSaw(p2, i2);
+                            p1 += i1;
+                            if (p1 >= 1f) p1 -= 1f;
+                            p2 += i2;
+                            if (p2 >= 1f) p2 -= 1f;
+                        }
+
+                        lp += lpA * (x * norm - lp);
+                        lp2 += lpA * (lp - lp2);
+                        mono[i] = lp2 * amp;
+                        amp += dAmp;
+                    }
+
+                    v.U0 = p0;
+                    v.U1 = p1;
+                    v.U2 = p2;
+                    break;
+                }
+
                 default:
                     // White noise (xorshift) through a topology-preserving state-variable filter.
                     for (; i < end; i++)
@@ -999,7 +1327,34 @@ public sealed partial class SkySynth
         v.NoiseState = noise;
         v.Ic1 = ic1;
         v.Ic2 = ic2;
+        v.ToneA = lpA;
+        v.ToneState2 = lp2;
+        v.ToneHz = toneHz;
+        v.ToneRemaining = toneRemaining;
+        v.VibPhase = vibPhase;
         if (done) v.Active = false;
+    }
+
+    /// <summary>
+    /// A naive sawtooth (−1…1 over a phase in cycles) with the polyBLEP correction around its reset: the two-sample
+    /// polynomial step residual that removes most of the aliasing of the jump, cheaply (<paramref name="dt"/> is the phase increment).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float BlepSaw(float p, float dt)
+    {
+        var x = 2f * p - 1f;
+        if (p < dt)
+        {
+            var t = p / dt;
+            x -= t + t - t * t - 1f;
+        }
+        else if (p > 1f - dt)
+        {
+            var t = (p - 1f) / dt;
+            x -= t * t + t + t + 1f;
+        }
+
+        return x;
     }
 
     // ---------------------------------------------------------------- voices and scheduling
@@ -1128,7 +1483,7 @@ public sealed partial class SkySynth
     private long NextGridFrame()
     {
         var d = ClockAt(_frame);
-        var half = d.FramesPerSixteenth / 2;
+        var half = d.GridFramesPerSixteenth / 2;
         var k = (long)Math.Ceiling((_frame - d.Origin) / half - 1e-9);
         var at = Math.Max(_frame, d.Origin + (long)Math.Ceiling(k * half - 1e-6));
         // A takeover's first downbeat is itself a point of the old grid; never wait past it onto the old grid.
@@ -1137,7 +1492,7 @@ public sealed partial class SkySynth
     }
 
     /// <summary>One 32nd note of the music playing at <paramref name="frame"/>, in frames.</summary>
-    private long GridStepFrames(long frame) => (long)Math.Round(ClockAt(frame).FramesPerSixteenth / 2);
+    private long GridStepFrames(long frame) => (long)Math.Round(ClockAt(frame).GridFramesPerSixteenth / 2);
 
     private long Frames(float seconds) => (long)Math.Round(seconds * _rate);
 
@@ -1196,7 +1551,11 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- voice
 
-    /// <summary>A voice's oscillator: the four pitched waveforms and filtered noise (drums, wind, whooshes).</summary>
+    /// <summary>
+    /// A voice's oscillator: the pitched waveforms and filtered noise (drums, wind, whooshes). <see cref="Saw"/> (AD-52) is a
+    /// band-limited (polyBLEP) sawtooth stack of up to three detuned copies (<see cref="NoteSpec.Unison"/>) through a
+    /// two-pole low-pass at <see cref="NoteSpec.ToneHz"/>: the supersaw, the string ensemble, the horns and the reese bass.
+    /// </summary>
     private enum Wave
     {
         Sine,
@@ -1204,6 +1563,7 @@ public sealed partial class SkySynth
         SoftSquare,
         Bell,
         Noise,
+        Saw,
     }
 
     /// <summary>
@@ -1221,8 +1581,15 @@ public sealed partial class SkySynth
     /// <summary>
     /// What to play. Times are seconds (Attack, Glide, Hold), Decay/Release are T60 seconds; frequencies Hz. Gain is linear
     /// amplitude (voices are designed small, see <see cref="OutputGain"/>), Pan −1 (left) … +1, Send the share into the
-    /// reverb, ToneHz a one-pole low-pass (0: none), Group the voice group (−1 until <see cref="Enqueue"/> makes it an effect).
-    /// The factories give the defaults every effect and score starts from, adjusted with <c>with</c>.
+    /// reverb, ToneHz a one-pole low-pass (0: none; two poles for <see cref="Wave.Saw"/>), Group the voice group (−1 until
+    /// <see cref="Enqueue"/> makes it an effect). The factories give the defaults every effect and score starts from, adjusted
+    /// with <c>with</c>.
+    /// <para>
+    /// AD-52 additions, all off by default (so the older sounds render exactly as before): ToneToHz and ToneGlide sweep the
+    /// tone filter (exponentially, in ToneGlide seconds: a filter opening, a horn's swell); VibratoHz and VibratoDepth (a
+    /// fraction of the pitch, 0.003 ≈ 5 cents) wobble the pitch; Unison (1–3) and DetuneCents (the outer copies' offset) stack
+    /// detuned saws.
+    /// </para>
     /// </summary>
     private readonly record struct NoteSpec
     {
@@ -1248,6 +1615,12 @@ public sealed partial class SkySynth
         public float Q { get; init; }
         public bool Lowpass { get; init; }
         public int Group { get; init; }
+        public float ToneToHz { get; init; }
+        public float ToneGlide { get; init; }
+        public float VibratoHz { get; init; }
+        public float VibratoDepth { get; init; }
+        public int Unison { get; init; }
+        public float DetuneCents { get; init; }
 
         public static NoteSpec Tone(Wave wave, float hz) => new() { Wave = wave, FreqHz = hz, Attack = 0.003f, Decay = 0.5f, Release = 0.3f, Gain = 0.1f, Group = -1 };
 
@@ -1256,6 +1629,10 @@ public sealed partial class SkySynth
 
         public static NoteSpec Noise(float cutoffHz, float cutoffToHz, float glideSeconds, float q, bool lowpass = false) =>
             Tone(Wave.Noise, 0) with { CutoffHz = cutoffHz, CutoffToHz = cutoffToHz, CutoffGlide = glideSeconds, Q = q, Lowpass = lowpass };
+
+        /// <summary>A stack of <paramref name="unison"/> saws, the outer ones <paramref name="detuneCents"/> above and below (a middle one stays in tune).</summary>
+        public static NoteSpec Saw(float hz, int unison, float detuneCents, float toneHz) =>
+            Tone(Wave.Saw, hz) with { Unison = unison, DetuneCents = detuneCents, ToneHz = toneHz };
     }
 
     /// <summary>
@@ -1284,6 +1661,13 @@ public sealed partial class SkySynth
         public float FmRatio, FmIndex, FmIndexCoef;
         public uint NoiseState;
         public float LastL, LastR;
+
+        // AD-52: the second tone pole (saws), the tone sweep, vibrato, the saw stack and frequency steering.
+        public float ToneState2, ToneHz, ToneRatio, ToneRatioControl;
+        public int ToneRemaining;
+        public float VibPhase, VibInc, VibDepth;
+        public float U0, U1, U2, D0, D1, D2, W2, UnisonNorm;
+        public float FreqTarget, FreqK, FreqKControl;
 
         // Noise filter (topology-preserving state-variable filter).
         private float _cutoffHz, _cutoffRatio, _cutoffTargetHz, _cutoffK;
@@ -1336,6 +1720,31 @@ public sealed partial class SkySynth
             NoiseState = noiseSeed;
             LastL = LastR = 0;
             Ic1 = Ic2 = 0;
+            ToneState2 = 0;
+            ToneHz = n.ToneHz > 0 ? MathF.Min(n.ToneHz, 0.45f * rate) : 0;
+            var toneFrames = (int)Math.Round(n.ToneGlide * rate);
+            ToneRemaining = ToneHz > 0 && n.ToneToHz > 0 && toneFrames > 0 ? toneFrames : 0;
+            ToneRatio = ToneRemaining > 0 ? MathF.Pow(MathF.Min(n.ToneToHz, 0.45f * rate) / ToneHz, 1f / toneFrames) : 1f;
+            ToneRatioControl = MathF.Pow(ToneRatio, ControlFrames);
+            VibPhase = 0;
+            VibInc = n.VibratoHz / rate;
+            VibDepth = n.VibratoDepth;
+            // The saw stack: copy 0 in tune, copies 1 and 2 detuned up and down; the stack is scaled by 1/√copies (detuned
+            // copies add in power, not amplitude), so a supersaw is about as loud as one saw. Phases start spread so the
+            // copies do not all reset together on the first cycle.
+            var unison = Math.Clamp(n.Unison, 1, 3);
+            var detune = MathF.Pow(2f, n.DetuneCents / 1200f);
+            U0 = 0;
+            U1 = 0.37f;
+            U2 = 0.71f;
+            D0 = 1f;
+            D1 = unison >= 2 ? detune : 1f;
+            D2 = unison >= 3 ? 1f / detune : 1f;
+            W2 = unison >= 3 ? 1f : 0f;
+            UnisonNorm = 1f / MathF.Sqrt(unison);
+            FreqTarget = 0;
+            FreqK = 0;
+            FreqKControl = 0;
             Lowpass = n.Lowpass;
             FilterK = 1f / MathF.Max(0.5f, n.Q); // damping = 1/Q; Q is floored at 0.5 (damping at most 2: the broadest, least resonant band)
             _cutoffHz = Math.Clamp(n.CutoffHz, 20f, 0.45f * rate);
@@ -1361,6 +1770,19 @@ public sealed partial class SkySynth
             Release();
             ReleaseCoef = T60(t60Seconds, _rate);
             ReleaseCoefControl = MathF.Pow(ReleaseCoef, ControlFrames);
+        }
+
+        /// <summary>
+        /// Makes the pitch follow <paramref name="hz"/> (in log frequency, closing the fraction <paramref name="k"/> of the
+        /// interval per frame), for a voice steered every frame (the fall's spiral); replaces any glide.
+        /// </summary>
+        public void SetFreqTarget(float hz, float k)
+        {
+            if (!(hz > 0) || !float.IsFinite(hz)) return;
+            FreqTarget = hz;
+            FreqK = k;
+            FreqKControl = 1f - MathF.Pow(1f - k, ControlFrames);
+            GlideRemaining = 0;
         }
 
         /// <summary>Makes the noise filter's cutoff follow <paramref name="hz"/>, closing the fraction <paramref name="k"/> of the gap per frame (replaces any glide).</summary>

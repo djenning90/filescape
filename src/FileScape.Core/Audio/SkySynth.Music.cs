@@ -48,11 +48,24 @@ public sealed partial class SkySynth
         WorldKind.WindowsRoot => MusicIdentity.WindowsRoot,
         WorldKind.WslRoot => MusicIdentity.WslRoot,
         WorldKind.Repository => MusicIdentity.Repository,
+        WorldKind.Hazard => MusicIdentity.Hazard,
         _ => MusicIdentity.Outskirts + (Math.Clamp(character.Band, 1, WorldCharacter.MaxBand) - 1),
     };
 
-    /// <summary>The tempo of an identity, beats (quarter notes) per minute.</summary>
+    /// <summary>
+    /// The tempo of an identity, beats (quarter notes) per minute: its pulse, the drums' tempo and the grid that tempo-locked
+    /// effects and <see cref="AlignToGrid"/> follow.
+    /// </summary>
     public static float TempoFor(MusicIdentity identity) => Styles[(int)identity].Bpm;
+
+    /// <summary>
+    /// The tempo the theme, the harmony and the score move at, beats per minute: <see cref="TempoFor"/>, or half of it in a
+    /// half-time arrangement (AD-52: the orchestra, drum and bass, the hazard world), whose broad theme rides on a pulse twice as fast.
+    /// </summary>
+    public static float ThemeTempoFor(MusicIdentity identity) => Styles[(int)identity].HalfTime ? Styles[(int)identity].Bpm / 2 : Styles[(int)identity].Bpm;
+
+    /// <summary>A folder's depth-band identity (the outskirts to the underglow), the ones that share the band motif.</summary>
+    private static bool IsBand(MusicIdentity id) => id is >= MusicIdentity.Outskirts and <= MusicIdentity.Underglow;
 
     /// <summary>
     /// Moves the music to a world, on every arrival. <paramref name="visits"/> counts the arrivals at this folder in the
@@ -81,7 +94,7 @@ public sealed partial class SkySynth
                 other.FadeTarget = 1;
                 cur.Live = false;
                 cur.FadeTarget = 0;
-                ClearGroup(cur.Group);
+                ClearDeck(cur);
                 _current = 1 - _current;
                 return;
             }
@@ -105,9 +118,9 @@ public sealed partial class SkySynth
         }
 
         // A new world: the old one plays to its next beat, which becomes the new one's first downbeat.
-        ClearGroup(other.Group);
+        ClearDeck(other);
         var k = cur.NextStep;
-        while (Mod(k, 4) != 0) k++; // the next quarter-note beat (every fourth sixteenth)
+        while (Mod(k, cur.StepsPerBeat) != 0) k++; // the next beat of its pulse (every fourth sixteenth; every second in half time)
         var origin = StepFrame(cur, k);
         cur.StopFrame = origin;
         var quick = origin - _lastSwitchFrame < Frames(QuickHopSeconds);
@@ -134,10 +147,21 @@ public sealed partial class SkySynth
         d.Visits = Math.Max(1, visits);
         d.Development = Math.Clamp(visits, 1, FullDevelopment);
         d.Profile = KeyProfiles[(int)id][(int)theme];
-        d.Echo = character.InsideRepository && id >= MusicIdentity.Outskirts;
+        d.Echo = character.InsideRepository && IsBand(id);
         d.WorldKey = WorldKeyOf(id, theme, character);
         d.Origin = origin;
-        d.FramesPerSixteenth = _rate * 60.0 / (d.Style.Bpm * 4.0); // frames per minute ÷ sixteenths per minute (4 per beat); fractional, and each step's frame is computed from the origin, so the clock never drifts
+        // The pulse's sixteenth (the effects' grid) and the score's: the same, except in a half-time arrangement, whose
+        // score steps are eighths of the pulse (AD-52).
+        d.GridFramesPerSixteenth = _rate * 60.0 / (d.Style.Bpm * 4.0); // frames per minute ÷ sixteenths per minute (4 per beat); fractional, and each step's frame is computed from the origin, so the clock never drifts
+        d.FramesPerSixteenth = d.Style.HalfTime ? d.GridFramesPerSixteenth * 2 : d.GridFramesPerSixteenth;
+        d.StepsPerBeat = d.Style.HalfTime ? 2 : 4;
+        d.Level = d.Style.Level;
+        d.PumpDepth = d.Style.PumpDepth;
+        d.PumpLast = d.PumpPrev = long.MinValue / 2;
+        d.DropAtStep = -1;
+        d.DropArrival = false;
+        d.BuildPeak = 0;
+        d.Riser = null;
         d.NextStep = 0;
         d.StopFrame = long.MaxValue;
         d.Live = true;
@@ -194,17 +218,17 @@ public sealed partial class SkySynth
         _memory[0] = (key, position);
     }
 
-    /// <summary>Clears a deck's group: its voices release in ≈ 40 ms and its scheduled notes are dropped.</summary>
-    private void ClearGroup(int group)
+    /// <summary>Clears a deck's groups (plain and pumped): its voices release in ≈ 40 ms and its scheduled notes are dropped.</summary>
+    private void ClearDeck(Deck d)
     {
         foreach (var v in _voices)
         {
-            if (v.Active && v.Group == group) v.Kill(ClearedDeckT60Seconds);
+            if (v.Active && d.Owns(v.Group)) v.Kill(ClearedDeckT60Seconds);
         }
 
         for (var i = _pending.Count - 1; i >= 0; i--)
         {
-            if (_pending[i].Note.Group == group)
+            if (d.Owns(_pending[i].Note.Group))
             {
                 _pending[i] = _pending[^1];
                 _pending.RemoveAt(_pending.Count - 1);
@@ -244,12 +268,12 @@ public sealed partial class SkySynth
                 Remember(d.WorldKey, Math.Max(d.StepOffset, d.NextStep - d.IntroSteps + d.StepOffset));
                 foreach (var v in _voices)
                 {
-                    if (v.Active && v.Group == d.Group) v.Release();
+                    if (v.Active && d.Owns(v.Group)) v.Release();
                 }
 
                 for (var j = _pending.Count - 1; j >= 0; j--)
                 {
-                    if (_pending[j].Note.Group == d.Group && _pending[j].Frame >= d.StopFrame)
+                    if (d.Owns(_pending[j].Note.Group) && _pending[j].Frame >= d.StopFrame)
                     {
                         _pending[j] = _pending[^1];
                         _pending.RemoveAt(_pending.Count - 1);
@@ -267,12 +291,14 @@ public sealed partial class SkySynth
     /// </summary>
     private void OnStep(Deck d, long step, long frame)
     {
+        if (step == d.DropAtStep) AlignDrop(d, step);
         var p = d.Profile;
         var st = d.Style;
         var len = p.Scale.Length;
         var intro = step < d.IntroSteps;
         var abs = step - d.IntroSteps + d.StepOffset; // sixteenths into the world's music (cycles count from 0)
-        var inBar = (int)Mod(step, 16);
+        // The bar follows the music's position (a drop re-starts the bar on its beat, AD-52); otherwise the same as the step's.
+        var inBar = intro ? (int)Mod(step, 16) : (int)Mod(abs, 16);
         var pos = (int)Mod(abs, CycleSixteenths);
         var cycle = (abs - pos) / CycleSixteenths;
         var bar = pos / 16;
@@ -312,6 +338,8 @@ public sealed partial class SkySynth
             change = inBar == 0 && free % per == 0;
         }
 
+        d.Bar = intro ? -1 : bar;
+        d.InBar = inBar;
         if (change || d.NeedChord)
         {
             d.NeedChord = false;
@@ -333,7 +361,26 @@ public sealed partial class SkySynth
             if (bar >= d.ThemeBars) PlayFree(d, bar, inBar, cycle, frame, chord);
         }
 
-        PlayGroove(d, step, inBar, bar, intro, frame, chord);
+        switch (st.Arrangement)
+        {
+            case Arrangement.Festival:
+                FestivalGroove(d, step, inBar, bar, intro, frame, chord);
+                break;
+            case Arrangement.Orchestral:
+                OrchestraGroove(d, inBar, bar, intro, frame, chord);
+                break;
+            case Arrangement.DrumAndBass:
+                DrumAndBassGroove(d, inBar, bar, intro, frame, chord);
+                break;
+            case Arrangement.Hazard:
+                HazardGroove(d, inBar, bar, frame, chord);
+                break;
+            default:
+                PlayGroove(d, step, inBar, bar, intro, frame, chord);
+                break;
+        }
+
+        if (st.Arrangement != Arrangement.Classic && d.Echo) ProjectEcho(d, intro, bar, inBar, frame, chord);
 
         // Flight: a rising arpeggio through the chord, climbing with the intensity.
         if (_flightTarget > FlightArpeggioFrom)
@@ -388,9 +435,36 @@ public sealed partial class SkySynth
             }
         }
 
+        if (d.DropArrival)
+        {
+            // A festival build released into this world (AD-52): the impact, whatever the hop or return; a festival world
+            // starts on its drop, any other world goes on to its own arrival below.
+            d.DropArrival = false;
+            if (d.Identity == MusicIdentity.Trails)
+            {
+                DropImpact(p, frame, 1f);
+                Crash(frame, 1f, g);
+                return;
+            }
+
+            if (d.Identity != MusicIdentity.Underglow || d.QuickHop || d.Resumed) DropImpact(p, frame, 0.7f); // drum and bass's own arrival has one
+        }
+
         if (d.QuickHop || d.Resumed) return; // hopping through, or coming back: no fanfare
         switch (d.Identity)
         {
+            case MusicIdentity.Trails:
+                FestivalArrival(d, frame);
+                break;
+            case MusicIdentity.DeepWoods:
+                OrchestraArrival(d, frame);
+                break;
+            case MusicIdentity.Underglow:
+                DrumAndBassArrival(d, frame);
+                break;
+            case MusicIdentity.Hazard:
+                HazardArrival(d, frame);
+                break;
             case MusicIdentity.Repository:
             {
                 // The arrival flourish: a crash, a 32nd-note run up the scale into the octave, then the commit stabs (intro bar).
@@ -455,6 +529,15 @@ public sealed partial class SkySynth
                 break;
             case MusicIdentity.Repository:
                 if (first) CommitMotif(d, frame, phrase, 1f);
+                break;
+            case MusicIdentity.Trails:
+                FestivalFree(d, bar, first, phrase, cycle, frame);
+                break;
+            case MusicIdentity.DeepWoods:
+                OrchestraFree(d, bar, inBar, first, phrase, cycle, frame, chord);
+                break;
+            case MusicIdentity.Hazard:
+                HazardFree(d, bar, first, frame);
                 break;
             default:
                 if (first) BandMotif(d, frame, phrase, cycle);
@@ -649,11 +732,12 @@ public sealed partial class SkySynth
         }
 
         var lead = d.Style.Lead;
+        var echo = d.Style.Arrangement == Arrangement.Orchestral ? Lead.Flute : lead; // in the orchestra the flute echoes the cellos
         foreach (var n in notes)
         {
             MotifNote(d, StepAt(d, frame, n.Step), n.Degree, n.Length, 0.85f, lead);
             if (v == 1 && n.Step < 8) MotifNote(d, StepAt(d, frame, n.Step + 8), n.Degree, n.Length, 0.6f, lead);
-            if (band == 2) MotifNote(d, StepAt(d, frame, n.Step + 3), n.Degree + 7, 1, 0.3f, lead); // the woods' echo
+            if (band == 2) MotifNote(d, StepAt(d, frame, n.Step + 3), n.Degree + 7, 1, d.Style.Arrangement == Arrangement.Orchestral ? 0.5f : 0.3f, echo); // the woods' echo
         }
     }
 
@@ -670,10 +754,19 @@ public sealed partial class SkySynth
         var p = d.Profile;
         var midi = p.Root + 12 + ScaleNote(p.Scale, MapDegree(degree, p.Scale.Length));
         var hold = (float)(lengthSixteenths * d.FramesPerSixteenth / _rate) - 0.02f;
-        Enqueue(at, LeadSpec(lead, MidiHz(midi), MathF.Max(0.04f, hold)) with
+        if (lead >= Lead.SuperSaw)
         {
-            Gain = 0.075f * velocity * d.Style.LeadGain * (p.Pad == PadKind.Normal ? 1f : 0.6f), Pan = -0.1f, Group = d.Group,
-        });
+            // The AD-52 instruments (stacked, echoed or doubled: PlayLead); their worlds ignore the drone and cluster pads.
+            PlayLead(d, lead, at, MidiHz(midi), MathF.Max(0.04f, hold), 0.075f * velocity * d.Style.LeadGain, -0.1f);
+        }
+        else
+        {
+            Enqueue(at, LeadSpec(lead, MidiHz(midi), MathF.Max(0.04f, hold)) with
+            {
+                Gain = 0.075f * velocity * d.Style.LeadGain * (p.Pad == PadKind.Normal ? 1f : 0.6f), Pan = -0.1f, Group = d.Group,
+            });
+        }
+
         MelodyObserver?.Invoke(new MelodyNote(at, midi, MelodyPart.Motif, d.Variation));
     }
 
@@ -782,12 +875,15 @@ public sealed partial class SkySynth
             Stab(d, frame, chord, inBar == 10 ? 0.4f : 0.5f);
         }
 
-        if (d.Echo)
-        {
-            if (inBar % 2 == 0) Tick(frame, inBar % 4 == 0, 0.35f, p, g);
-            if (!intro && bar % 4 == 3 && inBar is 10 or 12) Stab(d, frame, chord, inBar == 10 ? 0.3f : 0.4f);
-            if (!intro && bar % 8 == 7 && inBar == 0) CommitEcho(d, frame);
-        }
+        if (d.Echo) ProjectEcho(d, intro, bar, inBar, frame, chord);
+    }
+
+    /// <summary>Inside a project, under any band's groove: the repository's tick-tock, its soft stabs every 4 bars and the commit call every 8.</summary>
+    private void ProjectEcho(Deck d, bool intro, int bar, int inBar, long frame, int chord)
+    {
+        if (inBar % 2 == 0) Tick(frame, inBar % 4 == 0, 0.35f, d.Profile, d.Group);
+        if (!intro && bar % 4 == 3 && inBar is 10 or 12) Stab(d, frame, chord, inBar == 10 ? 0.3f : 0.4f);
+        if (!intro && bar % 8 == 7 && inBar == 0) CommitEcho(d, frame);
     }
 
     /// <summary>Inside a project, once every 8 bars: the commit call, high and quiet.</summary>
@@ -959,14 +1055,39 @@ public sealed partial class SkySynth
         Lead.Pluck => NoteSpec.Tone(Wave.SoftSquare, hz) with { Attack = 0.003f, Decay = 0.4f, Sustain = 0.3f, Hold = holdSeconds, Release = 0.15f, Send = 0.3f, ToneHz = 3000 },
         Lead.Wood => NoteSpec.Bell(hz, ratio: 2.76f, index: 1.1f, indexDecay: 0.05f) with { Attack = 0.002f, Decay = 0.7f, Sustain = 0.1f, Hold = holdSeconds, Release = 0.3f, Send = 0.35f, ToneHz = 4000 },
         Lead.Glow => NoteSpec.Bell(hz, ratio: 2f, index: 1.2f, indexDecay: 0.5f) with { Attack = 0.008f, Decay = 1.0f, Sustain = 0.3f, Hold = holdSeconds, Release = 0.5f, Send = 0.55f, ToneHz = 6000 },
+        Lead.SuperSaw => NoteSpec.Saw(hz, 3, 14f, 4200f) with { Attack = 0.006f, Decay = 0.6f, Sustain = 0.55f, Hold = holdSeconds, Release = 0.25f, Send = 0.35f },
+        Lead.Flute => NoteSpec.Tone(Wave.Sine, hz) with { Attack = 0.06f, Decay = 1.5f, Sustain = 0.8f, Hold = holdSeconds, Release = 0.25f, Send = 0.6f, ToneHz = 3000, VibratoHz = 5f, VibratoDepth = 0.003f },
+        Lead.Oboe => NoteSpec.Bell(hz, ratio: 1f, index: 0.9f, indexDecay: 0f) with { Attack = 0.04f, Decay = 1.5f, Sustain = 0.8f, Hold = holdSeconds, Release = 0.2f, Send = 0.55f, ToneHz = 3200, VibratoHz = 5.5f, VibratoDepth = 0.0025f },
+        Lead.Clarinet => NoteSpec.Tone(Wave.SoftSquare, hz) with { Attack = 0.05f, Decay = 1.5f, Sustain = 0.8f, Hold = holdSeconds, Release = 0.2f, Send = 0.55f, ToneHz = 1900, VibratoHz = 4.5f, VibratoDepth = 0.002f },
+        Lead.Horn => NoteSpec.Saw(hz, 2, 4f, 380f) with { ToneToHz = 1200f, ToneGlide = 0.35f, Attack = 0.1f, Decay = 1.5f, Sustain = 0.85f, Hold = holdSeconds, Release = 0.45f, Send = 0.7f, VibratoHz = 4.5f, VibratoDepth = 0.0015f },
+        Lead.Violins => NoteSpec.Saw(hz, 3, 8f, 2400f) with { Attack = 0.07f, Decay = 1.5f, Sustain = 0.85f, Hold = holdSeconds, Release = 0.4f, Send = 0.6f, VibratoHz = 5.5f, VibratoDepth = 0.003f },
+        Lead.Cello => NoteSpec.Saw(hz, 3, 7f, 1700f) with { Attack = 0.08f, Decay = 1.5f, Sustain = 0.85f, Hold = holdSeconds, Release = 0.45f, Send = 0.55f, VibratoHz = 5f, VibratoDepth = 0.003f },
+        Lead.Liquid => NoteSpec.Bell(hz, ratio: 1f, index: 1.6f, indexDecay: 0.4f) with { Attack = 0.004f, Decay = 1.2f, Sustain = 0.35f, Hold = holdSeconds, Release = 0.6f, Send = 0.5f, ToneHz = 5000, VibratoHz = 4.5f, VibratoDepth = 0.002f },
+        Lead.Unstable => NoteSpec.Bell(hz, ratio: 1f, index: 1.1f, indexDecay: 0.8f) with { Attack = 0.02f, Decay = 1.4f, Sustain = 0.4f, Hold = holdSeconds, Release = 0.7f, Send = 0.6f, ToneHz = 3500, VibratoHz = 0.7f, VibratoDepth = 0.006f },
         _ => NoteSpec.Bell(hz, ratio: 2f, index: 1.5f, indexDecay: 0.35f) with { Attack = 0.004f, Decay = 0.8f, Sustain = 0.32f, Hold = holdSeconds, Release = 0.4f, Send = 0.35f, ToneHz = 5200 },
     };
 
     // ---------------------------------------------------------------- pad and theme
 
-    /// <summary>A pad chord (three soft triangles, a drone or a cluster), held for <paramref name="holdSeconds"/>.</summary>
+    /// <summary>A pad chord (three soft triangles, a drone or a cluster; the AD-52 arrangements their own), held for <paramref name="holdSeconds"/>.</summary>
     private void PlayPad(Deck d, int chord, float holdSeconds, long frame)
     {
+        switch (d.Style.Arrangement)
+        {
+            case Arrangement.Festival:
+                FestivalPad(d, chord, holdSeconds, frame);
+                return;
+            case Arrangement.Orchestral:
+                OrchestraPad(d, chord, holdSeconds, frame);
+                return;
+            case Arrangement.DrumAndBass:
+                DrumAndBassPad(d, chord, holdSeconds, frame);
+                return;
+            case Arrangement.Hazard:
+                HazardPad(d, chord, holdSeconds, frame);
+                return;
+        }
+
         var p = d.Profile;
         var st = d.Style;
         var group = d.Group;
@@ -1032,6 +1153,14 @@ public sealed partial class SkySynth
                 // A little glide from the previous note when the line is legato and the step is small.
                 var glide = d.LastLeadEnd == step && midi != d.LastLeadMidi && Math.Abs(midi - d.LastLeadMidi) <= 5;
                 var from = glide ? MidiHz(d.LastLeadMidi) : hz;
+                if (st.Arrangement != Arrangement.Classic)
+                {
+                    ArrangedThemeNote(d, note, at, midi, glide ? from : 0f, MathF.Max(0.05f, note.Length * sixteenth - 0.02f), 0.085f * note.Velocity * st.LeadGain);
+                    d.LastLeadEnd = step + note.Length;
+                    d.LastLeadMidi = midi;
+                    break;
+                }
+
                 Enqueue(at, LeadSpec(st.Lead, from, MathF.Max(0.05f, note.Length * sixteenth - 0.02f)) with
                 {
                     GlideToHz = glide ? hz : 0, Glide = 0.035f, Gain = 0.085f * note.Velocity * themeGain, Pan = 0.05f, Group = group,
@@ -1279,6 +1408,7 @@ public sealed partial class SkySynth
         ReadOnlySpan<int> chords = five ? [0, 4, 0, 3, 1, 0, 3, 0]
             : ReferenceEquals(p.Scale, Lydian) || ReferenceEquals(p.Scale, LydianDominant) ? [0, 5, 0, 4, 1, 0, 4, 0]
             : ReferenceEquals(p.Scale, Dorian) ? [0, 3, 0, 4, 6, 0, 4, 0]
+            : ReferenceEquals(p.Scale, Phrygian) ? [0, 5, 0, 3, 1, 0, 1, 0] // i VI i iv bII i, and the phrygian cadence bII → i (its v is diminished)
             : [0, 5, 0, 4, 3, 0, 4, 0];
         return chords[bar];
     }
@@ -1340,6 +1470,35 @@ public sealed partial class SkySynth
         Pluck,
         Wood,
         Glow,
+
+        // AD-52's instruments (PlayLead stacks, doubles or echoes them; LeadSpec gives each voice).
+
+        /// <summary>The festival's supersaw: two three-saw stacks spread left and right, with a bell an octave up for its attack.</summary>
+        SuperSaw,
+
+        /// <summary>The orchestra's flute (a sine with breath and vibrato).</summary>
+        Flute,
+
+        /// <summary>The orchestra's oboe (steady-index FM: reedy).</summary>
+        Oboe,
+
+        /// <summary>The orchestra's clarinet (odd harmonics: the soft square, filtered).</summary>
+        Clarinet,
+
+        /// <summary>The orchestra's horns (paired saws whose filter opens as the note swells).</summary>
+        Horn,
+
+        /// <summary>The orchestra's first violins (a three-saw section with vibrato).</summary>
+        Violins,
+
+        /// <summary>The orchestra's cellos (a darker, lower section).</summary>
+        Cello,
+
+        /// <summary>Drum and bass's glowing lead (a soft FM electric piano) with a dotted echo.</summary>
+        Liquid,
+
+        /// <summary>The hazard world's lead: two slightly detuned, slowly wobbling bells whose long notes sag.</summary>
+        Unstable,
     }
 
     /// <summary>A style's backbeat sound (<see cref="Snare"/>), or none (the hub has no kit).</summary>
@@ -1390,12 +1549,19 @@ public sealed partial class SkySynth
     /// PadGain and PadTone scale the key's pad level and tone; PadAttack is seconds; FreeChordBars is how many bars each
     /// chord lasts between the theme's returns.
     /// </para>
+    /// <para>
+    /// AD-52: Arrangement names an arrangement with its own groove, pads and lead (SkySynth.Arrangements.cs), which then
+    /// ignores the patterns above; HalfTime runs the score at half the pulse (<see cref="ThemeTempoFor"/>); PumpDepth (0..1)
+    /// is how far the deck's pumped voices dip on each kick (0.6 ≈ −8 dB); Level is the deck's gain, which balances an
+    /// arrangement's loudness with the others (measured, AD-52).
+    /// </para>
     /// </summary>
     private sealed record Style(
         MusicIdentity Id, float Bpm, float Swing, int[]? Scale, int[]? Progression, string? Mode, Lead Lead, float LeadGain,
         float[] Kick, SnareKind Snare, float[] Back, float[] Hat, float[] OpenHat, bool Ghosts,
         PercKind PercKind, float[] Perc, int PercFromDevelopment, string Bass, BassKind BassKind, ArpKind ArpKind, int[] Arp,
-        float PadGain, float PadTone, float PadAttack, int FreeChordBars);
+        float PadGain, float PadTone, float PadAttack, int FreeChordBars,
+        Arrangement Arrangement = Arrangement.Classic, bool HalfTime = false, float PumpDepth = 0f, float Level = 1f);
 
     /// <summary>A drum pattern: X accent, x normal, o ghost, . rest.</summary>
     private static float[] Hits(string s) => [.. s.Select(c => c switch { 'X' => 1f, 'x' => 0.75f, 'o' => 0.4f, _ => 0f })];
@@ -1411,6 +1577,7 @@ public sealed partial class SkySynth
     private static readonly int[] LydianDominant = [0, 2, 4, 6, 7, 9, 10];
     private static readonly int[] Mixolydian = [0, 2, 4, 5, 7, 9, 10];
     private static readonly int[] Dorian = [0, 2, 3, 5, 7, 9, 10];
+    private static readonly int[] Phrygian = [0, 1, 3, 5, 7, 8, 10];
     private static readonly int[] MajorPentatonic = [0, 2, 4, 7, 9];
     private static readonly int[] MinorPentatonic = [0, 3, 5, 7, 10];
 
@@ -1441,21 +1608,30 @@ public sealed partial class SkySynth
             Hits("X.....x.X.....o."), SnareKind.Clap, Hits("....X.......X..."), Hits("..x...x...x...x."), Hits(Silent), true,
             PercKind.Shaker, Hits("o.o.o.o.o.o.o.o."), 2, "R..O..R.R..O..F.", BassKind.Pluck, ArpKind.None, Rungs(Silent),
             0.6f, 1f, 0.15f, 1),
-        // Band 2, the trails: four on the floor, an offbeat square bass, open hats, dotted-eighth plucks for momentum.
-        new(MusicIdentity.Trails, 124f, 0.08f, null, null, null, Lead.Pluck, 1.05f,
-            Hits("X...X...X...X..."), SnareKind.Snare, Hits("....X.......X..."), Hits("x.x.x.x.x.x.x.x."), Hits("..o...o...o...o."), true,
-            PercKind.None, Hits(Silent), 1, "..R...R...R...O.", BassKind.Square, ArpKind.Pluck, Rungs("0..1..2..3..2..1"),
-            0.55f, 1f, 0.12f, 1),
-        // Band 3, the deep woods: dorian, toms and rims, a shaker in 16ths, a deep syncopated bass, wood for the lead.
-        new(MusicIdentity.DeepWoods, 128f, 0.12f, Dorian, [0, 2, 6, 3], "dorian (deep woods)", Lead.Wood, 1.1f,
-            Hits("X......x..X....."), SnareKind.Rim, Hits("....X.......X..."), Hits("oxoxoxoxoxoxoxox"), Hits(Silent), true,
-            PercKind.Toms, Hits("......x..x....x."), 1, "R..R...O..R..F..", BassKind.Deep, ArpKind.None, Rungs(Silent),
-            0.65f, 0.8f, 0.2f, 1),
-        // Band 4, the underglow: lydian dominant, fast four on the floor, 16th hats and a 16th FM pulse, glowing fourths.
-        new(MusicIdentity.Underglow, 132f, 0f, LydianDominant, [0, 1, 6, 0], "lydian dominant (underglow)", Lead.Glow, 0.85f,
-            Hits("X...X...X...X..."), SnareKind.Clap, Hits("....X.......X..."), Hits("oxoXoxoXoxoXoxoX"), Hits("..x...x...x...x."), true,
-            PercKind.None, Hits(Silent), 1, "RrOrRrOrRrOrRrFr", BassKind.Fm, ArpKind.Glow, Rungs("0..2..4..3..5.4."),
-            0.5f, 1.2f, 0.15f, 1),
+        // Band 2, the trails, the festival arrangement (AD-52): the drop, breakdown and build are FestivalGroove's; the kick
+        // pumps the pads, supersaws and bass (PumpDepth 0.6 ≈ −8 dB on each kick). The motif's breakdown pluck is the lead here.
+        new(MusicIdentity.Trails, 126f, 0f, null, null, null, Lead.Pluck, 1.0f,
+            Hits(Silent), SnareKind.Clap, Hits(Silent), Hits(Silent), Hits(Silent), true,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Pluck, ArpKind.None, Rungs(Silent),
+            0.55f, 1f, 0.12f, 1, Arrangement.Festival, PumpDepth: 0.6f, Level: 1f),
+        // Band 3, the deep woods, the orchestral arrangement (AD-52): dorian, a broad half-time theme (72 BPM) over the
+        // string ostinato's eighths (144); the cellos carry the band motif and the flute echoes it.
+        new(MusicIdentity.DeepWoods, 144f, 0f, Dorian, [0, 2, 6, 3], "dorian (orchestral)", Lead.Cello, 1.0f,
+            Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Deep, ArpKind.None, Rungs(Silent),
+            0.65f, 1f, 0.3f, 1, Arrangement.Orchestral, HalfTime: true, Level: 0.85f),
+        // Band 4, the underglow, the drum-and-bass arrangement (AD-52): 172 BPM breaks, the theme at half time (86) on the
+        // liquid lead, a reese bass and sub, airy strings; dorian, i IV VII III between returns.
+        new(MusicIdentity.Underglow, 172f, 0f, Dorian, [0, 3, 6, 2], "dorian (drum and bass)", Lead.Liquid, 1.0f,
+            Hits(Silent), SnareKind.Snare, Hits(Silent), Hits(Silent), Hits(Silent), true,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Deep, ArpKind.None, Rungs(Silent),
+            0.5f, 1f, 0.6f, 1, Arrangement.DrumAndBass, HalfTime: true, Level: 0.68f),
+        // The hazard world (AD-52): phrygian at half time (70 over a 140 pulse), a beating drone, a heartbeat, ticking metal,
+        // the theme on an unstable, sagging lead; chords every 2 bars between returns (i bII i VI).
+        new(MusicIdentity.Hazard, 140f, 0f, Phrygian, [0, 1, 0, 5], "phrygian (hazard)", Lead.Unstable, 0.9f,
+            Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
+            0.6f, 1f, 1.5f, 2, Arrangement.Hazard, HalfTime: true, Level: 1f),
     ];
 
     // ---------------------------------------------------------------- keys
@@ -1522,6 +1698,12 @@ public sealed partial class SkySynth
     {
         /// <summary>The voice group this deck plays into (its index).</summary>
         public readonly int Group = group;
+
+        /// <summary>The deck's pumped group: voices that follow its sidechain (<see cref="PumpGain"/>), faded with the deck.</summary>
+        public readonly int PumpGroup = group + GroupPumpOffset;
+
+        /// <summary>Whether a voice group belongs to this deck (its plain or pumped group).</summary>
+        public bool Owns(int g) => g == Group || g == PumpGroup;
         public MusicIdentity Identity;
         public Style Style = Styles[0];
         public PlanetTheme Theme;
@@ -1534,10 +1716,35 @@ public sealed partial class SkySynth
         public bool Echo;
         public long WorldKey;
 
-        /// <summary>The deck's clock: its first downbeat (a frame) and its sixteenth note in frames.</summary>
+        /// <summary>
+        /// The deck's clock: its first downbeat (a frame) and its score's sixteenth note in frames; the pulse's sixteenth
+        /// (the effects' grid), which is half of it in a half-time arrangement; and its steps per beat of the pulse (4, or 2).
+        /// </summary>
         public long Origin;
         public double FramesPerSixteenth = 1;
+        public double GridFramesPerSixteenth = 1;
+        public int StepsPerBeat = 4;
         public long NextStep;
+
+        /// <summary>The deck's gain (its style's <c>Level</c>: the arrangements' loudness balance).</summary>
+        public float Level = 1f;
+
+        /// <summary>How far the pumped group dips on a kick (0: no pump), and the frames of the last two kicks (the later may be ahead of the cursor).</summary>
+        public float PumpDepth;
+        public long PumpLast = long.MinValue / 2, PumpPrev = long.MinValue / 2;
+
+        /// <summary>The step at which a festival drop re-starts the music at the top of a cycle (−1: none), and whether this deck's first downbeat is one.</summary>
+        public long DropAtStep = -1;
+        public bool DropArrival;
+
+        /// <summary>The furthest a flight build has got in this deck (0..1: the flight's progress), and its steered riser voice.</summary>
+        public float BuildPeak;
+        public Voice? Riser;
+        public int RiserGeneration;
+
+        /// <summary>The bar of the cycle (−1 in an intro) and the sixteenth in it, of the step being played (the pads read them).</summary>
+        public int Bar;
+        public int InBar;
 
         /// <summary>The frame where it stops (its successor's first downbeat), or long.MaxValue.</summary>
         public long StopFrame = long.MaxValue;
