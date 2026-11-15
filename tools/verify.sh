@@ -134,7 +134,8 @@ if [[ "$TIER" == release ]]; then
 fi
 
 log "$(printf '%-28s %7ss' TOTAL "$(( $(date +%s) - T0 ))")  failing steps: $FAILS"
-[[ -d /mnt/c/Users/David/AppData/Roaming/FileScape ]] && log "note: %APPDATA%\\FileScape exists (DJ's preferences; probes never read or write it)"
+APPDATA_W="$(cd /mnt/c && cmd.exe /d /c "echo %APPDATA%" 2>/dev/null | tr -d '\r')"
+[[ -n "$APPDATA_W" && -d "$(wslpath "$APPDATA_W")/FileScape" ]] && log "note: %APPDATA%\\FileScape exists (your preferences; probes never read or write it)"
 exit $(( FAILS > 0 ? 1 : 0 ))
 }
 # Bash reads a script as it runs; wrapping the body in main() means an edit during a run cannot change the run.
