@@ -84,12 +84,17 @@ function Await-Window($proc) {
 }
 function Click-At($xy) { Client-Click $script:w ([int]$xy[0]) ([int]$xy[1]) }
 # Steers to the current lesson's target with the arrow keys and W, as a player follows the beacon.
-function Steer-To-Target([double]$stop, [int]$tries = 70) {
+function Steer-To-Target([double]$stop, [int]$tries = 90) {
+  $last = [double]::MaxValue; $stuck = 0
   for ($i = 0; $i -lt $tries; $i++) {
     $s = State; $b = [double]$s.targetBearing; $d = [double]$s.targetDistance
     if ($d -lt 0 -or $d -le $stop) { return $s }
-    if ([Math]::Abs($b) -gt 12) { $ms = [int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000); Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) $ms }
-    else { Hold-Key 'W' ([int][Math]::Min(500, 120 + $d * 50)) }
+    if ([Math]::Abs($b) -gt 12) { $ms = [int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000); Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) $ms; Start-Sleep -Milliseconds 100; continue }
+    Hold-Key 'W' ([int][Math]::Min(500, 120 + $d * 50))
+    # Something in the way (the tower, a rock): step sideways a little and try again, as a player walks round it.
+    $stuck = if ($d -gt $last - 0.1) { $stuck + 1 } else { 0 }
+    $last = $d
+    if ($stuck -ge 2) { Hold-Key 'D' 1000; $stuck = 0 }
     Start-Sleep -Milliseconds 100
   }
   return State

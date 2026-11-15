@@ -431,6 +431,8 @@ public partial class Hud : CanvasLayer
         var r = _legacyButton.GetGlobalRect();
         _legacyPanel.Position = new Vector2(r.Position.X, r.End.Y + 4);
         _legacyPanel.ResetSize();
+        // Drawn above the place bar it overlaps (2026-11-15: it opened underneath, and a click on "Places" landed on "Up").
+        _legacyPanel.MoveToFront();
     }
 
     /// <summary>The Legacy views button (probes open the menu with it before clicking a view).</summary>
