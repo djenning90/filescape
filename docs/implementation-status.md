@@ -1,8 +1,23 @@
 # Implementation status
 
-Last updated: 2026-11-14 (later), after the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-15, after the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## First public playtest (2026-11-15, PLANET-32..37)
+
+DJ's brief: a build to hand someone and watch them learn on their own. Planets is the default (AD-51); learning by playing (AD-54); a black-hole world for system folders (AD-53); three new arrangements and hazard cues (AD-52); ready for GitHub (`docs/publishing.md`).
+
+| Area | Status | Evidence |
+|---|---|---|
+| A person's launch opens Planets at This computer; arguments still win; automation keeps its defaults; Legacy views menu (PLANET-32) | **Demonstrated** with real input on a clean profile | `os-planets-probe.ps1 -Tutorial`; journeys in every tier still pass (the walk OS probe now asks for `--vis=places` explicitly) |
+| Welcome dialog, Don't show again (saved, honoured on the next launch), Help → Learn to play, the 13-step walkthrough, leaving mid-lesson (PLANET-33) | **Demonstrated** with real input | `-Tutorial`: every step completed by the real action; in-app `planets-tutorial`: wrong turn recovered with Back to the lesson, skip, start over |
+| The black-hole world: broken shell, safe route, fall and spiral, return to the parent, re-entry; classification by platform and path context (PLANET-34) | **Demonstrated** for the sample; real system folders on fixtures only | Core tests (406 at merge; look-alikes stay ordinary); `planets-hazard` 37/0; real input `-Hazard` 8/0 (safe route without a fall; off an edge; back at the Starter Sky; straight back in) |
+| Music: festival (band 2), orchestral (band 3), drum and bass (band 4), hazard identity and cues (PLANET-35) | **Demonstrated offline**; by ear: DJ | see the section below; samples in `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` |
+| README, screenshots from sample data, publication review and fixes (PLANET-36) | **Done**; licence, visibility, history identity and what stays public: DJ's decisions | `docs/publishing.md` |
+| Release checks (PLANET-37) | see the build line below | release tier on `b55444b`: 28 of 32 steps passed; the 4 failures were test-instrument issues (the walk OS probe assumed the old default view; walk-perf made no assertion; the real-input walkthrough's jump onto the bench did not re-aim after a sidestep), fixed and rerun on the final build |
+
+**Known:** one Core test failed once in a full run during the music merge and did not fail again in four further runs (not identified; possibly a timing measurement under load). The `.exe` file's own icon is still Godot's (the window and taskbar use FileScape's).
 
 ## Music arrangements and hazard cues (2026-11-15, PLANET-35, AD-52)
 
@@ -13,10 +28,10 @@ Three original arrangements of the FileScape theme replace the plainest folder-b
 | Arrangements keep the theme, placed per AD-52 | **Demonstrated offline**; by ear: DJ | SkySynth tests: the theme as written on arrival and ≥ 86 % on the next return in every new arrangement and key tested |
 | Festival build on flight, drop on arrival (existing calls only) | **Demonstrated offline** | the build's high-frequency energy ×2.7 through a 2 s flight; the drop's first theme note 0.5 s after `Arrive` (≥ 0.15 s, on the beat); no drop after a hop |
 | Loudness, clipping, clicks, rapid hops, backtracking, a minute per world, cost | **Demonstrated offline** | −27.1…−27.3 LUFS vs −26.9 reference; music peaks ≤ 0.37; voices ≤ 28/40; 26–27 ms per second of audio (bound 60) |
-| Hazard warning (self-throttled), fall, return; room in the mix | **Demonstrated offline**; in the app: pending the hazard world | pulses 12 in 3 s at the edge whether called once or 50× per frame; fall pitch falls ×9, spiral speeds up; every cue ≥ 4.4 dB over the ducked music in every world |
+| Hazard warning (self-throttled), fall, return; room in the mix | **Demonstrated offline**; wired in the app (the hazard world calls them; heard in the real-input runs, judged by ear: DJ) | pulses 12 in 3 s at the edge whether called once or 50× per frame; fall pitch falls ×9, spiral speeds up; every cue ≥ 4.4 dB over the ducked music in every world |
 | Samples | written | `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt) |
 
-**Unknown:** nobody has listened yet. Not exported or installed by this slice.
+**Unknown:** nobody has listened yet.
 
 ## Documentation and readability pass (2026-11-14, later)
 

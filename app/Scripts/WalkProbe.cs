@@ -1008,6 +1008,9 @@ public partial class WalkProbe : ProbeBase
             var g = PerfRecorder.Summarize(samples.Select(x => x.GpuMs).ToList());
             _perf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{label},{App.Quality},{s2.Count},{s2.Mean:0.00},{s2.P50:0.00},{s2.P95:0.00},{s2.P99:0.00},{s2.Max:0.00},{g.Mean:0.00},{App.InstanceCount},{Tree.Count}\n");
             Log(F($"perf {label} {App.Quality}: mean={s2.Mean:0.00} p95={s2.P95:0.00} gpu={g.Mean:0.00} ms"));
+            // The run is a measurement, but it must have measured something: the harness rejects a result with no
+            // assertions (2026-11-15: this step had none and failed the release tier).
+            Check(s2.Count >= 30, F($"{label}: {s2.Count} frames measured"));
         }
 
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);

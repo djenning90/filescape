@@ -45,7 +45,7 @@ $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
 $scaleArg = '--ui-scale=' + $UiScale.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 
-$p = Start-Process -FilePath $Exe -ArgumentList @('--', "`"--root=$Root`"", '--window=1600x900', $scaleArg, "`"--state-file=$state`"", "`"--prefs=$prefs`"") -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList @('--', "`"--root=$Root`"", '--vis=places', '--window=1600x900', $scaleArg, "`"--state-file=$state`"", "`"--prefs=$prefs`"") -PassThru
 Start-Sleep -Seconds 7
 # Only ever the window of the process this script started: another FileScape (DJ's own session) may be open.
 for ($i = 0; $i -lt 40 -and $p.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 250; $p.Refresh() }
@@ -206,7 +206,7 @@ $p.CloseMainWindow() | Out-Null; Start-Sleep -Seconds 2; if (-not $p.HasExited) 
 
 # Relaunch with the same preferences file: the setting persisted. With -ChainRoot, start in Pier and go up on W alone.
 $second = if ($ChainRoot) { $ChainRoot } else { $Root }
-$p = Start-Process -FilePath $Exe -ArgumentList @('--', "`"--root=$second`"", '--window=1600x900', $scaleArg, "`"--state-file=$state`"", "`"--prefs=$prefs`"") -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList @('--', "`"--root=$second`"", '--vis=places', '--window=1600x900', $scaleArg, "`"--state-file=$state`"", "`"--prefs=$prefs`"") -PassThru
 Start-Sleep -Seconds 7
 for ($i = 0; $i -lt 40 -and $p.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 250; $p.Refresh() }
 $w = $p.MainWindowHandle

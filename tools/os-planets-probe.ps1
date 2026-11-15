@@ -203,9 +203,15 @@ try {
     Hold-Key 'Space' 80; Start-Sleep -Seconds 3
     $s = Wait-Step 4 9000; Check ($s.tutorialStep -ge 4 -and $s.currentName -eq 'Lantern Workshop') "stood on the launcher and flew to Lantern Workshop ($($s.tutorialTitle))"
     Shot 'lesson-bench' | Out-Null
-    $s = Steer-To-Target 1.3
-    Key-Down 'W'; Start-Sleep -Milliseconds 120; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 700; Key-Up 'W'
-    $s = Wait-Step 5; if ($s.tutorialStep -lt 5) { Key-Down 'W'; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 800; Key-Up 'W'; $s = Wait-Step 5 }
+    # Up to four tries, each: walk to the bench's edge, face it, run and jump (a sidestep round an obstacle can leave the
+    # traveller facing away, 2026-11-15 release tier).
+    for ($try = 0; $try -lt 4; $try++) {
+      $s = Steer-To-Target 1.3
+      for ($k = 0; $k -lt 8; $k++) { $s = State; $b = [double]$s.targetBearing; if ([Math]::Abs($b) -le 8) { break }; Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(60, [Math]::Min(450, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 120 }
+      Key-Down 'W'; Start-Sleep -Milliseconds 120; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 700; Key-Up 'W'
+      $s = Wait-Step 5 1500; if ($s.tutorialStep -ge 5) { break }
+      Hold-Key 'S' 500
+    }
     Check ($s.tutorialStep -ge 5) "jumped onto the workbench ($($s.tutorialTitle))"
     Start-Sleep -Milliseconds 500; Hold-Key 'E' 60
     $s = Wait-Step 6; Check ($s.tutorialStep -ge 6) "E read the README ($($s.tutorialTitle))"

@@ -104,3 +104,24 @@ to listen for).
    cyan, four rings). Listen for the band motif returning as you go down; **Backspace** a few times quickly and back
    in again to hear how quick hops and returns sound.
 5. Throughout: left-drag and ← → to look, **T** for the overview (left-drag orbits it too), Esc back down.
+
+## First public playtest (2026-11-15): a newcomer's route
+
+**Launch** (Command Prompt): `"%LOCALAPPDATA%\FileScape\build\FileScape.exe"` — no arguments: Planets at This computer.
+
+1. **Welcome.** The first time, a small dialog offers *Learn to play*, *Explore on my own* and *Don't show this again*.
+   Choose **Learn to play** (Help → Learn to play brings it back any time).
+2. **The walkthrough** (Starter Sky, about four minutes). A small card at the top says what to do; a column of warm light
+   marks where; a chime and a burst of light say you did it. Look round with a left-drag, walk to the tower, jump, fly
+   from the Lantern Workshop launcher, jump onto its workbench and press E for the README (or spin), U up, J to Music Box,
+   U and then Backspace (up vs back), T for the overview, drag to orbit, Esc back to where you stood. *Skip step*,
+   *Start over* and *Leave* are always there; if you wander off, *Back to the lesson* takes you back.
+3. **The black-hole world.** In the Starter Sky, fly to **Event Horizon** (J, type "event", Enter). A caution banner on
+   arrival; the launchers and paths are on solid rock. Walk out past the rings: the ground breaks off over a spinning
+   black hole. Step off — you spiral down round it and come back up beside its launcher in the Starter Sky; press Space
+   on the launcher and you are straight back in. Nothing happens to any file.
+4. **The music.** Listen as you go deeper: the Long Way Down passes the trails (festival: a build while you fly, the drop
+   as you land), the deep woods (orchestral) and the underglow (drum and bass). The hub stays gentle; Event Horizon has its
+   own uneasy theme, a warning as you near an edge and a falling whoosh. Samples to compare:
+   `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt says what to listen for).
+5. **Legacy views.** The toolbar's *Legacy views* menu opens Places and the two maps; V returns to Planets.
