@@ -93,6 +93,9 @@ if [[ "$TIER" != fast ]]; then
   journey planets-flows planets-flows.log 300 --automate=planets-flows --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   # 2026-11-14: world characters, the repository workbench (jump, spin, E) and the depth bands on the Starter Sky.
   journey planets-route planets-route.log 300 --automate=planets-route --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # 2026-11-15 (the first public playtest): the walkthrough, played through, and the black-hole world (safe route, a fall, re-entry).
+  journey planets-tutorial planets-tutorial.log 300 --automate=planets-tutorial --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  journey planets-hazard planets-hazard.log 300 --automate=planets-hazard --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
@@ -126,6 +129,13 @@ if [[ "$TIER" == release ]]; then
   for sc in 1 1.25; do
     probe_step "os-ui$sc" 360 "$OUT/os-ui$sc/os-walk-results.txt" "real OS input" \
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-walk-probe.ps1" -Exe "$EXEW" -Root "$W" -Out "$OUTW\\os-ui$sc" -UiScale $sc -ChainRoot "$W\\Journeys\\Coast\\Harbour\\Pier"
+  done
+  # Planets with real input (2026-11-15): controls (drags, clicks, focus), the sample route, and a person's first launch
+  # with the walkthrough on a clean settings profile. Input goes only to the FileScape these probes start.
+  for mode in Controls Route Tutorial; do
+    a=(); [[ $mode != Controls ]] && a=("-$mode")
+    probe_step "os-planets-$mode" 600 "$OUT/os-planets-$mode/os-planets.log" "real OS input" \
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-planets-probe.ps1" -Exe "$EXEW" -Out "$OUTW\\os-planets-$mode" "${a[@]}"
   done
   recording_step planets-recording 400 "$OUT/planets-recording.avi" \
     "$EXE" --write-movie "$OUTW\\planets-recording.avi" --fixed-fps 30 -- --automate=planets-reel --root=sample --vis=planets --test-shell=record "--out=$OUTW\\planets-recording" --window=1280x720 --ui-scale=1 --tier=functional
