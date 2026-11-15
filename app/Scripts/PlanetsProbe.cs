@@ -80,6 +80,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-flows") await Flows();
         else if (Mode == "planets-route") await Route();
         else if (Mode == "planets-route-hub") await HubRoute();
+        else if (Mode == "planets-camera-trace") await CameraTraceRun();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
@@ -708,6 +709,38 @@ public partial class PlanetsProbe : ProbeBase
         await Until(() => App.Navigator.Current == hub && !P.Busy, 15);
         await Seconds(1);
         Check(P.Character.Kind == WorldKind.Hub, "Ctrl+Home: back at This computer");
+    }
+
+    /// <summary>
+    /// --automate=planets-camera-trace (Starter Sky, with the engine's --fixed-fps 60): a frame-by-frame trace of the
+    /// overview camera and the landing flash — open the overview, select Star Archive's 2025, land there — written to
+    /// camera-trace.txt in --out, so a refactor of the camera or flash code can be compared with diff (2026-11-14).
+    /// </summary>
+    private async Task CameraTraceRun()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        await Seconds(4);
+        var lines = new System.Text.StringBuilder();
+        async Task Trace(string what, int frames)
+        {
+            for (var i = 0; i < frames; i++)
+            {
+                await Frames(1);
+                lines.Append(what).Append(' ').Append(i).Append(' ').Append(P.CameraTrace()).Append('\n');
+            }
+        }
+
+        await Key(Godot.Key.T);
+        await Trace("open", 90);
+        var archive = Child(App.Navigator.Current, "Star Archive");
+        var y2025 = archive >= 0 ? Child(archive, "2025") : -1;
+        if (y2025 >= 0 && P.UniverseKnows(y2025)) P.SelectInUniverse(y2025);
+        await Trace("select", 90);
+        await Key(Godot.Key.Enter);
+        await Trace("land", 150);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(Out, "camera-trace.txt"), lines.ToString());
+        Check(lines.Length > 0, $"camera trace written ({lines.ToString().Split('\n').Length - 1} frames)");
     }
 
     /// <summary>--automate=planets-flows (Starter Sky): discovery on a crowded world, labels while the camera turns, the overview.</summary>

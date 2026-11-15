@@ -133,6 +133,10 @@ public partial class PlanetWorld
         SnapCamera();
     }
 
+    /// <summary>The white flash's current opacity (0–1) and the overview's camera state (probes: the camera trace).</summary>
+    public string CameraTrace() => System.FormattableString.Invariant(
+        $"flash={_flash.Color.A:R} pos=({_camera.GlobalPosition.X:R},{_camera.GlobalPosition.Y:R},{_camera.GlobalPosition.Z:R}) fov={_camera.Fov:R} dist={_uniDistance:R} focus=({_uniFocus.X:R},{_uniFocus.Y:R},{_uniFocus.Z:R}) phase={PhaseName}");
+
     public void ProbeStandOn(NVector3 up, float top)
     {
         if (_current == null) return;

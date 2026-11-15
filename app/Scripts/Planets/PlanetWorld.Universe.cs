@@ -22,11 +22,84 @@ public partial class PlanetWorld
     /// <summary>Far from every planet (the overview is drawn in the same scene, out of their way).</summary>
     private static readonly Vector3 UniverseOrigin = new(0, 40000, 0);
 
+    // ---- the overview camera (tuning: DJ's playtest 2026-11-11; values chosen by eye, not measured)
+    // Smoothing: each frame the camera closes a fraction 1 − e^(−rate·dt) of the gap to its target. That is the exact
+    // per-frame step of exponential decay, so the motion is the same at 30, 60 or 144 fps (a fixed "lerp 10 % a frame"
+    // would be twice as fast at 120 fps as at 60). The gap shrinks to 1/e (37 %) after 1/rate seconds: a higher rate
+    // feels tighter and snappier, a lower one floatier.
+
+    /// <summary>How fast the look-at point follows a click, a pan or a landing, per second (1/e of the gap left after ≈ 0.17 s).</summary>
+    private const float FocusFollowRatePerSecond = 6f;
+
+    /// <summary>How fast the camera's distance follows a zoom, per second (≈ 0.29 s): slower than the focus, so a select
+    /// reads as "turn to it, then come closer" rather than one lurch.</summary>
+    private const float ZoomFollowRatePerSecond = 3.5f;
+
+    /// <summary>The overview's vertical field of view, degrees: the same as the walking camera's, so opening and leaving the
+    /// overview never change the lens (a separate choice: the two need not stay equal).</summary>
+    private const float OverviewFovDegrees = 62f;
+
+    /// <summary>Far clip in the overview, metres: the largest systems are kilometres across (the surface camera uses <see cref="SurfaceFarMetres"/>).</summary>
+    private const float OverviewFarMetres = 30000f;
+
+    /// <summary>Far clip back on a planet, metres (restored when the overview closes).</summary>
+    private const float SurfaceFarMetres = 4000f;
+
+    /// <summary>The orbit's starting angles, radians: a three-quarter view from above (yaw ≈ 34°, pitch ≈ 32°).</summary>
+    private const float StartYawRadians = 0.6f, StartPitchRadians = 0.55f;
+
+    /// <summary>Drag sensitivity of the orbit, radians per screen pixel (a 360 px drag turns ≈ 103°).</summary>
+    private const float OrbitRadiansPerPixel = 0.005f;
+
+    /// <summary>The orbit stops just short of straight down or up (±83°): at ±90° the look-at would flip.</summary>
+    private const float MaxPitchRadians = 1.45f;
+
+    /// <summary>Middle-drag pan, in units of the camera distance per pixel: the world under the cursor moves about with it at any zoom.</summary>
+    private const float PanDistancesPerPixel = 0.0016f;
+
+    /// <summary>WASD pan speed, camera distances per second: crossing the view takes about the same time at any zoom.</summary>
+    private const float KeyPanDistancesPerSecond = 0.9f;
+
+    /// <summary>One wheel notch: in multiplies the distance by 0.85, out by 1.18 (≈ 1/0.85, so in-then-out comes back).</summary>
+    private const float WheelZoomIn = 0.85f, WheelZoomOut = 1.18f;
+
+    /// <summary>The closest and farthest the wheel goes, metres.</summary>
+    private const float MinZoomMetres = 4f, MaxZoomMetres = 6000f;
+
+    // ---- framing a world: distance = a multiple of its system's size (SystemSize), within limits
+    /// <summary>Opening: start this many body radii from where you stand, then pull back (the zoom out is the transition).</summary>
+    private const float OpenStartRadii = 3f;
+
+    /// <summary>Opening: settle at this many system sizes from where you stand, within 30…3000 m.</summary>
+    private const float OpenFrameSystems = 2.6f, OpenMinMetres = 30f, OpenMaxMetres = 3000f;
+
+    /// <summary>Selecting: a little closer than opening, so the chosen system fills more of the view, within 12…3000 m.</summary>
+    private const float SelectFrameSystems = 2.4f, SelectMinMetres = 12f, SelectMaxMetres = 3000f;
+
+    /// <summary>Landing: fly in to this many body radii, so the world nearly fills the view as the light comes up.</summary>
+    private const float LandingCloseRadii = 1.6f;
+
+    /// <summary>The landing flight, seconds before beat alignment (then moved by at most ±0.09 s onto the music's sixteenth grid).</summary>
+    private const float LandingSeconds = 0.75f, LandingBeatShiftSeconds = 0.09f;
+
+    // ---- the white flash (the "warp" light the overview opens out of and lands into)
+    /// <summary>The flash colour: a warm white, so it reads as light rather than a blank screen.</summary>
+    private static readonly Color FlashColor = new(1f, 0.95f, 0.86f, 0f);
+
+    /// <summary>The flash's peak opacity (and its cap): never fully opaque, so the world stays faintly visible through it.</summary>
+    private const float FlashPeakOpacity = 0.85f;
+
+    /// <summary>How fast the flash level may change, per second: it rises with the landing's progress and fades in ≈ 0.6 s.</summary>
+    private const float FlashRatePerSecond = 1.6f;
+
+    /// <summary>The flash level on opening: a soft flash (≈ 48 % opacity after the squaring) that fades as you pull back.</summary>
+    private const float OpenFlashLevel = 0.75f;
+
     private Node3D? _universe;
     private readonly List<(UniverseBody Body, Vector3 At)> _uniBodies = [];
     private readonly Dictionary<int, int> _uniIndex = [];
     private Vector3 _uniFocus, _uniFocusTarget;
-    private float _uniYaw = 0.6f, _uniPitch = 0.55f, _uniDistance, _uniDistanceTarget;
+    private float _uniYaw = StartYawRadians, _uniPitch = StartPitchRadians, _uniDistance, _uniDistanceTarget;
     private int _uniSelected = -1, _uniHovered = -1;
     private bool _uniPanning;
     private (int Id, float T, float Seconds)? _uniLanding;
@@ -76,16 +149,20 @@ public partial class PlanetWorld
         var here = _uniIndex.TryGetValue(_current.FolderId, out var hi) ? _uniBodies[hi] : _uniBodies[0];
         _uniSelected = here.Body.NodeId;
         _uniFocus = _uniFocusTarget = here.At;
-        _uniDistance = here.Body.Radius * 3f;
-        _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * 2.6f, 30f, 3000f);
-        _camera.Far = 30000f;
-        _warpFlash = 0.75f; // a soft flash, fading as you pull back from your world
+        _uniDistance = here.Body.Radius * OpenStartRadii;
+        _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
+        _camera.Far = OverviewFarMetres;
+        _warpFlash = OpenFlashLevel; // a soft flash, fading as you pull back from your world
         _s.Hud.SetPlanetsOverview(open: true);
         _audio.Launch();
         _s.Signs.Clear();
         UpdateUniverse(tree, 0f, true);
     }
 
+    /// <summary>
+    /// A system's size for framing, metres: its ring plus a margin (1.3 × the ring radius + the body) or, for a world with
+    /// no children, a few body radii (4 ×), so a lone world is not framed as a speck.
+    /// </summary>
     private static float SystemSize(UniverseBody b) => MathF.Max(b.Radius * 4f, b.OrbitRadius * 1.3f + b.Radius);
 
     private void BuildUniverseScene(FsTree tree, IReadOnlyList<UniverseBody> bodies)
@@ -209,12 +286,12 @@ public partial class PlanetWorld
         _uniBodies.Clear();
         _uniIndex.Clear();
         _uniLanding = null;
-        _camera.Far = 4000f;
+        _camera.Far = SurfaceFarMetres;
         _s.Signs.Clear();
         _s.Hud.SetPlanetsOverview(open: false);
         SetPrompt("");
         _warpFlash = 0; // the overview's veil never outlives it
-        _flash.Color = new Color(1f, 0.95f, 0.86f, 0f);
+        _flash.Color = FlashColor;
         if (returnToSurface)
         {
             _camBlendFrom = from;
@@ -246,18 +323,20 @@ public partial class PlanetWorld
             var move = right * Axis(InputBindings.Left, InputBindings.Right)
                 + forward * Axis(InputBindings.Back, InputBindings.Forward)
                 + Vector3.Up * (Axis(InputBindings.Down, InputBindings.Up));
-            if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * 0.9f * dt;
+            if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * KeyPanDistancesPerSecond * dt;
         }
 
-        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding is { } ul ? Mathf.Clamp(ul.T / ul.Seconds, 0, 1) : 0, dt * 1.6f);
-        _flash.Color = new Color(1f, 0.95f, 0.86f, Mathf.Clamp(_warpFlash * _warpFlash * 0.85f, 0, 0.85f));
-        var ease = 1 - Mathf.Exp(-dt * 6f);
+        // The flash follows the landing's progress (0 → 1 over the flight) and otherwise fades to 0; squaring the level
+        // keeps it faint early and brightens it late, so the light seems to rush up as you arrive.
+        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding is { } ul ? Mathf.Clamp(ul.T / ul.Seconds, 0, 1) : 0, dt * FlashRatePerSecond);
+        _flash.Color = FlashColor with { A = Mathf.Clamp(_warpFlash * _warpFlash * FlashPeakOpacity, 0, FlashPeakOpacity) };
+        var ease = 1 - Mathf.Exp(-dt * FocusFollowRatePerSecond); // frame-rate independent smoothing (see the constants above)
         _uniFocus = _uniFocus.Lerp(_uniFocusTarget, ease);
-        _uniDistance = Mathf.Lerp(_uniDistance, _uniDistanceTarget, 1 - Mathf.Exp(-dt * 3.5f));
+        _uniDistance = Mathf.Lerp(_uniDistance, _uniDistanceTarget, 1 - Mathf.Exp(-dt * ZoomFollowRatePerSecond));
         var offset = new Vector3(Mathf.Sin(_uniYaw) * Mathf.Cos(_uniPitch), Mathf.Sin(_uniPitch), Mathf.Cos(_uniYaw) * Mathf.Cos(_uniPitch));
         _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
         _camera.LookAt(_uniFocus, Vector3.Up);
-        _camera.Fov = 62f;
+        _camera.Fov = OverviewFovDegrees;
 
         var mouse = GetViewport().GetMousePosition();
         _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? PickUniverse(mouse) : -1;
@@ -367,7 +446,7 @@ public partial class PlanetWorld
         _s.Select(id);
         _audio.Select();
         _uniFocusTarget = _uniBodies[i].At;
-        _uniDistanceTarget = Mathf.Clamp(SystemSize(_uniBodies[i].Body) * 2.4f, 12f, 3000f);
+        _uniDistanceTarget = Mathf.Clamp(SystemSize(_uniBodies[i].Body) * SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
     }
 
     /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it.</summary>
@@ -380,10 +459,10 @@ public partial class PlanetWorld
             return;
         }
 
-        var seconds = _audio.AlignToSixteenth(0.75f, maxShiftSeconds: 0.09f);
+        var seconds = _audio.AlignToSixteenth(LandingSeconds, maxShiftSeconds: LandingBeatShiftSeconds); // ends on the beat (AD-42)
         _uniLanding = (id, 0f, seconds);
         _uniFocusTarget = _uniBodies[i].At;
-        _uniDistanceTarget = _uniBodies[i].Body.Radius * 1.6f;
+        _uniDistanceTarget = _uniBodies[i].Body.Radius * LandingCloseRadii;
         _audio.WindUp(seconds);
     }
 
@@ -425,10 +504,10 @@ public partial class PlanetWorld
             case InputEventMouseMotion mm when _uniPanning:
                 var right = _camera.GlobalBasis.X;
                 var up = _camera.GlobalBasis.Y;
-                _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * 0.0016f;
+                _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * PanDistancesPerPixel;
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
-                _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? 0.85f : 1.18f), 4f, 6000f);
+                _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? WheelZoomIn : WheelZoomOut), MinZoomMetres, MaxZoomMetres);
                 return true;
         }
 
@@ -438,8 +517,8 @@ public partial class PlanetWorld
     /// <summary>A left- or right-drag in the overview: orbit round the focus.</summary>
     private void OrbitUniverse(Vector2 screenPixels)
     {
-        _uniYaw -= screenPixels.X * 0.005f;
-        _uniPitch = Mathf.Clamp(_uniPitch + screenPixels.Y * 0.005f, -1.45f, 1.45f);
+        _uniYaw -= screenPixels.X * OrbitRadiansPerPixel;
+        _uniPitch = Mathf.Clamp(_uniPitch + screenPixels.Y * OrbitRadiansPerPixel, -MaxPitchRadians, MaxPitchRadians);
     }
 
     /// <summary>Over a HUD panel or the planet's own list or preview: the GUI gets the event (scrolling a list, say).</summary>
