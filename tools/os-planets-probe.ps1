@@ -9,9 +9,14 @@
   -Route plays the Starter Sky route instead (PLANET-30): J-list travel typed on the keyboard, steering to the
   repository's workbench with the arrow keys and W, a real jump onto it, a spin, E, a child folder, and back.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route]
+  -Tutorial (PLANET-32/33, 2026-11-15) starts FileScape as a person would — no folder or view arguments, a fresh
+  settings file — and checks the default (Planets at This computer) and the welcome dialog; "Don't show this again"
+  is saved and honoured by a second launch; Help -> Learn to play; the whole walkthrough played with real input;
+  leaving mid-lesson; a legacy view from the menu and back; and a normal shutdown.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route)
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -63,17 +68,115 @@ function Drag-Turns($button, $what, [int]$dx = 360, [double]$minDegrees = 30) {
 
 $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
-$p = Start-Process -FilePath $Exe -ArgumentList @('--', '--root=sample', '--vis=planets', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") -PassThru
-try {
+function Launch {
+  # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
+  $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', '--root=sample', '--vis=planets', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
+  if (Test-Path $state) { Remove-Item $state }
+  return Start-Process -FilePath $Exe -ArgumentList $a -PassThru
+}
+function Await-Window($proc) {
   Start-Sleep -Seconds 8
-  for ($i = 0; $i -lt 40 -and $p.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 250; $p.Refresh() }
-  $script:w = $p.MainWindowHandle
-  if ($w -eq 0) { throw "the launched FileScape has no window" }
-  if (-not (Focus-Window $w)) { throw "could not bring the launched FileScape to the front: stopping before any input" }; Start-Sleep -Milliseconds 800
+  for ($i = 0; $i -lt 40 -and $proc.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 250; $proc.Refresh() }
+  $script:w = $proc.MainWindowHandle
+  if ($script:w -eq 0) { throw "the launched FileScape has no window" }
+  if (-not (Focus-Window $script:w)) { throw "could not bring the launched FileScape to the front: stopping before any input" }
+  Start-Sleep -Milliseconds 800
+}
+function Click-At($xy) { Client-Click $script:w ([int]$xy[0]) ([int]$xy[1]) }
+# Steers to the current lesson's target with the arrow keys and W, as a player follows the beacon.
+function Steer-To-Target([double]$stop, [int]$tries = 70) {
+  for ($i = 0; $i -lt $tries; $i++) {
+    $s = State; $b = [double]$s.targetBearing; $d = [double]$s.targetDistance
+    if ($d -lt 0 -or $d -le $stop) { return $s }
+    if ([Math]::Abs($b) -gt 12) { $ms = [int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000); Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) $ms }
+    else { Hold-Key 'W' ([int][Math]::Min(500, 120 + $d * 50)) }
+    Start-Sleep -Milliseconds 100
+  }
+  return State
+}
+function Wait-Step([int]$step, [int]$ms = 6000) { for ($i = 0; $i -lt $ms / 150; $i++) { $s = State; if ($s.tutorialStep -ge $step -or $s.tutorialTitle -eq 'done') { return $s }; Start-Sleep -Milliseconds 150 }; return State }
+$p = Launch
+try {
+  Await-Window $p
   for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
   Start-Sleep -Seconds 3 # the establishing shot
   $s = State
   Check ($s.planets -and $s.planets.phase -eq 'Walking') "arrives on the Starter Sky on foot (phase=$($s.planets.phase))"
+
+  if ($Tutorial) {
+    function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+    $s = State
+    Check ($s.experience -eq 'Planets' -and $s.atHub) "a plain launch opens Planets at This computer (experience=$($s.experience), atHub=$($s.atHub), at $($s.currentName))"
+    Check ($s.welcome) "the welcome dialog is offered on the first launch"
+    Shot 'welcome' | Out-Null
+    Click-At $s.welcomeNever; Start-Sleep -Milliseconds 600
+    $s = State
+    Check (-not $s.welcome -and -not $s.showWelcomePref) "Don't show this again closes it and turns it off"
+    $saved = Get-Content $prefs -Raw | ConvertFrom-Json
+    Check ($saved.showWelcome -eq $false) "the choice is saved in the settings file (showWelcome=$($saved.showWelcome))"
+    $p.CloseMainWindow() | Out-Null
+    $closed = $p.WaitForExit(8000)
+    Check ($closed -and $p.ExitCode -eq 0) "normal shutdown by closing the window (exit code $($p.ExitCode))"
+    $script:w = 0
+    $p = Launch; Await-Window $p
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Seconds 2
+    $s = State
+    Check (-not $s.welcome -and $s.experience -eq 'Planets') "the second launch honours it: no dialog, straight into Planets"
+    # Help -> Learn to play.
+    Hold-Key 'F1' 60; Start-Sleep -Milliseconds 700
+    $s = State; Click-At $s.helpLearn
+    for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.tutorialStep -eq 0) { break }; Start-Sleep -Milliseconds 250 }
+    Check ($s.tutorialStep -eq 0) "Help -> Learn to play opens the sample world and the first lesson ($($s.tutorialTitle), in $($s.currentName))"
+    Start-Sleep -Seconds 3
+    Shot 'lesson-1' | Out-Null
+    # 1 look (real left-drags), walk to the tower.
+    Client-Pos $script:w 800 560; Drag 'left' 420 0; Drag 'left' 420 0
+    $s = Wait-Step 1; Check ($s.tutorialStep -ge 1) "left-drag look: lesson passes ($($s.tutorialTitle))"
+    $s = Steer-To-Target 2.5; $s = Wait-Step 2
+    Check ($s.tutorialStep -ge 2) "walked to the tower with the keyboard ($($s.tutorialTitle))"
+    Hold-Key 'Space' 80; $s = Wait-Step 3; Check ($s.tutorialStep -ge 3) "jumped ($($s.tutorialTitle))"
+    $s = Steer-To-Target 0.6
+    Hold-Key 'Space' 80; Start-Sleep -Seconds 3
+    $s = Wait-Step 4 9000; Check ($s.tutorialStep -ge 4 -and $s.currentName -eq 'Lantern Workshop') "stood on the launcher and flew to Lantern Workshop ($($s.tutorialTitle))"
+    Shot 'lesson-bench' | Out-Null
+    $s = Steer-To-Target 1.3
+    Key-Down 'W'; Start-Sleep -Milliseconds 120; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 700; Key-Up 'W'
+    $s = Wait-Step 5; if ($s.tutorialStep -lt 5) { Key-Down 'W'; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 800; Key-Up 'W'; $s = Wait-Step 5 }
+    Check ($s.tutorialStep -ge 5) "jumped onto the workbench ($($s.tutorialTitle))"
+    Start-Sleep -Milliseconds 500; Hold-Key 'E' 60
+    $s = Wait-Step 6; Check ($s.tutorialStep -ge 6) "E read the README ($($s.tutorialTitle))"
+    Shot 'lesson-readme' | Out-Null
+    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 300
+    Hold-Key 'U' 60; Start-Sleep -Seconds 4
+    $s = Wait-Step 7; Check ($s.tutorialStep -ge 7) "U went up ($($s.tutorialTitle))"
+    Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text 'music'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+    Start-Sleep -Seconds 4; $s = Wait-Step 8; Check ($s.tutorialStep -ge 8) "J, typed 'music', Enter: straight to Music Box ($($s.tutorialTitle))"
+    Hold-Key 'U' 60; Start-Sleep -Seconds 4; $s = Wait-Step 9; Check ($s.tutorialStep -ge 9) "U: up to the Starter Sky ($($s.tutorialTitle))"
+    Hold-Key 'Backspace' 60; Start-Sleep -Seconds 4; $s = Wait-Step 10; Check ($s.tutorialStep -ge 10 -and $s.currentName -eq 'Music Box') "Backspace: back to Music Box, not up ($($s.tutorialTitle))"
+    Start-Sleep -Milliseconds 800
+    Hold-Key 'T' 60; $s = Wait-Step 11; Check ($s.tutorialStep -ge 11) "T opened the overview ($($s.tutorialTitle))"
+    Start-Sleep -Seconds 1; Client-Pos $script:w 800 600; Drag 'left' 360 0
+    $s = Wait-Step 12; Check ($s.tutorialStep -ge 12) "left-drag orbited the overview ($($s.tutorialTitle))"
+    Hold-Key 'Escape' 60; $s = Wait-Step 99 8000
+    Check ($s.tutorialTitle -eq 'done') "Esc back where you stood: walkthrough complete"
+    Shot 'lesson-done' | Out-Null
+    # Leaving mid-lesson: start again from Help, leave at the first step.
+    Hold-Key 'F1' 60; Start-Sleep -Milliseconds 700; $s = State; Click-At $s.helpLearn
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.tutorialStep -eq 0) { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Milliseconds 500; $s = State; Click-At $s.lessonLeave; Start-Sleep -Milliseconds 500
+    $s = State; Check (-not $s.tutorialActive) "Leave exits mid-lesson (step was 0)"
+    # A legacy view from the menu, then V back to Planets.
+    Click-At $s.legacyMenu; Start-Sleep -Milliseconds 500; $s = State; Click-At $s.legacyItem0; Start-Sleep -Seconds 3
+    $s = State; Check ($s.experience -eq 'Places') "Legacy views -> Places opens the flat world ($($s.experience))"
+    Shot 'legacy-places' | Out-Null
+    Hold-Key 'V' 60; Start-Sleep -Seconds 3; $s = State; Check ($s.experience -eq 'Planets') "V returns to Planets"
+    $p.CloseMainWindow() | Out-Null
+    $closed = $p.WaitForExit(8000)
+    Check ($closed -and $p.ExitCode -eq 0) "normal shutdown again (exit code $($p.ExitCode))"
+    exit $fails
+  }
 
   if ($Route) {
     function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }

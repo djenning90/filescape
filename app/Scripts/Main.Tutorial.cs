@@ -391,4 +391,24 @@ public partial class Main
         _lessonStay.Visible = _tutorialFinished;
         _lessonBack.Visible = false;
     }
+
+    /// <summary>The welcome dialog, the walkthrough and their buttons (centres in window pixels) for the real-input probe's state file.</summary>
+    private string StateJsonTutorial()
+    {
+        var scale = GetWindow().ContentScaleFactor;
+        string At(Rect2 r) { var c = r.GetCenter() * scale; return System.FormattableString.Invariant($"[{c.X:0},{c.Y:0}]"); }
+        var atHub = _tree is { Count: > 0 } t && t.Contains(_nav.Current) && t[_nav.Current].IsHub;
+        // Where the current lesson's target is from here (the probe steers by it, as a player steers by the beacon).
+        var bearing = 0f;
+        var distance = -1f;
+        if (_lessons != null && _lesson >= 0 && _experience == Experience.Planets && _nav.Current == _lessons[_lesson].Folder() && _lessons[_lesson].Target() is { } tg)
+        {
+            bearing = _planets.CameraTurnTo(tg.Dir);
+            distance = _planets.DistanceTo(tg.Dir);
+        }
+
+        return System.FormattableString.Invariant(
+            $"\"welcome\":{(_welcomeOpen ? "true" : "false")},\"showWelcomePref\":{(_prefs.ShowWelcome ? "true" : "false")},\"atHub\":{(atHub ? "true" : "false")},\"tutorialActive\":{(TutorialActive ? "true" : "false")},\"tutorialStep\":{_lesson},\"tutorialTitle\":\"{JsonEscape(TutorialTitle)}\",\"offRoute\":{(TutorialOffRoute ? "true" : "false")},\"helpOpen\":{(_hud.HelpVisible ? "true" : "false")},\"targetBearing\":{bearing:0.#},\"targetDistance\":{distance:0.##},") +
+            $"\"welcomeLearn\":{At(WelcomeButtonRect(0))},\"welcomeOwn\":{At(WelcomeButtonRect(1))},\"welcomeNever\":{At(WelcomeButtonRect(2))},\"helpLearn\":{At(_hud.LearnToPlayButtonRect)},\"lessonLeave\":{At(LessonButtonRect("leave"))},\"lessonBack\":{At(LessonButtonRect("back"))},\"legacyMenu\":{At(_hud.LegacyMenuButtonRect)},\"legacyItem0\":{At(_hud.VisualizationButtonRect(-1))},";
+    }
 }
