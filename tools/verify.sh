@@ -132,7 +132,7 @@ if [[ "$TIER" == release ]]; then
   done
   # Planets with real input (2026-11-15): controls (drags, clicks, focus), the sample route, and a person's first launch
   # with the walkthrough on a clean settings profile. Input goes only to the FileScape these probes start.
-  for mode in Controls Route Tutorial; do
+  for mode in Controls Route Tutorial Hazard; do
     a=(); [[ $mode != Controls ]] && a=("-$mode")
     probe_step "os-planets-$mode" 600 "$OUT/os-planets-$mode/os-planets.log" "real OS input" \
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TOOLS_W\\os-planets-probe.ps1" -Exe "$EXEW" -Out "$OUTW\\os-planets-$mode" "${a[@]}"

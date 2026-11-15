@@ -14,9 +14,12 @@
   is saved and honoured by a second launch; Help -> Learn to play; the whole walkthrough played with real input;
   leaving mid-lesson; a legacy view from the menu and back; and a normal shutdown.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial]
+  -Hazard (PLANET-34) plays the Starter Sky's black-hole world twice with real keys: the easy route (to a child's
+  launcher and away, no fall), then off an edge: the fall, the return to the parent, and straight back in.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial)
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -107,6 +110,60 @@ try {
   Start-Sleep -Seconds 3 # the establishing shot
   $s = State
   Check ($s.planets -and $s.planets.phase -eq 'Walking') "arrives on the Starter Sky on foot (phase=$($s.planets.phase))"
+
+  if ($Hazard) {
+    function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
+    function Steer([string]$b, [string]$d, [double]$stop, [int]$tries = 80) {
+      $last = [double]::MaxValue; $stuck = 0
+      for ($i = 0; $i -lt $tries; $i++) {
+        $s = State; $bb = [double]$s.planets.$b; $dd = [double]$s.planets.$d
+        if ($dd -lt 0 -or $dd -le $stop -or $s.planets.falling) { return $s }
+        if ([Math]::Abs($bb) -gt 12) { Hold-Key ($(if ($bb -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Abs($bb) / 110 * 1000)); Start-Sleep -Milliseconds 100; continue }
+        Hold-Key 'W' ([int][Math]::Min(500, 120 + $dd * 50))
+        $stuck = if ($dd -gt $last - 0.1) { $stuck + 1 } else { 0 }; $last = $dd
+        if ($stuck -ge 2) { Hold-Key 'D' 1000; $stuck = 0 }
+        Start-Sleep -Milliseconds 100
+      }
+      return State
+    }
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Seconds 3
+    $sky = (State).planets.folder
+    function Enter-Hazard {
+      Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text 'event'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Seconds 2; return State
+    }
+    # Play 1: the easy route.
+    $s = Enter-Hazard
+    Check ($s.planets.character -eq 'Hazard' -and $s.planets.edgeMetres -gt 3) "J -> Event Horizon: a hazard world, landed on solid ground ($($s.planets.edgeMetres) m from the nearest edge)"
+    Shot 'hazard-arrival' | Out-Null
+    $f0 = $s.planets.fallsStarted
+    $s = Steer 'childPadBearing' 'childPadDistance' 0.6
+    Check ($s.planets.fallsStarted -eq $f0) "walked the safe route to a child's launcher without falling ($($s.planets.childPadDistance) m from the pad)"
+    $hz = $s.planets.folder
+    Hold-Key 'Space' 80; Start-Sleep -Seconds 4
+    $s = State; Check ($s.planets.folder -ne $hz -and $s.planets.fallsStarted -eq $f0) "launched from the hazard world into $($s.currentName), no fall"
+    Hold-Key 'U' 60; Start-Sleep -Seconds 4
+    $s = State; Check ($s.planets.folder -eq $hz) "U: back up to Event Horizon"
+    # Play 2: off an edge.
+    $s = Steer 'holeBearing' 'holeDistance' 0 120
+    if (-not $s.planets.falling) { Hold-Key 'W' 1500; $s = State }
+    for ($i = 0; $i -lt 40 -and -not (State).planets.falling; $i++) { Hold-Key 'W' 200 }
+    $s = State
+    Check ($s.planets.fallsStarted -gt $f0) "ran off an edge: the fall begins (falls $($s.planets.fallsStarted))"
+    Start-Sleep -Milliseconds 1200; Shot 'hazard-falling' | Out-Null
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $sky -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Seconds 1; $s = State
+    Check ($s.planets.folder -eq $sky -and $s.planets.fallReturns -ge 1) "the fall returns you to the parent, the Starter Sky (returns $($s.planets.fallReturns))"
+    Shot 'hazard-returned' | Out-Null
+    $s = Steer 'selPadBearing' 'selPadDistance' 0.6 40
+    Hold-Key 'Space' 80
+    for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+    Check ($s.planets.character -eq 'Hazard') "straight back in from its launcher ($($s.currentName))"
+    Shot 'hazard-reentered' | Out-Null
+    exit $fails
+  }
 
   if ($Tutorial) {
     function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }

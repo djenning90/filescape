@@ -146,6 +146,25 @@ public partial class PlanetWorld
 
     /// <summary>[direct] Stands the traveller at a surface direction (on the overlook, say) and snaps the camera;
     /// <paramref name="top"/> is not used.</summary>
+    /// <summary>
+    /// For the real-input probe (2026-11-15): falls, the nearest broken edge and hole, the first child launcher, and the
+    /// launcher of whatever is selected, each as a bearing from the camera (degrees, + right) and a surface distance (metres).
+    /// </summary>
+    private string HazardStateJson()
+    {
+        if (_current == null) return "";
+        (float B, float D) To(NVector3 dir) => (CameraTurnTo(dir), PlanetShape.Angle(_walker.Up, dir) * _current.Comp.Shape.Radius);
+        var hole = Shell?.Holes.OrderBy(h => PlanetShape.Angle(_walker.Up, h.Centre)).FirstOrDefault();
+        var (hb, hd) = hole != null ? To(hole.Centre) : (0f, -1f);
+        var child = _current.Comp.Launchers.FirstOrDefault(l => !l.IsParent);
+        var (cb, cd) = child != null ? To(child.Direction) : (0f, -1f);
+        var sel = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == _s.Selection.Selected);
+        var (sb, sd) = sel != null ? To(sel.Direction) : (0f, -1f);
+        var edge = EdgeMetresHere;
+        return System.FormattableString.Invariant(
+            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
+    }
+
     public void ProbeStandOn(NVector3 up, float top)
     {
         if (_current == null) return;
