@@ -97,8 +97,9 @@ public partial class PlanetVisual
 
     /// <summary>
     /// The light rising out of a hole (hazard_plume.gdshader): from inside the shell up to <see cref="PlumeHeightRadii"/>
-    /// planet radii above it, about as wide as the hole. From the arrival of the sample (radius 18 m) a side breach just
-    /// past the equator is below the horizon, but its plume shows above it: the danger has a direction before it has an edge.
+    /// planet radii above it, about as wide as the hole: as you walk out towards a hole, its light shows above the rim before
+    /// the edge does. (2026-11-15 screenshots: it is not visible from the sample's arrival, against the bright ember sky;
+    /// the caution banner carries the warning there.)
     /// </summary>
     private static MeshInstance3D Plume(ShellHole hole, float radius)
     {
