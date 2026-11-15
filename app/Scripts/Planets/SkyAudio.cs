@@ -15,7 +15,8 @@ namespace FileScape.App.Planets;
 /// <para>
 /// Cost: ≈ 735 frames per 60 Hz frame. The synth renders 1 s of its busiest world (the underglow inside a project, drums and
 /// flight arpeggio) with six effects in ≈ 26 ms (Debug build, SkySynthTests, 2026-11-14), so ≈ 0.45 ms per frame, plus one
-/// span push. Nothing allocates per frame.
+/// span push; each AD-52 arrangement (2026-11-15) with a flight build, a fall, the edge warning and six effects in 26–27 ms.
+/// Nothing allocates per frame.
 /// </para>
 /// Call the effect methods from the main thread (the same thread as <c>_Process</c>).
 /// </summary>
@@ -234,8 +235,30 @@ public partial class SkyAudio : Node
     /// <summary>The flight wind for arc progress 0..1; call every frame while flying. Immediate.</summary>
     public void Fly(float progress01) => _synth.Fly(progress01);
 
-    /// <summary>Arrival: a warm chord and a softer chime ≈ 120 ms later. Tempo-locked (≤ 80 ms at every tempo).</summary>
+    /// <summary>
+    /// Arrival: a warm chord and a softer chime ≈ 120 ms later. Tempo-locked (≤ 80 ms at every tempo). After a flight out of
+    /// a festival world (the trails, AD-52), it also releases the build the flight played: the drop lands on the first beat
+    /// at least 0.15 s later. Call it after <see cref="SetWorld"/>, as now; nothing else is needed for the drop.
+    /// </summary>
     public void Arrive() => _synth.Arrive();
+
+    // ---------------------------------------------------------------- hazard cues (AD-52)
+
+    /// <summary>
+    /// The edge warning: call every frame while near an edge of a hazard world, <paramref name="nearness01"/> 0 (far) … 1 (at
+    /// the edge). Self-throttling (a pulse every 1 s … 0.25 s on the beat grid, a rumble that follows the nearness) and cheap;
+    /// silent below 0.05 and within 0.3 s of the last call.
+    /// </summary>
+    public void HazardWarning(float nearness01) => _synth.HazardWarning(nearness01);
+
+    /// <summary>The ground gives way: a crack, falling shards, a drop; the music ducks deep for the fall. Immediate.</summary>
+    public void FallStart() => _synth.FallStart();
+
+    /// <summary>The fall or spiral for progress 0..1 (a whoosh falling three octaves, circling left and right ever faster); call every frame while falling. Immediate.</summary>
+    public void Fall(float progress01) => _synth.Fall(progress01);
+
+    /// <summary>Back at the parent after a fall: an upward pop and a bright chord, and the music returns. Immediate; <see cref="Arrive"/> may follow as usual.</summary>
+    public void FallReturn() => _synth.FallReturn();
 
     /// <summary>Selection tick. Tempo-locked.</summary>
     public void Select() => _synth.Select();
@@ -254,28 +277,5 @@ public partial class SkyAudio : Node
     {
         ChimeCount++;
         _synth.Chime(index);
-    }
-
-    // ---- hazard cues (PLANET-34/35). Placeholders so the hazard world compiles on its own: the music work supplies the
-    // real sounds behind these exact signatures, and a merge keeps those.
-
-    /// <summary>How near the nearest broken edge is, 0 (far) to 1 (at it); called every walking frame on a hazard world.</summary>
-    public void HazardWarning(float nearness01)
-    {
-    }
-
-    /// <summary>Stepping off an edge: the fall begins.</summary>
-    public void FallStart()
-    {
-    }
-
-    /// <summary>The fall's progress 0..1 (the spiral tightens towards 1); called every frame of the fall.</summary>
-    public void Fall(float progress01)
-    {
-    }
-
-    /// <summary>Set down on the parent after a fall.</summary>
-    public void FallReturn()
-    {
     }
 }
