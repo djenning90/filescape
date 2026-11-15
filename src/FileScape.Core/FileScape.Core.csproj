@@ -5,5 +5,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>FileScape.Core</RootNamespace>
+    <!-- A release must not carry the build machine's paths (2026-11-15 publication review). -->
+    <PathMap>$(MSBuildThisFileDirectory)=/_/src/FileScape.Core/</PathMap>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>

@@ -16,3 +16,6 @@ app/.mono/
 # Local artifacts not meant for the repo
 artifacts/local/
 build/
+
+# Local agent worktrees and settings (never published)
+.claude/
