@@ -18,16 +18,37 @@ namespace FileScape.App.Planets;
 /// seconds for a sound. Enter opens it with Windows, with the session's usual confirmations. Clicking an object or a
 /// world in the sky selects it; double-clicking a world launches there. J opens the planet's list (every folder and
 /// file here, filterable: the direct route for folders too large to show as objects).
+/// <para>
+/// Input arrives in two passes from Main: <see cref="Input"/> (before the GUI) takes the camera drags, the wheel and the
+/// click-or-drag decision (AD-47, PLANET-24/25); <see cref="UnhandledInput"/> (after the GUI) takes the world's keys.
+/// Everything a click or key does to files goes through the session (<see cref="IWorldSession"/>), never directly.
+/// </para>
 /// </summary>
 public partial class PlanetWorld
 {
+    /// <summary>What E would act on now: an object in front of you, the pad you stand on, or the telescope/bench.</summary>
     private PlanetItem? _focusItem;
     private PlanetLauncher? _focusLauncher;
     private bool _focusTelescope;
+
+    /// <summary>The pad whose world was last built ahead of a launch (so standing on it builds once, not every frame).</summary>
     private int _prepared = -1;
     private bool _orbiting;
+
+    /// <summary>Where the cursor was when the drag began (it is captured during the drag and put back there after).</summary>
     private Vector2 _orbitStart;
 
+    // ---- the chase camera's mouse controls (by eye, 2026-11-10; rationale not recorded)
+    /// <summary>Drag sensitivity, degrees per screen pixel: across (a 360 px drag turns 90°) and up and down (slower).</summary>
+    private const float OrbitYawDegreesPerPixel = 0.25f, OrbitPitchDegreesPerPixel = 0.15f;
+
+    /// <summary>How far the chase camera may pitch, degrees: a little below level (looking up at the sky) to well above.</summary>
+    private const float MinCamPitchDegrees = -8f, MaxCamPitchDegrees = 70f;
+
+    /// <summary>One wheel notch multiplies the chase distance by 0.9 (in) or 1.1 (out); the distance stays within 3.5–16 m.</summary>
+    private const float ChaseWheelIn = 0.9f, ChaseWheelOut = 1.1f, ChaseMinDistanceMetres = 3.5f, ChaseMaxDistanceMetres = 16f;
+
+    /// <summary>The node in focus (an object's, or the pad's target), or −1.</summary>
     public int FocusNodeId => _focusItem?.NodeId ?? _focusLauncher?.TargetId ?? -1;
     public string PromptText => _prompt.Text;
 
@@ -37,8 +58,12 @@ public partial class PlanetWorld
     /// <see cref="DragThresholdPixels"/> of travel, otherwise a click on release.</summary>
     private Vector2? _leftPress;
     private bool _leftPressDouble;
+
+    /// <summary>The button holding the current drag (its release, and only its, ends it).</summary>
     private MouseButton _orbitButton = MouseButton.None;
     private bool _pointerBlocked;
+
+    /// <summary>The last left press became a drag (or was dropped): the next press cannot be the second of a double-click.</summary>
     private bool _lastLeftWasDrag;
 
     /// <summary>Set by Main as each event arrives (focus can return with the very click that should start a look).</summary>
@@ -110,7 +135,7 @@ public partial class PlanetWorld
                 Look(mm.ScreenRelative);
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when _universe == null && !OverHud(wheel.Position):
-                _camDistance = Mathf.Clamp(_camDistance * (wheel.ButtonIndex == MouseButton.WheelUp ? 0.9f : 1.1f), 3.5f, 16f);
+                _camDistance = Mathf.Clamp(_camDistance * (wheel.ButtonIndex == MouseButton.WheelUp ? ChaseWheelIn : ChaseWheelOut), ChaseMinDistanceMetres, ChaseMaxDistanceMetres);
                 return true;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape } when _orbiting:
                 EndOrbit();
@@ -120,6 +145,7 @@ public partial class PlanetWorld
         return false;
     }
 
+    /// <summary>Starts a drag-to-look: the mouse is captured (hidden, unbounded motion) until <see cref="EndOrbit"/>.</summary>
     private void BeginOrbit(MouseButton button, Vector2 start)
     {
         if (button == MouseButton.Left) _lastLeftWasDrag = true;
@@ -166,6 +192,7 @@ public partial class PlanetWorld
         }
     }
 
+    /// <summary>Ends a drag (or a pending press): releases the mouse and puts the cursor back where the drag began.</summary>
     private void EndOrbit()
     {
         _leftPress = null;
@@ -176,12 +203,14 @@ public partial class PlanetWorld
         if (_orbitStart != Vector2.Zero) Godot.Input.WarpMouse(_orbitStart);
     }
 
+    /// <summary>A drag on a planet: turn the chase camera about the local up (drag right turns right) and pitch it
+    /// (drag down raises it); the swing-in waits while you do (<see cref="SwingInDelaySeconds"/>).</summary>
     private void OrbitCamera(Vector2 screenPixels)
     {
         _sinceOrbitSeconds = 0;
         var up = Gd(_walker.Up);
-        _camFwd = _camFwd.Rotated(up, -screenPixels.X * Mathf.DegToRad(0.25f)).Normalized();
-        _camPitchDegrees = Mathf.Clamp(_camPitchDegrees + screenPixels.Y * 0.15f, -8f, 70f);
+        _camFwd = _camFwd.Rotated(up, -screenPixels.X * Mathf.DegToRad(OrbitYawDegreesPerPixel)).Normalized();
+        _camPitchDegrees = Mathf.Clamp(_camPitchDegrees + screenPixels.Y * OrbitPitchDegreesPerPixel, MinCamPitchDegrees, MaxCamPitchDegrees);
     }
 
     /// <summary>From Main._UnhandledInput: Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
@@ -209,6 +238,7 @@ public partial class PlanetWorld
         return false;
     }
 
+    /// <summary>A double-click (or Enter in the list): a world or link launches there; a file here is approached.</summary>
     private void Activate(int id, bool sky)
     {
         var tree = _s.Tree;
@@ -218,7 +248,11 @@ public partial class PlanetWorld
         else Approach(id);
     }
 
-    /// <summary>A ray from the camera against the objects on this planet and the worlds in the sky.</summary>
+    /// <summary>
+    /// A ray from the camera against the objects on this planet and the worlds in the sky. Each is tested as a sphere
+    /// (generous, so small things are easy to hit) and the nearest hit wins; the planet itself blocks what is behind it.
+    /// <c>Sky</c> is true for a world in the sky (a double-click launches there rather than walking to it).
+    /// </summary>
     public (int Id, bool Sky) Pick(Vector2 screen)
     {
         if (_current == null) return (-1, false);
@@ -245,9 +279,10 @@ public partial class PlanetWorld
         foreach (var it in _current.Comp.Items)
         {
             if (it.NodeId < 0) continue;
-            Test(Gd(surf.PointAt(it.Direction, 0.55f * it.Scale)), 0.65f * it.Scale, it.NodeId, false);
+            Test(Gd(surf.PointAt(it.Direction, 0.55f * it.Scale)), 0.65f * it.Scale, it.NodeId, false); // a sphere round the object's middle
         }
 
+        // A pad: a 1.3 m sphere just above the ground (about the pad's radius); a world: its drawn radius plus 5 %.
         foreach (var l in _current.Comp.Launchers) Test(Gd(surf.PointAt(l.Direction, 0.3f)), 1.3f, l.TargetId, false);
         foreach (var (fid, body) in _children) Test(body.Node.GlobalPosition, body.Node.Transform.Basis.Scale.X * body.Comp.Shape.Radius * 1.05f, fid, true);
         foreach (var moon in _current.Comp.SkyBodies)
@@ -262,6 +297,11 @@ public partial class PlanetWorld
         return (id, sky);
     }
 
+    /// <summary>
+    /// Where a ray (origin <paramref name="o"/>, unit direction <paramref name="d"/>) first meets a sphere of radius
+    /// <paramref name="r"/> round the origin (the current planet's centre), as a distance along the ray; null if it
+    /// misses or the sphere is behind. The planet's occlusion test everywhere (names, picking, probes).
+    /// </summary>
     private static float? RayPlanet(Godot.Vector3 o, Godot.Vector3 d, float r)
     {
         var b = o.Dot(d);
@@ -280,14 +320,28 @@ public partial class PlanetWorld
         if (_current == null) return null;
         foreach (var l in _current.Comp.Launchers)
         {
-            if (PlanetShape.Angle(_walker.Up, l.Direction) * _current.Comp.Shape.Radius < PadRadius + 0.25f) return l;
+            if (PlanetShape.Angle(_walker.Up, l.Direction) * _current.Comp.Shape.Radius < PadRadius + 0.25f) return l; // 0.25 m of slack at the rim
         }
 
         return null;
     }
 
+    /// <summary>A launcher pad's radius along the ground, metres: standing within it (plus a little slack) is standing on the pad.</summary>
     private const float PadRadius = 1.3f;
 
+    // ---- the focus (what E acts on; by eye, rationale not recorded)
+    /// <summary>An object is in reach within this distance to its edge, metres (its edge is 0.3 × its scale from its centre).</summary>
+    private const float FocusReachMetres = 2.8f;
+
+    /// <summary>Being straight ahead counts as this much nearer, metres (scaled by the cosine to it), so what you face wins
+    /// over what is merely close.</summary>
+    private const float FocusAheadBonusMetres = 0.8f;
+
+    /// <summary>
+    /// Every frame on a planet: what is in focus and what the prompt says. The pad you stand on wins; otherwise the best
+    /// object in reach (nearest, favouring what is ahead; something behind you only when within 1 m); otherwise the
+    /// telescope on the overlook or the bench. Standing on a pad also builds its world in full (<see cref="Prepare"/>).
+    /// </summary>
     private void UpdateFocus()
     {
         var tree = _s.Tree;
@@ -302,7 +356,7 @@ public partial class PlanetWorld
         _focusTelescope = false;
         if (_focusLauncher == null)
         {
-            var best = 2.8f;
+            var best = FocusReachMetres;
             var r = _current.Comp.Shape.Radius;
             foreach (var it in _current.Comp.Items)
             {
@@ -310,8 +364,8 @@ public partial class PlanetWorld
                 if (dist > best) continue;
                 var to = it.Direction - _walker.Up * NVector3.Dot(it.Direction, _walker.Up);
                 var ahead = to.LengthSquared() > 1e-6f ? NVector3.Dot(NVector3.Normalize(to), _walker.Facing) : 1;
-                var score = dist - ahead * 0.8f;
-                if (ahead < -0.2f && dist > 1.0f) continue;
+                var score = dist - ahead * FocusAheadBonusMetres;
+                if (ahead < -0.2f && dist > 1.0f) continue; // behind you (over ≈ 102° from your facing) and over 1 m away
                 if (score < best)
                 {
                     best = score;
@@ -357,6 +411,8 @@ public partial class PlanetWorld
         }
     }
 
+    /// <summary>E: act on the focus (look closer at an object, list a pile, read the README at the bench, open the
+    /// telescope's list, select a pad's world); E again on the open preview closes it.</summary>
     private void InspectFocus()
     {
         var tree = _s.Tree;
@@ -430,6 +486,8 @@ public partial class PlanetWorld
 
         if (_current.Comp.Launchers.FirstOrDefault(l => l.TargetId == id) is { } launcher)
         {
+            // Hop onto the pad itself (ready to launch), facing the way you would have approached it; only the facing of
+            // the stand point is used.
             var (stand, facing) = StandPoint(launcher.Direction, 0.1f);
             StartHop(launcher.Direction, facing, -1);
             _ = stand;
@@ -452,6 +510,11 @@ public partial class PlanetWorld
         }
     }
 
+    /// <summary>
+    /// Where to stand to look at something on the surface: 1.5 m plus 0.6 × <paramref name="size"/> away along the
+    /// ground, on the side you are coming from, facing it. (Compare <see cref="StandFacing"/>, which stands you on the
+    /// arrival meadow's side with 1.6 m; the two were tuned separately.)
+    /// </summary>
     private (NVector3 Up, NVector3 Facing) StandPoint(NVector3 target, float size)
     {
         var r = _current!.Comp.Shape.Radius;
@@ -491,6 +554,7 @@ public partial class PlanetWorld
         return false;
     }
 
+    /// <summary>Closes the list, the bench's panel and the preview (a launch, a world switch).</summary>
     private void CloseOverlays()
     {
         _contentsPanel.Visible = false;
@@ -498,6 +562,7 @@ public partial class PlanetWorld
         ClosePreview();
     }
 
+    /// <summary>Walking away closes a preview of something you are no longer at (not the bench's README while you are at the bench).</summary>
     private void CloseOverlaysOnMove()
     {
         // The README the bench showed stays open while you are at the bench (a spin is a move too).
@@ -505,7 +570,10 @@ public partial class PlanetWorld
         if (_previewPanel.Visible && _s.Selection.Selected >= 0 && _focusItem?.NodeId != _s.Selection.Selected) ClosePreview();
     }
 
-    /// <summary>The audio files you walk past ring softly (a bell flower each).</summary>
+    /// <summary>A footstep this close to a bell flower rings it, metres along the ground.</summary>
+    private const float ChimeReachMetres = 1.6f;
+
+    /// <summary>The audio files you walk past ring softly (a bell flower each; one per footstep at most).</summary>
     private void NoteFootstepNear()
     {
         if (_current == null) return;
@@ -513,7 +581,7 @@ public partial class PlanetWorld
         foreach (var it in _current.Comp.Items)
         {
             if (it.Category != FileCategory.Audio || it.NodeId < 0) continue;
-            if (PlanetShape.Angle(_walker.Up, it.Direction) * r < 1.6f)
+            if (PlanetShape.Angle(_walker.Up, it.Direction) * r < ChimeReachMetres)
             {
                 _audio.Chime(it.NodeId);
                 _current.Visual?.Ring(it.NodeId);
@@ -524,6 +592,9 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ destinations (the shared drawer) and the planet's list
 
+    /// <summary>The way back's colour in the Destinations drawer: a pale, cool blue, apart from the worlds' theme colours.</summary>
+    private static readonly Color WayBackListColor = new(0.75f, 0.8f, 0.95f);
+
     /// <summary>The HUD's Destinations drawer, filled from this planet: the way back, then every world in its sky.</summary>
     public void UpdateDestinations()
     {
@@ -532,7 +603,7 @@ public partial class PlanetWorld
         var items = new List<(int, string, Color, string, Texture2D?)>();
         if (_current.Comp.Launchers.FirstOrDefault(l => l.IsParent) is { } up)
         {
-            items.Add((up.TargetId, $"Back up to {tree.DisplayName(up.TargetId)}", new Color(0.75f, 0.8f, 0.95f), "The way back: the launcher behind the arrival meadow.", FileIcons.Get(IconKind.Up)));
+            items.Add((up.TargetId, $"Back up to {tree.DisplayName(up.TargetId)}", WayBackListColor, "The way back: the launcher behind the arrival meadow.", FileIcons.Get(IconKind.Up)));
         }
 
         foreach (var c in tree[_current.FolderId].Children.Where(c => tree[c].IsDirectory || tree[c].Kind == NodeKind.Link).Where(c => _s.IsVisible(tree[c])).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance))
@@ -547,6 +618,8 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ the session's state, for probes
 
+    /// <summary>The planets' part of the probe state, a JSON fragment (",\"planets\":{…}"). Probes parse it: add fields, but
+    /// do not rename or reformat the existing ones.</summary>
     public string StateJson()
     {
         if (!_active || _current == null) return ",\"planets\":null";

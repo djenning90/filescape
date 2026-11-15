@@ -26,6 +26,12 @@ public sealed record DataSourceInfo(DataOrigin Origin, string RootDisplayPath, s
 /// The node store for one scan. Nodes arrive in <see cref="ScanBatch"/>es in strictly increasing id order and
 /// are applied on the consuming thread only (the Godot main thread in the app). The type is not thread-safe
 /// by design: the scanner never touches it (AD-04).
+/// <para>
+/// Nodes are only ever appended, never removed or renumbered, so an id stays valid for the tree's lifetime and parents
+/// always have smaller ids than their children. Aggregates (sizes, counts, unsettled directories) are updated up the
+/// ancestor chain as each node arrives, so labels and layouts read them in O(1) instead of walking subtrees. A fresh
+/// start (a new world, Locations) builds a new tree rather than clearing this one.
+/// </para>
 /// </summary>
 public sealed class FsTree
 {
@@ -44,13 +50,17 @@ public sealed class FsTree
     /// <summary>Increments on every applied batch, so consumers can tell whether layout is stale.</summary>
     public int Version { get; private set; }
 
+    /// <summary>Nodes currently carrying a problem flag (<see cref="IsProblem"/>), for the status line; kept up to date as retries clear them.</summary>
     public int FlaggedProblemCount { get; private set; }
 
     public FsNode this[int id] => _nodes[id];
 
     public bool Contains(int id) => id >= 0 && id < _nodes.Count;
 
-    /// <summary>Applies one scanner batch: appends new nodes, then applies directory state updates.</summary>
+    /// <summary>
+    /// Applies one scanner batch: appends new nodes, then applies directory state updates, then link updates, and bumps
+    /// <see cref="Version"/>. Throws if a new node's id is not the next one (a source bug: ids must arrive in order).
+    /// </summary>
     public void Apply(ScanBatch batch)
     {
         foreach (var record in batch.NewNodes)
@@ -131,6 +141,7 @@ public sealed class FsTree
         }
     }
 
+    /// <summary>Counts a new child in its parent's direct totals and in the subtree totals of the parent and every ancestor.</summary>
     private void AddToAggregates(FsNode parent, FsNode child)
     {
         switch (child.Kind)

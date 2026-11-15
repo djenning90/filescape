@@ -32,6 +32,23 @@ public partial class Main
     /// <summary>At most this many reveals are asked for per second (they queue behind what the user waits for).</summary>
     private const int RevealsPerSecond = 4;
 
+    /// <summary>The haze thins from none to fully aerial over this many metres of climb above <see cref="AerialAltitude"/>.</summary>
+    private const float AerialHazeRampMetres = 40f;
+
+    /// <summary>
+    /// Reveal reach (AERIAL-04): an unlisted island is listed when its centre is within this many metres of the camera,
+    /// or within <see cref="RevealReachPerAltitude"/> × the altitude when higher (you see farther from higher up).
+    /// </summary>
+    private const float RevealMinReachMetres = 260f, RevealReachPerAltitude = 4f;
+
+    /// <summary>
+    /// Arriving from the air by G or double-click: hover between 50 and 140 m (the height you left from, clamped), south
+    /// of the landmark by 0.85 × that height, looking 38° down, so the whole place and its gates are in view and readable.
+    /// </summary>
+    private const float AerialArrivalMinHeightMetres = 50f, AerialArrivalMaxHeightMetres = 140f, AerialArrivalSouthPerHeight = 0.85f;
+
+    private static readonly Degrees AerialArrivalPitch = Degrees.Of(-38);
+
     private AerialWorld _aerial = null!;
     private WorldMap? _worldMap;
     private TimeSpan _lastWorldLayout = TimeSpan.FromSeconds(-10), _lastReveal;
@@ -53,6 +70,7 @@ public partial class Main
     public IReadOnlySet<int> VisitedPlaces => _visitedPlaces;
     public int RevealsRequested => _revealed.Count;
 
+    /// <summary>Adds the (hidden) aerial world node; it is built on demand when first shown.</summary>
     private void BuildAerialScene()
     {
         _aerial = new AerialWorld { Visible = false };
@@ -65,11 +83,12 @@ public partial class Main
         get
         {
             var c = _rig.CameraPosition;
-            var ground = _place == null ? 0f : Terrain.SupportHeight(new NVector2(c.X, c.Z), 0.1f, c.Y, 0);
+            var ground = _place == null ? 0f : Terrain.SupportHeight(new NVector2(c.X, c.Z), 0.1f, c.Y, 0); // the surface under a 0.1 m probe, below the camera
             return c.Y - Mathf.Max(0, ground);
         }
     }
 
+    /// <summary>The aerial world is wanted when flying (or gliding to flight) in Places above <see cref="AerialAltitude"/>, not during travel or a landing.</summary>
     private bool WantAerial =>
         _experience == Experience.Places && _place != null && _tree != null && _transition == null &&
         (_locomotion == Locomotion.Flying || (_guided && _afterGuide == Locomotion.Flying)) && _landing == null && CameraAltitude > AerialAltitude;
@@ -88,7 +107,7 @@ public partial class Main
         }
 
         if (!want || _tree == null) return;
-        PlaceAtmosphere.SetAerial(_world, Mathf.Clamp((CameraAltitude - AerialAltitude) / 40f, 0, 1), _quality);
+        PlaceAtmosphere.SetAerial(_world, Mathf.Clamp((CameraAltitude - AerialAltitude) / AerialHazeRampMetres, 0, 1), _quality);
         EnsureWorldMap(force: false);
         if (_worldMap == null) return;
         if (AerialAvailable == _aerialUnavailable)
@@ -161,7 +180,7 @@ public partial class Main
     {
         if (_explorer == null || _worldMap == null || _tree == null || _now - _lastReveal < TimeSpan.FromSeconds(1.0 / RevealsPerSecond)) return;
         var cam = _aerial.Frame.ToWorld(new NVector2(_rig.CameraPosition.X, _rig.CameraPosition.Z));
-        var reach = Mathf.Max(260f, CameraAltitude * 4f);
+        var reach = Mathf.Max(RevealMinReachMetres, CameraAltitude * RevealReachPerAltitude);
         var best = -1;
         var bestD = float.MaxValue;
         foreach (var i in _worldMap.Islands.Values)
@@ -203,10 +222,10 @@ public partial class Main
         if (!_aerialShown || _worldMap == null || !AerialAvailable) return -1;
         var origin = _rig.Camera.ProjectRayOrigin(screen);
         var dir = _rig.Camera.ProjectRayNormal(screen);
-        if (dir.Y > -1e-3f) return -1;
-        var t = (0.2f - origin.Y) / dir.Y;
+        if (dir.Y > -1e-3f) return -1; // a ray at or above the horizon meets no island
+        var t = (0.2f - origin.Y) / dir.Y; // picked on the islands' top surface, 0.2 m up (AerialWorld's island top)
         var hit = origin + dir * t;
-        var id = _worldMap.IslandAt(_aerial.Frame.ToWorld(new NVector2(hit.X, hit.Z)), 1.15f);
+        var id = _worldMap.IslandAt(_aerial.Frame.ToWorld(new NVector2(hit.X, hit.Z)), 1.15f); // slack 1.15: a little beyond the rim still picks it
         return id == _nav.Current ? -1 : id;
     }
 
@@ -250,8 +269,8 @@ public partial class Main
 
         // Above the new place, south of its landmark, looking down across it to its gates: high enough to see all of
         // it, low enough to read it (50–140 m, whatever height you left from).
-        var height = Mathf.Clamp(at.Height, 50f, 140f);
-        return new PlacePose(new System.Numerics.Vector3(0, height, height * 0.85f), Degrees.Zero, Degrees.Of(-38));
+        var height = Mathf.Clamp(at.Height, AerialArrivalMinHeightMetres, AerialArrivalMaxHeightMetres);
+        return new PlacePose(new System.Numerics.Vector3(0, height, height * AerialArrivalSouthPerHeight), Degrees.Zero, AerialArrivalPitch);
     }
 
     /// <summary>B: rise (or glide) to a view of this place, its parent and its child places from above (AERIAL-06).</summary>
@@ -261,6 +280,7 @@ public partial class Main
         if (_locomotion == Locomotion.Walking) TakeOff(Meters.Zero);
         EnsureWorldMap(force: true);
         var b = _place.Bounds;
+        // The framed box: the place and its neighbours' islands, from the ground to 20 m (about the tallest structures).
         var min = new GVector3(b.Min.X, 0, b.Min.Z);
         var max = new GVector3(b.Max.X, 20, b.Max.Z);
         if (_worldMap != null && _worldMap.Islands.TryGetValue(_nav.Current, out var self))
@@ -282,7 +302,7 @@ public partial class Main
         var far = new GVector3(ahead.X, 0, ahead.Z) * depth;
         min = min.Min(min + far).Min(max + far);
         max = max.Max(min + far).Max(max + far);
-        StartGuideFrame(new Aabb(min, max - min), Degrees.Of(55), _rig.Yaw, 0.95f, Locomotion.Flying);
+        StartGuideFrame(new Aabb(min, max - min), Degrees.Of(55), _rig.Yaw, 0.95f, Locomotion.Flying); // 55° above, facing as you are
     }
 
     /// <summary>The status line while the aerial world is shown (scope and what to do), or null.</summary>

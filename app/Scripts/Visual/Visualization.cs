@@ -19,6 +19,7 @@ public static class StyleBits
 {
     public const float Dim = 1, Problem = 2, Link = 4, Cloud = 8;
 
+    /// <summary>A node's style bits: Dim for hidden or system entries, plus at most one of Problem, Link or Cloud (in that order of precedence).</summary>
     public static float For(FsNode n)
     {
         float s = 0;
@@ -55,6 +56,7 @@ public abstract class Visualization
     /// <summary>The colour that encodes the node's meaning (for the inspector swatch and the legend).</summary>
     public abstract Color ColorFor(FsNode node, FsTree tree);
 
+    /// <summary>Sets the sky, light, fog and ground for this look. The sun and ground are shared with Places, so each implementation sets everything it relies on.</summary>
     public abstract void ConfigureEnvironment(WorldEnvironment world, DirectionalLight3D sun, MeshInstance3D ground, Quality quality);
 
     /// <summary>Rebuilds all instance batches from the layout. Returns the instance count.</summary>
@@ -84,6 +86,7 @@ public abstract class Visualization
         }
     }
 
+    /// <summary>Fills and emits this look's batches, adding nodes in <paramref name="order"/> (depth-first, for per-chunk culling); returns the instance count.</summary>
     protected abstract int Build(FsTree tree, LayoutResult layout, List<int> order);
 
     /// <summary>Depth-first order: each directory followed by its leaves, then its child directories.</summary>
@@ -128,16 +131,18 @@ public abstract class Visualization
         return null;
     }
 
+    /// <summary>The marker for <see cref="MarkerColor"/>: a diamond floating 0.9 layout units above the node's box.</summary>
     protected static void AddMarker(InstanceBatch markers, Box box, Color color)
     {
         var top = new GVector3(box.Center.X, box.Max.Y + 0.9f, box.Center.Z);
-        // A diamond: a unit cube rotated 45° about Y and squashed.
+        // A diamond: a unit cube rotated 45° about Y (0.7071 = cos 45° = sin 45°) and stretched 1.4× upright; s is its size.
         var s = 0.42f;
         var colX = new GVector3(s, 0, s) * 0.7071f;
         var colZ = new GVector3(-s, 0, s) * 0.7071f;
         markers.Add(colX, new GVector3(0, s * 1.4f, 0), colZ, top, color, new Color(s, s * 1.4f, s, 0));
     }
 
+    /// <summary>Core (System.Numerics) to Godot vector, and back: the same components, no change of axes.</summary>
     public static GVector3 Gd(NVector3 v) => new(v.X, v.Y, v.Z);
     public static NVector3 Num(GVector3 v) => new(v.X, v.Y, v.Z);
 }

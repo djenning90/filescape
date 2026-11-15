@@ -9,14 +9,19 @@ namespace FileScape.Fixtures;
 /// </summary>
 public static class WalkFixture
 {
+    /// <summary>Files above this size are created sparse (on Windows) and smaller ones written in full, bytes (64 KiB).</summary>
+    private const long SparseAboveBytes = 65_536;
+
     public const string RootName = "Wayfarer";
     public const string OutsideName = "Shared Library";
 
+    /// <summary>The created fixture: its own directory, the arrival root, the folder outside it that a junction reaches, and the manifest.</summary>
     public sealed record Result(string FixtureDir, string Root, string Outside, FixtureManifest Manifest)
     {
         public override string ToString() => $"walk fixture: {FixtureDir}\n  root: {Root}\n  outside: {Outside}\n{Manifest}";
     }
 
+    /// <summary>Creates the fixture in a new, uniquely named, marked directory under <paramref name="parent"/> (default: the fixtures parent).</summary>
     public static Result Create(string? parent = null)
     {
         parent ??= FixtureBuilder.DefaultParent;
@@ -104,6 +109,7 @@ public static class WalkFixture
             FixtureBuilder.CreateJunction(m, Path.Combine(root, "back-to-wayfarer"), root);
             FixtureBuilder.CreateJunction(m, Path.Combine(root, "photos-shortcut"), photos);
             FixtureBuilder.CreateJunction(m, Path.Combine(root, "also-photos"), photos);
+            // A broken junction: made to a real folder (mklink needs one), whose target is then removed.
             var gone = Dir(m, dir, "gone");
             FixtureBuilder.CreateJunction(m, Path.Combine(root, "broken-link"), gone);
             Directory.Delete(gone);
@@ -133,10 +139,11 @@ public static class WalkFixture
         ```
         """;
 
+    /// <summary>Writes a file of an exact logical size; larger files are sparse so the fixture stays small on disk (off Windows, capped at 64 KiB).</summary>
     private static void File(FixtureManifest m, string dir, string name, long size)
     {
         var path = Path.Combine(dir, name);
-        if (size > 65_536 && OperatingSystem.IsWindows()) FixtureBuilder.CreateSparse(m, path, size);
-        else FixtureBuilder.WriteFile(m, path, new byte[Math.Min(size, 65_536)]);
+        if (size > SparseAboveBytes && OperatingSystem.IsWindows()) FixtureBuilder.CreateSparse(m, path, size);
+        else FixtureBuilder.WriteFile(m, path, new byte[Math.Min(size, SparseAboveBytes)]);
     }
 }

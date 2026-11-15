@@ -168,13 +168,25 @@ public readonly record struct PlanetChildCounts(int Folders, int Files, int Link
 
 /// <summary>
 /// The full description of one folder's planet, independent of any renderer (planet frame; see the file header).
-/// Made by <see cref="PlanetComposer.Compose"/>.
+/// Made by <see cref="PlanetComposer.Compose"/>; the app draws it (<c>PlanetVisual</c>), walks it through
+/// <see cref="Surface"/> (<see cref="SphereWalker"/>), and recomposes when <see cref="Signature"/> changes, swapping the
+/// surface under the walker (<see cref="SphereWalker.ChangeSurface"/>) so a listing arriving never interrupts a walk.
+/// <para>
+/// It is not changed once made (the app replaces it whole). The index fields (<see cref="PlanetLauncher.SkyBody"/>, <see cref="SkyBody.Launcher"/>, <see cref="PlanetItem.Grove"/>)
+/// point into this composition's own lists and mean nothing across compositions; node ids are the stable references.
+/// </para>
 /// </summary>
 public sealed class PlanetComposition
 {
+    /// <summary>The folder this planet stands for.</summary>
     public required int FolderId { get; init; }
+
+    /// <summary>The folder's display name.</summary>
     public required string Name { get; init; }
+
     public required PlanetTheme Theme { get; init; }
+
+    /// <summary>The ground: radius, hills and flat spots (the same as <see cref="Surface"/>'s).</summary>
     public required PlanetShape Shape { get; init; }
 
     /// <summary>The walkable world: <see cref="Shape"/> and every colliding solid.</summary>
@@ -255,7 +267,12 @@ public sealed class PlanetComposition
     }
 }
 
-/// <summary>Direction and tangent helpers for a planet's frame (+Y = the arrival pole).</summary>
+/// <summary>
+/// Direction and tangent helpers for a planet's frame (+Y = the arrival pole). Positions on a planet are unit directions
+/// from its centre, so "moving" is rotating along great circles and "north" is towards the arrival pole: the composer
+/// lays out with these, and the app's labels and probes read the layout back with them. Azimuth is clockwise seen from
+/// above the pole, 0 straight ahead (−Z), matching the place angle convention of docs/units.md (radians here).
+/// </summary>
 public static class PlanetFrame
 {
     /// <summary>
@@ -265,7 +282,7 @@ public static class PlanetFrame
     public static Vector3 North(Vector3 up)
     {
         var t = Vector3.UnitY - up * up.Y;
-        if (t.LengthSquared() < 1e-8f)
+        if (t.LengthSquared() < 1e-8f) // within ≈ 0.006° of a pole
         {
             t = -Vector3.UnitZ - up * Vector3.Dot(-Vector3.UnitZ, up);
         }
@@ -313,6 +330,11 @@ public static class PlanetFrame
     }
 
     /// <summary>The surface distance (metres, at <paramref name="radius"/>) from <paramref name="p"/> to the great-circle arc a→b.</summary>
+    /// <remarks>
+    /// Projects p onto the arc's great-circle plane: if the projection lies between a and b the distance is the angle to
+    /// the plane (asin |p·n|), otherwise the nearer end. Degenerate arcs (a ≈ b or antipodal) and points at the plane's
+    /// poles fall back to the ends.
+    /// </remarks>
     public static float DistanceToArc(Vector3 p, Vector3 a, Vector3 b, float radius)
     {
         var n = Vector3.Cross(a, b);

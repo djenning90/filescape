@@ -28,6 +28,10 @@ public partial class Main
     /// <summary>The editor options last offered on the card (for probes).</summary>
     public IReadOnlyList<EditorOption> EditorOptions => _editorOptions;
 
+    /// <summary>
+    /// Whether and why a folder stands out (PROM-01). Cached per tree version: the context (pins, known folders, the
+    /// "not a project" corrections) is rebuilt when the tree changes or <see cref="InvalidateProminence"/> is called.
+    /// </summary>
     public ProminenceInfo ProminenceOf(int id)
     {
         if (_tree == null || !_tree.Contains(id)) return ProminenceInfo.None;
@@ -85,6 +89,7 @@ public partial class Main
         return map;
     }
 
+    /// <summary>Downloads has no <see cref="Environment.SpecialFolder"/>; it is asked of the shell by its known-folder id.</summary>
     private static string? DownloadsFolder()
     {
         var id = new Guid("374DE290-123F-4565-9164-39C4925E467B"); // FOLDERID_Downloads
@@ -110,6 +115,7 @@ public partial class Main
     private int ProjectTarget() =>
         _tree == null ? -1 : _selection.Selected >= 0 && _tree[_selection.Selected].IsDirectory ? _selection.Selected : _nav.Current;
 
+    /// <summary>The folder's README to offer: a supported README file among its listed children, Markdown first, then by name (ordinal, so stable).</summary>
     private FsNode? ReadmeOf(int folder) =>
         _tree == null || folder < 0 ? null
         : _tree[folder].Children.Select(c => _tree[c]).Where(n => n.Kind == NodeKind.File && Readme.IsSupported(n.Name))
@@ -151,6 +157,7 @@ public partial class Main
         return null;
     }
 
+    /// <summary>P: pin or unpin the project target (live folders only); saved in the preferences, shown at once.</summary>
     private void TogglePin()
     {
         if (_tree == null || !_tree.Source.IsLive) return;
@@ -164,6 +171,10 @@ public partial class Main
         UpdateInspector();
     }
 
+    /// <summary>
+    /// R: show the project target's README as inert text (DEV-02). The read is bounded (<see cref="Readme.MaxBytes"/>,
+    /// <see cref="Readme.MaxLines"/>) and off the main thread; the result is shown back on it.
+    /// </summary>
     private void ShowReadme()
     {
         if (_tree == null) return;
@@ -196,6 +207,7 @@ public partial class Main
         }).CallDeferred());
     }
 
+    /// <summary>One of the card's editor options: launched only after the user confirms (DEV-03).</summary>
     private void RequestEditor(int index)
     {
         if (index < 0 || index >= _editorOptions.Count) return;
@@ -223,6 +235,7 @@ public partial class Main
         _placeWorld.SetProminentGates(marks);
     }
 
+    /// <summary>A prominent destination's mark colour: gold for pins, warm orange for home and known folders, teal for projects and the rest.</summary>
     public static Color ProminenceColor(ProminenceInfo p) => p.Kind switch
     {
         ProminenceKind.Pinned => new Color(1f, 0.82f, 0.3f),

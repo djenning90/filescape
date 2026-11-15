@@ -60,6 +60,10 @@ public sealed record CommandLine
     /// <summary>--layout=spacious: the place layout before 2026-11-06, for comparison (KD-28). Default: compact.</summary>
     public bool SpaciousLayout { get; init; }
 
+    /// <summary>
+    /// Parses the user arguments (after "--"): each is <c>--key=value</c> or a bare <c>--flag</c>, keys case-insensitive,
+    /// numbers in the invariant culture. Unknown keys are ignored; a malformed number throws (FormatException) rather than being ignored.
+    /// </summary>
     public static CommandLine Parse(string[] args)
     {
         var map = args.Select(a => a.TrimStart('-').Split('=', 2)).ToDictionary(p => p[0], p => p.Length > 1 ? p[1] : "", StringComparer.OrdinalIgnoreCase);
@@ -101,16 +105,23 @@ public sealed record CommandLine
 /// <summary>Per-frame timing. A rolling window feeds the overlay; an optional full recording feeds the automation CSVs.</summary>
 public sealed class PerfRecorder
 {
+    /// <summary>The rolling window: the last 600 frame times, about 10 s at 60 fps (the most <see cref="Summary"/> can cover).</summary>
     private readonly double[] _ring = new double[600];
     private int _ringCount, _ringNext;
     private ulong _lastTicks;
     private double _pendingRelayoutMs;
 
+    /// <summary>One recorded frame: the time (seconds since start), the frame and GPU times and any re-layout in it (milliseconds), whether a scan was running and the node count.</summary>
     public sealed record Sample(double TimeS, double FrameMs, double GpuMs, bool Scanning, double RelayoutMs, int Nodes);
 
     public List<Sample>? Recording { get; private set; }
     public Func<(double GpuMs, int Nodes)>? Probe { get; set; }
 
+    /// <summary>
+    /// Records the frame that just ended, once per frame. The frame time is measured from the wall clock between calls
+    /// (what the user sees, including vsync waits); only the first frame falls back to Godot's <paramref name="delta"/> (seconds).
+    /// Re-layout time marked since the last call is attributed to this frame.
+    /// </summary>
     public void BeginFrame(double delta, bool scanning)
     {
         var now = Time.GetTicksUsec();
@@ -139,8 +150,10 @@ public sealed class PerfRecorder
         return r;
     }
 
+    /// <summary>Frame-time statistics, milliseconds (percentiles by nearest rank), over <c>Count</c> frames.</summary>
     public record struct Stats(double Mean, double P50, double P95, double P99, double Max, int Count);
 
+    /// <summary>Statistics of the most recent <paramref name="lastN"/> frames in the rolling window (fewer if fewer were seen).</summary>
     public Stats Summary(int lastN)
     {
         var n = Math.Min(lastN, _ringCount);
@@ -169,6 +182,7 @@ public sealed class PerfRecorder
 /// <summary>Builds the inspector text: true numerical metadata, with honest labels for estimates and gaps (INSP-01..04).</summary>
 public static class Inspector
 {
+    /// <summary>The inspector's BBCode text for one node: what it is, where a link leads, sizes, scan state, times and flags, and whether it is live or synthetic.</summary>
     public static string Describe(FsNode n, FsTree tree, Visualization vis)
     {
         var sb = new StringBuilder();
@@ -298,5 +312,6 @@ public static class Inspector
     private static string Time(DateTime? utc) =>
         utc is { } t ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " local" : "[color=#9fb0cc]unavailable[/color]";
 
+    /// <summary>Escapes a file-system string for BBCode: a '[' in a name would otherwise start a tag.</summary>
     private static string Escape(string s) => s.Replace("[", "[lb]", StringComparison.Ordinal);
 }

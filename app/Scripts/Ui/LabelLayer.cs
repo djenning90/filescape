@@ -12,12 +12,25 @@ namespace FileScape.App.Ui;
 /// directories, then the nearest files. A candidate is skipped if it overlaps a label already placed or the UI
 /// panels. Labels are 2D overlays, so they stay crisp and constant-size at any distance. They are not hidden
 /// behind 3D geometry, which is a deliberate readability choice.
+/// <para>
+/// Used by the maps (<see cref="Refresh"/>, candidates from Core's LabelPlanner) and by Places (<see cref="RefreshPlace"/>,
+/// where folders are named by in-world signs and the sign layer instead). Labels are a fixed pool of Godot Labels,
+/// re-laid out on each refresh; sizes and offsets are in viewport units.
+/// </para>
 /// </summary>
 public partial class LabelLayer : Control
 {
     public const int MaxLabels = 60;
+
+    /// <summary>How many directories and files LabelPlanner offers per refresh (most are then rejected by overlap); bounds the per-frame cost.</summary>
     private const int MaxDirCandidates = 220;
     private const int MaxFileCandidates = 160;
+
+    /// <summary>A label's box is its text plus this padding (viewport units; the text sits half of it in from the corner).</summary>
+    private static readonly Vector2 LabelPadding = new(10, 6);
+
+    /// <summary>Order in which a crowded selection or hovered label tries other spots: label heights above or below, then 0.6 label widths aside.</summary>
+    private static readonly float[] RetryRows = [-1.1f, 1.1f, -2.2f, 2.2f, -3.3f, 3.3f], RetryColumns = [0f, -0.6f, 0.6f];
 
     private readonly List<Label> _pool = [];
     private readonly List<Rect2> _placed = [];
@@ -30,6 +43,7 @@ public partial class LabelLayer : Control
         MouseFilter = MouseFilterEnum.Ignore;
         SetAnchorsPreset(LayoutPreset.FullRect);
         var font = (Font)Hud.BuildTheme().DefaultFont;
+        // Font sizes rank the label kinds: selection 16, hover 15, directories 14, files 12.
         _dirSettings = Settings(font, 14, new Color(0.9f, 0.95f, 1f));
         _fileSettings = Settings(font, 12, new Color(0.78f, 0.84f, 0.92f));
         _selSettings = Settings(font, 16, new Color(1f, 0.95f, 0.65f));
@@ -53,6 +67,7 @@ public partial class LabelLayer : Control
         ShadowColor = new Color(0, 0, 0, 0.5f),
     };
 
+    /// <summary>A label's role, which sets its style and whether it may move to a free spot (only Selected and Hovered do).</summary>
     private enum Kind { Selected, Hovered, Related, Dir, File }
 
     private int _used;
@@ -117,7 +132,8 @@ public partial class LabelLayer : Control
             _ => _dirSettings,
         };
         label.Text = Text(node, tree.DisplayName(id), kind);
-        var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + new Vector2(10, 6);
+        var size = label.LabelSettings.Font.GetStringSize(label.Text, HorizontalAlignment.Left, -1, label.LabelSettings.FontSize) + LabelPadding;
+        // Centred on the anchor, its bottom 4 units above it (or touching it for directories, whose anchor is the pedestal's front edge).
         var rect = new Rect2(p - new Vector2(size.X / 2, size.Y + (belowAnchor ? 0 : 4)), size);
         // Keep labels fully on screen (VISI-01): slide a label at the edge inwards rather than clipping it.
         var vp = GetViewportRect();
@@ -133,9 +149,9 @@ public partial class LabelLayer : Control
             // The selection and the hovered item get the nearest free spot above or below the anchor, never over the HUD
             // or another label (VISI-01).
             var found = false;
-            foreach (var dy in new[] { -1.1f, 1.1f, -2.2f, 2.2f, -3.3f, 3.3f })
+            foreach (var dy in RetryRows)
             {
-                foreach (var dx in new[] { 0f, -0.6f, 0.6f })
+                foreach (var dx in RetryColumns)
                 {
                     var r2 = rect with { Position = rect.Position + new Vector2(dx * size.X, dy * size.Y) };
                     if (!Free(r2)) continue;
@@ -157,12 +173,16 @@ public partial class LabelLayer : Control
 
         _placed.Add(rect);
         _labelRects.Add(rect);
-        label.Position = rect.Position + new Vector2(5, 3);
+        label.Position = rect.Position + new Vector2(5, 3); // half of LabelPadding
         label.Size = size;
         label.Visible = true;
         _used++;
     }
 
+    /// <summary>
+    /// The maps: relabels from scratch (call each frame the view or selection may have changed). <paramref name="blocked"/>
+    /// are HUD rectangles no label may cover.
+    /// </summary>
     public void Refresh(Camera3D camera, FsTree tree, LayoutResult layout, SelectionState selection, IEnumerable<Rect2> blocked)
     {
         Begin(blocked);
@@ -174,7 +194,7 @@ public partial class LabelLayer : Control
         {
             var node = tree[id];
             var box = layout.NodeBoxes[id];
-            // Directory labels sit at the pedestal's front edge. File labels sit above the block.
+            // Directory labels sit at the pedestal's front edge. File labels sit above the block (offsets in layout units).
             var anchor = node.IsDirectory
                 ? new Vector3(box.Center.X, box.Max.Y + 0.15f, box.Max.Z)
                 : new Vector3(box.Center.X, box.Max.Y + 0.1f, box.Center.Z);
@@ -211,6 +231,8 @@ public partial class LabelLayer : Control
         if (selection.Selected != place.FolderId) Box(selection.Selected, Kind.Selected); // the landmark already names it
         Box(selection.Hovered, Kind.Hovered);
         var cam = Visual.Visualization.Num(camera.GlobalPosition);
+        // The nearest towers within fileRange (metres), up to maxFiles of them besides the selection and hovered labels
+        // (hence + 2); twice as many candidates are tried, since some lose to overlap.
         foreach (var f in place.Files
                      .Select(f => (f, D: System.Numerics.Vector3.Distance(f.Box.Center, cam)))
                      .Where(x => x.D < fileRange)

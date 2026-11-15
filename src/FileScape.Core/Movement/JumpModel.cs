@@ -101,6 +101,7 @@ public enum JumpEventKind
     Land,
 }
 
+/// <summary>A vertical event and, for a landing, how hard it was (for sounds, dust and the camera).</summary>
 /// <param name="Kind">What happened.</param>
 /// <param name="ImpactSpeed">For <see cref="JumpEventKind.Land"/>: the downward speed at touch-down (a positive magnitude); otherwise zero.</param>
 public readonly record struct JumpEvent(JumpEventKind Kind, MetersPerSecond ImpactSpeed = default)
@@ -120,7 +121,14 @@ public readonly record struct JumpEvent(JumpEventKind Kind, MetersPerSecond Impa
 /// </summary>
 public sealed class JumpModel
 {
+    /// <summary>A timer value meaning "not recently" (far beyond any coyote or buffer time), so no special case is needed.</summary>
     private const float NotRecentlySeconds = 999f;
+
+    /// <summary>
+    /// A ground (or coyote) take-off needs the vertical speed at or below this, m/s: never while already rising. A
+    /// take-off also spends the coyote time, so this is a second guard; the small positive margin tolerates float noise.
+    /// </summary>
+    private const float TakeOffMaxRiseSpeed = 0.01f;
 
     private readonly JumpParams _p;
 
@@ -191,11 +199,11 @@ public sealed class JumpModel
         _sinceGroundedSeconds = Grounded ? 0 : _sinceGroundedSeconds + dtSeconds;
         if (_sinceJumpPressedSeconds > _jumpBufferSeconds) return LastEvent;
 
-        if (_sinceGroundedSeconds <= _coyoteSeconds && _verticalMetersPerSecond <= 0.01f)
+        if (_sinceGroundedSeconds <= _coyoteSeconds && _verticalMetersPerSecond <= TakeOffMaxRiseSpeed)
         {
             _verticalMetersPerSecond = _p.JumpSpeed.Value;
             Grounded = false;
-            _sinceGroundedSeconds = _coyoteSeconds + 1;
+            _sinceGroundedSeconds = _coyoteSeconds + 1; // spend the coyote time: the next press in this airtime is the boost
             _sinceJumpPressedSeconds = NotRecentlySeconds;
             Jumps++;
             return LastEvent = new JumpEvent(JumpEventKind.Jump);

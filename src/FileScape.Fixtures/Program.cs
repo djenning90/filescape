@@ -1,5 +1,7 @@
 using FileScape.Fixtures;
 
+// FileScape.Fixtures: the command-line tool that creates and deletes the owned, marked test trees (never private
+// folders: see CLAUDE.md "Safety"). Each create prints the paths a test, probe or person needs next.
 // Usage:
 //   FileScape.Fixtures create [parentDir]   creates a fixture (default parent: %TEMP%\FileScape-fixtures) and prints its manifest
 //   FileScape.Fixtures create-places [parent] creates the Places fixture (PLACE-*) and prints its roots

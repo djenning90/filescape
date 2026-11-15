@@ -33,6 +33,15 @@ public readonly record struct AvatarState(
 /// Animation is procedural: a running bob with swinging feet, squash and stretch on jumping and landing, a full twirl
 /// on an air jump, a crouch during a launcher wind-up, and a streamlined flying pose with the scarf streaming.
 /// Readable from a chase camera 6–8 m away: big head, contrasting cloak and scarf, a bright lantern.
+/// <para>
+/// It only shows: <see cref="PlanetWorld"/> moves it (<see cref="SetPose"/>, or <c>SetFlying</c> in flight) and says what
+/// happened (AvatarRig.Events.cs); nothing here affects movement or collision. The node tree is Lean (tilt and twirl,
+/// pivoting at the body's middle) → Squash (scale about the feet) → Bob (the running bob), so each effect composes with
+/// the others; the scarf is top-level (world space), simulated as a rope.
+/// </para>
+/// All dimensions are metres in the rig's frame; the shapes in <c>Build</c> are modelled by eye. The animation's
+/// smoothed amounts ease with 1 − e^(−rate·dt), rates per second (docs/units.md); the springs are mass-spring-dampers
+/// stepped with semi-implicit Euler (stiffness per s², damping per s), so their feel depends on both numbers together.
 /// </summary>
 public partial class AvatarRig : Node3D
 {
@@ -80,6 +89,25 @@ public partial class AvatarRig : Node3D
     private float _vertical;           // smoothed vertical speed, m/s
 
     private const float TwirlDurationSeconds = 0.5f;
+
+    // ---- animation tuning (by eye; rationale not recorded)
+    /// <summary>How fast the run, flight, wind-up and airborne amounts follow the state, per second.</summary>
+    private const float RunEaseRate = 10f, FlyEaseRate = 6f, WindEaseRate = 14f, AirEaseRate = 12f, VerticalEaseRate = 12f;
+
+    /// <summary>The run amount reaches 1 at this ground speed, m/s.</summary>
+    private const float FullRunMetresPerSecond = 5f;
+
+    /// <summary>Stride rate: one cycle per 1.3 m/s of speed, at most 4.2 cycles a second (fast running stays readable).</summary>
+    private const float StrideMetresPerSecondPerCycle = 1.3f, MaxStrideCyclesPerSecond = 4.2f;
+
+    /// <summary>The squash spring: stiff and underdamped (ζ ≈ 0.4), so a jump or landing overshoots once and settles.</summary>
+    private const float SquashStiffness = 260f, SquashDamping = 13f;
+
+    /// <summary>The antenna's sway spring: softer and less damped than the squash, so it wobbles after starts and stops.</summary>
+    private const float SwayStiffness = 90f, SwayDamping = 6f;
+
+    /// <summary>Movements this large in one frame are teleports (a landing's re-framing, a warp), not motion, metres.</summary>
+    private const float TeleportMetres = 4f;
     private const int ScarfPoints = 11;
     private const float ScarfSegmentMetres = 0.085f;
     private readonly Vector3[] _rope = new Vector3[ScarfPoints];
@@ -92,6 +120,7 @@ public partial class AvatarRig : Node3D
         Build();
     }
 
+    /// <summary>Builds the figure's meshes and node tree once (shapes by eye, metres, origin at the feet, front −Z).</summary>
     private void Build()
     {
         AddChild(_lean);
@@ -172,6 +201,7 @@ public partial class AvatarRig : Node3D
         AddChild(_scarf);
     }
 
+    /// <summary>A mesh instance of the built shapes with the shared prop material.</summary>
     private static MeshInstance3D Instance(MeshBuilder b, string name)
     {
         var mesh = new ArrayMesh();
@@ -202,34 +232,35 @@ public partial class AvatarRig : Node3D
     /// <summary>Advances the procedural animation by <paramref name="deltaSeconds"/> for <paramref name="state"/> (call after <see cref="SetPose"/>).</summary>
     public void Animate(float deltaSeconds, AvatarState state)
     {
-        var dt = Mathf.Clamp(deltaSeconds, 0f, 0.1f);
+        var dt = Mathf.Clamp(deltaSeconds, 0f, 0.1f); // a long frame (a hitch) is taken as 0.1 s, which keeps the squash spring's step stable (ω·dt ≈ 1.6 < 2)
         if (dt <= 0) return;
         _timeSeconds += dt;
         var pos = GlobalPosition;
         var newVelocity = (pos - _lastPos) / dt;
-        if ((pos - _lastPos).Length() > 4f) newVelocity = Vector3.Zero; // a teleport, not motion
+        if ((pos - _lastPos).Length() > TeleportMetres) newVelocity = Vector3.Zero; // a teleport, not motion
         var accel = (newVelocity - _velocity) / dt;
         _velocity = newVelocity;
         _lastPos = pos;
 
         float Ease(float current, float target, float ratePerSecond) => current + (target - current) * (1 - Mathf.Exp(-ratePerSecond * dt));
         var speed = Mathf.Max(0, state.SpeedMetersPerSecond);
-        _run = Ease(_run, state.Grounded && !state.Flying ? Mathf.Clamp(speed / 5f, 0, 1) : 0, 10);
-        _fly = Ease(_fly, state.Flying ? 1 : 0, 6);
-        _wind = Ease(_wind, Mathf.Clamp(state.WindUp01, 0, 1), 14);
-        _air = Ease(_air, state.Grounded || state.Flying ? 0 : 1, 12);
-        _vertical = Ease(_vertical, state.VerticalSpeedMetersPerSecond, 12);
+        _run = Ease(_run, state.Grounded && !state.Flying ? Mathf.Clamp(speed / FullRunMetresPerSecond, 0, 1) : 0, RunEaseRate);
+        _fly = Ease(_fly, state.Flying ? 1 : 0, FlyEaseRate);
+        _wind = Ease(_wind, Mathf.Clamp(state.WindUp01, 0, 1), WindEaseRate);
+        _air = Ease(_air, state.Grounded || state.Flying ? 0 : 1, AirEaseRate);
+        _vertical = Ease(_vertical, state.VerticalSpeedMetersPerSecond, VerticalEaseRate);
 
         // Stride: cycles per second grow with speed and saturate, so fast running stays readable.
-        var cyclesPerSecond = Mathf.Min(speed / 1.3f, 4.2f);
+        var cyclesPerSecond = Mathf.Min(speed / StrideMetresPerSecondPerCycle, MaxStrideCyclesPerSecond);
         _phase += Mathf.Tau * cyclesPerSecond * dt;
 
-        // Squash and stretch: an underdamped spring towards a target; events kick it.
+        // Squash and stretch: an underdamped spring towards a target; events kick it (a jump stretches, a landing squashes,
+        // harder the faster it lands, up to twice as hard). The target crouches with the wind-up and stretches in flight.
         if (state.Jumped) _squashVelocity += 5.5f;
         if (state.Landed) _squashVelocity -= 3.5f + Mathf.Clamp(Mathf.Abs(_vertical) * 0.35f, 0, 3.5f);
         if (state.AirJumped) _squashVelocity += 4f;
         var target = -0.3f * _wind + 0.16f * _fly + _air * Mathf.Clamp(_vertical * 0.025f, -0.08f, 0.14f);
-        _squashVelocity += (-260f * (_squashAmount - target) - 13f * _squashVelocity) * dt;
+        _squashVelocity += (-SquashStiffness * (_squashAmount - target) - SquashDamping * _squashVelocity) * dt;
         _squashAmount = Mathf.Clamp(_squashAmount + _squashVelocity * dt, -0.45f, 0.5f);
 
         if ((state.AirJumped || state.Twirl) && _twirlSeconds < 0) _twirlSeconds = 0;
@@ -246,8 +277,9 @@ public partial class AvatarRig : Node3D
 
         // Lean and spin (pivot about the body centre so the flight pose rotates around the middle, not the feet).
         var forwardSpeed = Mathf.Clamp(speed / 8f, 0, 1);
+        // Degrees: 6–14° forward when running, 68° in flight (nearly prone), 8° back when winding up.
         var leanDeg = _run * (6f + 8f * forwardSpeed) + _fly * 68f + _wind * -8f;
-        var shake = _wind * Mathf.Sin(_timeSeconds * 55f) * 2.5f;
+        var shake = _wind * Mathf.Sin(_timeSeconds * 55f) * 2.5f; // a fast ±2.5° tremble while winding up (55 rad/s ≈ 9 Hz)
         var spin = new Basis(Vector3.Up, -twirl * Mathf.Tau);
         var tilt = new Basis(Vector3.Right, -Mathf.DegToRad(leanDeg)) * new Basis(Vector3.Back, Mathf.DegToRad(shake + Mathf.Sin(_phase) * 3f * _run));
         var pivot = new Vector3(0, 0.5f, 0);
@@ -282,7 +314,8 @@ public partial class AvatarRig : Node3D
         _handL.Position = handL.Lerp(new Vector3(-0.3f, 0.32f, 0.25f), _fly);
         _handR.Position = handR.Lerp(new Vector3(0.3f, 0.32f, 0.25f), _fly);
 
-        // Blink now and then.
+        // Blink now and then: the eyes close to 12 % for the last 0.12 s before each blink, then the next comes 2.2–4.7 s
+        // later. sin(t · 12.9898) is a cheap, repeatable pseudo-random number (the constant is the one familiar from a common shader hash).
         _blinkSeconds -= dt;
         var blink = _blinkSeconds < 0.12f ? 0.12f : 1f;
         if (_blinkSeconds < 0) _blinkSeconds = 2.2f + (Mathf.Sin(_timeSeconds * 12.9898f) * 0.5f + 0.5f) * 2.5f;
@@ -291,7 +324,7 @@ public partial class AvatarRig : Node3D
         // Antenna sway: a spring driven by acceleration along the facing (it lags behind starts and swings on stops).
         var forwardAccel = accel.Dot(_facing);
         var swayTarget = Mathf.Clamp(-forwardAccel * 0.012f, -0.6f, 0.6f) - 0.25f * _fly + 0.12f * _run;
-        _swayVelocity += (-90f * (_sway - swayTarget) - 6f * _swayVelocity) * dt;
+        _swayVelocity += (-SwayStiffness * (_sway - swayTarget) - SwayDamping * _swayVelocity) * dt;
         _sway += _swayVelocity * dt;
         _antenna.Rotation = new Vector3(_sway, 0, 0.08f * Mathf.Sin(_timeSeconds * 1.7f));
 
@@ -318,10 +351,10 @@ public partial class AvatarRig : Node3D
             _ropeReady = true;
         }
 
-        const int steps = 2;
+        const int steps = 2; // Verlet sub-steps per frame (rationale for two not recorded)
         var h = dt / steps;
         var breeze = back * (0.9f + 0.6f * Mathf.Sin(_timeSeconds * 3.1f)) + GlobalBasis.X * 0.4f * Mathf.Sin(_timeSeconds * 4.3f);
-        var gravity = -_up * 3.5f;
+        var gravity = -_up * 3.5f; // light (m/s²): the ribbon floats rather than hangs
         var damping = Mathf.Exp(-9f * h); // air drag: the ribbon streams behind when the traveller moves fast
         for (var step = 0; step < steps; step++)
         {
@@ -379,6 +412,7 @@ public partial class AvatarRig : Node3D
         _scarfMesh.SurfaceEnd();
     }
 
+    /// <summary>One triangle of the scarf strip with its own front-face normal (degenerate ones are skipped).</summary>
     private void EmitTri(Vector3 p0, Vector3 p1, Vector3 p2, Color c)
     {
         // Godot's front faces wind clockwise, so the front normal is −(p1 − p0) × (p2 − p0).

@@ -8,9 +8,34 @@ public sealed partial class SkySynth
 {
     private const int CycleSixteenths = CycleBars * 16;
     private const int HalfCycleSixteenths = CycleSixteenths / 2;
+
+    /// <summary>Capacity of a deck's prepared notes per cycle (the theme, its ornaments or counter-line): a fixed array, reused, so building a cycle never allocates.</summary>
     private const int MaxCycleNotes = 160;
+
+    /// <summary>The development a world reaches from its third visit on (1 first visit, 2 second, 3 from the third: see <see cref="Development"/>).</summary>
+    private const int FullDevelopment = 3;
+
+    /// <summary>
+    /// Two world changes closer than this are a hop (AD-49: "&lt; 1.5 s apart"): the arrival fanfare is skipped, so
+    /// hopping through several folders stays musical rather than a pile-up of flourishes.
+    /// </summary>
+    private const float QuickHopSeconds = 1.5f;
+
+    /// <summary>T60 with which a reused deck's voices are cut, seconds (≈ 40 ms, AD-49): fast enough to clear the deck, slow enough not to click.</summary>
+    private const float ClearedDeckT60Seconds = 0.04f;
+
+    /// <summary>Flight intensity (<see cref="SetFlight"/>'s target) above which the flight arpeggio plays; at or below it the arpeggio stops and restarts from its first note next time.</summary>
+    private const float FlightArpeggioFrom = 0.02f;
+
+    /// <summary>Flight intensity above which the flight arpeggio climbs an octave (the high part of a flight).</summary>
+    private const float FlightArpeggioOctaveUpFrom = 0.6f;
+
     private static readonly ThemeNote[] ThemeNotes = BuildTheme();
+
+    /// <summary>The character the synth starts in when none is given: the hub, the calm arrival.</summary>
     private static readonly WorldCharacter HubCharacter = new(WorldKind.Hub, 0, 0, -1);
+
+    /// <summary>Recently left worlds and where each was left (sixteenths into its music), most recent first.</summary>
     private readonly (long Key, long Position)[] _memory = new (long, long)[RememberedWorlds];
     private int _memoryCount;
 
@@ -52,7 +77,7 @@ public sealed partial class SkySynth
                 other.StopFrame = long.MaxValue;
                 other.Character = character;
                 other.Visits = visits;
-                other.Development = Math.Clamp(visits, 1, 3);
+                other.Development = Math.Clamp(visits, 1, FullDevelopment);
                 other.FadeTarget = 1;
                 cur.Live = false;
                 cur.FadeTarget = 0;
@@ -70,7 +95,8 @@ public sealed partial class SkySynth
             // The same world (a sibling folder of the same band and theme, or a revisit): keep the groove, mark the arrival.
             cur.Character = character;
             cur.Visits = visits;
-            cur.Development = Math.Clamp(visits, 1, 3);
+            cur.Development = Math.Clamp(visits, 1, FullDevelopment);
+            // The fill takes the last beat of this bar (sixteenths 12–15), or of the next bar once that beat has begun.
             var s = cur.NextStep;
             var fill = s - Mod(s, 16) + 12;
             if (s > fill) fill += 16;
@@ -81,10 +107,10 @@ public sealed partial class SkySynth
         // A new world: the old one plays to its next beat, which becomes the new one's first downbeat.
         ClearGroup(other.Group);
         var k = cur.NextStep;
-        while (Mod(k, 4) != 0) k++;
+        while (Mod(k, 4) != 0) k++; // the next quarter-note beat (every fourth sixteenth)
         var origin = StepFrame(cur, k);
         cur.StopFrame = origin;
-        var quick = origin - _lastSwitchFrame < Frames(1.5f);
+        var quick = origin - _lastSwitchFrame < Frames(QuickHopSeconds);
         _lastSwitchFrame = origin;
         _switches++;
         other.From = cur.Identity;
@@ -93,7 +119,11 @@ public sealed partial class SkySynth
         _current = 1 - _current;
     }
 
-    /// <summary>Prepares a deck for a world whose first downbeat is at <paramref name="origin"/>.</summary>
+    /// <summary>
+    /// Prepares a deck for a world whose first downbeat is at <paramref name="origin"/>: its score and key, its clock,
+    /// where in its music it starts (a remembered position, or later cycles for a developed world) and its random stream.
+    /// Everything is a function of the seed, the world and the number of switches so far, so a session replays exactly.
+    /// </summary>
     private void Configure(Deck d, PlanetTheme theme, WorldCharacter character, int visits, long origin, bool quickHop)
     {
         var id = IdentityOf(character);
@@ -102,12 +132,12 @@ public sealed partial class SkySynth
         d.Theme = theme;
         d.Character = character;
         d.Visits = Math.Max(1, visits);
-        d.Development = Math.Clamp(visits, 1, 3);
+        d.Development = Math.Clamp(visits, 1, FullDevelopment);
         d.Profile = KeyProfiles[(int)id][(int)theme];
         d.Echo = character.InsideRepository && id >= MusicIdentity.Outskirts;
         d.WorldKey = WorldKeyOf(id, theme, character);
         d.Origin = origin;
-        d.FramesPerSixteenth = _rate * 60.0 / (d.Style.Bpm * 4.0);
+        d.FramesPerSixteenth = _rate * 60.0 / (d.Style.Bpm * 4.0); // frames per minute ÷ sixteenths per minute (4 per beat); fractional, and each step's frame is computed from the origin, so the clock never drifts
         d.NextStep = 0;
         d.StopFrame = long.MaxValue;
         d.Live = true;
@@ -116,7 +146,9 @@ public sealed partial class SkySynth
         d.Resumed = saved >= 0;
         // A return resumes on the next half-cycle; a later visit (forgotten) starts a later, varied cycle.
         d.StepOffset = d.Resumed ? (saved + HalfCycleSixteenths - 1) / HalfCycleSixteenths * HalfCycleSixteenths : (long)(d.Development - 1) * CycleSixteenths;
-        d.IntroSteps = id == MusicIdentity.Repository && !d.Resumed ? 16 : 0;
+        d.IntroSteps = id == MusicIdentity.Repository && !d.Resumed ? 16 : 0; // one bar for the repository's arrival flourish
+        // The deck's random stream: the seed, the world and the switch count hashed together (golden-ratio and xxHash
+        // multipliers, then Mix), so each arrival varies yet the same session replays sample for sample.
         d.Rng = new Random(unchecked((int)Mix((uint)_seed * 0x9E3779B1u ^ (uint)d.WorldKey ^ (uint)(d.WorldKey >> 32) ^ (uint)_switches * 0x85EBCA77u)));
         d.NeedChord = true;
         d.CycleReady = false;
@@ -125,7 +157,11 @@ public sealed partial class SkySynth
         d.ResetMelody();
     }
 
-    /// <summary>A world's identity for the music: its identity, theme, repository and worktree flag.</summary>
+    /// <summary>
+    /// A world's identity for the music: its identity, theme, repository and worktree flag, packed into one long (identity
+    /// in bits 56+, theme 48–55, worktree bit 47, repository id + 1 below; 0 for none). Two folders with the same key share
+    /// their music: a sibling of the same band and theme keeps the groove.
+    /// </summary>
     private static long WorldKeyOf(MusicIdentity id, PlanetTheme theme, WorldCharacter c)
     {
         var repo = c.RepositoryId >= 0 && (id == MusicIdentity.Repository || c.InsideRepository) ? c.RepositoryId + 1L : 0L;
@@ -163,7 +199,7 @@ public sealed partial class SkySynth
     {
         foreach (var v in _voices)
         {
-            if (v.Active && v.Group == group) v.Kill(0.04f);
+            if (v.Active && v.Group == group) v.Kill(ClearedDeckT60Seconds);
         }
 
         for (var i = _pending.Count - 1; i >= 0; i--)
@@ -176,10 +212,16 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>A true modulo (never negative), unlike C#'s %.</summary>
     private static long Mod(long x, long m) => ((x % m) + m) % m;
 
     // ---------------------------------------------------------------- scheduling
 
+    /// <summary>
+    /// Runs each live deck's sixteenth-note steps that fall before <paramref name="blockEnd"/> (and before its stop frame),
+    /// so notes are scheduled one block ahead at most. A deck whose stop frame falls in this block stops there: it remembers
+    /// where it was, releases its voices and drops its notes scheduled from then on.
+    /// </summary>
     private void ScheduleMusic(long blockEnd)
     {
         for (var i = 0; i < 2; i++)
@@ -217,6 +259,12 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>
+    /// One sixteenth of a deck's music, starting at <paramref name="frame"/>: builds the cycle's theme notes at its start,
+    /// changes the pad chord when due, then plays the arrival (step 0), the theme or the world's own material, the groove
+    /// and, while flying, the flight arpeggio. <paramref name="step"/> counts from the deck's first downbeat; the position in
+    /// the world's music (<c>abs</c>) adds the deck's resume offset and skips the intro bar.
+    /// </summary>
     private void OnStep(Deck d, long step, long frame)
     {
         var p = d.Profile;
@@ -267,7 +315,7 @@ public sealed partial class SkySynth
         if (change || d.NeedChord)
         {
             d.NeedChord = false;
-            PlayPad(d, chord, (float)(holdSixteenths * d.FramesPerSixteenth / _rate) + 0.05f, frame);
+            PlayPad(d, chord, (float)(holdSixteenths * d.FramesPerSixteenth / _rate) + 0.05f, frame); // held 50 ms past the change, so chords overlap rather than gap
         }
 
         d.Chord = chord;
@@ -288,12 +336,13 @@ public sealed partial class SkySynth
         PlayGroove(d, step, inBar, bar, intro, frame, chord);
 
         // Flight: a rising arpeggio through the chord, climbing with the intensity.
-        if (_flightTarget > 0.02f)
+        if (_flightTarget > FlightArpeggioFrom)
         {
+            // Root, third, fifth, then the same an octave up: a six-step climb, one note per sixteenth.
             ReadOnlySpan<int> arpBase = [0, 2, 4];
             var a = _arpCounter++ % 6;
             var arpDegree = arpBase[a % 3] + (a / 3) * len;
-            var lift = _flightTarget > 0.6f ? len : 0;
+            var lift = _flightTarget > FlightArpeggioOctaveUpFrom ? len : 0;
             Enqueue(frame, NoteSpec.Bell(MidiHz(p.Root + 12 + ScaleNote(p.Scale, chord + arpDegree + lift)), ratio: 2f, index: 0.8f, indexDecay: 0.1f) with
             {
                 Attack = 0.003f, Decay = 0.4f, Gain = 0.045f, Pan = -0.4f + 0.16f * a, Send = 0.4f, Group = GroupFlight,
@@ -385,6 +434,7 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- between the theme's returns
 
+    /// <summary>One sixteenth of the world's own material between the theme's returns (bars 8–15): each identity's motif or music box, and from the second visit a counter-line.</summary>
     private void PlayFree(Deck d, int bar, int inBar, long cycle, long frame, int chord)
     {
         var free = bar - 8; // bars 8–15 of the cycle: four 2-bar phrases
@@ -420,8 +470,10 @@ public sealed partial class SkySynth
     {
         var p = d.Profile;
         var len = p.Scale.Length;
+        // A whole bar may rest; otherwise each eighth sounds by chance, more often on the beat (×1.2) than off it (×0.7).
         if (inBar == 0) d.RestBar = d.Rng.NextDouble() < p.RestChance;
         if (inBar % 2 != 0 || d.RestBar || d.Rng.NextDouble() >= p.MelodyDensity * densityScale * (inBar % 4 == 0 ? 1.2 : 0.7)) return;
+        // Mostly steps, sometimes a skip or a repeat; the walk reflects off the bottom and two octaves up.
         ReadOnlySpan<int> moves = [-2, -1, -1, 0, 1, 1, 2];
         var deg = d.MelodyDegree + moves[d.Rng.Next(moves.Length)];
         var hi = 2 * len;
@@ -429,6 +481,7 @@ public sealed partial class SkySynth
         if (deg > hi) deg = hi - (deg - hi);
         if (inBar % 4 == 0)
         {
+            // On the beat, nudge to the nearest chord tone (root, third or fifth of the chord), so the walk stays consonant.
             foreach (var k in (ReadOnlySpan<int>)[0, 1, -1, 2, -2])
             {
                 var c = ((deg + k - chord) % len + len) % len;
@@ -608,6 +661,10 @@ public sealed partial class SkySynth
     private static long StepAt(Deck d, long barFrame, int steps) =>
         barFrame + (long)((steps + (steps % 2 == 1 ? d.Style.Swing : 0f)) * d.FramesPerSixteenth);
 
+    /// <summary>
+    /// A motif note (degree in 7-note numbering) on <paramref name="lead"/>, an octave above the key's root, held 20 ms short
+    /// of its written length so repeated notes re-articulate; quieter in drone and cluster worlds.
+    /// </summary>
     private void MotifNote(Deck d, long at, int degree, int lengthSixteenths, float velocity, Lead lead)
     {
         var p = d.Profile;
@@ -654,6 +711,12 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- the groove
 
+    /// <summary>
+    /// One sixteenth of the world's groove from its <see cref="Style"/>: kick, snare (with a fill in the cycle's last bar
+    /// and after a same-world arrival), hats, percussion, bass, arpeggio, and the repository's stabs and echo. Development
+    /// adds ghost notes (second visit) and open hats and doubling (third); quiet and veiled worlds keep the kit light;
+    /// odd sixteenths are late by the style's swing.
+    /// </summary>
     private void PlayGroove(Deck d, long step, int inBar, int bar, bool intro, long frame, int chord)
     {
         var st = d.Style;
@@ -744,12 +807,16 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- the kit (all synthesised)
 
+    // Each kit piece takes a velocity (0..1, scaling its gain) and the voice group of the deck that plays it.
+
+    /// <summary>A kick: a sine falling 190 → 48 Hz in 60 ms, with a short noise click for the beater.</summary>
     private void Kick(long at, float vel, int g)
     {
         Enqueue(at, NoteSpec.Tone(Wave.Sine, 190f) with { GlideToHz = 48f, Glide = 0.06f, Attack = 0.001f, Decay = 0.32f, Gain = 0.2f * vel, Send = 0.02f, Group = g });
         Enqueue(at, NoteSpec.Noise(2600, 1800, 0.01f, q: 1.2f) with { Attack = 0.0005f, Decay = 0.012f, Gain = 0.04f * vel, Send = 0, Group = g });
     }
 
+    /// <summary>The style's backbeat: a clap (band-passed noise), a rim (bright noise and a high click) or a snare (noise over a falling body tone).</summary>
     private void Snare(SnareKind kind, long at, float vel, float pan, int g)
     {
         switch (kind)
@@ -768,15 +835,19 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>A closed hi-hat: very short, very high band-passed noise.</summary>
     private void ClosedHat(long at, float vel, float pan, int g) =>
         Enqueue(at, NoteSpec.Noise(9200, 8600, 0.02f, q: 1.6f) with { Attack = 0.0005f, Decay = 0.035f, Gain = 0.055f * vel, Pan = pan, Send = 0.04f, Group = g });
 
+    /// <summary>An open hi-hat: high noise with a longer tail.</summary>
     private void OpenHat(long at, float vel, int g) =>
         Enqueue(at, NoteSpec.Noise(7800, 7000, 0.15f, q: 1.3f) with { Attack = 0.001f, Decay = 0.22f, Gain = 0.04f * vel, Pan = 0.3f, Send = 0.1f, Group = g });
 
+    /// <summary>A soft crash for arrivals: wide, high noise whose cutoff falls over 1.2 s (T60 1.5 s), well into the reverb.</summary>
     private void Crash(long at, float vel, int g) =>
         Enqueue(at, NoteSpec.Noise(7000, 5200, 1.2f, q: 0.5f) with { Attack = 0.002f, Decay = 1.5f, Gain = 0.05f * vel, Pan = 0.2f, Send = 0.35f, Group = g });
 
+    /// <summary>The terminal's enter key: a low, muffled thock (low-passed noise and a falling sine).</summary>
     private void Enter(long at, int g)
     {
         Enqueue(at, NoteSpec.Noise(900, 500, 0.05f, q: 0.8f, lowpass: true) with { Attack = 0.001f, Decay = 0.07f, Gain = 0.06f, Pan = 0.2f, Send = 0.05f, Group = g });
@@ -790,6 +861,7 @@ public sealed partial class SkySynth
             Attack = 0.0005f, Decay = 0.05f, Gain = 0.035f * vel, Pan = tick ? -0.45f : 0.45f, Send = 0.08f, Group = g,
         });
 
+    /// <summary>The style's extra percussion voice (<see cref="PercKind"/>): shaker, keystrokes, clockwork or toms.</summary>
     private void Percussion(Deck d, PercKind kind, long at, float vel, int inBar, int bar, int g)
     {
         var p = d.Profile;
@@ -821,6 +893,7 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>A bass note at <paramref name="hz"/> in the style's bass sound (<see cref="BassKind"/>).</summary>
     private void Bass(Deck d, BassKind kind, long at, float hz, float vel)
     {
         var g = d.Group;
@@ -865,6 +938,7 @@ public sealed partial class SkySynth
     /// <summary>A chord tone on the ladder above <paramref name="chord"/>: 0 root, 1 third, 2 fifth, 3 octave, …</summary>
     private static int LadderDegree(Profile p, int chord, int rung) => chord + rung / 3 * p.Scale.Length + (rung % 3) * 2;
 
+    /// <summary>An arpeggio note's sound (gain from <see cref="ArpGain"/>, pan and group are the caller's).</summary>
     private static NoteSpec ArpSpec(ArpKind kind, float hz) => kind switch
     {
         ArpKind.Glass => NoteSpec.Bell(hz, ratio: 3.5f, index: 1.4f, indexDecay: 0.06f) with { Attack = 0.002f, Decay = 0.35f, Send = 0.45f, ToneHz = 8000 },
@@ -872,6 +946,7 @@ public sealed partial class SkySynth
         _ => NoteSpec.Bell(hz, ratio: 2f, index: 0.9f, indexDecay: 0.08f) with { Attack = 0.002f, Decay = 0.3f, Send = 0.5f, ToneHz = 7000 },
     };
 
+    /// <summary>Each arpeggio sound's level, balanced by ear against the lead (rationale for the exact values not recorded).</summary>
     private static float ArpGain(ArpKind kind) => kind switch { ArpKind.Glass => 0.04f, ArpKind.Pluck => 0.032f, _ => 0.024f };
 
     /// <summary>A lead instrument's note held for <paramref name="holdSeconds"/> (gain, pan and group are the caller's).</summary>
@@ -936,6 +1011,10 @@ public sealed partial class SkySynth
         return semis > 7 ? semis - 12 : semis;
     }
 
+    /// <summary>
+    /// Plays a prepared note of the theme an octave above the key's root: a theme note on the world's lead (with a short
+    /// glide from a legato neighbour within a fourth), a grace note on a small bell, or a counter-line note on a soft triangle.
+    /// </summary>
     private void PlayThemeNote(Deck d, in LeadNote note, long step)
     {
         var p = d.Profile;
@@ -1007,6 +1086,7 @@ public sealed partial class SkySynth
         var notes = deck.Notes;
         var n = 0;
         var theme = ThemeNotes;
+        // (Sixteenth 96 is bar 7, the cadence; 32–63 are bars 3–4, the answer.)
         var graceDelay = 1f - 0.05f / (float)(deck.FramesPerSixteenth / _rate); // a grace note sounds 50 ms before its note
         var pivot = int.MinValue;
         var previous = int.MinValue;
@@ -1017,7 +1097,7 @@ public sealed partial class SkySynth
             var d = MapDegree(t.Degree, len);
             var next = i + 1 < theme.Length ? MapDegree(theme[i + 1].Degree, len) : d;
             int start = t.StartSixteenths, length = t.LengthSixteenths;
-            var velocity = start % 16 == 0 || length >= 6 ? 1f : start % 4 == 0 ? 0.9f : 0.8f;
+            var velocity = start % 16 == 0 || length >= 6 ? 1f : start % 4 == 0 ? 0.9f : 0.8f; // downbeats and long notes lead, then beats, then the rest
             switch (variation)
             {
                 case ThemeVariation.OctaveCounter:
@@ -1156,6 +1236,7 @@ public sealed partial class SkySynth
 
         deck.NoteCount = n;
         deck.NextNote = 0;
+        // The theme's bars, rounded up to whole bars (9 for an augmented ending); at most 12, so the world's own material keeps 4 bars.
         deck.ThemeBars = Math.Clamp((end + 15) / 16, ThemeLengthBars, CycleBars - 4);
         deck.LastLeadEnd = long.MinValue;
     }
@@ -1167,6 +1248,7 @@ public sealed partial class SkySynth
     private ThemeVariation VariationFor(Deck d, long cycle)
     {
         if (cycle % 4 == 0) return ThemeVariation.Plain;
+        // 1 + h % 5 picks one of the five non-plain variations (ThemeVariation's values 1–5); a repeat moves on to the next.
         var h = Mix((uint)_seed * 0x9E3779B1u ^ (uint)((int)d.Theme + 1) * 0x85EBCA77u ^ (uint)cycle * 0xC2B2AE3Du ^ (uint)d.Identity * 0x27D4EB2Fu);
         var v = 1 + (int)(h % 5);
         if ((ThemeVariation)v == d.Variation) v = 1 + v % 5;
@@ -1181,7 +1263,7 @@ public sealed partial class SkySynth
         if (len == 7) return degree;
         var octave = (int)Math.Floor(degree / 7.0);
         var r = degree - 7 * octave;
-        ReadOnlySpan<int> pentatonic = [0, 1, 2, 2, 3, 4, 4];
+        ReadOnlySpan<int> pentatonic = [0, 1, 2, 2, 3, 4, 4]; // do re mi (fa→mi) sol la (ti→la): the missing steps fold down
         return (len == 5 ? pentatonic[r] : (int)Math.Round(r * len / 7.0)) + len * octave;
     }
 
@@ -1201,6 +1283,11 @@ public sealed partial class SkySynth
         return chords[bar];
     }
 
+    /// <summary>
+    /// A 32-bit integer finaliser (the "lowbias32" xor-shift-multiply constants): each input bit flips about half the
+    /// output bits, so the hashed seeds above (golden-ratio and xxHash multipliers, xored) give unrelated choices for neighbouring
+    /// inputs. Changing it changes every seeded choice in the music.
+    /// </summary>
     private static uint Mix(uint h)
     {
         h ^= h >> 16;
@@ -1211,6 +1298,7 @@ public sealed partial class SkySynth
         return h;
     }
 
+    /// <summary>The written FileScape theme as <see cref="ThemeNote"/>s (each bar's notes fill its 16 sixteenths). Changing it changes the music's identity everywhere.</summary>
     private static ThemeNote[] BuildTheme()
     {
         // (degree, sixteenths) per bar: motif (bars 1–2), answer (3–4), the motif raised (5–6), the cadence (7–8).
@@ -1241,6 +1329,7 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- identities (the scores)
 
+    /// <summary>A lead instrument for the theme and motifs (its sound in <see cref="LeadSpec"/>): one per identity, in <see cref="MusicIdentity"/> order.</summary>
     private enum Lead
     {
         Bell,
@@ -1253,6 +1342,7 @@ public sealed partial class SkySynth
         Glow,
     }
 
+    /// <summary>A style's backbeat sound (<see cref="Snare"/>), or none (the hub has no kit).</summary>
     private enum SnareKind
     {
         None,
@@ -1261,6 +1351,7 @@ public sealed partial class SkySynth
         Rim,
     }
 
+    /// <summary>A style's extra percussion (<see cref="Percussion"/>), the part of the groove that says which world this is.</summary>
     private enum PercKind
     {
         None,
@@ -1270,6 +1361,7 @@ public sealed partial class SkySynth
         Toms,
     }
 
+    /// <summary>A style's bass sound (<see cref="Bass"/>).</summary>
     private enum BassKind
     {
         Sub,
@@ -1279,6 +1371,7 @@ public sealed partial class SkySynth
         Deep,
     }
 
+    /// <summary>A style's arpeggio sound (<see cref="ArpSpec"/>), or none.</summary>
     private enum ArpKind
     {
         None,
@@ -1290,6 +1383,13 @@ public sealed partial class SkySynth
     /// <summary>
     /// A world identity's score: tempo, swing (a fraction of a sixteenth by which the off-sixteenths are late), a mode of its
     /// own (or the theme's), its lead, and one bar of each drum, bass and arpeggio pattern (16 steps).
+    /// <para>
+    /// Patterns: drums are <see cref="Hits"/> (Kick, Back = the backbeat snare, Hat, OpenHat, Perc), the arpeggio is
+    /// <see cref="Rungs"/>, and the bass is a string of R root, O octave, F fifth, T third, . rest (lower case: softer).
+    /// Ghosts enables the development extras (ghost snares and hats from the second visit, open hats from the third); PercFromDevelopment is the visit from which Perc plays.
+    /// PadGain and PadTone scale the key's pad level and tone; PadAttack is seconds; FreeChordBars is how many bars each
+    /// chord lasts between the theme's returns.
+    /// </para>
     /// </summary>
     private sealed record Style(
         MusicIdentity Id, float Bpm, float Swing, int[]? Scale, int[]? Progression, string? Mode, Lead Lead, float LeadGain,
@@ -1360,6 +1460,7 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- keys
 
+    /// <summary>A key's pad: a triad (Normal), two low sines on the tonic chord's lower notes, held over the theme (Drone, the Quiet theme) or a close cluster over soft noise (Cluster, Veiled).</summary>
     private enum PadKind
     {
         Normal,
@@ -1367,6 +1468,11 @@ public sealed partial class SkySynth
         Cluster,
     }
 
+    /// <summary>
+    /// A theme's key and its sound: Root (MIDI), Mode and Scale (semitones), the free Progression (chord roots as scale
+    /// degrees), the music box's MelodyDensity and RestChance (probabilities per eighth and per bar) and MelodyOctave,
+    /// the bell's FM BellRatio, Pulse (false: no plucked bass, the kit stays light), and the pad's kind, tone (Hz) and gain.
+    /// </summary>
     private sealed record Profile(
         int Root, string Mode, int[] Scale, int[] Progression, double MelodyDensity, double RestChance, int MelodyOctave,
         float BellRatio, bool Pulse, PadKind Pad, float PadToneHz, float PadGain);
@@ -1407,6 +1513,11 @@ public sealed partial class SkySynth
         return table;
     }
 
+    /// <summary>
+    /// One of the two music players. The current world plays on one deck; a world change prepares the other, starts it on
+    /// the next beat and lets the old one stop and fade there, so tempo changes never share a clock. Holds the world's
+    /// score and key, its clock, where it is in its music, its random stream and the cycle's prepared theme notes.
+    /// </summary>
     private sealed class Deck(int group)
     {
         /// <summary>The voice group this deck plays into (its index).</summary>
@@ -1418,6 +1529,8 @@ public sealed partial class SkySynth
         public int Visits = 1;
         public int Development = 1;
         public Profile Profile = Profiles[0];
+
+        /// <summary>A folder inside a repository: keeps a quiet echo of the repository's music (tick-tock, soft stabs, the commit call).</summary>
         public bool Echo;
         public long WorldKey;
 
@@ -1429,8 +1542,14 @@ public sealed partial class SkySynth
         /// <summary>The frame where it stops (its successor's first downbeat), or long.MaxValue.</summary>
         public long StopFrame = long.MaxValue;
         public bool Live;
+
+        /// <summary>Arrived within <see cref="QuickHopSeconds"/> of the previous change: no arrival fanfare.</summary>
         public bool QuickHop;
+
+        /// <summary>Picked up from memory: it resumes where it was left, without a fanfare.</summary>
         public bool Resumed;
+
+        /// <summary>The identity of the world it took over from (the hub's open question is answered on arrival from it).</summary>
         public MusicIdentity? From;
 
         /// <summary>Sixteenths into the world's music at step 0 (a resumed or developed world starts later in it).</summary>
@@ -1438,7 +1557,11 @@ public sealed partial class SkySynth
 
         /// <summary>Steps of an intro bar before the first cycle (the repository's flourish), 0 otherwise.</summary>
         public long IntroSteps;
+
+        /// <summary>The step from which a four-sixteenth drum fill plays (a same-world arrival), or long.MinValue.</summary>
         public long FillFrom = long.MinValue;
+
+        /// <summary>The crossfade position 0..1 and where it is heading (gain = sin(Fade · π/2), see RenderBlock).</summary>
         public float Fade;
         public float FadeTarget;
         public Random Rng = new(0);

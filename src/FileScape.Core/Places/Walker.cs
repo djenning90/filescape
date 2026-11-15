@@ -71,6 +71,7 @@ public sealed record WalkParams
     /// </summary>
     public MetersPerSecond ApexHangSpeed { get; init; } = MetersPerSecond.Of(1.2f);
 
+    /// <summary>Gravity × this during the apex hang (dimensionless): lower hangs longer.</summary>
     public float ApexGravityScale { get; init; } = 0.65f;
 
     /// <summary>Rising with Space already released: gravity × this, so a tap is a short hop and a hold a full jump.</summary>
@@ -132,6 +133,7 @@ public sealed record WalkParams
     /// </summary>
     public PerSecond EyeSmoothing { get; init; } = PerSecond.Of(18f);
 
+    /// <summary>The most the smoothed eye may trail the true eye height on an upward step (one stair or tier is ≤ 0.45 m).</summary>
     public Meters MaxEyeLag { get; init; } = Meters.Of(0.35f);
 
     /// <summary>Feet below this world height mean the walker has left the world; the owner relocates it (WALK-07).</summary>
@@ -189,6 +191,19 @@ public readonly record struct WalkInput(float Forward, float Strafe, float Turn,
 /// </summary>
 public sealed class Walker
 {
+    /// <summary>
+    /// Slide iterations per sub-step: each pushes the disc out of its deepest overlap (or back inside the boundary) and
+    /// drops the velocity into it; the loop stops as soon as nothing overlaps, so this only bounds the work where several
+    /// solids meet (rationale for the exact count not recorded).
+    /// </summary>
+    private const int MaxCollisionIterations = 4;
+
+    /// <summary>On the ground with no input, a horizontal speed below 2 cm/s (this is its square, m²/s²) is set to zero: stopped, not creeping.</summary>
+    private const float StoppedSpeedSquared = 0.0004f;
+
+    /// <summary>A solid whose underside is up to 1 cm below the head still counts as overhead and stops a rise, so a head already touching it is not let through.</summary>
+    private const float HeadContactTolerance = 0.01f;
+
     private WalkParams _p;
 
     /// <summary>Frame time not yet integrated, in seconds (always less than one sub-step).</summary>
@@ -287,13 +302,18 @@ public sealed class Walker
         LookPitch = CameraMath.ClampLookPitch(LookPitch + deltaLookPitch);
     }
 
+    /// <summary>Sets heading and gaze outright (arrival poses, the route autopilot); the pitch is clamped.</summary>
     public void SetGaze(Degrees yaw, Degrees lookPitch)
     {
         Yaw = yaw;
         LookPitch = CameraMath.ClampLookPitch(lookPitch);
     }
 
-    /// <summary>Integrates one frame of <paramref name="frame"/> length in fixed sub-steps.</summary>
+    /// <summary>
+    /// Integrates one frame of <paramref name="frame"/> length in fixed sub-steps (1 / <see cref="WalkParams.SubStepsPerSecond"/>);
+    /// the remainder carries over to the next frame, and a frame longer than <see cref="WalkParams.MaxFrame"/> is cut
+    /// to it. A jump press is registered once per frame, before the sub-steps; <see cref="LastEvent"/> reports the frame.
+    /// </summary>
     public void Update(PlaceTerrain terrain, WalkInput input, TimeSpan frame)
     {
         if (input.JumpPressed) _jump.Press();
@@ -321,7 +341,7 @@ public sealed class Walker
         var response = Grounded ? _p.GroundResponse : _p.AirResponse;
         if (!Grounded && wish == Vector2.Zero) response = _p.AirCoast; // in the air, letting go keeps momentum
         HorizontalVelocity = Vector2.Lerp(HorizontalVelocity, targetVelocity, response.SmoothingFactor(dtSeconds));
-        if (Grounded && wish == Vector2.Zero && HorizontalVelocity.LengthSquared() < 0.0004f) HorizontalVelocity = Vector2.Zero; // below 2 cm/s: stopped
+        if (Grounded && wish == Vector2.Zero && HorizontalVelocity.LengthSquared() < StoppedSpeedSquared) HorizontalVelocity = Vector2.Zero; // below 2 cm/s: stopped
 
         // Jump: on the ground or shortly after leaving it, pressed now or shortly before; airborne, the one boost.
         var feet = Feet;
@@ -344,7 +364,7 @@ public sealed class Walker
         // (or, airborne, reached by the ledge tolerance) and its underside is below the head.
         var allowance = (Grounded ? _p.StepHeight : _p.AirLedgeTolerance).Value;
         var moved = pos + HorizontalVelocity * dtSeconds;
-        for (var iter = 0; iter < 4; iter++)
+        for (var iter = 0; iter < MaxCollisionIterations; iter++)
         {
             var push = Vector2.Zero;
             foreach (var i in terrain.BoxesNear(moved, radius))
@@ -411,7 +431,7 @@ public sealed class Walker
                 foreach (var i in terrain.BoxesNear(pos, radius))
                 {
                     var b = terrain.Boxes[i];
-                    if (b.Bottom >= head - 0.01f && b.Bottom < head + rise && b.Overlaps(pos, radius))
+                    if (b.Bottom >= head - HeadContactTolerance && b.Bottom < head + rise && b.Overlaps(pos, radius))
                     {
                         rise = MathF.Max(0, b.Bottom - head);
                         _jump.StopRise();

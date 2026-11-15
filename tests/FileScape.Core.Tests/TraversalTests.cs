@@ -77,6 +77,8 @@ public class TraversalTests(ITestOutputHelper output)
                 var runAfter = PlaceRoutes.FollowWaypoints(place, place.Arrival, route, gate, Spacious8, run: true);
                 output.WriteLine($"{label}, {which} gate ({walkAfter.Distance:0} m): walk {S(walkBefore.Time)} → {S(walkAfter.Time)}, run {S(runBefore.Time)} → {S(runAfter.Time)}");
                 foreach (var r in new[] { walkBefore, runBefore, walkAfter, runAfter }) r.Crossed.Should().BeTrue($"{label} {which}: the route reaches the gate");
+                // WALK-10: "about half as long". Speeds went 4.2 → 8 m/s walking and 8.4 → 16 m/s running (time × ≈ 0.53 on
+                // a straight line); 0.6 is the accepted bound, leaving room above that ratio (its exact value not recorded).
                 walkAfter.Time.TotalSeconds.Should().BeLessThan(walkBefore.Time.TotalSeconds * 0.6);
                 runAfter.Time.TotalSeconds.Should().BeLessThan(runBefore.Time.TotalSeconds * 0.6);
             }
@@ -210,6 +212,8 @@ public class TraversalTests(ITestOutputHelper output)
         var upsBefore = Ups(PlaceParams.Spacious, Spacious8);
         var upsAfter = Ups(PlaceParams.Compact, WalkParams.Default);
         output.WriteLine($"4 successive Ups walking: spacious at 8 m/s {S(upsBefore)}, compact at 5.5 m/s {S(upsAfter)}");
+        // PLACE-14: repeated Ups in the compact layout at the slower comfortable speed take at most 5 % longer than the
+        // spacious layout needed at 8 m/s.
         upsAfter.Should().BeLessThan(upsBefore * 1.05);
     }
 }

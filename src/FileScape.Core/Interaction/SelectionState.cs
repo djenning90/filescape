@@ -8,11 +8,15 @@ namespace FileScape.Core.Interaction;
 /// </summary>
 public sealed class SelectionState
 {
+    /// <summary>The most Back steps kept; older ones are dropped first (rationale for 200 not recorded).</summary>
+    private const int MaxHistory = 200;
+
     private readonly List<int> _history = [];
 
     public int Selected { get; private set; } = -1;
     public int Hovered { get; set; } = -1;
 
+    /// <summary>Raised with the new selection (−1 after <see cref="Reset"/>) on every change, including Back.</summary>
     public event Action<int>? SelectionChanged;
 
     public IReadOnlyList<int> History => _history;
@@ -28,7 +32,7 @@ public sealed class SelectionState
         if (recordHistory && Selected >= 0)
         {
             _history.Add(Selected);
-            if (_history.Count > 200)
+            if (_history.Count > MaxHistory)
             {
                 _history.RemoveAt(0); // bounded so long sessions don't grow without limit; only the oldest steps are lost
             }
@@ -65,6 +69,7 @@ public sealed class SelectionState
         return true;
     }
 
+    /// <summary>Clears the selection, hover and history (a new tree: old ids mean nothing in it).</summary>
     public void Reset()
     {
         _history.Clear();

@@ -5,7 +5,8 @@ namespace FileScape.App.Ui;
 /// <summary>
 /// The Places parts of the HUD (PLACE-02, 04, 06, 07, 10): the "You are in" breadcrumb with Up and Root, the
 /// destination list (every child folder, so none is out of reach), the ascent chip that explains what ascent
-/// shows, and the threshold transition (fade and caption).
+/// shows, and the threshold transition (fade and caption). Main fills them; the left-column stacking is in
+/// <see cref="Hud._Process"/>.
 /// </summary>
 public partial class Hud
 {
@@ -37,6 +38,10 @@ public partial class Hud
 
     public int DestinationCount => _destList.ItemCount;
 
+    /// <summary>
+    /// Builds the place bar, the Destinations drawer, the ascent chip and the transition fade and caption, then the
+    /// connected-world parts (<see cref="BuildWorld"/>). The positions set here are starting values: _Process restacks them.
+    /// </summary>
     private void BuildPlaces()
     {
         _placePanel = new PanelContainer();
@@ -148,7 +153,7 @@ public partial class Hud
         foreach (var c in _crumbs.GetChildren()) c.QueueFree();
         BreadcrumbNames.Clear();
         BreadcrumbNames.AddRange(path.Select(p => p.Name));
-        const int keepTail = 4;
+        const int keepTail = 4; // the root, then "…N levels…", then the last four levels (paths of six or fewer show whole)
         for (var i = 0; i < path.Count; i++)
         {
             if (path.Count > keepTail + 2 && i == 1)
@@ -226,6 +231,7 @@ public partial class Hud
         }
     }
 
+    /// <summary>Replaces the drawer's entries (an entry with id −1 is a note, such as "N hidden items not shown": any filter keeps it and Enter on it only closes the drawer) and re-applies the current filter.</summary>
     public void SetDestinations(IReadOnlyList<(int Id, string Text, Color Color, string Tooltip, Texture2D? Icon)> items, string title)
     {
         _destItems = items;
@@ -296,13 +302,23 @@ public partial class Hud
 
     public string AscentChipText => _ascentPanel.Visible ? _ascentLabel.Text : "";
 
+    /// <summary>The darkest the threshold fade gets: never quite black, so the place stays faintly visible through it.</summary>
+    private const float TransitionPeakOpacity = 0.94f;
+
+    /// <summary>The caption appears once the fade is past 0.15 and is fully opaque from ≈ 0.86 (alpha = 1.4 × fade − 0.2), so it reads against the dark.</summary>
+    private const float CaptionMinFade = 0.15f, CaptionFadeGain = 1.4f, CaptionFadeOffset = 0.2f;
+
+    /// <summary>
+    /// The threshold transition between places: <paramref name="fade"/> 0 (none) … 1 (darkest), driven each frame by
+    /// Main; <paramref name="caption"/> names where you are going (null: none). The fade lies under the HUD panels.
+    /// </summary>
     public void SetTransition(float fade, string? caption)
     {
-        _fade.Visible = fade > 0.001f;
-        _fade.Color = _fade.Color with { A = Mathf.Clamp(fade, 0, 1) * 0.94f };
-        _caption.Visible = caption != null && fade > 0.15f;
+        _fade.Visible = fade > 0.001f; // effectively zero: hide it rather than draw an invisible full-screen rect
+        _fade.Color = _fade.Color with { A = Mathf.Clamp(fade, 0, 1) * TransitionPeakOpacity };
+        _caption.Visible = caption != null && fade > CaptionMinFade;
         if (caption != null) _caption.Text = caption;
-        _caption.Modulate = new Color(1, 1, 1, Mathf.Clamp(fade * 1.4f - 0.2f, 0, 1));
+        _caption.Modulate = new Color(1, 1, 1, Mathf.Clamp(fade * CaptionFadeGain - CaptionFadeOffset, 0, 1));
     }
 
     public void SetEnterAction(bool enabled, string text)
@@ -357,7 +373,11 @@ public partial class Hud
         PlaceGateChip();
     }
 
-    /// <summary>Centred between the legend and the inspector, in the lower third of the scene (viewport units).</summary>
+    /// <summary>
+    /// Centred between the legend (or Destinations) and the inspector, in the lower part of the scene (viewport units):
+    /// at most 560 wide (at least 220 of room assumed), above the hint and any toast, and no lower than 72 % of the window
+    /// height, so it sits near where a gate ahead appears without covering the path at your feet (rationale for 72 % not recorded).
+    /// </summary>
     private void PlaceGateChip()
     {
         var vp = GetViewport().GetVisibleRect().Size;

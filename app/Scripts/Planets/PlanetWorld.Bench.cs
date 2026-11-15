@@ -19,9 +19,33 @@ namespace FileScape.App.Planets;
 /// </list>
 /// Movement only reveals, selects and previews. Opening a file with Windows (an editor, an IDE) stays a deliberate
 /// Enter or button press through the usual confirmations; nothing runs and nothing changes.
+/// <para>
+/// The bench is the composition's overlook (<see cref="PlanetComposition.Overlook"/>) on a repository world; the key
+/// locations come from <see cref="ProjectBench.KeyLocations"/> (names only, FS-01). The cards are built lazily on the
+/// first reveal and live in the current planet's frame, so they are rebuilt with the world (<see cref="ResetBench"/>).
+/// </para>
 /// </summary>
 public partial class PlanetWorld
 {
+    // ---- the bench's look and timing (by eye, 2026-11-14; rationale not recorded unless stated)
+    /// <summary>The bench's colour: a mint green (its panel's border, the reveal's burst; the lamp is a paler mint).</summary>
+    private static readonly Color BenchColor = new(0.4f, 1f, 0.75f);
+
+    /// <summary>"Near the bench": within this far of its edge, metres (on it, jumping from it, or just stepped off).</summary>
+    private const float NearBenchMetres = 2.5f;
+
+    /// <summary>The reveal plays over this long, seconds (the cards rise and the ring opens out).</summary>
+    private const float BenchRevealSeconds = 0.9f;
+
+    /// <summary>The bench lamp's energy standing on the bench and off it, and how fast it changes, per second.</summary>
+    private const float BenchLampOnEnergy = 2.2f, BenchLampOffEnergy = 1.2f, BenchLampRatePerSecond = 4f;
+
+    /// <summary>The ring of cards turns at this rate, radians per second (one turn in ≈ 35 s).</summary>
+    private const float TileSpinRadiansPerSecond = 0.18f;
+
+    /// <summary>A card is picked by the mouse within this radius of its centre, metres (a little more than the README's half-height).</summary>
+    private const float TilePickRadiusMetres = 0.42f;
+
     private IReadOnlyList<BenchEntry> _benchEntries = [];
     private bool _benchRevealed;
     private float _benchReveal01;
@@ -39,7 +63,7 @@ public partial class PlanetWorld
 
     /// <summary>Within a few metres of the bench (on it, jumping from it, or just stepped off).</summary>
     private bool NearBench() =>
-        OnBenchWorld && _current!.Comp.Overlook is { } ov && PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 2.5f;
+        OnBenchWorld && _current!.Comp.Overlook is { } ov && PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + NearBenchMetres;
 
     /// <summary>The current world is a repository with its workbench.</summary>
     public bool OnBenchWorld => _character.Kind == WorldKind.Repository && _current?.Comp.Overlook != null;
@@ -61,16 +85,18 @@ public partial class PlanetWorld
         return (CameraTurnTo(ov.Direction), dist);
     }
 
-    /// <summary>Standing on the workbench deck now.</summary>
+    /// <summary>Standing on the workbench deck now (on the ground, within 0.3 m of the deck's height and of its edge: the
+    /// same test as the overlook's top in <see cref="UpdateWalking"/>).</summary>
     public bool StandingOnBench() =>
         OnBenchWorld && _current!.Comp.Overlook is { } ov && _walker.Grounded && _walker.Support.Value > ov.Top - 0.3f &&
         PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 0.3f;
 
+    /// <summary>Builds the bench's panel (hidden until a reveal). Its list ignores clicks from a stale tree or while the overview is open.</summary>
     private void BuildBenchPanel(Control root)
     {
         _benchPanel = new PanelContainer { Visible = false };
         var style = PanelStyle();
-        style.BorderColor = new Color(0.4f, 1f, 0.75f, 0.6f);
+        style.BorderColor = BenchColor with { A = 0.6f };
         _benchPanel.AddThemeStyleboxOverride("panel", style);
         // Bottom right, under the selection card (which sits top right).
         _benchPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
@@ -148,9 +174,9 @@ public partial class PlanetWorld
         }
 
         if (ev == Core.Movement.JumpEventKind.Land && !onBench) _jumpFromBench = false;
-        if (_benchRevealed) _benchReveal01 = MathF.Min(1, _benchReveal01 + dt / 0.9f);
+        if (_benchRevealed) _benchReveal01 = MathF.Min(1, _benchReveal01 + dt / BenchRevealSeconds);
         UpdateBenchTiles(dt);
-        if (_benchLamp != null) _benchLamp.LightEnergy = Mathf.Lerp(_benchLamp.LightEnergy, onBench ? 2.2f : 1.2f, 1 - MathF.Exp(-4 * dt));
+        if (_benchLamp != null) _benchLamp.LightEnergy = Mathf.Lerp(_benchLamp.LightEnergy, onBench ? BenchLampOnEnergy : BenchLampOffEnergy, 1 - MathF.Exp(-BenchLampRatePerSecond * dt));
     }
 
     /// <summary>
@@ -169,7 +195,8 @@ public partial class PlanetWorld
             if (_current.Comp.Overlook is { } ov)
             {
                 var top = Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top + 0.2f));
-                _landFx.Burst(top, Gd(ov.Direction), new Color(0.4f, 1f, 0.75f));
+                _landFx.Burst(top, Gd(ov.Direction), BenchColor);
+                // The lamp starts dim (0.2) and brightens towards its on/off energy (UpdateBench); 7 m range, 1.6 m over the deck.
                 _benchLamp = new OmniLight3D { Name = "BenchLamp", LightColor = new Color(0.55f, 1f, 0.82f), LightEnergy = 0.2f, OmniRange = 7f, Position = Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top + 1.6f)) };
                 AddChild(_benchLamp);
             }
@@ -185,6 +212,7 @@ public partial class PlanetWorld
         GD.Print($"[planets] bench revealed ({how}): {string.Join(", ", _benchEntries.Select(e => $"{tree[e.NodeId].Name} ({e.Role})"))}");
     }
 
+    /// <summary>Fills the bench's panel with the key locations: name, why it matters, and where it stands if not here.</summary>
     private void FillBench(FsTree tree)
     {
         _benchList.Clear();
@@ -204,13 +232,14 @@ public partial class PlanetWorld
         if (_benchEntries.Count == 0) _benchList.AddItem("Nothing recognised by name here.", null, selectable: false);
     }
 
-    /// <summary>Where a key location stands on this planet: the file, its pile, or the launcher of the folder holding it.</summary>
+    /// <summary>Where a key location stands on this planet: the file, its pile, or the launcher of the folder holding it
+    /// (the anchors are the same as the names': 1.25 × scale + 0.3 m over an object, <see cref="PadNameHeightMetres"/> over a pad).</summary>
     private (Godot.Vector3 At, string Label)? BenchWhere(int id)
     {
         if (_current == null || _s.Tree is not { } tree || !tree.Contains(id)) return null;
         var surf = _current.Comp.Surface;
         if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == id) is { } item) return (Gd(surf.PointAt(item.Direction, 1.25f * item.Scale + 0.3f)), "");
-        if (_current.Comp.Launchers.FirstOrDefault(l => l.TargetId == id) is { } pad) return (Gd(surf.PointAt(pad.Direction, 1.35f)), "");
+        if (_current.Comp.Launchers.FirstOrDefault(l => l.TargetId == id) is { } pad) return (Gd(surf.PointAt(pad.Direction, PadNameHeightMetres)), "");
         var n = tree[id];
         if (n.Kind == NodeKind.File && n.ParentId == _current.FolderId &&
             _current.Comp.Items.FirstOrDefault(i => i.Kind == PlanetItemKind.Pile && i.Category == FileCategories.Of(n.Name)) is { } pile)
@@ -218,7 +247,7 @@ public partial class PlanetWorld
             return (Gd(surf.PointAt(pile.Direction, 1.25f * pile.Scale + 0.3f)), " · in a pile");
         }
 
-        if (n.ParentId >= 0 && _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == n.ParentId) is { } via) return (Gd(surf.PointAt(via.Direction, 1.35f)), $" · via {tree[n.ParentId].Name}");
+        if (n.ParentId >= 0 && _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == n.ParentId) is { } via) return (Gd(surf.PointAt(via.Direction, PadNameHeightMetres)), $" · via {tree[n.ParentId].Name}");
         return null;
     }
 
@@ -229,15 +258,17 @@ public partial class PlanetWorld
         var surf = _current.Comp.Surface;
         var up = Gd(ov.Direction);
         var (t1, t2) = PlanetShape.Tangents(ov.Direction);
+        // Each card rises in turn, 0.06 (in the × 1.4 progress) after the one before. With the reveal capped at 1, cards 0–6
+        // rise fully; an eighth card or later stops just short (rise = 1.4 − 0.06 × index), which is barely visible.
         var rise = Ease(Mathf.Clamp(_benchReveal01 * 1.4f - index * 0.06f, 0, 1));
         var a = _tileSpin + index * Mathf.Tau / Math.Max(1, count);
         // Wide and staggered in height, so their names have room even in a small window (2026-11-14: at 1280×720 only half
         // the names fitted with a tighter ring).
-        var radius = 0.4f + 2.7f * rise;
+        var radius = 0.4f + 2.7f * rise; // metres: from 0.4 (inside the bench) out to 3.1
         var height = ov.Top + 0.7f + 0.8f * rise + (index % 3) * 0.45f * rise; // low enough to stay clear of the HUD at the top
         return Gd(surf.PointAt(ov.Direction, height)) + (Gd(t1) * Mathf.Cos(a) + Gd(t2) * Mathf.Sin(a)) * radius;
 
-        static float Ease(float x) => 1 - (1 - x) * (1 - x) * (1 - x);
+        static float Ease(float x) => 1 - (1 - x) * (1 - x) * (1 - x); // ease-out cubic: fast, then settling
     }
 
     /// <summary>The ring of cards over the bench: built on the reveal, turning slowly, facing the camera.</summary>
@@ -257,7 +288,7 @@ public partial class PlanetWorld
             {
                 if (!tree.Contains(e.NodeId)) continue;
                 var color = TileColor(e.Role);
-                var big = e.Role == BenchRole.Readme;
+                var big = e.Role == BenchRole.Readme; // the README's card is larger and brighter
                 var tile = new MeshInstance3D
                 {
                     Mesh = new BoxMesh { Size = big ? new Godot.Vector3(0.62f, 0.8f, 0.06f) : new Godot.Vector3(0.46f, 0.58f, 0.05f) },
@@ -278,17 +309,18 @@ public partial class PlanetWorld
             }
         }
 
-        _tileSpin += dt * 0.18f;
+        _tileSpin += dt * TileSpinRadiansPerSecond;
         for (var i = 0; i < _tiles.Count; i++)
         {
             var (id, tile) = _tiles[i];
             tile.GlobalPosition = TileAt(i, _tiles.Count);
             var selected = _s.Selection.Selected == id;
-            var s = selected ? 1.25f : 1f;
+            var s = selected ? 1.25f : 1f; // the selected card grows by a quarter, easing over ≈ 0.1 s
             tile.Scale = tile.Scale.Lerp(new Godot.Vector3(s, s, s), 1 - MathF.Exp(-10 * dt));
         }
     }
 
+    /// <summary>A card's colour by role: the README gold, build and project files blue, entry points pink, the rest mint.</summary>
     private static Color TileColor(BenchRole role) => role switch
     {
         BenchRole.Readme => new Color(1f, 0.88f, 0.5f),
@@ -300,7 +332,7 @@ public partial class PlanetWorld
     /// <summary>A card over the bench under the cursor (its node), or −1.</summary>
     private int PickBenchTile(Vector2 screen)
     {
-        if (_tiles.Count == 0 || _benchReveal01 < 0.5f) return -1;
+        if (_tiles.Count == 0 || _benchReveal01 < 0.5f) return -1; // not until the cards are half risen
         var o = _camera.ProjectRayOrigin(screen);
         var d = _camera.ProjectRayNormal(screen);
         var best = float.MaxValue;
@@ -309,7 +341,7 @@ public partial class PlanetWorld
         {
             var oc = o - tile.GlobalPosition;
             var b = oc.Dot(d);
-            var disc = b * b - (oc.LengthSquared() - 0.42f * 0.42f);
+            var disc = b * b - (oc.LengthSquared() - TilePickRadiusMetres * TilePickRadiusMetres);
             if (disc < 0) continue;
             var t = -b - MathF.Sqrt(disc);
             if (t > 0 && t < best)
@@ -342,7 +374,7 @@ public partial class PlanetWorld
     /// <summary>The bench's names on screen (while revealed): each card is named with what it is for.</summary>
     private void AddBenchSigns(FsTree tree)
     {
-        if (!_benchRevealed || _benchReveal01 < 0.45f) return;
+        if (!_benchRevealed || _benchReveal01 < 0.45f) return; // names appear as the cards are nearly half risen
         var up = _camera.GlobalBasis.Y;
         for (var i = 0; i < _tiles.Count; i++)
         {
@@ -354,6 +386,7 @@ public partial class PlanetWorld
             var focus = _s.Selection.Selected == id || _hovered == id;
             // One line each (the panel has the reasons), two for the README and the one selected or pointed at.
             var detail = focus || e.Role == BenchRole.Readme ? e.Why + where : "";
+            // Pinned 0.5 m above the card; the README's name has the higher priority (50 against 25).
             _signs.Add(new SignCandidate(-200_000 - id, tile.GlobalPosition + up * 0.5f, n.Name, detail, TileColor(e.Role).Lightened(0.2f), FileIcons.For(n),
                 focus, e.Role == BenchRole.Readme ? 50f : 25f, FixedAnchor: true));
         }
@@ -379,7 +412,7 @@ public partial class PlanetWorld
         _audio.Open();
         ShowPreview(tree, tree[readme.NodeId]);
         _benchPreviewId = readme.NodeId;
-        if (_current?.Comp.Overlook is { } ov) _landFx.Burst(Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top + 1.2f)), Gd(ov.Direction), new Color(1f, 0.9f, 0.55f));
+        if (_current?.Comp.Overlook is { } ov) _landFx.Burst(Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top + 1.2f)), Gd(ov.Direction), new Color(1f, 0.9f, 0.55f)); // a gold burst, like the README's card
         var idx = _benchIds.IndexOf(readme.NodeId);
         if (idx >= 0) _benchList.Select(idx);
         GD.Print($"[planets] README read on the bench ({how}): {tree[readme.NodeId].Name}");
@@ -411,6 +444,7 @@ public partial class PlanetWorld
         if (!OnBenchWorld || _current?.Comp.Overlook is not { } ov) return false;
         var o = _camera.ProjectRayOrigin(screen);
         var d = _camera.ProjectRayNormal(screen);
+        // The bench as a sphere of its own radius centred at 0.6 of its height (a generous target).
         var c = Gd(_current.Comp.Surface.PointAt(ov.Direction, ov.Top * 0.6f));
         var oc = o - c;
         var b = oc.Dot(d);
@@ -418,7 +452,7 @@ public partial class PlanetWorld
         if (disc < 0) return false;
         var t = -b - MathF.Sqrt(disc);
         if (t <= 0) return false; // behind the camera (or the camera is inside it)
-        if (RayPlanet(o, d, _current.Comp.Shape.Radius - 0.3f) is { } ground && ground < t - 0.5f) return false; // the planet is in the way
+        if (RayPlanet(o, d, _current.Comp.Shape.Radius - OcclusionInsetMetres) is { } ground && ground < t - OcclusionSlackMetres) return false; // the planet is in the way
         RevealBench("click");
         return true;
     }

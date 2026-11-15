@@ -12,6 +12,7 @@ public sealed record LocationSeed(string Name, string Path, LocationKind Kind, b
 /// </summary>
 public static class Locations
 {
+    /// <summary>The canonical prefix of a WSL path (<c>\\wsl$\</c> is rewritten to this, so one folder has one spelling).</summary>
     public const string WslPrefix = @"\\wsl.localhost\";
 
     /// <summary>Drives and registered WSL distributions on Windows; "/" elsewhere.</summary>
@@ -117,6 +118,7 @@ public static class Locations
 
         if (s.StartsWith('/') || s.StartsWith('~'))
         {
+            // "/mnt/c" or "/mnt/c/…" (index 5 is the drive letter) is WSL's view of a Windows drive: use the drive itself.
             if (s.Length >= 6 && s.StartsWith("/mnt/", StringComparison.Ordinal) && char.IsAsciiLetter(s[5]) && (s.Length == 6 || s[6] == '/'))
             {
                 return char.ToUpperInvariant(s[5]) + @":\" + s[Math.Min(s.Length, 7)..].Replace('/', '\\').TrimEnd('\\');
@@ -128,7 +130,7 @@ public static class Locations
         }
 
         s = s.Replace('/', '\\');
-        if (s.StartsWith(@"\\wsl$\", StringComparison.OrdinalIgnoreCase)) s = WslPrefix + s[7..];
+        if (s.StartsWith(@"\\wsl$\", StringComparison.OrdinalIgnoreCase)) s = WslPrefix + s[7..]; // 7 = length of \\wsl$\
         if (s.Length == 2 && s[1] == ':') s += '\\';
         if (s.Length > 3) s = s.TrimEnd('\\');
         // Collapse "." and ".." without touching the filesystem.
@@ -141,6 +143,7 @@ public static class Locations
             return null;
         }
 
+        // Drop a trailing separator, except on a volume root (\\?\Volume{…}\: four separators), whose canonical form keeps it.
         if (s.Length > 3 && !(s.StartsWith(@"\\?\", StringComparison.Ordinal) && s.EndsWith('\\') && s.Count(c => c == '\\') == 4)) s = s.TrimEnd('\\');
         return s;
     }
@@ -181,6 +184,7 @@ public static class Locations
         return (root, parts);
     }
 
+    /// <summary>What kind of location a root (from <see cref="Split"/>) is: a drive, a WSL distribution, a network share or a volume.</summary>
     public static LocationKind KindOf(string root) =>
         root == "/" ? LocationKind.Volume
         : root.StartsWith(WslPrefix, StringComparison.OrdinalIgnoreCase) ? LocationKind.Wsl

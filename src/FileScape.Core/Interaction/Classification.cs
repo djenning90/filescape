@@ -7,7 +7,10 @@ namespace FileScape.Core.Interaction;
 /// </summary>
 public static class AgeBands
 {
+    /// <summary>Upper bounds of bands 0–5, whole days (one week, two weeks, a month, three months, six months, a year); band 6 is everything older.</summary>
     public static readonly int[] CutoffDays = [7, 14, 31, 92, 182, 365];
+
+    /// <summary>The legend text for each band, index for index with <see cref="Band"/>.</summary>
     public static readonly string[] Labels = ["≤ 1 week", "≤ 2 weeks", "≤ 1 month", "≤ 3 months", "≤ 6 months", "≤ 1 year", "> 1 year"];
 
     /// <summary>Returns a band from 0 (newest) to 6 (oldest). Unknown times return 6.</summary>
@@ -31,6 +34,7 @@ public static class AgeBands
     }
 }
 
+/// <summary>The coarse file types the District map colours by (<see cref="FileCategories.Of"/>).</summary>
 public enum FileCategory
 {
     Document,
@@ -77,6 +81,7 @@ public static class FileCategories
         [".bin"] = FileCategory.Data, [".dat"] = FileCategory.Data, [".pdb"] = FileCategory.Data,
     };
 
+    /// <summary>The category of a file name's extension (case-insensitive); unknown or no extension is <see cref="FileCategory.Other"/>.</summary>
     public static FileCategory Of(string name) =>
         ByExtension.TryGetValue(Path.GetExtension(name), out var c) ? c : FileCategory.Other;
 }
@@ -86,6 +91,9 @@ public static class SizeFormat
 {
     private static readonly string[] Units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
+    /// <summary>
+    /// Binary units (1 KiB = 1024 B) with about three significant figures: "512 B", "1.50 KiB", "23.4 MiB", "640 GiB".
+    /// </summary>
     public static string Short(long bytes)
     {
         if (bytes < 1024)
@@ -104,5 +112,6 @@ public static class SizeFormat
         return v >= 100 ? $"{v:0} {Units[u]}" : v >= 10 ? $"{v:0.0} {Units[u]}" : $"{v:0.00} {Units[u]}";
     }
 
+    /// <summary>The exact count with digit grouping ("1,234,567 bytes"), shown beside the short form.</summary>
     public static string Exact(long bytes) => $"{bytes:N0} bytes";
 }

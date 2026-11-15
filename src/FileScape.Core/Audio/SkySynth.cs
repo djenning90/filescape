@@ -173,14 +173,61 @@ public sealed partial class SkySynth
     /// <summary>The longest a movement effect waits before it sounds (it starts at the next rendered frame; attacks are ≤ 3 ms).</summary>
     public static readonly TimeSpan ImmediateLatencyBound = TimeSpan.FromMilliseconds(10);
 
+    /// <summary>
+    /// Frames rendered per block (1.45 ms at 44.1 kHz): music is scheduled and group gains are ramped once per block, so
+    /// every gain change must be slow compared with it. The reverb's delay lines are all longer than a block (see <see cref="Reverb"/>).
+    /// </summary>
     private const int Block = 64;
+
+    // Voice groups: each deck's music, the flight arpeggio and the effects mix into their own buffers so each can be faded alone.
     private const int GroupCount = 4; // DeckA, DeckB, Flight, Sfx
     private const int GroupFlight = 2;
     private const int GroupSfx = 3;
+
+    /// <summary>Envelope level (≈ −66 dB) below which a decaying or released voice is finished and frees its slot.</summary>
     private const float EndLevel = 0.0005f;
+
+    /// <summary>Control-rate period in frames: envelopes, glides and FM index are computed every 16 frames and interpolated between.</summary>
     private const int ControlFrames = 16;
+
+    /// <summary>Peak level above which the limiter pulls the output down (linear; the soft clipper above it catches the rest).</summary>
     private const float LimiterThreshold = 0.8f;
     private const float OutputGain = 1.6f; // voice gains are designed small; this sets the overall loudness
+
+    // ---- smoothing times (T60: the time to close 99.9 % of a step, see Coef)
+    /// <summary>T60 of a stolen voice's last sample as it fades through its group's residual: short, but a ramp, so a steal never clicks.</summary>
+    private const float StolenVoiceResidualT60Seconds = 0.003f;
+
+    /// <summary>T60 of the master volume and mute ramp: fast enough to feel instant, slow enough not to click.</summary>
+    private const float MasterVolumeT60Seconds = 0.015f;
+
+    /// <summary>T60 of the limiter's release after a peak (attack is instant): longer pumps less, shorter recovers loudness sooner.</summary>
+    private const float LimiterReleaseT60Seconds = 0.2f;
+
+    /// <summary>T60 of the flight layer's level following <see cref="SetFlight"/>: the arpeggio swells in rather than switching on.</summary>
+    private const float FlightLayerT60Seconds = 0.35f;
+
+    /// <summary>
+    /// How long a new world's deck takes to come up to full level (linear in the fade, equal-power in gain). Short: the
+    /// new world starts on a downbeat and should be heard there; the old one's longer <see cref="ThemeCrossfade"/> covers the join.
+    /// </summary>
+    private const float DeckFadeInSeconds = 0.15f;
+
+    // ---- the cue duck (DuckMusic): AD-49 "Mix"
+    /// <summary>Default duck attack, seconds (time constant): quick enough that the cue is clear from its start.</summary>
+    private const float DefaultDuckAttackSeconds = 0.02f;
+
+    /// <summary>The fastest duck attack, seconds (time constant): a floor so a 4 ms landing duck is still a ramp, never a step.</summary>
+    private const float MinDuckAttackSeconds = 0.005f;
+
+    /// <summary>Time constant with which the music comes back after a cue, seconds (≈ 0.25 s recovery, AD-49).</summary>
+    private const float DuckReleaseSeconds = 0.25f;
+
+    /// <summary>The flight wind releases itself when <see cref="Fly"/> has not been called for this long, seconds (a dropped flight never drones on).</summary>
+    private const float FlyTimeoutSeconds = 0.3f;
+
+    /// <summary>The downward touchdown speed that gives the loudest, lowest landing, m/s (≈ a big drop); harder landings sound the same.</summary>
+    private const float HardestLandingMetersPerSecond = 12f;
 
     private readonly int _rate;
     private readonly float _invRate;
@@ -227,7 +274,7 @@ public sealed partial class SkySynth
     private float _duck;
     private float _duckDepth;
     private long _duckUntil;
-    private float _duckAttackSeconds = 0.02f;
+    private float _duckAttackSeconds = DefaultDuckAttackSeconds;
 
     /// <summary>Creates a synth playing <paramref name="theme"/>'s music from the first frame.</summary>
     /// <param name="seed">Chooses the melodies and noise; the same seed and calls give the same samples.</param>
@@ -240,6 +287,8 @@ public sealed partial class SkySynth
         _rate = sampleRateHz;
         _invRate = 1f / sampleRateHz;
         _seed = seed;
+        // Knuth's multiplicative hash spreads neighbouring seeds; | 1 keeps the generator state odd, hence never zero
+        // (an xorshift voice seeded with 0 would stay silent forever).
         _noiseSeed = (uint)seed * 2654435761u | 1u;
         for (var i = 0; i < MaxVoices; i++) _voices[i] = new Voice();
         for (var g = 0; g < GroupCount; g++)
@@ -249,12 +298,13 @@ public sealed partial class SkySynth
             _gS[g] = new float[Block];
         }
 
-        _residualK = Coef(0.003f);
-        _masterK = 1f - Coef(0.015f);
-        _limiterReleaseK = 1f - Coef(0.2f);
-        _flightK = 1f - Coef(0.35f);
+        // Per-frame coefficients: Coef is the decay multiplier per frame; 1 − Coef is the fraction of the gap closed per frame.
+        _residualK = Coef(StolenVoiceResidualT60Seconds);
+        _masterK = 1f - Coef(MasterVolumeT60Seconds);
+        _limiterReleaseK = 1f - Coef(LimiterReleaseT60Seconds);
+        _flightK = 1f - Coef(FlightLayerT60Seconds);
         _fadeOutStepPerFrame = 1f / (ThemeCrossfade.ToSecondsF() * sampleRateHz);
-        _fadeInStepPerFrame = 1f / (0.15f * sampleRateHz);
+        _fadeInStepPerFrame = 1f / (DeckFadeInSeconds * sampleRateHz);
         _reverb = new Reverb(sampleRateHz);
         var start = character ?? HubCharacter;
         _decks[0] = new Deck(0) { Fade = 1, FadeTarget = 1 };
@@ -370,8 +420,12 @@ public sealed partial class SkySynth
         return TimeSpan.FromTicks((long)Math.Round((grid - _frame) * TimeSpan.TicksPerSecond / (double)_rate));
     }
 
-    /// <summary>Lowers the music by <paramref name="depth"/> (0..1 of its level) for <paramref name="seconds"/>, so a cue stands clear of the drums.</summary>
-    private void DuckMusic(float depth, float seconds, float attackSeconds = 0.02f)
+    /// <summary>
+    /// Lowers the music by <paramref name="depth"/> (0..1 of its level) for <paramref name="seconds"/>, so a cue stands clear of the drums.
+    /// Overlapping ducks combine to the deepest depth, the latest end and the fastest attack, so a second cue never
+    /// lets the music back up early. The ramp itself runs in <see cref="RenderBlock"/>.
+    /// </summary>
+    private void DuckMusic(float depth, float seconds, float attackSeconds = DefaultDuckAttackSeconds)
     {
         var active = _frame < _duckUntil;
         _duckDepth = active ? MathF.Max(_duckDepth, depth) : depth;
@@ -386,7 +440,7 @@ public sealed partial class SkySynth
     {
         var k = Clamp01(intensity);
         if (k <= 0) return;
-        _stepLeft = !_stepLeft;
+        _stepLeft = !_stepLeft; // feet alternate: a little left, a little right, and a different note for each
         var pan = _stepLeft ? -0.18f : 0.18f;
         var now = _frame;
         var cut = 1000f * (0.85f + 0.4f * Rand01());
@@ -422,7 +476,7 @@ public sealed partial class SkySynth
     /// <summary>A landing thump, louder and lower for harder landings. <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown (≈ 12 m/s is a big drop).</summary>
     public void Land(float impactMetersPerSecond)
     {
-        var k = Clamp01(impactMetersPerSecond / 12f);
+        var k = Clamp01(impactMetersPerSecond / HardestLandingMetersPerSecond);
         if (!float.IsFinite(k)) return;
         var now = _frame;
         DuckMusic(0.55f + 0.2f * k, 0.3f, attackSeconds: 0.004f);
@@ -479,6 +533,8 @@ public sealed partial class SkySynth
         {
             v = StartVoice(NoteSpec.Noise(cutoff, cutoff, 0, q: 0.9f) with { Attack = 0.06f, Sustain = 1f, Decay = 0.1f, Hold = 3600f, Release = 0.35f, Gain = level, Send = 0.2f, Group = GroupSfx }, 0);
             if (v == null) return;
+            // One long-held noise voice, steered every frame: level and cutoff glide to each new target (T60 60 ms and
+            // 80 ms) so per-frame calls sound continuous rather than stepped.
             v.LevelK = 1f - Coef(0.06f);
             _flyVoice = v;
             _flyGeneration = v.Generation;
@@ -558,7 +614,9 @@ public sealed partial class SkySynth
     public void Chime(int index)
     {
         var len = CurrentScale.Length;
-        var degree = ((index % (2 * len)) + 2 * len) % (2 * len);
+        var degree = ((index % (2 * len)) + 2 * len) % (2 * len); // a true modulo, so negative indices wrap too
+        // A scattered but repeatable place: one of 7 pan positions −0.5…+0.5 (37 is coprime with 7, so neighbouring
+        // indices land in different positions).
         var pan = (((index * 37) % 7 + 7) % 7 - 3) / 6f;
         Enqueue(NextGridFrame(), NoteSpec.Bell(PitchHz(degree, 1), ratio: 1.4f, index: 2f, indexDecay: 0.4f) with { Attack = 0.003f, Decay = 1.8f, Gain = 0.06f, Pan = pan, Send = 0.45f });
     }
@@ -586,13 +644,18 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>
+    /// Renders one block of at most <see cref="Block"/> frames: schedules the music due in it, starts due notes, renders every
+    /// voice into its group, applies the group gains (deck crossfades, the cue duck, the flight layer), the reverb, the
+    /// master volume, the limiter and the soft clipper, then advances the render cursor.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void RenderBlock(Span<float> output, int n)
     {
         var blockEnd = _frame + n;
         ScheduleMusic(blockEnd);
         StartDueNotes(blockEnd);
-        if (_flyVoice != null && _frame - _lastFlyFrame > (long)(0.3f * _rate))
+        if (_flyVoice != null && _frame - _lastFlyFrame > (long)(FlyTimeoutSeconds * _rate))
         {
             if (_flyVoice.Active && _flyVoice.Generation == _flyGeneration) _flyVoice.Release();
             _flyVoice = null;
@@ -616,9 +679,12 @@ public sealed partial class SkySynth
         // The cue duck: towards its depth while a cue sounds, back up over ≈ 0.25 s after it.
         var music0 = Clamp01(MusicVolume) * (1f - _duck);
         var duckTarget = _frame < _duckUntil ? _duckDepth : 0f;
-        var duckTau = duckTarget > _duck ? MathF.Max(0.005f, _duckAttackSeconds) : 0.25f;
+        var duckTau = duckTarget > _duck ? MathF.Max(MinDuckAttackSeconds, _duckAttackSeconds) : DuckReleaseSeconds;
+        // Exponential smoothing over the block's n frames with time constant duckTau (closes 63 % per tau, whatever the block size).
         _duck += (duckTarget - _duck) * (1f - MathF.Exp(-n / (duckTau * _rate)));
         var music1 = Clamp01(MusicVolume) * (1f - _duck);
+        // Each deck's fade moves linearly (in over DeckFadeInSeconds, out over ThemeCrossfade); its gain follows the
+        // equal-power law sin(fade · π/2), so a fade sounds even rather than dipping in the middle.
         for (var d = 0; d < 2; d++)
         {
             var deck = _decks[d];
@@ -629,7 +695,7 @@ public sealed partial class SkySynth
         }
 
         g0[GroupFlight] = _flight * music0;
-        _flight += (_flightTarget - _flight) * (1f - MathF.Pow(1f - _flightK, n));
+        _flight += (_flightTarget - _flight) * (1f - MathF.Pow(1f - _flightK, n)); // n frames of the per-frame smoothing at once
         g1[GroupFlight] = _flight * music1;
         g0[GroupSfx] = 1f;
         g1[GroupSfx] = 1f;
@@ -676,6 +742,7 @@ public sealed partial class SkySynth
                 gain += dGain;
             }
 
+            // Snap an inaudible residual (−140 dB) to zero, so the per-sample residual path switches off again.
             _residualL[g] = MathF.Abs(rl) < 1e-7f ? 0 : rl;
             _residualR[g] = MathF.Abs(rr) < 1e-7f ? 0 : rr;
         }
@@ -697,6 +764,7 @@ public sealed partial class SkySynth
             var r = (mixR[i] + wetR[i]) * masterGain * OutputGain;
             if (!float.IsFinite(l) || !float.IsFinite(r))
             {
+                // A defensive mute: a NaN or infinity never reaches the speakers, and the reverb (which would recirculate it) is cleared below.
                 l = r = 0;
                 bad = true;
             }
@@ -886,7 +954,7 @@ public sealed partial class SkySynth
                         noise ^= noise << 13;
                         noise ^= noise >> 17;
                         noise ^= noise << 5;
-                        var w = (int)noise * (1f / 2147483648f);
+                        var w = (int)noise * (1f / 2147483648f); // the state as a signed int, scaled by 2^-31 to −1…1
                         var v3 = w - ic2;
                         var v1 = a1 * ic1 + a2 * v3;
                         var v2 = ic2 + a2 * ic1 + a3 * v3;
@@ -936,12 +1004,17 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- voices and scheduling
 
+    /// <summary>
+    /// Schedules a note to start at <paramref name="frame"/> (never earlier than the render cursor); a note without a group
+    /// (<c>Group == -1</c>, the <see cref="NoteSpec.Tone"/> default) is an effect.
+    /// </summary>
     private void Enqueue(long frame, NoteSpec note)
     {
         if (note.Group == -1) note = note with { Group = GroupSfx };
         _pending.Add((Math.Max(frame, _frame), note));
     }
 
+    /// <summary>Starts every pending note due before <paramref name="blockEnd"/>, each at its own offset into the block (swap-remove: order is not kept).</summary>
     private void StartDueNotes(long blockEnd)
     {
         for (var i = 0; i < _pending.Count;)
@@ -960,6 +1033,11 @@ public sealed partial class SkySynth
         }
     }
 
+    /// <summary>
+    /// Starts a note on a free voice, or steals one: music may only take the quietest music voice once it holds
+    /// <see cref="MaxMusicVoices"/>, so effects always find room; an effect takes the quietest voice of any kind. A voice
+    /// started in this same pass is never stolen. Returns null when the note is dropped.
+    /// </summary>
     private Voice? StartVoice(NoteSpec note, int delay)
     {
         var music = note.Group != GroupSfx;
@@ -1016,19 +1094,24 @@ public sealed partial class SkySynth
         return slot;
     }
 
+    /// <summary>The next value of the synth's own generator (the Numerical Recipes LCG constants), odd so it can seed a voice's xorshift.</summary>
     private uint NextSeed()
     {
         _noiseSeed = _noiseSeed * 1664525u + 1013904223u;
         return _noiseSeed | 1u;
     }
 
+    /// <summary>Uniform in [0, 1): the top 24 bits of <see cref="NextSeed"/> (an LCG's low bits are its weakest).</summary>
     private float Rand01()
     {
         var s = NextSeed();
         return (s >> 8) * (1f / 16777216f);
     }
 
-    /// <summary>The frame of a deck's sixteenth <paramref name="step"/> (counted from its origin, its first downbeat).</summary>
+    /// <summary>
+    /// The frame of a deck's sixteenth <paramref name="step"/> (counted from its origin, its first downbeat). Rounded up,
+    /// less a hair (1e-6 frames) so a product that lands a rounding error above a whole frame does not slip a frame late.
+    /// </summary>
     private static long StepFrame(Deck d, long step) => d.Origin + (long)Math.Ceiling(step * d.FramesPerSixteenth - 1e-6);
 
     /// <summary>
@@ -1058,6 +1141,10 @@ public sealed partial class SkySynth
 
     private long Frames(float seconds) => (long)Math.Round(seconds * _rate);
 
+    /// <summary>
+    /// The per-frame multiplier of an exponential decay that falls to 0.001 (−60 dB) in <paramref name="t60Seconds"/>.
+    /// As a smoothing factor, <c>1 − Coef</c> is the fraction of the remaining gap closed each frame.
+    /// </summary>
     private float Coef(float t60Seconds) => MathF.Exp(MathF.Log(0.001f) / (t60Seconds * _rate));
 
     /// <summary>The scale of the music playing now: every effect is pitched in it.</summary>
@@ -1067,6 +1154,7 @@ public sealed partial class SkySynth
 
     private static float PitchHz(Profile p, int degree, int octave) => MidiHz(p.Root + 12 * octave + ScaleNote(p.Scale, degree));
 
+    /// <summary>Semitones above the root of scale degree <paramref name="degree"/>; degrees beyond the scale (or negative) wrap into other octaves.</summary>
     private static int ScaleNote(int[] scale, int degree)
     {
         var len = scale.Length;
@@ -1074,12 +1162,17 @@ public sealed partial class SkySynth
         return scale[degree - oct * len] + 12 * oct;
     }
 
+    /// <summary>Equal temperament: MIDI 69 is A 440 Hz, and each semitone is a factor of 2^(1/12).</summary>
     private static float MidiHz(int note) => 440f * MathF.Pow(2f, (note - 69) / 12f);
 
     private static float Clamp01(float x) => float.IsFinite(x) ? Math.Clamp(x, 0f, 1f) : 0f;
 
     private static float MoveTowards(float x, float target, float step) => x < target ? MathF.Min(target, x + step) : MathF.Max(target, x - step);
 
+    /// <summary>
+    /// Leaves |x| ≤ 0.85 untouched, bends anything louder smoothly (tanh) towards 1, and caps at 0.9999: the output
+    /// contract |x| &lt; 1 holds even if the limiter has not caught a peak yet.
+    /// </summary>
     private static float SoftClip(float x)
     {
         const float knee = 0.85f;
@@ -1089,7 +1182,8 @@ public sealed partial class SkySynth
         return x < 0 ? -a : a;
     }
 
-    // A 2048-entry sine table with linear interpolation (phase in cycles, 0..1).
+    // A 2048-entry sine table with linear interpolation (phase in cycles, 0..1). One extra entry (TableSize + 1) repeats
+    // the first, so interpolation at the last index never needs a wrap.
     private const int TableSize = 2048;
     private static readonly float[] SineTable = BuildSine();
 
@@ -1102,6 +1196,7 @@ public sealed partial class SkySynth
 
     // ---------------------------------------------------------------- voice
 
+    /// <summary>A voice's oscillator: the four pitched waveforms and filtered noise (drums, wind, whooshes).</summary>
     private enum Wave
     {
         Sine,
@@ -1111,6 +1206,11 @@ public sealed partial class SkySynth
         Noise,
     }
 
+    /// <summary>
+    /// A voice's envelope stage: a linear attack to 1, an exponential decay towards the sustain level, then an exponential
+    /// release once the note's <c>Hold</c> (counted from its start) runs out or it is released. A note with zero sustain
+    /// can end in its decay.
+    /// </summary>
     private enum Stage
     {
         Attack,
@@ -1118,7 +1218,12 @@ public sealed partial class SkySynth
         Release,
     }
 
-    /// <summary>What to play. Times are seconds (Attack, Glide, Hold), Decay/Release are T60 seconds; frequencies Hz.</summary>
+    /// <summary>
+    /// What to play. Times are seconds (Attack, Glide, Hold), Decay/Release are T60 seconds; frequencies Hz. Gain is linear
+    /// amplitude (voices are designed small, see <see cref="OutputGain"/>), Pan −1 (left) … +1, Send the share into the
+    /// reverb, ToneHz a one-pole low-pass (0: none), Group the voice group (−1 until <see cref="Enqueue"/> makes it an effect).
+    /// The factories give the defaults every effect and score starts from, adjusted with <c>with</c>.
+    /// </summary>
     private readonly record struct NoteSpec
     {
         public Wave Wave { get; init; }
@@ -1153,6 +1258,12 @@ public sealed partial class SkySynth
             Tone(Wave.Noise, 0) with { CutoffHz = cutoffHz, CutoffToHz = cutoffToHz, CutoffGlide = glideSeconds, Q = q, Lowpass = lowpass };
     }
 
+    /// <summary>
+    /// One pooled voice: oscillator, envelope, glide, one-pole tone filter, pan and send, and for noise a state-variable
+    /// filter. <c>Start</c> reinitialises every field, so voices are reused without allocation; <see cref="Generation"/>
+    /// tells a caller holding a voice (the flight wind) whether it has since been stolen for another note. Filter cutoffs
+    /// are clamped to 20 Hz … 0.45 × the sample rate, just under Nyquist, where the filters stay stable.
+    /// </summary>
     private sealed class Voice
     {
         public bool Active;
@@ -1181,6 +1292,7 @@ public sealed partial class SkySynth
         public bool Lowpass;
         private int _rate;
 
+        /// <summary>Starts <paramref name="n"/> <paramref name="delay"/> frames into the next block, precomputing every per-frame and per-control-period coefficient.</summary>
         public void Start(in NoteSpec n, int delay, int rate, int generation, uint noiseSeed)
         {
             _rate = rate;
@@ -1206,10 +1318,12 @@ public sealed partial class SkySynth
             Level = n.Gain;
             LevelTarget = n.Gain;
             LevelK = 0;
+            // Equal-power pan: pan −1…+1 becomes an angle 0…π/2, and cos² + sin² = 1 keeps loudness constant across the field.
             var angle = (Math.Clamp(n.Pan, -1f, 1f) + 1f) * MathF.PI * 0.25f;
             PanL = MathF.Cos(angle);
             PanR = MathF.Sin(angle);
             Send = n.Send;
+            // The one-pole tone (low-pass) filter's coefficient for ToneHz; 0 means no filtering (coefficient 1).
             ToneA = n.ToneHz > 0 ? 1f - MathF.Exp(-2f * MathF.PI * MathF.Min(n.ToneHz, 0.45f * rate) / rate) : 1f;
             ToneState = 0;
             FmRatio = n.FmRatio;
@@ -1223,7 +1337,7 @@ public sealed partial class SkySynth
             LastL = LastR = 0;
             Ic1 = Ic2 = 0;
             Lowpass = n.Lowpass;
-            FilterK = 1f / MathF.Max(0.5f, n.Q);
+            FilterK = 1f / MathF.Max(0.5f, n.Q); // damping = 1/Q; Q is floored at 0.5 (damping at most 2: the broadest, least resonant band)
             _cutoffHz = Math.Clamp(n.CutoffHz, 20f, 0.45f * rate);
             var cutoffFrames = (int)Math.Round(n.CutoffGlide * rate);
             _cutoffRemaining = n.CutoffToHz > 0 && cutoffFrames > 0 ? cutoffFrames : 0;
@@ -1233,6 +1347,7 @@ public sealed partial class SkySynth
             if (Wave == Wave.Noise) SetCoefficients();
         }
 
+        /// <summary>Moves the voice to its release now (it then fades out by its own release time).</summary>
         public void Release()
         {
             Released = true;
@@ -1248,6 +1363,7 @@ public sealed partial class SkySynth
             ReleaseCoefControl = MathF.Pow(ReleaseCoef, ControlFrames);
         }
 
+        /// <summary>Makes the noise filter's cutoff follow <paramref name="hz"/>, closing the fraction <paramref name="k"/> of the gap per frame (replaces any glide).</summary>
         public void SetCutoffTarget(float hz, float k)
         {
             _cutoffTargetHz = Math.Clamp(hz, 20f, 0.45f * _rate);
@@ -1276,6 +1392,7 @@ public sealed partial class SkySynth
             SetCoefficients();
         }
 
+        /// <summary>The topology-preserving (trapezoidal) state-variable filter's coefficients for the current cutoff and damping.</summary>
         private void SetCoefficients()
         {
             var g = MathF.Tan(MathF.PI * MathF.Min(_cutoffHz, 0.45f * _rate) / _rate);
@@ -1284,19 +1401,34 @@ public sealed partial class SkySynth
             A3 = g * A2;
         }
 
+        /// <summary>Per-frame multiplier falling to −60 dB in <paramref name="seconds"/> (at least 2 ms, so no envelope is a click).</summary>
         private static float T60(float seconds, int rate) => MathF.Exp(MathF.Log(0.001f) / (MathF.Max(0.002f, seconds) * rate));
     }
 
     // ---------------------------------------------------------------- reverb
 
-    /// <summary>A light Freeverb-style reverb: 4 damped feedback combs and 2 allpasses per channel, mono in, stereo out.</summary>
+    /// <summary>
+    /// A light Freeverb-style reverb: 4 damped feedback combs and 2 allpasses per channel, mono in, stereo out. Half of
+    /// Freeverb's 8 combs and 4 allpasses keeps the cost low; the shared "send" bus gives every voice the same room.
+    /// </summary>
     private sealed class Reverb
     {
+        /// <summary>Comb delay lengths in frames at 44.1 kHz: four of Freeverb's eight (mutually unrelated lengths, so echoes do not reinforce).</summary>
         private static readonly int[] CombTuning = [1116, 1277, 1422, 1557];
+
+        /// <summary>Allpass delay lengths in frames at 44.1 kHz: two of Freeverb's four (they diffuse the combs' echoes).</summary>
         private static readonly int[] AllpassTuning = [556, 341];
+
+        /// <summary>Extra frames on the right channel's lines (Freeverb's stereo spread): the channels decorrelate into width.</summary>
         private const int Spread = 23;
+
+        /// <summary>Comb feedback: the room size. Higher rings longer.</summary>
         private const float Feedback = 0.83f;
+
+        /// <summary>High-frequency damping inside the combs: higher sounds darker and softer.</summary>
         private const float Damp = 0.3f;
+
+        /// <summary>Level of the send into the combs (the wet level; the voices' sends set each one's share).</summary>
         private const float InputGain = 0.06f;
 
         private readonly float[][] _combL, _combR, _apL, _apR;
@@ -1373,7 +1505,7 @@ public sealed partial class SkySynth
                 {
                     var b = line[idx];
                     var s = output[i];
-                    line[idx] = s + b * 0.5f;
+                    line[idx] = s + b * 0.5f; // Freeverb's allpass feedback
                     output[i] = b - s;
                     if (++idx == line.Length) idx = 0;
                 }

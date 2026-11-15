@@ -59,7 +59,7 @@ public sealed record Planetoid(Vector3 Center, float Radius, float SurfaceGravit
     {
         var p = ToWorld(chart);
         var up = Vector3.Normalize(p - Center);
-        const float e = 0.05f;
+        const float e = 0.05f; // a 5 cm chart step north, to read the chart's north off the sphere by finite difference
         var ahead = ToWorld(chart + new Vector2(0, -e)) - p;
         var north = Vector3.Normalize(ahead - up * Vector3.Dot(ahead, up));
         var east = Vector3.Normalize(Vector3.Cross(north, up));
@@ -70,7 +70,7 @@ public sealed record Planetoid(Vector3 Center, float Radius, float SurfaceGravit
     public Vector3 GravityAt(Vector3 p)
     {
         var d = Center - p;
-        var r = MathF.Max(d.Length(), Radius * 0.5f);
+        var r = MathF.Max(d.Length(), Radius * 0.5f); // never nearer than half the radius: no singularity at the centre
         return d / r * SurfaceGravity * (Radius * Radius) / (r * r);
     }
 }
@@ -85,6 +85,29 @@ public sealed class PlanetoidTraveller
 {
     /// <summary>Free-flight integration frequency (as the walker's).</summary>
     public const int StepsPerSecond = 120;
+
+    /// <summary>A guided transfer starts this far above the feet, metres.</summary>
+    private const float GuidedDepartureLift = 0.2f;
+
+    /// <summary>A free launch starts this far above the feet, metres, so the first flight step is not already a touchdown.</summary>
+    private const float LaunchDepartureLift = 0.2f;
+
+    /// <summary>The guided arc's control point is raised by this fraction of the straight distance (a quadratic Bézier peaks at half of it).</summary>
+    private const float GuidedArcRise = 0.42f;
+
+    // ---- guided transfer time: GuidedBaseSeconds + distance / GuidedMetresPerSecond, clamped (PLANET-03: ≤ 2.7 s)
+    private const float GuidedBaseSeconds = 0.9f;
+    private const float GuidedMetresPerSecond = 140f;
+    private const float GuidedMinSeconds = 1.4f;
+    private const float GuidedMaxSeconds = 2.6f;
+
+    // ---- LaunchSpeed's search: whole and half m/s from the slowest up, landings counted only after the departure
+    private const float LaunchSearchMinSpeed = 1f;
+    private const float LaunchSearchMaxSpeed = 80f;
+    private const float LaunchSearchSpeedStep = 0.5f;
+
+    /// <summary>A touchdown within this long of the start is the departure body still underfoot, not a landing, seconds.</summary>
+    private const float LaunchSearchDepartureSeconds = 0.2f;
 
     private readonly IReadOnlyList<Planetoid> _bodies;
     private readonly IReadOnlyList<PlaceTerrain> _terrains;
@@ -114,6 +137,7 @@ public sealed class PlanetoidTraveller
     /// <summary>0 at departure, 1 at touchdown, during a guided transfer.</summary>
     public float GuidedProgress => _arc == null ? 0 : Math.Clamp(_arcT / _arc.Duration, 0, 1);
 
+    /// <summary>A guided transfer: a quadratic Bézier From → Control → To over Duration seconds, landing at TargetChart on Target.</summary>
     private sealed record Arc(Vector3 From, Vector3 Control, Vector3 To, int Target, Vector2 TargetChart, float Duration);
 
     private Arc? _arc;
@@ -129,13 +153,13 @@ public sealed class PlanetoidTraveller
     public void LaunchGuided(int target, Vector2 targetChart, float? seconds = null)
     {
         if (Body < 0) return;
-        var from = Position + Up * 0.2f;
+        var from = Position + Up * GuidedDepartureLift;
         var to = _bodies[target].ToWorld(targetChart);
         var dist = Vector3.Distance(from, to);
         var lift = Vector3.Normalize(Up + Vector3.Normalize(to - _bodies[target].Center));
         if (!float.IsFinite(lift.X)) lift = Up;
-        var control = (from + to) / 2 + lift * dist * 0.42f;
-        var duration = seconds ?? Math.Clamp(0.9f + dist / 140f, 1.4f, 2.6f);
+        var control = (from + to) / 2 + lift * dist * GuidedArcRise;
+        var duration = seconds ?? Math.Clamp(GuidedBaseSeconds + dist / GuidedMetresPerSecond, GuidedMinSeconds, GuidedMaxSeconds);
         _arc = new Arc(from, control, to, target, targetChart, duration);
         _arcT = 0;
         FlightSeconds = 0;
@@ -143,6 +167,8 @@ public sealed class PlanetoidTraveller
         FlightVelocity = (control - from) * 2 / duration;
         Body = -1;
     }
+
+    /// <summary>Stands the traveller on <paramref name="body"/> at a chart point, walking, facing <paramref name="heading"/> (a camera yaw).</summary>
     public void PlaceOn(int body, Vector2 chart, Degrees heading)
     {
         Body = body;
@@ -218,7 +244,7 @@ public sealed class PlanetoidTraveller
     public void Launch(Vector3 velocity)
     {
         if (Body < 0) return;
-        FlightPosition = Position + Up * 0.2f;
+        FlightPosition = Position + Up * LaunchDepartureLift;
         FlightVelocity = velocity;
         Body = -1;
     }
@@ -248,7 +274,8 @@ public sealed class PlanetoidTraveller
 
     /// <summary>
     /// The launch speed (along <paramref name="direction"/>) that carries a traveller from <paramref name="from"/> to land
-    /// on body <paramref name="target"/>, found by simulating (bisection on speed). Null if none below 80 m/s.
+    /// on body <paramref name="target"/>, found by simulating each candidate speed from 1 m/s upwards in 0.5 m/s steps
+    /// (a scan, not a bisection: landing is not monotonic in speed). Null if none up to 80 m/s.
     /// </summary>
     public static float? LaunchSpeed(IReadOnlyList<Planetoid> bodies, Vector3 from, Vector3 direction, int target, float maxSeconds = 20f)
     {
@@ -266,7 +293,7 @@ public sealed class PlanetoidTraveller
                 for (var i = 0; i < bodies.Count; i++)
                 {
                     var d = p - bodies[i].Center;
-                    if (d.Length() <= bodies[i].Radius && Vector3.Dot(v, d) <= 0 && t > 0.2f) return i;
+                    if (d.Length() <= bodies[i].Radius && Vector3.Dot(v, d) <= 0 && t > LaunchSearchDepartureSeconds) return i;
                 }
             }
 
@@ -274,7 +301,7 @@ public sealed class PlanetoidTraveller
         }
 
         // Too slow falls back home; too fast flies past. The slowest speed (in 0.5 m/s steps) that arrives is the gentlest arc.
-        for (var s = 1f; s <= 80f; s += 0.5f)
+        for (var s = LaunchSearchMinSpeed; s <= LaunchSearchMaxSpeed; s += LaunchSearchSpeedStep)
         {
             if (Land(s) == target) return s;
         }

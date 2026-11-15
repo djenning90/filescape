@@ -4,13 +4,22 @@ using FileScape.Core.Model;
 
 namespace FileScape.Core.Scanning;
 
+/// <summary>
+/// The life cycle of a <see cref="ScanSession"/>, as the status line reports it. Every state after
+/// <see cref="Cancelling"/> is final (<see cref="ScanSession.IsFinished"/>), and the partial tree stays usable in all of them.
+/// </summary>
 public enum ScanState
 {
+    /// <summary>The source is producing batches (or, for an on-demand source, waiting for requests).</summary>
     Running,
 
     /// <summary>Cancellation was requested. The source is finishing its current OS call.</summary>
     Cancelling,
+
+    /// <summary>The source returned normally: everything it was asked to list is in the tree.</summary>
     Completed,
+
+    /// <summary>The source stopped after <see cref="ScanSession.Cancel"/>.</summary>
     Cancelled,
 
     /// <summary>The scan stopped at the node limit. The tree shows the part scanned so far.</summary>
@@ -66,6 +75,8 @@ public sealed class ScanContext
     /// <summary>The scan stops cleanly at this many nodes. It protects memory and is reported to the user (FS-10).</summary>
     public int MaxNodes { get; }
 
+    // Running counters, written by the source's coordinating scan thread and read by ScanSession.Snapshot from any
+    // thread (Volatile/Interlocked reads). Public fields, not properties, so they can be passed by ref.
     public int Directories;
     public int Files;
     public int Links;
@@ -81,6 +92,7 @@ public sealed class ScanContext
     /// <summary>On-demand sources: background traversal of the arrival subtree is still running.</summary>
     public volatile bool BackgroundActive;
 
+    /// <summary>Hands a batch to the consumer (empty batches are dropped). Safe from any source thread.</summary>
     public void Emit(ScanBatch batch)
     {
         if (!batch.IsEmpty)
@@ -89,6 +101,7 @@ public sealed class ScanContext
         }
     }
 
+    /// <summary>Marks the start of a blocking OS call on <paramref name="path"/>; its age is shown while it lasts (FS-09).</summary>
     public void BeginOperation(string path) => _session.BeginOperation(path);
     public void EndOperation() => _session.EndOperation();
 
@@ -103,6 +116,7 @@ public sealed class ScanContext
 /// </summary>
 public sealed class ScanSession : IDisposable
 {
+    /// <summary>The default node limit (FS-10): about a million nodes keeps the tree's memory bounded on a big disk (rationale for the exact figure not recorded).</summary>
     public const int DefaultMaxNodes = 1_000_000;
 
     private readonly IScanSource _source;
@@ -129,6 +143,7 @@ public sealed class ScanSession : IDisposable
     public ScanState State => _state;
     public bool IsFinished => _state is ScanState.Completed or ScanState.Cancelled or ScanState.LimitReached or ScanState.Failed;
 
+    /// <summary>Starts the source on its own thread. Call once.</summary>
     public void Start()
     {
         if (_thread != null)
@@ -141,6 +156,7 @@ public sealed class ScanSession : IDisposable
         {
             IsBackground = true,
             Name = "FileScape scan",
+            // Below the UI and render threads: listing a big folder must never make the world stutter.
             Priority = ThreadPriority.BelowNormal,
         };
         _thread.Start();
@@ -167,6 +183,10 @@ public sealed class ScanSession : IDisposable
     /// <summary>Waits for the source thread to stop. Intended for tests and tools, not the UI thread.</summary>
     public bool WaitForExit(TimeSpan timeout) => _thread?.Join(timeout) ?? true;
 
+    /// <summary>
+    /// A consistent-enough copy of the counters for the status line, from any thread. The current operation's age is
+    /// measured now; the cancel acknowledgement time is reported once the source has actually stopped.
+    /// </summary>
     public ScanProgress Snapshot()
     {
         var ctx = _context;

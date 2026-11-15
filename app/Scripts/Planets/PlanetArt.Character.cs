@@ -10,7 +10,22 @@ namespace FileScape.App.Planets;
 /// </summary>
 public static partial class PlanetArt
 {
-    /// <summary>The colours of a character: the tint over the content palette's sky, light and accent.</summary>
+    /// <summary>
+    /// The colours of a character: the tint over the content palette's sky, light and accent, and how strongly each of the
+    /// sky shader's optional details shows (0 = off; the strengths are shader parameters of planet_sky.gdshader, about 0–1).
+    /// </summary>
+    /// <param name="SkyTint">Colour the palette's sky top is pulled towards.</param>
+    /// <param name="SkyTintAmount">How far (0–1) the sky is pulled towards <paramref name="SkyTint"/>; 0.6 of it also tints the ambient light.</param>
+    /// <param name="Sun">The character's light colour (it colours the dawn glow).</param>
+    /// <param name="Accent">The character's signature colour (nebula tint, commit graph).</param>
+    /// <param name="AuroraA">The aurora's first colour.</param>
+    /// <param name="AuroraB">The aurora's second colour.</param>
+    /// <param name="Dawn">Strength of the dawn glow on the horizon (the hub).</param>
+    /// <param name="Aurora">Strength of the aurora curtains (the roots, deep bands).</param>
+    /// <param name="Lattice">Strength of the window-pane lattice (the Windows volume).</param>
+    /// <param name="Scan">Strength of the terminal scanlines (a WSL distribution).</param>
+    /// <param name="Graph">Strength of the commit-graph constellation (a repository, faintly inside one).</param>
+    /// <param name="Stars">Multiplier on the star brightness (1 = the palette's own).</param>
     public sealed record CharacterLook(Color SkyTint, float SkyTintAmount, Color Sun, Color Accent, Color AuroraA, Color AuroraB, float Dawn, float Aurora, float Lattice, float Scan, float Graph, float Stars);
 
     private static readonly Color[] BandColors =
@@ -24,22 +39,38 @@ public static partial class PlanetArt
     /// <summary>A depth band's colour (1–4), the colour of its waymarker and its sky accent.</summary>
     public static Color BandColor(int band) => BandColors[Math.Clamp(band, 1, 4) - 1];
 
+    /// <summary>
+    /// The teal of a project (AD-50): the repository's sky accent, the workbench's inlay ring, commit beads and screen line,
+    /// and the bead on a waymarker inside a project, so "you are in a repository" reads the same everywhere.
+    /// </summary>
+    private static readonly Color RepositoryTeal = C(0.4f, 1f, 0.75f);
+
+    /// <summary>
+    /// A world character's look: the four special kinds (hub, Windows volume, WSL distribution, repository) are authored
+    /// by hand; ordinary folders get their depth band's look (<see cref="BandLook"/>). Rationale for the individual values not recorded.
+    /// </summary>
     public static CharacterLook Look(WorldCharacter c) => c.Kind switch
     {
         WorldKind.Hub => new(C(0.95f, 0.62f, 0.5f), 0.18f, C(1f, 0.86f, 0.7f), C(1f, 0.75f, 0.45f), C(1f, 0.7f, 0.45f), C(1f, 0.5f, 0.6f), Dawn: 0.75f, Aurora: 0, Lattice: 0, Scan: 0, Graph: 0, Stars: 1f),
         WorldKind.WindowsRoot => new(C(0.25f, 0.5f, 0.95f), 0.32f, C(0.85f, 0.93f, 1f), C(0.45f, 0.8f, 1f), C(0.35f, 0.75f, 1f), C(0.55f, 0.5f, 1f), Dawn: 0, Aurora: 0.8f, Lattice: 0.9f, Scan: 0, Graph: 0, Stars: 1.1f),
         WorldKind.WslRoot => new(C(0.55f, 0.18f, 0.32f), 0.32f, C(1f, 0.84f, 0.66f), C(1f, 0.58f, 0.25f), C(1f, 0.55f, 0.2f), C(0.85f, 0.3f, 0.55f), Dawn: 0, Aurora: 0.8f, Lattice: 0, Scan: 1f, Graph: 0, Stars: 1.1f),
-        WorldKind.Repository => new(C(0.1f, 0.42f, 0.4f), 0.3f, C(0.9f, 1f, 0.92f), C(0.4f, 1f, 0.75f), C(0.35f, 1f, 0.75f), C(0.4f, 0.6f, 1f), Dawn: 0, Aurora: 0.15f, Lattice: 0, Scan: 0, Graph: 1f, Stars: 1.2f),
+        WorldKind.Repository => new(C(0.1f, 0.42f, 0.4f), 0.3f, C(0.9f, 1f, 0.92f), RepositoryTeal, C(0.35f, 1f, 0.75f), C(0.4f, 0.6f, 1f), Dawn: 0, Aurora: 0.15f, Lattice: 0, Scan: 0, Graph: 1f, Stars: 1.2f),
         _ => BandLook(c.Band, c.InsideRepository),
     };
 
+    /// <summary>
+    /// An ordinary folder's look by depth band (1–4): deeper means a darker, richer sky, more stars and a stronger glow
+    /// of the band's colour, so a long journey down visibly changes the sky.
+    /// </summary>
     private static CharacterLook BandLook(int band, bool inRepo)
     {
         var col = BandColor(band);
         // Deeper: a darker, richer sky with more stars and a stronger glow of the band's colour.
         var tint = band switch { 1 => C(0.3f, 0.6f, 0.75f), 2 => C(0.75f, 0.42f, 0.3f), 3 => C(0.3f, 0.18f, 0.5f), _ => C(0.02f, 0.08f, 0.22f) };
-        var amount = 0.12f + 0.07f * band;
+        var amount = 0.12f + 0.07f * band; // sky tint 0.19 at band 1 rising to 0.40 at band 4
         var sun = band switch { 1 => C(1f, 0.97f, 0.9f), 2 => C(1f, 0.85f, 0.66f), 3 => C(0.88f, 0.82f, 1f), _ => C(0.7f, 0.9f, 1f) };
+        // Band 2 (the trails) has a faint dawn; the aurora appears from band 3 (0.18) and doubles at band 4 (0.36); stars
+        // brighten 1.08× → 1.62×; inside a project the commit graph shows faintly (0.35 of a repository's).
         return new(tint, amount, sun, col, col, col.Lerp(C(0.8f, 0.5f, 1f), 0.5f), Dawn: band == 2 ? 0.35f : 0, Aurora: band >= 3 ? 0.18f * (band - 2) : 0, Lattice: 0, Scan: 0,
             Graph: inRepo ? 0.35f : 0, Stars: 0.9f + 0.18f * band);
     }
@@ -53,7 +84,7 @@ public static partial class PlanetArt
         m.SetShaderParameter("top_color", top);
         m.SetShaderParameter("bottom_color", top.Darkened(0.4f));
         m.SetShaderParameter("nebula_a", p.Accent.Lerp(C(0.85f, 0.35f, 0.8f), 0.6f).Lerp(look.Accent, 0.35f));
-        m.SetShaderParameter("star_brightness", 1.8f * look.Stars);
+        m.SetShaderParameter("star_brightness", 1.8f * look.Stars); // 1.8: the base brightness every character scales
         m.SetShaderParameter("dawn_strength", look.Dawn);
         m.SetShaderParameter("dawn_color", look.Sun.Lerp(C(1f, 0.55f, 0.35f), 0.5f));
         m.SetShaderParameter("aurora_strength", look.Aurora);
@@ -66,6 +97,11 @@ public static partial class PlanetArt
         return m;
     }
 
+    /// <summary>
+    /// The environment for a content palette in a character: <see cref="SkyEnvironment(PlanetPalette)"/> with the
+    /// character's sky, and the ambient light nudged towards a lightened sky tint (at 0.6 of the sky's tint amount, so the
+    /// ground takes on the character's mood more gently than the sky does).
+    /// </summary>
     public static Godot.Environment SkyEnvironment(PlanetPalette p, WorldCharacter c)
     {
         var env = SkyEnvironment(p);
@@ -78,15 +114,17 @@ public static partial class PlanetArt
     // ------------------------------------------------------------------ props
 
     /// <summary>
-    /// The repository workbench (replaces the overlook on a repository world; same footprint, radius 2.2 m, top at
-    /// <paramref name="top"/>): a planked deck on a stone drum, a bench with a vise and tools, a lamp, a little glowing
-    /// screen, and a brass "branch tree" with commit beads — the project's history as a sculpture.
+    /// The repository workbench (replaces the overlook on a repository world; same footprint, radius
+    /// <see cref="OverlookRadiusMetres"/>, top at <paramref name="top"/> metres, so the walker's platform is unchanged): a
+    /// planked deck on a stone drum, a bench with a vise and tools at the far (−Z) side, a lamp, a little glowing screen,
+    /// and a brass "branch tree" with commit beads — the project's history as a sculpture. Base at y = 0 (the drum sinks
+    /// 0.3 m below it).
     /// </summary>
     public static ArrayMesh Workbench(PlanetPalette palette, float top)
     {
-        var accent = C(0.4f, 1f, 0.75f);
+        var accent = RepositoryTeal;
         var h = top;
-        const float r = 2.2f;
+        const float r = OverlookRadiusMetres;
         var b = new MeshBuilder();
         b.Lathe([new(0, -0.3f), new(r * 1.1f, -0.3f), new(r * 1.1f, 0.15f), new(r * 0.98f, 0.4f), new(r * 0.95f, h - 0.3f), new(r + 0.05f, h - 0.22f), new(r + 0.05f, h - 0.02f), new(r, h), new(r, h), new(0, h)],
             (_, i) => i < 3 ? StoneDark : i < 5 ? Stone : i < 7 ? Wood : WoodLight, 28);
@@ -126,8 +164,9 @@ public static partial class PlanetArt
     }
 
     /// <summary>
-    /// The Windows volume's gateway (≈ 7 m at full size; stands beside the arrival at 0.55): a tall arch framing four panes of glass,
-    /// lit from within — a gateway into the volume, in the planets' rounded style.
+    /// The Windows volume's gateway (≈ 7 m at full size; stands beside the arrival at 0.55, ≈ 3.9 m): a tall arch framing four
+    /// panes of glass, lit from within — a gateway into the volume, in the planets' rounded style. Base at y = 0, the panes
+    /// in the XY plane (it reads the same from either side).
     /// </summary>
     public static ArrayMesh PaneGateway(PlanetPalette palette)
     {
@@ -159,8 +198,9 @@ public static partial class PlanetArt
     }
 
     /// <summary>
-    /// The WSL distribution's terminal monolith (≈ 6 m): a dark rounded slab with a warm phosphor prompt — a chevron and a
-    /// cursor block — and a ring of amber lamps at its foot. The cursor blinks (see <see cref="TerminalCursor"/>).
+    /// The WSL distribution's terminal monolith (≈ 6 m; stands at 0.55, ≈ 3.5 m): a dark rounded slab with a warm phosphor
+    /// prompt — a chevron and a cursor block — on its +Z face, and a ring of amber lamps at its foot. Base at y = 0. The
+    /// cursor blinks (see <see cref="TerminalCursor"/>).
     /// </summary>
     public static ArrayMesh TerminalMonolith(PlanetPalette palette)
     {
@@ -183,7 +223,10 @@ public static partial class PlanetArt
         return Commit(b);
     }
 
-    /// <summary>The blinking cursor block of the terminal monolith, a separate mesh so it can blink; local to the monolith.</summary>
+    /// <summary>
+    /// The blinking cursor block of the terminal monolith, a separate mesh so it can blink (<see cref="PlanetVisual"/> toggles
+    /// it); the position is in the monolith's local frame, just in front of the screen after the chevron.
+    /// </summary>
     public static (ArrayMesh Mesh, Vector3 Position) TerminalCursor()
     {
         var b = new MeshBuilder();
@@ -202,7 +245,7 @@ public static partial class PlanetArt
         b.Lathe([new(0, -0.2f), new(0.55f, -0.2f), new(0.6f, 0.15f), new(0.42f, 0.32f), new(0, 0.34f)], (_, _) => StoneDark, 14);
         b.Cylinder(new Vector3(0, 0.3f, 0), new Vector3(0, 1.75f, 0), 0.13f, 0.1f, Wood, 8);
         for (var k = 0; k < Math.Clamp(band, 1, 4); k++) b.Torus(T(new Vector3(0, 0.62f + 0.28f * k, 0)), 0.2f, 0.045f, Glowing(col, 0.9f), 18, 5);
-        b.Ellipsoid(new Vector3(0, 1.85f, 0), new Vector3(0.17f, 0.17f, 0.17f), inRepository ? Glowing(C(0.4f, 1f, 0.75f)) : Glowing(col.Lightened(0.3f), 0.8f), 10, 6);
+        b.Ellipsoid(new Vector3(0, 1.85f, 0), new Vector3(0.17f, 0.17f, 0.17f), inRepository ? Glowing(RepositoryTeal) : Glowing(col.Lightened(0.3f), 0.8f), 10, 6);
         return Commit(b);
     }
 }

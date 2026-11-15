@@ -21,6 +21,8 @@ public partial class PlanetGallery : Node3D
     private Camera3D _camera = null!;
     private AvatarRig _avatar = null!;
     private PlanetShape _showcase = null!;
+
+    /// <summary>The showcase planet's radius, metres (the satellite worlds are 9–13 m).</summary>
     private const float ShowcaseRadius = 34f;
     private LauncherArt _launcherArt = null!;
     private Node3D _launcher = null!;
@@ -29,9 +31,15 @@ public partial class PlanetGallery : Node3D
     private float _clockSeconds;
     private int _shot = -1;
     private float _shotSeconds;
-    private Action? _cameraFollow;
+    private Action? _cameraFollow; // re-aims the camera every frame for shots that follow the traveller
 
-    // Avatar demo
+    /// <summary>Interactive mode: each camera shot is held this long, seconds, before the next.</summary>
+    private const float ShotHoldSeconds = 5f;
+
+    /// <summary>Interactive mode: after running this long, seconds, the traveller tries a trick (alternately a jump and a wind-up, by the clock in steps of the same length).</summary>
+    private const float RunBeforeTrickSeconds = 2.5f;
+
+    /// <summary>What the traveller is demonstrating: running a circle, a jump with an air jump, winding up on the launcher, the flight, or standing still for a portrait.</summary>
     private enum Demo { Run, Jump, WindUp, Fly, Idle }
     private Demo _mode = Demo.Run;
     private float _modeSeconds;
@@ -39,9 +47,25 @@ public partial class PlanetGallery : Node3D
     private bool _airJumped;
     private float _height, _verticalSpeed;
     private Vector3 _flyFrom, _flyCtrl, _flyTo;
+    /// <summary>The traveller runs a 2.6 m circle at 5.5 m/s (a lap ≈ 3 s), between the rows and the launcher.</summary>
     private const float RunSpeedMetersPerSecond = 5.5f, RunRadiusMetres = 2.6f;
+
+    /// <summary>Map positions on the showcase (x east, z south, metres from the pole): the run circle's centre and the launcher.</summary>
     private static readonly Vector2 RunCentre = new(-0.5f, -5.2f);
+
     private static readonly Vector2 LauncherAt = new(-6.5f, -9f);
+
+    /// <summary>The demo jump: take-off and air-jump speeds (m/s), the vertical speed below which the air jump fires, and gravity (m/s², the walker's 17).</summary>
+    private const float JumpTakeOffMetresPerSecond = 6.5f, AirJumpMetresPerSecond = 5.5f, AirJumpBelowMetresPerSecond = 1.0f, GravityMetresPerSecondSquared = 17f;
+
+    /// <summary>The wind-up lasts 0.9 s (petals close to 40 % open), then the flight starts after 1 s; the flight takes 2 s.</summary>
+    private const float WindUpSeconds = 0.9f, WindUpHoldSeconds = 1.0f, FlightSeconds = 2.0f;
+
+    /// <summary>The flight: an ease-out power on its progress, its length towards the third satellite (metres) and how high its arc bulges (metres).</summary>
+    private const float FlightEasePower = 1.6f, FlightLengthMetres = 42f, FlightArcLiftMetres = 16f;
+
+    /// <summary>The traveller's feet on the launcher, metres above the ground (the pad's walkable top).</summary>
+    private const float PadTopMetres = 0.32f;
 
     public PlanetGallery(bool automate, string outDir)
     {
@@ -73,6 +97,10 @@ public partial class PlanetGallery : Node3D
 
     // ------------------------------------------------------------------ the showcase planet
 
+    /// <summary>
+    /// The direction from the showcase's centre to map point (x east, z south, metres): an azimuthal-equidistant map from
+    /// the pole, so a map distance is the distance walked along the ground.
+    /// </summary>
     private Vector3 ShowcaseDir(float x, float z)
     {
         var d = Mathf.Sqrt(x * x + z * z);
@@ -99,12 +127,14 @@ public partial class PlanetGallery : Node3D
         return new Basis(up, -Mathf.DegToRad(yawDegrees)) * new Basis(x, up, z);
     }
 
+    /// <summary>A prop's transform standing on the showcase at map (x, z), turned by a place angle, raised by <paramref name="height"/> metres.</summary>
     private Transform3D PlaceOnShowcase(float x, float z, float yawDegrees = 0, float height = 0)
     {
         var d = ShowcaseDir(x, z);
         return new Transform3D(Frame(d, yawDegrees), OnShowcase(x, z, height));
     }
 
+    /// <summary>The Hearth showcase: every file object in a row (fronts north), every pile behind, the launcher, overlook, stepping stones, landmark and seeded scenery clear of the display.</summary>
     private void BuildShowcase(PlanetPalette p)
     {
         var flats = new List<(NVector3, float)> { (NVector3.UnitY, 15f), (N(new Vector3(0.7f, 0.2f, 0.7f).Normalized()), 4f), (N(new Vector3(-0.6f, -0.3f, 0.75f).Normalized()), 4f) };
@@ -156,6 +186,7 @@ public partial class PlanetGallery : Node3D
             AddChild(new MeshInstance3D { Mesh = PlanetArt.Decoration(DecorationKind.Lamp, PlanetTheme.Hearth, 0), Transform = PlaceOnShowcase(x, 1.5f) });
     }
 
+    /// <summary>Places a file object or pile with a halo on its lantern; a face shows a stand-in picture (the video still on a wide face such as Video's, the landscape otherwise).</summary>
     private void Spawn(FileArt art, Transform3D at, Dictionary<FileCategory, Texture2D>? thumbs, Node3D? parent = null)
     {
         var mi = new MeshInstance3D { Mesh = art.Mesh, Transform = at };
@@ -214,6 +245,10 @@ public partial class PlanetGallery : Node3D
 
     // ------------------------------------------------------------------ satellites (one per other theme)
 
+    /// <summary>
+    /// One small planet per other theme, in a loose ring round the showcase (36° apart, alternately 78 and 100 m out, in
+    /// three height tiers), each tilted ≈ 39° from vertical towards the showcase, so its pole (with the landmark) leans towards the cameras.
+    /// </summary>
     private void BuildSatellites()
     {
         var themes = Enum.GetValues<PlanetTheme>().Where(t => t != PlanetTheme.Hearth).ToArray();
@@ -315,6 +350,7 @@ public partial class PlanetGallery : Node3D
 
     // ------------------------------------------------------------------ the avatar demo
 
+    /// <summary>Starts a demo: resets the jump state; a jump takes off at once; a flight plans its quadratic Bézier from the pad towards the third satellite.</summary>
     private void SetMode(Demo mode)
     {
         _mode = mode;
@@ -322,16 +358,21 @@ public partial class PlanetGallery : Node3D
         _airJumped = false;
         _height = 0;
         _verticalSpeed = 0;
-        if (mode == Demo.Jump) _verticalSpeed = 6.5f;
+        if (mode == Demo.Jump) _verticalSpeed = JumpTakeOffMetresPerSecond;
         if (mode == Demo.Fly)
         {
-            _flyFrom = OnShowcase(LauncherAt.X, LauncherAt.Y, 0.32f);
+            _flyFrom = OnShowcase(LauncherAt.X, LauncherAt.Y, PadTopMetres);
             var target = _satellites[2].Centre;
-            _flyTo = _flyFrom + (target - _flyFrom).Normalized() * 42f;
-            _flyCtrl = (_flyFrom + _flyTo) / 2 + _flyFrom.Normalized() * 16f;
+            _flyTo = _flyFrom + (target - _flyFrom).Normalized() * FlightLengthMetres;
+            _flyCtrl = (_flyFrom + _flyTo) / 2 + _flyFrom.Normalized() * FlightArcLiftMetres;
         }
     }
 
+    /// <summary>
+    /// Poses and animates the traveller for the current demo (a scripted stand-in for the walker: no physics, so the shots
+    /// are repeatable). Interactively a wind-up leads to a flight and a flight back to running; automated, the script
+    /// switches modes itself.
+    /// </summary>
     private void DriveAvatar(float dt)
     {
         _modeSeconds += dt;
@@ -357,13 +398,13 @@ public partial class PlanetGallery : Node3D
                 break;
             case Demo.Jump:
             {
-                const float g = 17f;
+                const float g = GravityMetresPerSecondSquared;
                 var jumped = _modeSeconds <= dt;
                 var airJump = false;
-                if (!_airJumped && _verticalSpeed < 1.0f)
+                if (!_airJumped && _verticalSpeed < AirJumpBelowMetresPerSecond) // near the apex: the air jump (with its twirl)
                 {
                     _airJumped = true;
-                    _verticalSpeed = 5.5f;
+                    _verticalSpeed = AirJumpMetresPerSecond;
                     airJump = true;
                 }
 
@@ -384,27 +425,27 @@ public partial class PlanetGallery : Node3D
 
             case Demo.WindUp:
             {
-                pos = OnShowcase(LauncherAt.X, LauncherAt.Y, 0.32f);
+                pos = OnShowcase(LauncherAt.X, LauncherAt.Y, PadTopMetres);
                 up = pos.Normalized();
                 facing = _satellites[2].Centre - pos;
-                var w = Mathf.Clamp(_modeSeconds / 0.9f, 0, 1);
+                var w = Mathf.Clamp(_modeSeconds / WindUpSeconds, 0, 1);
                 _launcherArt.SetOpen(_launcher, 1 - 0.6f * w);
                 state = new AvatarState(0, true, 0, WindUp01: w);
-                if (_modeSeconds > 1.0f && !_automate) SetMode(Demo.Fly);
+                if (_modeSeconds > WindUpHoldSeconds && !_automate) SetMode(Demo.Fly);
                 break;
             }
 
             case Demo.Fly:
             {
-                var t = Mathf.Clamp(_modeSeconds / 2.0f, 0, 1);
-                var s = 1 - Mathf.Pow(1 - t, 1.6f);
+                var t = Mathf.Clamp(_modeSeconds / FlightSeconds, 0, 1);
+                var s = 1 - Mathf.Pow(1 - t, FlightEasePower); // fast off the pad, slowing towards the end
                 Vector3 B(float u) => _flyFrom.Lerp(_flyCtrl, u).Lerp(_flyCtrl.Lerp(_flyTo, u), u);
                 pos = B(s);
                 var tangent = (B(Mathf.Min(s + 0.01f, 1)) - B(Mathf.Max(s - 0.01f, 0))).Normalized();
                 var planetUp = pos.Normalized();
                 up = (planetUp - tangent * planetUp.Dot(tangent)).Normalized();
                 facing = tangent;
-                _launcherArt.SetOpen(_launcher, Mathf.Min(1, 0.4f + t * 2));
+                _launcherArt.SetOpen(_launcher, Mathf.Min(1, 0.4f + t * 2)); // the petals spring back open over the first 30 % of the flight
                 state = new AvatarState(0, false, 0, Flying: true);
                 if (t >= 1 && !_automate) SetMode(Demo.Run);
                 break;
@@ -429,8 +470,8 @@ public partial class PlanetGallery : Node3D
         _cameraFollow?.Invoke();
         if (_automate) return;
         _shotSeconds += dt;
-        if (_shotSeconds > 5f) NextShot();
-        if (_mode == Demo.Run && _modeSeconds > 2.5f) SetMode(((int)(_clockSeconds / 2.5f)) % 2 == 0 ? Demo.Jump : Demo.WindUp);
+        if (_shotSeconds > ShotHoldSeconds) NextShot();
+        if (_mode == Demo.Run && _modeSeconds > RunBeforeTrickSeconds) SetMode(((int)(_clockSeconds / RunBeforeTrickSeconds)) % 2 == 0 ? Demo.Jump : Demo.WindUp);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -457,6 +498,7 @@ public partial class PlanetGallery : Node3D
         _camera.LookAtFromPosition(from, to, up ?? from.Normalized());
     }
 
+    /// <summary>A shot that follows the traveller from behind, above and to the side (metres in its frame), looking at its chest (0.8 m up).</summary>
     private void Chase(float behindMetres, float aboveMetres, float sideMetres = 0)
     {
         _cameraFollow = () =>
@@ -470,6 +512,7 @@ public partial class PlanetGallery : Node3D
         _cameraFollow();
     }
 
+    /// <summary>The named camera shots, in order (their names are the screenshot file names).</summary>
     private void DefineShots()
     {
         _shots.Add(("01-wide", () => Look(new Vector3(40, 150, 205), new Vector3(0, 40, 0), Vector3.Up)));
@@ -494,9 +537,10 @@ public partial class PlanetGallery : Node3D
 
     // ------------------------------------------------------------------ automation (--automate=planet-gallery)
 
+    /// <summary>The automated run: every shot, the trick shots, two contact sheets, then the log and exit code 0.</summary>
     private async Task Script()
     {
-        await Frames(45);
+        await Frames(45); // settle before the first shot (count chosen by eye; rationale not recorded)
         foreach (var (name, frame) in _shots)
         {
             _cameraFollow = null;
@@ -549,6 +593,7 @@ public partial class PlanetGallery : Node3D
         GetTree().Quit(0);
     }
 
+    /// <summary>A contact sheet: each satellite framed by <paramref name="frame"/>, captured and shrunk into a 4-column grid of 400 × 225 tiles.</summary>
     private async Task Sheet(string name, Action<(PlanetTheme Theme, Vector3 Centre, Basis Basis, float Radius)> frame)
     {
         const int cols = 4, tileW = 400, tileH = 225;
@@ -593,6 +638,7 @@ public partial class PlanetGallery : Node3D
         _log.AppendLine(line);
     }
 
+    /// <summary>Logs the triangle count of every piece of art (to watch the polygon budget), and how many normals the builder had to repair.</summary>
     private void LogTriangles()
     {
         Log($"triangles: showcase planet (r {ShowcaseRadius} m, subdivisions 5) {PlanetArt.Triangles(PlanetArt.PlanetMesh(_showcase, PlanetArt.Palette(PlanetTheme.Hearth), 5))}");

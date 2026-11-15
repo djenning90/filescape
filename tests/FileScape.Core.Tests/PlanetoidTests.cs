@@ -48,7 +48,7 @@ public class PlanetoidTests
         t.Body.Should().Be(1, "it lands on the target world");
         t.Walker.Grounded.Should().BeTrue();
         new Vector2(t.Walker.Feet.X, t.Walker.Feet.Z).Should().Be(new Vector2(0, -18), "exactly where it was aimed");
-        t.FlightSeconds.Should().BeLessThan(2.7f);
+        t.FlightSeconds.Should().BeLessThan(2.7f); // PLANET-03's acceptance: ≤ 2.7 s and under half the ballistic arc.
         t.FlightSeconds.Should().BeLessThan(before / 2, $"before: {before:0.0} s ballistic");
         minClearance.Should().BeGreaterThan(-0.3f, "the arc does not pass through either world");
     }

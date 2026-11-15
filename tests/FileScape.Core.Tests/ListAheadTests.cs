@@ -168,6 +168,11 @@ public sealed class ListAheadTests : IDisposable
         h.Pump(() => h.Idle);
     }
 
+    /// <summary>
+    /// A WorldExplorer behind a real ScanSession, pumped on the test thread as the app pumps it on its main thread.
+    /// Records each node's state when it first appeared (<see cref="FirstState"/>), so a test can tell a folder that
+    /// started unlisted from one that was listed before it was seen.
+    /// </summary>
     private sealed class Harness : IDisposable
     {
         public readonly WorldExplorer Explorer;

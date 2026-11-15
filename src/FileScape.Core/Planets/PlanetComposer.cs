@@ -8,7 +8,13 @@ namespace FileScape.Core.Planets;
 
 /// <summary>
 /// Parameters of a planet's composition (planet frame, metres; angles named "…Deg" are degrees). Defaults follow the
-/// Planets brief: launchers ≤ 10, belt moons ≤ 48, individual items ≤ 64.
+/// Planets brief as revised by the playtests: launchers ≤ 28 on rings (PLANET-19, AD-44; the first brief had 10), belt
+/// moons ≤ 48, individual items ≤ 64 (PLANET-16).
+/// <para>
+/// Several values are tied to the walker (<see cref="SphereWalkParams"/>, <see cref="Movement.JumpParams"/>): pads and
+/// stones must stay below its 0.45 m step height, gaps wider than its 0.7 m body, and the overlook within a jump and
+/// boost. <see cref="PlanetComposer.Compose"/> checks the stone rise; the rest is held by the composer tests.
+/// </para>
 /// </summary>
 public sealed record PlanetParams
 {
@@ -50,30 +56,43 @@ public sealed record PlanetParams
     /// <summary>Flat, item-free radius of the arrival meadow, metres.</summary>
     public float ArrivalRadius { get; init; } = 4f;
 
+    /// <summary>A launcher pad's radius along the surface, metres.</summary>
     public float PadRadius { get; init; } = 1.3f;
+
+    /// <summary>A launcher pad's height, metres: well under the walker's step height, so you walk onto it.</summary>
     public float PadTop { get; init; } = 0.2f;
 
     /// <summary>Radius around a launcher kept free of items and solid scenery, metres (covers the return stand point).</summary>
     public float LauncherClearRadius { get; init; } = 3.3f;
 
-    /// <summary>How far behind the arrival (along +Z) the way back stands, metres.</summary>
+    /// <summary>
+    /// How far behind the arrival (along +Z) the way back stood, metres. No longer read by the composer: since AD-44 the
+    /// way back is on the first launcher ring at 6 o'clock (<see cref="RingFirst"/> out).
+    /// </summary>
     public float ParentBehind { get; init; } = 5.5f;
 
     /// <summary>The landmark's angle from the arrival pole straight ahead, degrees.</summary>
     public float LandmarkPolarDeg { get; init; } = 40f;
 
+    /// <summary>The landmark's footprint radius, metres.</summary>
     public float LandmarkRadius { get; init; } = 1.6f;
+
+    /// <summary>The landmark's height, metres: tall enough to show over the horizon from the arrival.</summary>
     public float LandmarkTop { get; init; } = 10f;
 
     /// <summary>The gap between the landmark and the overlook platform, metres.</summary>
     public float LandmarkOverlookGap { get; init; } = 1.5f;
 
+    /// <summary>The overlook platform's height, metres: above a single jump, below a jump and boost (a jump target).</summary>
     public float OverlookTop { get; init; } = 2.4f;
+
+    /// <summary>The overlook platform's radius, metres.</summary>
     public float OverlookRadius { get; init; } = 2.2f;
 
     /// <summary>Stepping stones up to the overlook (6–8); they rise evenly from the ground to the platform.</summary>
     public int StepCount { get; init; } = 7;
 
+    /// <summary>A stepping stone's radius, metres.</summary>
     public float StepRadius { get; init; } = 0.6f;
 
     /// <summary>The largest rise between stones (the walker's step height is 0.45 m).</summary>
@@ -88,13 +107,19 @@ public sealed record PlanetParams
     /// <summary>A child's body hangs this far above the ground over its launcher (range), metres.</summary>
     public float SkyHeightMin { get; init; } = 18f;
 
+    /// <summary>The top of that range, metres (each child's height is picked from its name and id, so it never changes).</summary>
     public float SkyHeightMax { get; init; } = 30f;
+
+    /// <summary>The smallest child world in the sky, metres (an empty folder).</summary>
     public float SkyRadiusMin { get; init; } = 3f;
+
+    /// <summary>The largest child world in the sky, metres (reached at 10,000 entries below it; log scale).</summary>
     public float SkyRadiusMax { get; init; } = 8f;
 
     /// <summary>The belt's radius as a multiple of the planet's (kept outside the launcher bodies).</summary>
     public float BeltRadiusFactor { get; init; } = 2.3f;
 
+    /// <summary>The belt's tilt from the planet's equator, degrees (its turn about the pole comes from the folder's name).</summary>
     public float BeltTiltDeg { get; init; } = 22f;
 
     /// <summary>What the platform and the user say about places, for ranking launchers (PROM-01).</summary>
@@ -102,23 +127,44 @@ public sealed record PlanetParams
 }
 
 /// <summary>
-/// Composes one folder as a small walkable planet (the Planets experience; see <see cref="PlanetComposition"/>). The
-/// result depends only on the folder, its direct entries, their own direct entries (for themes and sizes) and the
+/// Composes one folder as a small walkable planet (the Planets experience, PLANET-10; see <see cref="PlanetComposition"/>).
+/// The result depends only on the folder, its direct entries, their own direct entries (for themes and sizes) and the
 /// parent, so it is deterministic and cheap; it never asks for a listing.
+/// <para>
+/// <see cref="Compose"/> works outwards from the arrival pole (+Y): rank the child folders into launchers, belt moons and
+/// omitted ones; share the item budget between the file groves; size the planet from what it shows; lay the launcher
+/// rings round the arrival (AD-44); put the landmark and overlook beyond them; hang each child's world above its pad;
+/// then keep routes, pads and the meadow clear while the groves grow and the scenery is scattered (the <c>Free</c>
+/// check). The app (<c>PlanetVisual</c>, <c>PlanetWorld</c>) only draws and walks the result.
+/// </para>
+/// <para>
+/// Everything "random" comes from hashes of the folder's name and the children's names and ids (<see cref="NameSeed"/>,
+/// <see cref="Frac"/>), so a folder is the same planet on every visit and on every machine. Changing a constant here
+/// changes every planet; the composer tests check the invariants (reachability, gaps, budgets), not the exact picture,
+/// and the behaviour baseline catches any unintended change.
+/// </para>
 /// </summary>
 public static class PlanetComposer
 {
     /// <summary>How far beyond its pad's edge one stands when coming back from a launcher's target, metres.</summary>
     public const float ReturnStandOff = 1.2f;
 
+    /// <summary>A grove's pile has this item scale: larger than a typical file (scale 1), so it stands out in its grove.</summary>
     private const float PileScale = 1.3f;
+
+    /// <summary>The flattened radius round each grove's centre, metres (its sign stands there; scenery keeps off it).</summary>
     private const float GroveFlatRadius = 1.5f;
+
     private static readonly IComparer<string> NameOrder = NaturalNameOrder.Instance;
 
+    /// <summary>An item's solid footprint radius at a scale, metres (0.45 m at scale 1).</summary>
     public static float ItemRadius(float scale) => 0.45f * scale;
+
+    /// <summary>An item's solid height at a scale, metres (1.1 m at scale 1).</summary>
     public static float ItemTop(float scale) => 1.1f * scale;
 
     /// <summary>An item's scale from its size: 0.6 at ≤ 100 B rising with log10 to 1.6 at ≥ 1 GB.</summary>
+    /// <remarks>(log10(bytes) − 2) / 7 runs 0…1 over the seven decades from 10² to 10⁹ bytes.</remarks>
     public static float ScaleFor(long bytes) => 0.6f + Math.Clamp((MathF.Log10(MathF.Max(1, bytes)) - 2f) / 7f, 0, 1);
 
     private static float Deg(float degrees) => degrees * MathF.PI / 180f;
@@ -143,7 +189,17 @@ public static class PlanetComposer
         return false;
     }
 
-    /// <summary>The theme a folder's planet takes from what is known of its own entries (never asks for a listing).</summary>
+    /// <summary>
+    /// The share of a folder's visible files one category needs for its theme; below it the planet is
+    /// <see cref="PlanetTheme.Wild"/> (a mix). Raising it makes more planets Wild. (Rationale for 45 % not recorded.)
+    /// </summary>
+    private const float DominantThemeShare = 0.45f;
+
+    /// <summary>
+    /// The theme a folder's planet takes from what is known of its own entries (never asks for a listing). In order: a
+    /// link takes its target's theme (or Veiled); the hub is Hearth; empty is Quiet; unknown or unlisted is Veiled; project
+    /// evidence makes a Workshop; folders only is Hearth; otherwise the dominant file category, or Wild.
+    /// </summary>
     public static PlanetTheme ThemeOf(FsTree tree, int folderId, Func<FsNode, bool>? visible = null)
     {
         var folder = tree[folderId];
@@ -182,7 +238,7 @@ public static class PlanetComposer
             if (counts[t] > bestCount) { bestCount = counts[t]; best = (PlanetTheme)t; }
         }
 
-        return bestCount >= 0.45f * files ? best : PlanetTheme.Wild;
+        return bestCount >= DominantThemeShare * files ? best : PlanetTheme.Wild;
     }
 
     private static PlanetTheme ThemeFor(FileCategory c) => c switch
@@ -211,6 +267,8 @@ public static class PlanetComposer
         var f = tree[folderId];
         unchecked
         {
+            // FNV-1a, 64-bit (offset basis and prime), over whole values rather than bytes: cheap, stable across runs and
+            // machines (unlike string.GetHashCode), and a fingerprint, not security.
             var h = 1469598103934665603UL;
             void Mix(long v) { h ^= (ulong)v; h *= 1099511628211UL; }
             Mix(f.Children.Count);
@@ -257,6 +315,8 @@ public static class PlanetComposer
 
     // ------------------------------------------------------------------ compose
 
+    /// <summary>A child folder or directory link competing for a launcher: what ranks it, and what its launcher will say.</summary>
+    /// <param name="Size">Entries below it (through a resolved link, below its target), for ranking and its world's size.</param>
     private sealed record Candidate(int Id, FsNode Node, bool IsLink, bool Followable, int LinkTargetId, ProminenceInfo Prominence, long Size);
 
     /// <summary>A solid already placed, for gap checks (items, solid scenery, the landmark complex).</summary>
@@ -268,6 +328,105 @@ public static class PlanetComposer
     /// </summary>
     public const float RepositoryBenchTop = 0.7f;
 
+    // ---- planet size: radius = PlanetRadiusBase + PlanetRadiusPerSqrtShown × √(items + LauncherWeight × launchers),
+    // clamped to MinPlanetRadius…MaxPlanetRadius. The square root keeps the surface area roughly proportional to what
+    // stands on it; the bounds are the "small round worlds (16–34 m)" of docs/galaxy-research.md (a lap of the largest
+    // is ≈ 214 m, under 20 s at the run speed).
+    /// <summary>An empty folder's planet (Quiet), metres: a small moon.</summary>
+    private const float QuietPlanetRadius = 10f;
+
+    /// <summary>An unknown folder's planet with nothing to show (Veiled), metres.</summary>
+    private const float VeiledEmptyPlanetRadius = 12f;
+
+    /// <summary>The size formula's base, metres.</summary>
+    private const float PlanetRadiusBase = 13f;
+
+    /// <summary>Growth per √(shown things), metres.</summary>
+    private const float PlanetRadiusPerSqrtShown = 1.5f;
+
+    /// <summary>A launcher counts as this many items in the size formula: many child folders grow a planet faster than many files (rationale not recorded).</summary>
+    private const float LauncherWeight = 4f;
+
+    /// <summary>The smallest planet with something on it, metres.</summary>
+    private const float MinPlanetRadius = 16f;
+
+    /// <summary>The largest planet, metres.</summary>
+    private const float MaxPlanetRadius = 34f;
+
+    /// <summary>Hill height on Quiet and Veiled planets, metres: nearly smooth.</summary>
+    private const float QuietHillAmplitude = 0.25f;
+
+    /// <summary>Hill height elsewhere: this plus up to <see cref="HillAmplitudeSpread"/> (from the name), metres.</summary>
+    private const float HillAmplitudeMin = 0.6f;
+
+    /// <summary>See <see cref="HillAmplitudeMin"/>, metres.</summary>
+    private const float HillAmplitudeSpread = 0.3f;
+
+    // ---- where the landmark stands
+    /// <summary>Clear ground between the outermost ring's pads and the landmark's foot, metres.</summary>
+    private const float LandmarkBeyondRings = 4.5f;
+
+    /// <summary>The landmark's bearing is searched in whole degrees this far either side of straight ahead.</summary>
+    private const int LandmarkBearingSearchDeg = 60;
+
+    /// <summary>The landmark never stands further than this from the arrival pole, degrees (on a planet crowded with rings it stops short of the antipode).</summary>
+    private const float LandmarkMaxPolarDeg = 150f;
+
+    // ---- the child worlds in the sky (AD-44: on their pad's bearing, round the horizon)
+    /// <summary>A child world is moved up to ± half this east–west off its pad's bearing (fixed per child, from its name and id), metres.</summary>
+    private const float SkyJitterMetres = 4f;
+
+    /// <summary>The chase camera's eye height above the arrival, metres, for the horizon test (rationale for the exact value not recorded).</summary>
+    private const float ChaseEyeHeightMetres = 3.4f;
+
+    /// <summary>A child world stays at least this far above that horizon, degrees.</summary>
+    private const float HorizonMarginDeg = 3f;
+
+    /// <summary>A child world is at least this much further from the pole than its pad, degrees (this wins over the horizon limit: it never hangs straight above its pad).</summary>
+    private const float SkyMinBeyondPadDeg = 4f;
+
+    /// <summary>A child world is at most this much further from the pole than its pad, degrees (AD-44: "32° further out").</summary>
+    private const float SkyMaxBeyondPadDeg = 32f;
+
+    /// <summary>A child world is never further than this from the arrival pole, degrees (it stays on the arrival's side of the planet).</summary>
+    private const float SkyMaxPolarDeg = 84f;
+
+    /// <summary>The parent's world: this far from the pole, straight behind the arrival, degrees.</summary>
+    private const float ParentSkyPolarDeg = 35f;
+
+    /// <summary>The parent's world: this high above the base radius, metres.</summary>
+    private const float ParentSkyLift = 24f;
+
+    /// <summary>The parent's world is at least this big, metres, however small the parent is (rationale not recorded).</summary>
+    private const float ParentSkyMinRadius = 5f;
+
+    /// <summary>Extra room between the belt and the highest, largest child world, metres.</summary>
+    private const float BeltClearance = 4f;
+
+    // ---- signs: label heights above the ground, metres
+    private const float LauncherSignHeight = 2.8f;
+    private const float ParentSignHeight = 2.4f;
+    private const float GroveSignHeight = 2.6f;
+
+    /// <summary>The route to the overlook ends this far outside the first stepping stone, metres.</summary>
+    private const float StoneRouteStandOff = 0.8f;
+
+    /// <summary>The route to the workbench ends this far outside its rim, metres (the jump up is yours).</summary>
+    private const float BenchRouteStandOff = 0.8f;
+
+    /// <summary>Flattened margin round the overlook complex beyond its stones, metres.</summary>
+    private const float OverlookFlatMargin = 0.3f;
+
+    /// <summary>Flattened margin round a launcher pad, metres, so the pad sits level on level ground.</summary>
+    private const float PadFlatMargin = 0.7f;
+
+    /// <summary>
+    /// Composes the folder's planet (see the class summary for the order of the passes). Throws if
+    /// <paramref name="folderId"/> is not a directory, or if the parameters would make a stepping stone rise more than
+    /// <see cref="PlanetParams.MaxStepRise"/>. On a repository the overlook is lowered to the workbench
+    /// (<see cref="RepositoryBenchTop"/>) and has no stones.
+    /// </summary>
+    /// <param name="visible">The visibility filter (hidden files and the like): hidden entries are counted, not shown.</param>
     public static PlanetComposition Compose(FsTree tree, int folderId, PlanetParams? parameters = null, Func<FsNode, bool>? visible = null)
     {
         var p = parameters ?? PlanetParams.Default;
@@ -335,11 +494,12 @@ public static class PlanetComposer
 
         // ---- radius and shape parameters
         var nothingShown = itemCount == 0 && launched.Count == 0;
-        var radius = theme == PlanetTheme.Quiet ? 10f
-            : theme == PlanetTheme.Veiled && nothingShown ? 12f
-            : Math.Clamp(13f + 1.5f * MathF.Sqrt(itemCount + 4f * launched.Count), 16f, 34f);
+        var radius = theme == PlanetTheme.Quiet ? QuietPlanetRadius
+            : theme == PlanetTheme.Veiled && nothingShown ? VeiledEmptyPlanetRadius
+            : Math.Clamp(PlanetRadiusBase + PlanetRadiusPerSqrtShown * MathF.Sqrt(itemCount + LauncherWeight * launched.Count), MinPlanetRadius, MaxPlanetRadius);
         var seed = NameSeed(name);
-        var hillAmplitude = theme is PlanetTheme.Quiet or PlanetTheme.Veiled ? 0.25f : 0.6f + 0.3f * Frac(seed, 1);
+        // Frac's salts (1 here, 4 for the belt) pick independent "random" fractions from the one name seed.
+        var hillAmplitude = theme is PlanetTheme.Quiet or PlanetTheme.Veiled ? QuietHillAmplitude : HillAmplitudeMin + HillAmplitudeSpread * Frac(seed, 1);
 
         // ---- arrival, landmark, overlook and its steps
         var pole = Vector3.UnitY;
@@ -347,13 +507,15 @@ public static class PlanetComposer
         var rings = LauncherRings(launched.Count, hasParent, radius, p);
         // The landmark stands ahead beyond the outermost ring (it used to stand at 40°, among the launchers).
         var outer = rings.Count == 0 ? 0f : rings.Max(r => r.DistanceMetres);
-        var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + 4.5f) / radius);
+        var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + LandmarkBeyondRings) / radius);
         // On the bearing near ahead farthest from every pad's bearing, so the walk out to it passes between pads.
+        // "Farthest" is measured as the sideways distance at each pad's ring (bearing difference × ring distance,
+        // metres); within 1 cm the bearing nearer straight ahead wins.
         var landmarkAz = 0f;
         if (rings.Count > 0)
         {
             var best = -1f;
-            for (var deg = -60; deg <= 60; deg++)
+            for (var deg = -LandmarkBearingSearchDeg; deg <= LandmarkBearingSearchDeg; deg++)
             {
                 var az = Deg(deg);
                 var clear = rings.Min(r => MathF.Abs(MathF.IEEERemainder(az - PlanetFrame.AzimuthOf(r.Direction), 2 * MathF.PI)) * r.DistanceMetres);
@@ -361,7 +523,7 @@ public static class PlanetComposer
             }
         }
 
-        var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(150f)), landmarkAz);
+        var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(LandmarkMaxPolarDeg)), landmarkAz);
         var overlookDir = PlanetFrame.Move(landmarkDir, PlanetFrame.East(landmarkDir), p.LandmarkRadius + p.LandmarkOverlookGap + p.OverlookRadius, radius);
         var steps = new List<SurfaceObstacle>();
         {
@@ -398,48 +560,52 @@ public static class PlanetComposer
             var childTheme = c.IsLink && c.LinkTargetId < 0 ? PlanetTheme.Veiled : ThemeOf(tree, themeNode, visible);
             var h = SeedOf(c.Node.Name, c.Id);
             var lift = p.SkyHeightMin + (p.SkyHeightMax - p.SkyHeightMin) * Frac(h, 2);
-            var jitter = (Frac(h, 3) - 0.5f) * 4f;
+            var jitter = (Frac(h, 3) - 0.5f) * SkyJitterMetres;
             // On the same bearing as its pad but further out (2026-11-11): the worlds stand round the horizon as a crown
             // you see from the arrival; walking towards one brings you to its pad on the ring.
             var padPolar = PlanetFrame.PolarOf(d);
-            // Kept above the arrival's horizon as the chase camera sees it (eye ≈ 3.4 m), whole body and a margin.
+            // Kept above the arrival's horizon as the chase camera sees it (eye ≈ 3.4 m), whole body and a margin. On a
+            // sphere of radius R a point h above it is seen from the eye's height e as long as its angle from the pole is
+            // under acos(R/(R+e)) + acos(R/(R+h)) (the two tangent angles to the horizon); the body's own angular radius
+            // and the margin come off that.
             var bodyR = SkyRadius(c.Size, p);
-            var horizon = MathF.Acos(radius / (radius + 3.4f)) + MathF.Acos(radius / (radius + lift)) - MathF.Asin(MathF.Min(1, bodyR / (radius + lift))) - Deg(3f);
-            var skyPolar = MathF.Max(padPolar + Deg(4f), MathF.Min(MathF.Min(padPolar + Deg(32f), Deg(84f)), horizon));
+            var horizon = MathF.Acos(radius / (radius + ChaseEyeHeightMetres)) + MathF.Acos(radius / (radius + lift)) - MathF.Asin(MathF.Min(1, bodyR / (radius + lift))) - Deg(HorizonMarginDeg);
+            var skyPolar = MathF.Max(padPolar + Deg(SkyMinBeyondPadDeg), MathF.Min(MathF.Min(padPolar + Deg(SkyMaxBeyondPadDeg), Deg(SkyMaxPolarDeg)), horizon));
             var skyDir = PlanetFrame.FromPolar(skyPolar, PlanetFrame.AzimuthOf(d));
             var pos = skyDir * (radius + lift) + PlanetFrame.East(skyDir) * jitter;
             sky.Add(new SkyBody(c.Id, pos, SkyRadius(c.Size, p), childTheme, childState, launchers.Count));
             launchers.Add(new PlanetLauncher(c.Id, d, p.PadRadius, p.PadTop, childState, c.Node.Name, sky.Count - 1,
                 IsLink: c.IsLink, Followable: c.Followable, LinkTargetId: c.LinkTargetId, Prominence: c.Prominence));
             paths.Add(new PlanetPath(c.Id, [pole, d]));
-            signs.Add(new PlanetSign(d, 2.8f, c.Node.Name, LauncherDetail(tree, c), c.Id));
+            signs.Add(new PlanetSign(d, LauncherSignHeight, c.Node.Name, LauncherDetail(tree, c), c.Id));
         }
 
         if (!folder.IsRoot)
         {
             var parent = tree[folder.ParentId];
-            // Behind and a little to the right of the arrival (2026-11-11, from the first-view screenshots: straight behind,
-            // the chase camera stood over its petals, which filled the bottom of the first view).
-            // The way back has a fixed place: on the first ring, straight behind the arrival (6 o'clock).
+            // The way back has a fixed place: on the first ring, straight behind the arrival (6 o'clock; AD-44). Before
+            // the rings it stood just behind the arrival point, then (2026-11-11 screenshots: the chase camera stood over
+            // its petals, which filled the bottom of the first view) behind and to the right; see ParentBehind. Its world
+            // hangs high behind you, on the same bearing.
             var d = rings.First(r => r.Parent).Direction;
             var parentSize = parent.SubtreeFileCount + parent.SubtreeDirCount;
-            var pos = PlanetFrame.FromPolar(Deg(35f), MathF.PI) * (radius + 24f);
-            sky.Add(new SkyBody(parent.Id, pos, MathF.Max(5f, SkyRadius(parentSize, p)), ThemeOf(tree, parent.Id, visible), Listing.Of(parent), launchers.Count, IsParent: true));
+            var pos = PlanetFrame.FromPolar(Deg(ParentSkyPolarDeg), MathF.PI) * (radius + ParentSkyLift);
+            sky.Add(new SkyBody(parent.Id, pos, MathF.Max(ParentSkyMinRadius, SkyRadius(parentSize, p)), ThemeOf(tree, parent.Id, visible), Listing.Of(parent), launchers.Count, IsParent: true));
             launchers.Add(new PlanetLauncher(parent.Id, d, p.PadRadius, p.PadTop, Listing.Of(parent), tree.DisplayName(parent.Id), sky.Count - 1, IsParent: true));
-            signs.Add(new PlanetSign(d, 2.4f, tree.DisplayName(parent.Id), "the way back", parent.Id));
+            signs.Add(new PlanetSign(d, ParentSignHeight, tree.DisplayName(parent.Id), "the way back", parent.Id));
         }
 
         // Belt: tiny moons on a tilted ring, outside the launcher bodies.
         if (belt.Count > 0)
         {
-            var ringRadius = MathF.Max(p.BeltRadiusFactor * radius, radius + p.SkyHeightMax + p.SkyRadiusMax + 4f);
+            var ringRadius = MathF.Max(p.BeltRadiusFactor * radius, radius + p.SkyHeightMax + p.SkyRadiusMax + BeltClearance);
             var tilt = Matrix4x4.CreateRotationX(Deg(p.BeltTiltDeg)) * Matrix4x4.CreateRotationY(Deg(Frac(seed, 4) * 360f));
             for (var i = 0; i < belt.Count; i++)
             {
                 var c = belt[i];
                 var a = 2 * MathF.PI * i / belt.Count;
                 var local = new Vector3(MathF.Sin(a), 0, -MathF.Cos(a)) * ringRadius;
-                var size = 0.5f + 0.7f * Math.Clamp(MathF.Log10(1 + c.Size) / 4f, 0, 1);
+                var size = 0.5f + 0.7f * Math.Clamp(MathF.Log10(1 + c.Size) / 4f, 0, 1); // 0.5 m empty … 1.2 m at 10,000 entries
                 var t = c.IsLink && c.LinkTargetId < 0 ? PlanetTheme.Veiled : ThemeOf(tree, c.LinkTargetId >= 0 ? c.LinkTargetId : c.Id, visible);
                 sky.Add(new SkyBody(c.Id, Vector3.Transform(local, tilt), size, t, Listing.Of(c.Node), -1, InBelt: true));
             }
@@ -450,14 +616,14 @@ public static class PlanetComposer
         {
             var foot = steps[0].Direction;
             var outward = foot - overlookDir;
-            var footOut = PlanetFrame.Move(foot, outward - foot * Vector3.Dot(outward, foot), p.StepRadius + 0.8f, radius);
+            var footOut = PlanetFrame.Move(foot, outward - foot * Vector3.Dot(outward, foot), p.StepRadius + StoneRouteStandOff, radius);
             paths.Add(new PlanetPath(-1, [pole, footOut, foot]));
         }
         else
         {
             // The workbench: the route ends a step from its rim, on the arrival's side (the jump is yours).
             var towardPole = pole - overlookDir * Vector3.Dot(pole, overlookDir);
-            var foot = PlanetFrame.Move(overlookDir, towardPole, p.OverlookRadius + 0.8f, radius);
+            var foot = PlanetFrame.Move(overlookDir, towardPole, p.OverlookRadius + BenchRouteStandOff, radius);
             paths.Add(new PlanetPath(-1, [pole, foot]));
         }
 
@@ -487,6 +653,7 @@ public static class PlanetComposer
         // for the few candidates that are close: composition runs whenever a listing changes, so it must stay cheap.
         bool Free(Vector3 d, float r, float gap, List<Solid> extraZones)
         {
+            // Broad phase: a cone a little wider (3 m) than the largest zone plus this radius; only zones inside it are measured.
             var nearCos = MathF.Cos(MathF.Min(MathF.PI, (maxZone + r + 3f) / radius));
             foreach (var z in keepOut)
             {
@@ -505,6 +672,8 @@ public static class PlanetComposer
                 if (MathF.Abs(fromArrival - ringDistance) < p.PathHalfWidth + r) return false;
             }
 
+            // A point farther than the clearance from a route's whole great circle (|d·n| ≥ sin of the clearance angle)
+            // cannot be near its arc, so the exact arc distance is measured only for the rest.
             var pathSin = MathF.Sin((p.PathHalfWidth + r) / radius);
             foreach (var (a, b, n) in segments)
             {
@@ -532,12 +701,12 @@ public static class PlanetComposer
 
         foreach (var g in groves)
         {
-            signs.Add(new PlanetSign(g.CentreDirection, 2.6f, g.Label, g.Hidden > 0 ? $"{N(g.Shown)} shown · {N(g.Hidden)} in the pile" : "", -1));
+            signs.Add(new PlanetSign(g.CentreDirection, GroveSignHeight, g.Label, g.Hidden > 0 ? $"{N(g.Shown)} shown · {N(g.Hidden)} in the pile" : "", -1));
         }
 
         // ---- flat spots and shape
-        var flats = new List<(Vector3 Direction, float Radius)> { (pole, p.ArrivalRadius), (overlookDir, complexRadius + 0.3f) };
-        foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + 0.7f));
+        var flats = new List<(Vector3 Direction, float Radius)> { (pole, p.ArrivalRadius), (overlookDir, complexRadius + OverlookFlatMargin) };
+        foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + PadFlatMargin));
         foreach (var g in groves) flats.Add((g.CentreDirection, GroveFlatRadius));
         var shape = new PlanetShape(radius, seed, hillAmplitude, flats);
 
@@ -588,6 +757,7 @@ public static class PlanetComposer
 
     private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
 
+    /// <summary>A child world's radius from the entries below it: log scale from SkyRadiusMin (empty) to SkyRadiusMax (≈ 10,000).</summary>
     private static float SkyRadius(long size, PlanetParams p) =>
         p.SkyRadiusMin + (p.SkyRadiusMax - p.SkyRadiusMin) * Math.Clamp(MathF.Log10(1 + size) / 4f, 0, 1);
 
@@ -643,6 +813,12 @@ public static class PlanetComposer
         return shown;
     }
 
+    /// <summary>The farthest a launcher ring stands from the arrival pole, degrees (rings beyond it share this angle; rationale for 120° not recorded).</summary>
+    private const float MaxRingPolarDeg = 120f;
+
+    /// <summary>The fewest pads a ring holds, even when its circumference is short (rationale not recorded).</summary>
+    private const int MinPadsPerRing = 4;
+
     /// <summary>One slot on a launcher ring: its direction, its ring's surface distance from the arrival, and whether it is the way back.</summary>
     private readonly record struct RingSlot(Vector3 Direction, float DistanceMetres, bool Parent);
 
@@ -652,6 +828,11 @@ public static class PlanetComposer
     /// first ring, then the next ring out; the way back always at 6 o'clock on the first ring. Every pad is within a
     /// few rings of where you land, so a named launcher is found from the arrival without circling the planet.
     /// </summary>
+    /// <remarks>
+    /// A ring's capacity is its circumference over <see cref="PlanetParams.RingSpacing"/> (at least
+    /// <see cref="MinPadsPerRing"/>). Ring distances are surface distances from the arrival; on a small planet the ring
+    /// angle stops at <see cref="MaxRingPolarDeg"/> and any further rings share it.
+    /// </remarks>
     private static List<RingSlot> LauncherRings(int n, bool hasParent, float radius, PlanetParams p)
     {
         var slots = new List<RingSlot>();
@@ -661,9 +842,9 @@ public static class PlanetComposer
         var ring = 0;
         while (remaining > 0 || (first && hasParent))
         {
-            var polar = MathF.Min(distance / radius, Deg(120f));
+            var polar = MathF.Min(distance / radius, Deg(MaxRingPolarDeg));
             var circumference = 2 * MathF.PI * radius * MathF.Sin(polar);
-            var capacity = Math.Max(4, (int)(circumference / p.RingSpacing));
+            var capacity = Math.Max(MinPadsPerRing, (int)(circumference / p.RingSpacing));
             var reserveBack = first && hasParent;
             var here = Math.Min(remaining, capacity - (reserveBack ? 1 : 0));
             var total = here + (reserveBack ? 1 : 0);
@@ -683,12 +864,13 @@ public static class PlanetComposer
             }
             else
             {
-                // Rings after the first are turned by the golden angle, so no outer pad shares an inner pad's bearing
-                // (their worlds would stack on one line of sight, and the straight walk out would cross inner pads).
+                // Rings after the first are turned so no outer pad shares an inner pad's bearing (their worlds would
+                // stack on one line of sight, and the straight walk out would cross inner pads).
                 var phase = 0f;
                 if (!first)
                 {
-                    // The phase (within one pitch) that keeps this ring's pads farthest from every bearing already used.
+                    // The phase (within one pitch, sampled at 64 steps) that keeps this ring's pads farthest from every
+                    // bearing already used; the earliest sample wins a tie, so the result is deterministic.
                     var pitch = 2 * MathF.PI / here;
                     var bestSep = -1f;
                     for (var k = 0; k < 64; k++)
@@ -716,13 +898,25 @@ public static class PlanetComposer
         return slots;
     }
 
+    /// <summary>
+    /// Whether a solid of radius <c>r</c> may stand at <c>d</c>: clear of the keep-out zones (meadow, landmark, overlook,
+    /// launchers), of <c>extraZones</c>, of the launcher rings and routes, and at least <c>gap</c> from every solid placed
+    /// so far (metres). Compose's local <c>Free</c> is the one implementation.
+    /// </summary>
     private delegate bool FreeCheck(Vector3 d, float r, float gap, List<Solid> extraZones);
 
+    /// <summary>One grove's growth: its seed slot and its frontier (slots next to the grove, nearest the seed first).</summary>
     private sealed class GroveGrowth
     {
         public required Vector3 Seed;
         public readonly PriorityQueue<int, float> Frontier = new();
     }
+
+    /// <summary>The largest grove's seed is the open slot nearest this point: 34° from the arrival pole …</summary>
+    private const float FirstGrovePolarDeg = 34f;
+
+    /// <summary>… and 55° to the left of straight ahead (front-left; rationale for the exact angles not recorded).</summary>
+    private const float FirstGroveAzimuthDeg = -55f;
 
     /// <summary>
     /// Grows one contiguous patch per category over a Fibonacci-sphere slot set (largest grove first), round-robin so
@@ -731,9 +925,13 @@ public static class PlanetComposer
     private static void PlaceGroves(FsTree tree, List<(FileCategory Category, List<int> Ids)> groups, int[] budget, float radius,
         PlanetParams p, FreeCheck free, List<Solid> solids, List<PlanetItem> items, List<PlanetGrove> groves)
     {
+        // As many slots as hexagonal cells of the grove spacing cover the sphere (a hexagonal cell of pitch s has area
+        // (√3/2)·s² ≈ 0.866·s²), so neighbouring slots are about GroveSpacing apart.
         var slots = FibonacciSphere((int)MathF.Round(4 * MathF.PI * radius * radius / (0.866f * p.GroveSpacing * p.GroveSpacing)));
         // Neighbours on demand: Fibonacci points are ordered by height, so a slot's neighbours lie within a window of
-        // indices (|Δy| ≤ the chord); only the slots a grove grows through are ever asked for.
+        // indices (|Δy| ≤ the chord); only the slots a grove grows through are ever asked for. 2·sin(0.8·s/R) is the
+        // chord of a 1.6·s arc: slots up to ≈ 1.6 grove spacings apart count as neighbours (rationale for 1.6 not
+        // recorded; it is wider than the ≈ 1 spacing between neighbouring slots).
         var chord = 2 * MathF.Sin(0.8f * p.GroveSpacing / radius);
         var window = (int)MathF.Ceiling(chord * slots.Length / 2f) + 1;
         var chord2 = chord * chord;
@@ -749,9 +947,10 @@ public static class PlanetComposer
         var noZones = new List<Solid>();
 
         // Seeds: the largest grove front-left of the arrival; each next one as far from the others as a grove needs
-        // (and no farther: then nearest the arrival).
+        // (and no farther: then nearest the arrival). "As far as a grove needs", cap, is the diameter (metres) of a disc
+        // holding the largest grove's items (at most 80 counted) at 1.4 slot areas each, plus 4 m.
         var cap = 2 * MathF.Sqrt(groups.Max(g => g.Ids.Count > 0 ? Math.Min(g.Ids.Count, 80) : 1) * 1.4f * p.GroveSpacing * p.GroveSpacing / MathF.PI) + 4f;
-        var preferred = PlanetFrame.FromPolar(Deg(34f), Deg(-55f));
+        var preferred = PlanetFrame.FromPolar(Deg(FirstGrovePolarDeg), Deg(FirstGroveAzimuthDeg));
         var growth = new List<GroveGrowth>();
         var open = new bool[slots.Length];
         for (var s = 0; s < slots.Length; s++) open[s] = free(slots[s], ItemRadius(1f), p.SolidGap, noZones);
@@ -773,6 +972,8 @@ public static class PlanetComposer
                     // As far from the other seeds as a grove needs (dot ≤ capCos), then nearest the arrival.
                     var maxDot = -1f;
                     foreach (var o in growth) maxDot = MathF.Max(maxDot, Vector3.Dot(slots[s], o.Seed));
+                    // × 1000: separation decides; height (Y, nearness to the arrival pole) only breaks ties among slots
+                    // already far enough (all of which score -capCos × 1000).
                     score = -MathF.Max(maxDot, capCos) * 1000f + slots[s].Y;
                 }
 
@@ -924,21 +1125,50 @@ public static class PlanetComposer
         _ => (0.3f * scale, 0f),
     };
 
+    // ---- scenery density and sizes
+    /// <summary>Scenery pieces per metre of planet radius on a Veiled planet (sparse: its surface is unknown).</summary>
+    private const float VeiledDecorationsPerMetre = 0.6f;
+
+    /// <summary>Scenery pieces per metre of planet radius on a planet with a theme (a Quiet one has 1 per metre).</summary>
+    private const float DecorationsPerMetre = 1.5f;
+
+    /// <summary>Random positions tried per wanted piece before giving up (a crowded planet gets fewer pieces, never a hang).</summary>
+    private const int DecorationTriesPerPiece = 40;
+
+    /// <summary>A piece's scale: this plus up to <see cref="DecorationScaleSpread"/> (uniform).</summary>
+    private const float DecorationScaleMin = 0.75f;
+
+    /// <summary>See <see cref="DecorationScaleMin"/>: scales run 0.75…1.35.</summary>
+    private const float DecorationScaleSpread = 0.6f;
+
+    /// <summary>Soft scenery's centre stays this far outside any solid's footprint, metres.</summary>
+    private const float SoftSceneryClearance = 0.3f;
+
+    /// <summary>Soft scenery pieces stand at least this far apart, centre to centre, metres.</summary>
+    private const float SoftScenerySpacing = 0.8f;
+
+    /// <summary>
+    /// Scatters the theme's scenery (<see cref="Mix"/>) at random but repeatable places (a <see cref="Random"/> seeded
+    /// from the name): solid pieces keep <see cref="PlanetParams.SolidGap"/> from everything, soft ones only stay off flat
+    /// spots, items and routes. Adds the solid pieces to <paramref name="solids"/>.
+    /// </summary>
     private static List<PlanetDecoration> Decorate(PlanetTheme theme, float radius, int seed, List<PlanetGrove> groves, FreeCheck free, List<Solid> solids, PlanetParams p)
     {
         var target = theme switch
         {
-            PlanetTheme.Veiled => (int)MathF.Round(radius * 0.6f),
+            PlanetTheme.Veiled => (int)MathF.Round(radius * VeiledDecorationsPerMetre),
             PlanetTheme.Quiet => (int)MathF.Round(radius),
-            _ => (int)MathF.Round(radius * 1.5f),
+            _ => (int)MathF.Round(radius * DecorationsPerMetre),
         };
         var weights = Mix(theme);
         var total = weights.Sum();
+        // The name seed XOR a fixed salt, so the scenery's stream is unrelated to the hills' (PlanetShape seeds its own
+        // Random with the plain seed); the salt's value is arbitrary.
         var rng = new Random(seed ^ 0x2D7E5A1);
         var list = new List<PlanetDecoration>(target);
         var groveZones = groves.Select(g => new Solid(g.CentreDirection, GroveFlatRadius)).ToList();
         var soft = new List<Solid>(); // non-colliding scenery: kept apart a little so it does not pile up
-        for (var tries = 0; list.Count < target && tries < target * 40; tries++)
+        for (var tries = 0; list.Count < target && tries < target * DecorationTriesPerPiece; tries++)
         {
             var d = PlanetShape.RandomDirection(rng);
             var pick = rng.Next(total);
@@ -949,7 +1179,7 @@ public static class PlanetComposer
                 pick -= weights[k];
             }
 
-            var scale = 0.75f + 0.6f * (float)rng.NextDouble();
+            var scale = DecorationScaleMin + DecorationScaleSpread * (float)rng.NextDouble();
             var pieceSeed = rng.Next();
             var collides = Collides(kind);
             var (r, _) = DecorationSolid(kind, scale);
@@ -961,8 +1191,9 @@ public static class PlanetComposer
             else
             {
                 // Soft scenery may stand nearer solids (it does not block) but never on a flat spot, an item or a route.
-                if (!free(d, r, -r + 0.3f, groveZones)) continue;
-                if (soft.Any(s => PlanetShape.Angle(d, s.Direction) * radius < 0.8f)) continue;
+                // A gap of −r + clearance makes Free's solid test "centre at least the clearance outside the solid".
+                if (!free(d, r, -r + SoftSceneryClearance, groveZones)) continue;
+                if (soft.Any(s => PlanetShape.Angle(d, s.Direction) * radius < SoftScenerySpacing)) continue;
                 soft.Add(new Solid(d, r));
             }
 
@@ -974,12 +1205,15 @@ public static class PlanetComposer
 
     // ------------------------------------------------------------------ helpers
 
-    /// <summary>Evenly spread unit directions (the Fibonacci sphere), deterministic.</summary>
+    /// <summary>
+    /// Evenly spread unit directions (the Fibonacci sphere), deterministic: point i is at height 1 − 2(i + ½)/count (equal
+    /// areas per point, ordered from +Y down, which <c>PlaceGroves</c> relies on) and turned by i golden angles.
+    /// </summary>
     public static Vector3[] FibonacciSphere(int count)
     {
         count = Math.Max(1, count);
         var points = new Vector3[count];
-        var golden = MathF.PI * (3f - MathF.Sqrt(5f));
+        var golden = MathF.PI * (3f - MathF.Sqrt(5f)); // the golden angle, ≈ 137.5° in radians: successive points never line up
         for (var i = 0; i < count; i++)
         {
             var y = 1f - 2f * (i + 0.5f) / count;
@@ -1041,9 +1275,15 @@ public static class PlanetComposer
         return (int)(h & 0x7FFFFFFF);
     }
 
+    /// <summary>A child's seed: its name's, mixed with its id times a prime (7919, the 1000th) so same-named siblings differ.</summary>
     private static int SeedOf(string name, int id) => NameSeed(name) ^ (id * 7919);
 
     /// <summary>A deterministic fraction in [0, 1) from a seed and a salt.</summary>
+    /// <remarks>
+    /// The seed and salt are spread by odd multipliers (Knuth's 2654435761 and 40503), then mixed by an xxHash32-style
+    /// avalanche (shift 15, × 2246822519, shift 13) so every input bit reaches the low bits. The low 24 bits over 2²⁴
+    /// give a fraction a float holds exactly. Changing any constant moves every child world and belt, and changes hill heights.
+    /// </remarks>
     private static float Frac(int seed, int salt)
     {
         unchecked

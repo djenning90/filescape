@@ -17,6 +17,7 @@ namespace FileScape.Core.Interaction;
 /// </summary>
 public static class PathIdentity
 {
+    /// <summary>The canonical WSL route (the same spelling as <see cref="Locations.WslPrefix"/>).</summary>
     public const string WslPrefix = @"\\wsl.localhost\";
     private const string WslLegacyPrefix = @"\\wsl$\";
 
@@ -36,6 +37,10 @@ public static class PathIdentity
     }
 
     /// <summary>A string equal for two paths exactly when they name the same folder under the rules above.</summary>
+    /// <remarks>
+    /// The "posix:", "wsl:" and "win:" prefixes keep the three families apart, so a Windows path can never collide with
+    /// a Linux one that happens to upper-case to the same text. Keys are in-memory only; nothing stores them.
+    /// </remarks>
     public static string Key(string path)
     {
         var p = Normalize(path);
@@ -51,6 +56,7 @@ public static class PathIdentity
         return "win:" + p.ToUpperInvariant();
     }
 
+    /// <summary>True when <paramref name="a"/> and <paramref name="b"/> name the same folder (equal <see cref="Key"/>s).</summary>
     public static bool Same(string a, string b) => string.Equals(Key(a), Key(b), StringComparison.Ordinal);
 
     private static string TrimSeparator(string p)
@@ -62,6 +68,7 @@ public static class PathIdentity
         return t;
     }
 
+    /// <summary>Equality, ordering and hashing by <see cref="Key"/>, for path-keyed dictionaries and sets.</summary>
     private sealed class KeyComparer : StringComparer
     {
         public override int Compare(string? x, string? y) =>

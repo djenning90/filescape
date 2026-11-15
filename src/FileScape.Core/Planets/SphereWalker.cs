@@ -112,6 +112,21 @@ public sealed class SphereWalker
     /// <summary>Accumulated time within this much of a whole sub-step counts as one, absorbing frame-length rounding (100 ns ticks).</summary>
     private const float StepToleranceSeconds = 1e-4f;
 
+    /// <summary>
+    /// On the ground with no input, a velocity below this (squared, m²/s²: 0.02 m/s) is zeroed, so the exponential
+    /// slow-down ends in a stop instead of a creep that never quite finishes.
+    /// </summary>
+    private const float RestSpeedSquared = 0.0004f;
+
+    /// <summary>Push-out passes per sub-step (rationale for 4 not recorded); an overlap left after the last is met again next sub-step.</summary>
+    private const int PushOutIterations = 4;
+
+    /// <summary>Above this speed (squared, m²/s²: 0.1 m/s) the body turns to face its motion; slower, it turns to the input.</summary>
+    private const float FaceMotionSpeedSquared = 0.01f;
+
+    /// <summary>In the air the stride counter is held at no more than this fraction of a stride, so the first footstep after landing comes soon.</summary>
+    private const float LandingStrideFraction = 0.5f;
+
     private readonly SphereWalkParams _p;
     private readonly JumpModel _jump;
     private readonly float _stepSeconds, _maxFrameSeconds;
@@ -171,16 +186,18 @@ public sealed class SphereWalker
     public Vector3 Feet => Surface.PointAt(Up, Height.Value);
 
     /// <summary>
-    /// Places the walker standing at <paramref name="up"/> (any non-zero vector) on <paramref name="surface"/>, on the
-    /// highest top under its disc (or the ground), facing <paramref name="facing"/> projected onto the tangent plane.
-    /// </summary>
-    /// <summary>
     /// Swaps the planet under the walker (the same planet recomposed: a listing arrived) without disturbing it: position,
     /// height, facing, velocity and the jump in progress are kept; the next step stands it on the new support or pushes it
     /// out of a new solid. Teleporting instead stopped the walker and cancelled jumps on every recompose.
     /// </summary>
     public void ChangeSurface(PlanetSurface surface) => _surface = surface;
 
+    /// <summary>
+    /// Places the walker standing at <paramref name="up"/> (any non-zero vector) on <paramref name="surface"/>, on the
+    /// highest top under its disc (or the ground), facing <paramref name="facing"/> projected onto the tangent plane.
+    /// Stops it: no velocity, no jump in progress, no pending press, and the sub-step and stride accumulators cleared
+    /// (arrivals and warps; a recompose uses <see cref="ChangeSurface"/> instead).
+    /// </summary>
     public void Teleport(PlanetSurface surface, Vector3 up, Vector3 facing)
     {
         _surface = surface;
@@ -211,7 +228,13 @@ public sealed class SphereWalker
         }
     }
 
-    /// <summary>One fixed step. Plain floats inside: metres, seconds, radians (named).</summary>
+    /// <summary>
+    /// One fixed step. Plain floats inside: metres, seconds, radians (named). In order: steer the tangential velocity
+    /// towards the input (exponential smoothing, <see cref="PerSecond.SmoothingFactor"/>); take off or boost; move along
+    /// the sphere at constant feet radius; push out of solids (sliding); settle on the support or fly the arc and land;
+    /// count footsteps; turn the body; re-orthonormalise. The order matters: the push-out uses the height the move left,
+    /// and landing uses the support found after the push-out.
+    /// </summary>
     private void Step(PlanetSurface surface, SphereWalkInput input, float dtSeconds)
     {
         var shape = surface.Shape;
@@ -230,7 +253,7 @@ public sealed class SphereWalker
         var response = grounded ? _p.GroundResponse : _p.AirResponse;
         if (!grounded && wish.LengthSquared() < 1e-8f) response = _p.AirCoast;
         velocity = Vector3.Lerp(velocity, wish * speedMetersPerSecond, response.SmoothingFactor(dtSeconds));
-        if (grounded && wish.LengthSquared() < 1e-8f && velocity.LengthSquared() < 0.0004f) velocity = Vector3.Zero;
+        if (grounded && wish.LengthSquared() < 1e-8f && velocity.LengthSquared() < RestSpeedSquared) velocity = Vector3.Zero;
 
         // Jump along the local up; airborne, the one boost (with the twirl's small lean along the input).
         var e = _jump.BeginStep(dtSeconds, heightMeters - Support.Value);
@@ -264,7 +287,9 @@ public sealed class SphereWalker
 
         // Obstacles: a disc of the body radius is pushed out along the great circle and slides, unless the top can be
         // stepped (grounded) or reached (airborne) onto.
-        for (var iter = 0; iter < 4; iter++)
+        // Each pass resolves only the deepest overlap and then looks again, so several overlapping solids are settled one
+        // by one.
+        for (var iter = 0; iter < PushOutIterations; iter++)
         {
             var bestOverlapMeters = 0f;
             var bestAway = Vector3.Zero;
@@ -326,11 +351,11 @@ public sealed class SphereWalker
         }
         else
         {
-            _strideMeters = MathF.Min(_strideMeters, _p.Stride.Value * 0.5f); // the first step after landing comes soon
+            _strideMeters = MathF.Min(_strideMeters, _p.Stride.Value * LandingStrideFraction); // the first step after landing comes soon
         }
 
         // Turn the body towards its motion (or the input while nearly still).
-        var faceTarget = velocity.LengthSquared() > 0.01f ? velocity : wish;
+        var faceTarget = velocity.LengthSquared() > FaceMotionSpeedSquared ? velocity : wish;
         if (faceTarget.LengthSquared() > 1e-8f)
         {
             faceTarget = Vector3.Normalize(faceTarget);

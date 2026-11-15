@@ -124,8 +124,10 @@ public enum LinkStatus : byte
 public sealed record LinkInfo(LinkKind Kind, uint Tag, string? TargetText, LinkStatus Status = LinkStatus.Unresolved,
     string? TargetPath = null, int TargetId = -1, string? Message = null)
 {
+    /// <summary>Whether a deliberate follow may be attempted: not yet known to fail, and a kind Windows can follow.</summary>
     public bool CanFollow => Status is LinkStatus.Unresolved or LinkStatus.Resolved && Kind is not (LinkKind.LinuxSymlink or LinkKind.Other);
 
+    /// <summary>The kind in words, for user-facing sentences ("This junction is broken…").</summary>
     public string KindName => Kind switch
     {
         LinkKind.Junction => "junction",
@@ -188,6 +190,7 @@ public sealed class FsNode
     public DateTime? ModifiedUtc { get; init; }
     public DateTime? AccessedUtc { get; init; }
 
+    /// <summary>Levels below the tree's root (the hub in a connected world, the scanned folder otherwise), which is 0.</summary>
     public int Depth { get; init; }
     public DirScanState ScanState { get; internal set; }
 
@@ -234,6 +237,7 @@ public sealed class FsNode
     /// <summary>True when this directory's own listing is complete and trustworthy (see <see cref="SubtreeUnsettledDirs"/>).</summary>
     public bool IsSettled => Kind == NodeKind.Directory && ScanState == DirScanState.Complete && (Flags & UnsettledFlags) == 0;
 
+    /// <summary>The flags that make a directory's own listing untrustworthy even when its state says Complete (a partial listing keeps what it read).</summary>
     internal const NodeFlags UnsettledFlags = NodeFlags.Incomplete | NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Vanished | NodeFlags.Unavailable | NodeFlags.CloudNotTraversed;
 
     public bool IsDirectory => Kind == NodeKind.Directory;

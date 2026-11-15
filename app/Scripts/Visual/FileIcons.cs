@@ -4,7 +4,10 @@ using Godot;
 
 namespace FileScape.App.Visual;
 
-/// <summary>The type silhouettes FileScape draws (ICON-01): familiar shapes, so a type never has to be learnt from a colour.</summary>
+/// <summary>
+/// The type silhouettes FileScape draws (ICON-01): familiar shapes, so a type never has to be learnt from a colour.
+/// The enum's value is the icon's cell in <see cref="FileIcons.Atlas"/>; every kind needs an entry in FileIcons' paths.
+/// </summary>
 public enum IconKind
 {
     Folder,
@@ -39,7 +42,11 @@ public static class FileIcons
     /// <summary>Atlas cell size in pixels: crisp at the 0.9 m world badge from close by and at 28 px in the HUD.</summary>
     public const int Cell = 128;
 
+    /// <summary>The dark detail colour inside the white silhouettes (a document's lines, a video's play mark): it stays dark under any tint.</summary>
     private const string Ink = "#1b2333";
+
+    /// <summary>A single icon's texture size, pixels: the HUD draws icons at up to 28 px, so 48 leaves room for UI scaling (rationale for 48 not recorded).</summary>
+    private const int SingleIconPixels = 48;
 
     private static readonly Dictionary<IconKind, string> Paths = new()
     {
@@ -66,17 +73,19 @@ public static class FileIcons
     /// <summary>All icons side by side, <see cref="Cell"/> pixels each, in <see cref="IconKind"/> order (world badges sample it).</summary>
     public static Texture2D Atlas => _atlas ??= BuildAtlas();
 
+    /// <summary>The number of icons (atlas cells); badges pass it to the shader to find a cell.</summary>
     public static int Count => Paths.Count;
 
     /// <summary>One icon as its own texture (HUD lists and the inspector).</summary>
     public static Texture2D Get(IconKind kind)
     {
         if (Singles.TryGetValue(kind, out var t)) return t;
-        t = ImageTexture.CreateFromImage(Rasterize(kind, 48));
+        t = ImageTexture.CreateFromImage(Rasterize(kind, SingleIconPixels));
         Singles[kind] = t;
         return t;
     }
 
+    /// <summary>The silhouette for a file category.</summary>
     public static IconKind For(FileCategory c) => c switch
     {
         FileCategory.Document => IconKind.Document,
@@ -104,11 +113,12 @@ public static class FileIcons
         _ => For(FileCategories.Of(n.Name)),
     };
 
+    /// <summary>Rasterises one icon at <paramref name="pixels"/> square; a failure is logged and gives a transparent image, never a crash.</summary>
     private static Image Rasterize(IconKind kind, int pixels)
     {
         var svg = $"<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>{Paths[kind]}</svg>";
         var img = new Image();
-        var err = img.LoadSvgFromString(svg, pixels / 24f);
+        var err = img.LoadSvgFromString(svg, pixels / 24f); // every path is drawn on a 24 × 24 grid: scale it to the requested pixels
         if (err != Error.Ok || img.IsEmpty())
         {
             GD.PrintErr($"[icons] could not rasterize {kind}: {err}");
@@ -119,6 +129,7 @@ public static class FileIcons
         return img;
     }
 
+    /// <summary>One row of <see cref="Cell"/>-pixel cells, cell i = <see cref="IconKind"/> i, with mipmaps so distant badges do not shimmer.</summary>
     private static Texture2D BuildAtlas()
     {
         var atlas = Image.CreateEmpty(Cell * Count, Cell, false, Image.Format.Rgba8);

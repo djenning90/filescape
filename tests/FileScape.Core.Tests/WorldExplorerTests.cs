@@ -47,6 +47,10 @@ public sealed class WorldExplorerTests : IDisposable
 
     private string Arrival => Path.Combine(_root, "arrival");
 
+    /// <summary>
+    /// A WorldExplorer behind a real ScanSession, pumped on the test thread as the app pumps it on its main thread;
+    /// keeps every explorer reply by ticket. By default its only location is "/" as a volume.
+    /// </summary>
     private sealed class Harness : IDisposable
     {
         public readonly WorldExplorer Explorer;

@@ -24,6 +24,7 @@ public static class PlacePalette
     public static readonly Color Unavailable = new(0.62f, 0.6f, 0.66f);
     public static readonly Color LinkBlocked = new(0.35f, 0.55f, 0.6f);
 
+    /// <summary>A folder's own accent: its identity hue at 60 % saturation, <paramref name="value"/> scaling the brightness (at most 0.95).</summary>
     public static Color Accent(PlaceIdentity id, float value = 1f) => Color.FromHsv(id.Hue, 0.6f, value * 0.95f);
 
     /// <summary>The colour of a gate or vista: the target folder's accent when it is listed, otherwise its state colour.</summary>
@@ -61,6 +62,17 @@ public static class PlacePalette
 /// routes, and vistas of neighbouring places. Geometry is batched (MultiMesh, AD-06); signs are pooled Label3D
 /// nodes whose visibility is managed by distance so wide folders do not show hundreds of names at once (PLACE-05).
 /// Only the local neighbourhood is ever built (PLACE-09).
+/// <para>
+/// Core decides where everything is (<see cref="PlaceComposer"/>, metres in the place's local frame, north = −Z); this
+/// class only decides how it looks: sizes of decorations, sign heights and pixel sizes, lights and colours. Rebuilt
+/// whenever the place or its listing changes (<see cref="Build"/>); <see cref="UpdateSigns"/> runs every frame.
+/// From the air, <see cref="AerialWorld"/> replaces the vistas with the real places (<see cref="SetVistasVisible"/>).
+/// </para>
+/// <para>
+/// Sign priorities (lower first): 0 = the place's identity, always shown and not counted against the limit;
+/// <see cref="PlatePriority"/> next; then 1 and 2 (role and category labels), ordered by distance;
+/// <see cref="VistaPriority"/> shows only in overview.
+/// </para>
 /// </summary>
 public partial class PlaceWorld : Node3D
 {
@@ -108,6 +120,48 @@ public partial class PlaceWorld : Node3D
     public const float PlateHeight = 2.45f;
 
     private const int PlatePriority = 4;
+
+    /// <summary>A sign range meaning "at any distance" (metres): identity, tier and state signs.</summary>
+    private const float AnyRangeMetres = 1e9f;
+
+    /// <summary>Pooled Label3D text is rasterised at 64 px with a 14 px dark outline; <c>PixelSize</c> per sign sets its size in the world (docs/units.md).</summary>
+    private const int SignFontSizePixels = 64, SignOutlinePixels = 14;
+
+    /// <summary>A gate plate: 0.6 m in front of the membrane (inside the place), at 0.0068 m per text pixel (a 64 px line ≈ 0.44 m).</summary>
+    private const float PlateInsetMetres = 0.6f, PlatePixelSize = 0.0068f;
+
+    // ---- the plaque: the folder's name in front of its landmark (sized for a walker, eye 1.75 m)
+    /// <summary>The plaque stands this many landmark radii south of the landmark, on the way in from the arrival terrace.</summary>
+    private const float PlaqueLandmarkRadii = 2.9f;
+
+    /// <summary>The name line: 2.7 m up, 0.0115 m per pixel (≈ 0.74 m tall), at most 34 characters.</summary>
+    private const float PlaqueNameHeightMetres = 2.7f, PlaqueNamePixelSize = 0.0115f;
+    private const int PlaqueNameMaxChars = 34;
+
+    /// <summary>The summary line under the name: 1.95 m up, ≈ 0.27 m tall.</summary>
+    private const float PlaqueSummaryHeightMetres = 1.95f, PlaqueSummaryPixelSize = 0.0042f;
+
+    /// <summary>The plaque hides when you are within 6.5 m of it horizontally: up close it would fill the view.</summary>
+    private const float PlaqueNearHideMetres = 6.5f;
+
+    /// <summary>The kind banner (project, hub, location) sits this far above the top of the plaque's name line.</summary>
+    private const float BannerGapMetres = 0.15f;
+
+    /// <summary>
+    /// The landmark's light. Lights scatter in volumetric fog as glowing spheres, so its fog energy is low (0.15) and the
+    /// gate lights' is zero; gate lights are added only on single-ring places, where there are few of them.
+    /// </summary>
+    private const float LandmarkLightEnergy = 3.2f, LandmarkLightRangeMetres = 26f, LandmarkLightFogEnergy = 0.15f;
+    private const float GateLightEnergy = 1.1f, GateLightRangeMetres = 9f, GateLightFogEnergy = 0f;
+
+    /// <summary>A file-type quarter gets a street arc, a count sign and an icon only from this many files (fewer read as clutter; rationale for 5 not recorded).</summary>
+    private const int MinQuarterFilesForSign = 5;
+
+    /// <summary>Tower badges show up to 32 m and fade out by 46 m; quarter icons, larger, up to 30 m and gone by 70 m.</summary>
+    private const float TowerBadgeFadeStartMetres = 32f, TowerBadgeFadeEndMetres = 46f, QuarterIconFadeStartMetres = 30f, QuarterIconFadeEndMetres = 70f;
+
+    /// <summary>The overlook's text hides within 2.2 m: readable from the top of the ramp, out of the way at the rail.</summary>
+    private const float OverlookNearHideMetres = 2.2f;
 
     public PlaceWorld()
     {
@@ -198,8 +252,8 @@ public partial class PlaceWorld : Node3D
                 var created = new Label3D
                 {
                     Font = _font,
-                    FontSize = 64,
-                    OutlineSize = 14,
+                    FontSize = SignFontSizePixels,
+                    OutlineSize = SignOutlinePixels,
                     OutlineModulate = new Color(0.01f, 0.012f, 0.03f, 0.92f),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Bottom,
@@ -231,7 +285,7 @@ public partial class PlaceWorld : Node3D
         {
             // Fixed (not billboarded), facing into the place, just in front of the membrane: read while walking up to it.
             var inward = -Gd(g.Outward);
-            var plate = Sign(text, Gd(g.Position) + inward * 0.6f + new Vector3(0, PlateHeight, 0), 0.0068f, color, PlateRange, PlatePriority, facingYaw: Mathf.Atan2(inward.X, inward.Z));
+            var plate = Sign(text, Gd(g.Position) + inward * PlateInsetMetres + new Vector3(0, PlateHeight, 0), PlatePixelSize, color, PlateRange, PlatePriority, facingYaw: Mathf.Atan2(inward.X, inward.Z));
             plate.DoubleSided = false;
             plate.AlphaCut = Label3D.AlphaCutMode.OpaquePrepass; // crisp in front of the translucent membrane
             plate.VerticalAlignment = VerticalAlignment.Center;
@@ -244,16 +298,16 @@ public partial class PlaceWorld : Node3D
         var folder = tree[c.FolderId];
         LandmarkSign = tree.DisplayName(c.FolderId);
         // The folder's name is a plaque at eye level in front of the landmark, facing the way you arrive.
-        var plaque = new Vector3(0, 0, c.Landmark.Radius * 2.9f);
+        var plaque = new Vector3(0, 0, c.Landmark.Radius * PlaqueLandmarkRadii);
         // Sized for a walker (eye 1.75 m): readable from the arrival terrace, hidden when you stand next to it.
-        var nameSign = Sign(PlaceText.Fit(LandmarkSign, 34), plaque + new Vector3(0, 2.7f, 0), 0.0115f, accent.Lightened(0.55f), 1e9f, 0);
-        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, 1.95f, 0), 0.0042f, new Color(0.82f, 0.88f, 1f), 1e9f, 0);
-        _nearHide[nameSign] = 6.5f;
-        _nearHide[summarySign] = 6.5f;
+        var nameSign = Sign(PlaceText.Fit(LandmarkSign, PlaqueNameMaxChars), plaque + new Vector3(0, PlaqueNameHeightMetres, 0), PlaqueNamePixelSize, accent.Lightened(0.55f), AnyRangeMetres, 0);
+        var summarySign = Sign(PlaceText.Summary(tree, folder), plaque + new Vector3(0, PlaqueSummaryHeightMetres, 0), PlaqueSummaryPixelSize, new Color(0.82f, 0.88f, 1f), AnyRangeMetres, 0);
+        _nearHide[nameSign] = PlaqueNearHideMetres;
+        _nearHide[summarySign] = PlaqueNearHideMetres;
         _plaqueName = nameSign;
         _plaqueSummary = summarySign;
         // Lights scatter in volumetric fog as glowing spheres; gate lights must not, the landmark only a little.
-        var light = new OmniLight3D { LightColor = accent, LightEnergy = 3.2f, OmniRange = 26, Position = new Vector3(0, 3.5f, 0), LightSpecular = 0.1f, ShadowEnabled = false, LightVolumetricFogEnergy = 0.15f };
+        var light = new OmniLight3D { LightColor = accent, LightEnergy = LandmarkLightEnergy, OmniRange = LandmarkLightRangeMetres, Position = new Vector3(0, 3.5f, 0), LightSpecular = 0.1f, ShadowEnabled = false, LightVolumetricFogEnergy = LandmarkLightFogEnergy };
         AddChild(light);
         _transient.Add(light);
 
@@ -261,11 +315,11 @@ public partial class PlaceWorld : Node3D
 
         if (c.State is not (ListingState.Open or ListingState.Empty))
         {
-            Sign($"Contents {Listing.Describe(c.State)}", plaque + new Vector3(0, 1.3f, 1.5f), 0.009f, StateColor(c.State), 1e9f, 0);
+            Sign($"Contents {Listing.Describe(c.State)}", plaque + new Vector3(0, 1.3f, 1.5f), 0.009f, StateColor(c.State), AnyRangeMetres, 0);
         }
         else if (c.State == ListingState.Empty)
         {
-            Sign("This folder is empty — no files, no subfolders", plaque + new Vector3(0, 1.3f, 1.5f), 0.008f, new Color(0.8f, 0.86f, 1f), 1e9f, 0);
+            Sign("This folder is empty — no files, no subfolders", plaque + new Vector3(0, 1.3f, 1.5f), 0.008f, new Color(0.8f, 0.86f, 1f), AnyRangeMetres, 0);
         }
 
         // ---- files: towers in type quarters (PLACE-03)
@@ -276,7 +330,7 @@ public partial class PlaceWorld : Node3D
             AddTowerBadge(badges, f, Palette.Category[f.Category]);
         }
 
-        foreach (var q in c.Quarters.Where(q => q.Count >= 5))
+        foreach (var q in c.Quarters.Where(q => q.Count >= MinQuarterFilesForSign))
         {
             var col = Palette.Category[q.Category];
             Arc(streets, q.SignPosition.Length() + 0.6f, q.StartDeg + 1, q.EndDeg - 1, 0.35f, col);
@@ -284,7 +338,7 @@ public partial class PlaceWorld : Node3D
             // The category's icon above its sign, facing the landmark (where you look from).
             var at = Gd(q.SignPosition) + new Vector3(0, 2.1f, 0);
             var facing = new Vector3(-at.X, 0, -at.Z).Normalized();
-            AddBadge(badges, at, facing, 1.1f, FileIcons.For(q.Category), col.Lightened(0.2f), 30f, 70f);
+            AddBadge(badges, at, facing, 1.1f, FileIcons.For(q.Category), col.Lightened(0.2f), QuarterIconFadeStartMetres, QuarterIconFadeEndMetres);
         }
 
         // ---- gates (PLACE-04/05/06/11)
@@ -302,7 +356,7 @@ public partial class PlaceWorld : Node3D
             AddPlate(g, PlaceText.Fit(child.Name, 24), col.Lightened(0.55f));
             if (singleRing)
             {
-                var gl = new OmniLight3D { LightColor = col, LightEnergy = 1.1f, OmniRange = 9, Position = Gd(g.Position - g.Outward * 1.5f) + new Vector3(0, 2.5f, 0), ShadowEnabled = false, LightSpecular = 0.2f, LightVolumetricFogEnergy = 0f };
+                var gl = new OmniLight3D { LightColor = col, LightEnergy = GateLightEnergy, OmniRange = GateLightRangeMetres, Position = Gd(g.Position - g.Outward * 1.5f) + new Vector3(0, 2.5f, 0), ShadowEnabled = false, LightSpecular = 0.2f, LightVolumetricFogEnergy = GateLightFogEnergy };
                 AddChild(gl);
                 _transient.Add(gl);
             }
@@ -310,12 +364,13 @@ public partial class PlaceWorld : Node3D
 
         if (c.Gates.Count == 0 && c.State is ListingState.Open)
         {
-            Sign("No subfolders here", new Vector3(0, 1.6f, -c.PlazaRadius * 0.6f), 0.014f, new Color(0.75f, 0.8f, 0.95f), 1e9f, 0);
+            Sign("No subfolders here", new Vector3(0, 1.6f, -c.PlazaRadius * 0.6f), 0.014f, new Color(0.75f, 0.8f, 0.95f), AnyRangeMetres, 0);
         }
 
         foreach (var t in c.Tiers.Where(t => c.IsWide && t.Rise > 0))
         {
-            // A terrace ring under each raised tier, so its gates stand on something.
+            // A terrace ring under each raised tier, so its gates stand on something: the tier's arc plus 4° at each end,
+            // 7 m deep, in straight pieces of ≈ 2.8 m of arc (160π/180 m), at least 8.
             var steps = Math.Max(8, (int)((t.EndDeg - t.StartDeg + 8) * t.Radius / 160f));
             for (var i = 0; i < steps; i++)
             {
@@ -335,14 +390,14 @@ public partial class PlaceWorld : Node3D
         {
             Arc(streets, t.Radius - 3f, t.StartDeg, t.EndDeg, 0.45f, accent with { A = 1 } * 0.8f);
             var text = $"Tier {t.Index + 1} · {PlaceText.Short(t.FirstName)} – {PlaceText.Short(t.LastName)} · {t.Count} folders";
-            Sign(text, Gd(PlaceGeometry.Direction(t.StartDeg - 4) * (t.Radius - 3)) + new Vector3(0, 2.2f, 0), 0.013f, accent.Lightened(0.5f), 1e9f, 0);
-            Sign(text, Gd(PlaceGeometry.Direction(t.EndDeg + 4) * (t.Radius - 3)) + new Vector3(0, 2.2f, 0), 0.013f, accent.Lightened(0.5f), 1e9f, 0);
+            Sign(text, Gd(PlaceGeometry.Direction(t.StartDeg - 4) * (t.Radius - 3)) + new Vector3(0, 2.2f, 0), 0.013f, accent.Lightened(0.5f), AnyRangeMetres, 0);
+            Sign(text, Gd(PlaceGeometry.Direction(t.EndDeg + 4) * (t.Radius - 3)) + new Vector3(0, 2.2f, 0), 0.013f, accent.Lightened(0.5f), AnyRangeMetres, 0);
         }
 
         if (c.IsWide)
         {
             Sign($"{c.Gates.Count} folders on {c.Tiers.Count} tiers · A→Z (numbers by value) from west to east, tier by tier outward\nNo vistas for this many folders · every folder is listed in Destinations",
-                plaque + new Vector3(0, 1.3f, 1.5f), 0.0055f, new Color(0.8f, 0.86f, 1f), 1e9f, 0);
+                plaque + new Vector3(0, 1.3f, 1.5f), 0.0055f, new Color(0.8f, 0.86f, 1f), AnyRangeMetres, 0);
         }
 
         // ---- walkable terrain (AD-16): the arrival terrace and its stairs, the overlook with its ramp, rails and jump
@@ -376,9 +431,10 @@ public partial class PlaceWorld : Node3D
         var summary = PlaceText.OverlookText(tree, folder, c);
         var lines = summary.Count(ch => ch == '\n') + 1;
         var ovText = Sign(summary, panelAt, 0.0034f, new Color(0.84f, 0.9f, 1f), 40, 2, facingYaw: faceYaw);
-        var ovTitle = Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, lines * 64 * 0.0034f * 1.3f + 0.12f, 0), 0.005f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
-        _nearHide[ovTitle] = 2.2f; // readable from the top of the ramp; out of the way at the rail
-        _nearHide[ovText] = 2.2f;
+        // lines × the text's line height (64 px × 0.0034 m/px × 1.3 line spacing) + a 0.12 m gap.
+        var ovTitle = Sign($"OVERLOOK · {tree.DisplayName(c.FolderId)}", panelAt + new Vector3(0, lines * SignFontSizePixels * 0.0034f * 1.3f + 0.12f, 0), 0.005f, accent.Lightened(0.6f), 40, 2, facingYaw: faceYaw);
+        _nearHide[ovTitle] = OverlookNearHideMetres;
+        _nearHide[ovText] = OverlookNearHideMetres;
         var rampSign = ov.RampFoot + System.Numerics.Vector2.Normalize(new System.Numerics.Vector2(ov.Top.X, ov.Top.Z) - ov.RampFoot) * 2.2f;
         Sign("▲ overlook", new Vector3(rampSign.X, 1.5f, rampSign.Y), 0.004f, accent.Lightened(0.4f), 22, 2);
 
@@ -478,7 +534,7 @@ public partial class PlaceWorld : Node3D
         {
             case PlaceKind.Project:
             {
-                sign("⚙ SOFTWARE PROJECT", plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0062f, new Color(0.55f, 1f, 0.85f), 1e9f, 0);
+                sign("⚙ SOFTWARE PROJECT", plaque + new Vector3(0, PlaqueNameHeightMetres + SignFontSizePixels * PlaqueNamePixelSize + BannerGapMetres, 0), 0.0062f, new Color(0.55f, 1f, 0.85f), AnyRangeMetres, 0);
                 var coreColor = new Color(0.45f, 1f, 0.8f);
                 foreach (var f in c.Files.Where(f => f.Core))
                 {
@@ -493,7 +549,7 @@ public partial class PlaceWorld : Node3D
             }
 
             case PlaceKind.Hub:
-                sign("LOCATIONS · every drive and Linux distribution is a gate", plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                sign("LOCATIONS · every drive and Linux distribution is a gate", plaque + new Vector3(0, PlaqueNameHeightMetres + SignFontSizePixels * PlaqueNamePixelSize + BannerGapMetres, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), AnyRangeMetres, 0);
                 for (var i = 0; i < 3; i++)
                 {
                     var m = new MeshInstance3D
@@ -511,7 +567,7 @@ public partial class PlaceWorld : Node3D
             case PlaceKind.LocationRoot:
                 var folder = tree[c.FolderId];
                 var text = folder.Location == LocationKind.Wsl ? $"WSL · LINUX · {folder.Name} · names are case-sensitive" : $"{c.Kind.Label.ToUpperInvariant()} · {folder.Name}";
-                sign(text, plaque + new Vector3(0, 2.7f + 64 * 0.0115f + 0.15f, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), 1e9f, 0);
+                sign(text, plaque + new Vector3(0, PlaqueNameHeightMetres + SignFontSizePixels * PlaqueNamePixelSize + BannerGapMetres, 0), 0.0058f, new Color(0.85f, 0.9f, 1f), AnyRangeMetres, 0);
                 break;
         }
     }
@@ -531,9 +587,13 @@ public partial class PlaceWorld : Node3D
         var height = Mathf.Clamp(b.Size.Y - 0.6f, 0.5f, 2.2f);
         if (b.Size.Y < 1.0f) return; // thin tiles (empty files) have no face to carry a badge
         var size = Mathf.Min(0.9f, Mathf.Min(b.Size.X, b.Size.Z) * 0.75f);
-        AddBadge(badges, new Vector3(b.Center.X, b.Min.Y + height, b.Center.Z) + face * (half + 0.03f), face, size, FileIcons.For(f.Category), color.Lightened(0.25f), 32f, 46f);
+        AddBadge(badges, new Vector3(b.Center.X, b.Min.Y + height, b.Center.Z) + face * (half + 0.03f), face, size, FileIcons.For(f.Category), color.Lightened(0.25f), TowerBadgeFadeStartMetres, TowerBadgeFadeEndMetres);
     }
 
+    /// <summary>
+    /// One icon quad for badge.gdshader: <paramref name="size"/> metres square, facing <paramref name="facing"/>, with the
+    /// icon's atlas cell and its fade distances (metres from the camera) packed into the custom data.
+    /// </summary>
     private static void AddBadge(InstanceBatch badges, Vector3 at, Vector3 facing, float size, IconKind icon, Color color, float fadeStart, float fadeEnd)
     {
         var right = Vector3.Up.Cross(facing).Normalized();
@@ -569,8 +629,10 @@ public partial class PlaceWorld : Node3D
 
     private bool _vistasVisible = true;
 
-    /// <summary>Shows or hides the vistas (symbolic previews beyond the gates): hidden while the aerial world shows the real places.</summary>
-    /// <summary>PROM-02: a slim light above each prominent gate, taller and brighter by level, in its kind's colour.</summary>
+    /// <summary>
+    /// PROM-02: a slim light above each prominent gate, taller and wider by level (5 m + 4 m per level), in its kind's
+    /// colour, on a 1.6 m disc just above the gate. Replaces any previous marks (Main.Projects).
+    /// </summary>
     public void SetProminentGates(IReadOnlyList<(int Id, Vector3 Top, float Level, Color Color)> marks)
     {
         var batch = new InstanceBatch();
@@ -590,6 +652,7 @@ public partial class PlaceWorld : Node3D
     /// <summary>The horizon marks of the place last built (HORIZON-01), for probes.</summary>
     public IReadOnlyList<HorizonMark> HorizonMarks { get; private set; } = [];
 
+    /// <summary>Shows or hides the vistas (symbolic previews beyond the gates): hidden while the aerial world shows the real places.</summary>
     public void SetVistasVisible(bool visible)
     {
         _vistasVisible = visible;
@@ -599,14 +662,30 @@ public partial class PlaceWorld : Node3D
     /// <summary>Vista names repeat the gate names, so on the plaza they stay hidden; from above or beyond the gates they show.</summary>
     private const int VistaPriority = 3;
 
+    /// <summary>The outermost gate tier's radius, metres (0 when there are no gates): beyond it you are looking back at the place.</summary>
     private float _ringRadius;
+
+    /// <summary>
+    /// "Overview" for signs: the eye more than 14 m up (towers are at most 12 m tall), or more than 4 m outside the
+    /// gate ring. Vista names then show and gate plates hide.
+    /// </summary>
+    private const float OverviewEyeHeightMetres = 14f, OverviewBeyondRingMetres = 4f;
+
+    /// <summary>A plate shows only when the eye is more than 0.3 m inside its gate plane (negative depth = inside the place), so it is never read from behind or mid-threshold.</summary>
+    private const float PlateReadDepthMetres = -0.3f;
+
+    /// <summary>A near-hidden sign fades in over this many metres beyond its hide distance, rather than popping.</summary>
+    private const float NearHideFadeMetres = 4f;
+
+    /// <summary>Signs fainter than this opacity (mid-fade) do not count as covering the screen for overlay labels.</summary>
+    private const float FaintSignOpacity = 0.3f;
 
     /// <summary>Approximate screen rectangles of the visible in-world signs (so overlay labels avoid them, VISI-01).</summary>
     public IEnumerable<Rect2> VisibleSignRects(Camera3D camera)
     {
         foreach (var (label, _, _) in _managed)
         {
-            if (!label.Visible || label.Modulate.A < 0.3f) continue;
+            if (!label.Visible || label.Modulate.A < FaintSignOpacity) continue;
             if (SignRect(label, camera) is { } r) yield return r;
         }
     }
@@ -645,7 +724,7 @@ public partial class PlaceWorld : Node3D
         var camera = cam.GlobalPosition;
         var shown = 0;
         var placed = new List<Rect2>();
-        var overview = camera.Y > 14f || new Vector2(camera.X, camera.Z).Length() > _ringRadius + 4f;
+        var overview = camera.Y > OverviewEyeHeightMetres || new Vector2(camera.X, camera.Z).Length() > _ringRadius + OverviewBeyondRingMetres;
         foreach (var (label, range, priority) in _managed
                      .Select(m => (m.Label, m.Range, m.Priority, D: m.Label.GlobalPosition.DistanceTo(camera)))
                      .OrderBy(m => m.Priority == 0 ? 0 : m.Priority == PlatePriority ? 1 : 2).ThenBy(m => m.D)
@@ -655,14 +734,14 @@ public partial class PlaceWorld : Node3D
             // A plate reads from inside the place only (it faces in), and never from above (flight, overview).
             if (visible && _plateGates.TryGetValue(label, out var plateGate))
             {
-                visible = !overview && Core.Places.ThresholdTracker.Depth(plateGate, camera.ToNumerics()) < -0.3f;
+                visible = !overview && Core.Places.ThresholdTracker.Depth(plateGate, camera.ToNumerics()) < PlateReadDepthMetres;
             }
 
             if (visible && _nearHide.TryGetValue(label, out var near))
             {
                 var flat = new Vector2(label.GlobalPosition.X - camera.X, label.GlobalPosition.Z - camera.Z).Length();
                 visible = flat > near;
-                label.Modulate = label.Modulate with { A = Mathf.Clamp((flat - near) / 4f, 0, 1) };
+                label.Modulate = label.Modulate with { A = Mathf.Clamp((flat - near) / NearHideFadeMetres, 0, 1) };
             }
 
             if (visible && SignRect(label, cam) is { } rect)
@@ -688,6 +767,11 @@ public partial class PlaceWorld : Node3D
         VisibleSigns = shown;
     }
 
+    /// <summary>
+    /// The landmark (PLACE-02): a dark base disc with a glowing rim, then one of three forms chosen by the folder's
+    /// identity (spire, obelisk with a floating halo, ring tower), all scaled by its radius and height. The proportions
+    /// are an art direction chosen by eye (rationale not recorded).
+    /// </summary>
     private void BuildLandmark(Landmark lm, Color accent)
     {
         var h = lm.Height;
@@ -725,6 +809,11 @@ public partial class PlaceWorld : Node3D
         }
     }
 
+    /// <summary>
+    /// A gate: two 0.55 m pillars, a 0.7 m lintel overhanging by 0.3 m each side, and between them the membrane you walk
+    /// through (a 2 cm translucent panel; a link's is more opaque). Pillars and lintel go into the frame batch, the
+    /// membrane into the portal batch (different shaders).
+    /// </summary>
     private static void AddGate(InstanceBatch frames, InstanceBatch portals, Gate g, Color color, float style)
     {
         var o = Gd(g.Outward);
@@ -746,6 +835,10 @@ public partial class PlaceWorld : Node3D
         portals.Add(t * mw, up * mh, o * 0.02f, basePos + up * (mh / 2), color with { A = g.State == ListingState.Link ? 0.9f : 0.75f }, new Color(mw, mh, 0.02f, style));
     }
 
+    /// <summary>
+    /// A vista: the symbolic preview of a neighbouring place beyond its gate (AD-14): its landmark as a spire, its largest
+    /// towers, beacons for its child folders, a veil when its contents are unknown, and one sign (shown only in overview).
+    /// </summary>
     private void BuildVista(FsTree tree, Vista v, InstanceBatch towers, InstanceBatch beacons, InstanceBatch spires, InstanceBatch streets,
         Func<string, Vector3, float, Color, float, int, bool, Label3D> sign, bool isParent)
     {
@@ -777,14 +870,14 @@ public partial class PlaceWorld : Node3D
         var sub = Listing.IsUnknown(v.State) || v.State == ListingState.Empty
             ? Listing.Describe(v.State)
             : $"{v.FileCount:N0} files · {v.FolderCount:N0} folders" + (v.HiddenBeacons > 0 ? $" ({v.Beacons.Count} shown)" : "");
-        sign(name + "\n" + sub, center + new Vector3(0, v.LandmarkHeight + 1.5f, 0), 0.026f, col.Lightened(0.2f) with { A = 0.85f }, 1e9f, VistaPriority, true);
+        sign(name + "\n" + sub, center + new Vector3(0, v.LandmarkHeight + 1.5f, 0), 0.026f, col.Lightened(0.2f) with { A = 0.85f }, AnyRangeMetres, VistaPriority, true);
     }
 
     /// <summary>An arc of street segments at radius <paramref name="r"/> between two angles (clockwise from north).</summary>
     private static void Arc(InstanceBatch streets, float r, float fromDeg, float toDeg, float width, Color color, Vector3? center = null)
     {
         var c = center ?? Vector3.Zero;
-        var steps = Math.Max(2, (int)(Math.Abs(toDeg - fromDeg) * r / 180f));
+        var steps = Math.Max(2, (int)(Math.Abs(toDeg - fromDeg) * r / 180f)); // one straight piece per ≈ π m (3.1 m) of arc, at least 2
         var prev = c + Gd(PlaceGeometry.Direction(fromDeg) * r) with { Y = 0.04f };
         var along = 0f;
         for (var i = 1; i <= steps; i++)
@@ -798,6 +891,7 @@ public partial class PlaceWorld : Node3D
 
     private static Color StateColor(ListingState s) => PlacePalette.For(s, default);
 
+    /// <summary>Builds one named batch into its reused pool of MultiMesh nodes (see <see cref="InstanceBatch.BuildInto"/>).</summary>
     private void Emit(string slot, InstanceBatch batch, Mesh mesh, Material material, bool shadows)
     {
         if (!_pools.TryGetValue(slot, out var pool))
@@ -839,6 +933,7 @@ public static class PlaceText
         };
     }
 
+    /// <summary>A gate's second line: the location kind, the link status, the listing state, or the folder's summary (plus a note for a chain of three or more single folders).</summary>
     public static string GateSubtitle(FsTree tree, FsNode child, Gate g)
     {
         var state = g.State;
@@ -880,9 +975,13 @@ public static class PlaceText
         _ => "Other files",
     };
 
+    /// <summary>Shortens a name to at most 14 characters (13 and an ellipsis), for the tier signs' first–last range.</summary>
     public static string Short(string name) => name.Length <= 14 ? name : name[..13] + "…";
 
-    /// <summary>Shortens a long name for a sign, keeping its start and end (the full name is in Destinations and the inspector).</summary>
+    /// <summary>
+    /// Shortens a long name for a sign to <paramref name="max"/> characters, keeping its start (two thirds) and end (one
+    /// third), where versions and extensions usually differ (the full name is in Destinations and the inspector).
+    /// </summary>
     public static string Fit(string name, int max) =>
         name.Length <= max ? name : string.Concat(name.AsSpan(0, max - max / 3 - 1), "…", name.AsSpan(name.Length - max / 3));
 }

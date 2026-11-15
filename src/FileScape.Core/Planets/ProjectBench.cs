@@ -29,10 +29,13 @@ public sealed record BenchEntry(int NodeId, BenchRole Role, string Why);
 /// nothing is read and nothing is listed for it. Ordered for the bench: README first, then how to build it (solution,
 /// manifest), where it starts (entry files), then its main folders; at most <see cref="MaxEntries"/>.
 /// </summary>
+/// <remarks>The app (<c>PlanetWorld.Bench.cs</c>) shows these as cards rising from the workbench and lists them in its panel.</remarks>
 public static class ProjectBench
 {
+    /// <summary>The most key locations listed (AD-50: "at most 9").</summary>
     public const int MaxEntries = 9;
 
+    /// <summary>File names that usually start a program, across common languages and Godot (exact, case-sensitive).</summary>
     private static readonly string[] EntryNames =
     [
         "Program.cs", "Main.cs", "App.cs", "main.py", "__main__.py", "app.py", "manage.py", "cli.py", "main.go", "main.rs", "lib.rs",
@@ -40,6 +43,7 @@ public static class ProjectBench
         "Main.tscn", "main.tscn",
     ];
 
+    /// <summary>Conventional top-level folder names and what they hold, in bench order (case-insensitive).</summary>
     private static readonly (string Name, BenchRole Role, string Why)[] FolderRoles =
     [
         ("src", BenchRole.Source, "the source"), ("app", BenchRole.Source, "the app"), ("lib", BenchRole.Source, "the library"),
@@ -50,6 +54,7 @@ public static class ProjectBench
         (".github", BenchRole.Ci, "CI and community files"),
     ];
 
+    /// <summary>Build recipe file names (case-insensitive).</summary>
     private static readonly string[] BuildNames = ["Makefile", "Dockerfile", "justfile", "build.sh", "build.ps1", "CMakeLists.txt", "Taskfile.yml"];
 
     /// <summary>The project's key locations, or empty when the folder has none (an empty folder, say).</summary>

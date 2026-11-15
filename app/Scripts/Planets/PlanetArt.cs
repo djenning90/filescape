@@ -40,6 +40,8 @@ public enum DecorationKind
 /// <see cref="FaceSurface"/> is the index of a quad with UVs (0,0 top-left … 1,1 bottom-right) on which the app can show a
 /// real thumbnail (Image, Video), or −1. <see cref="FaceSize"/> is that quad's width × height in metres (aspect).
 /// <see cref="Lantern"/> is the local position of the object's glowing part (for a halo or a light), metres.
+/// <see cref="HeightMetres"/> is the object's approximate height at scale 1, metres (1.0 for most; 1.1 for the rocket;
+/// 1.6 for a pile).
 /// </summary>
 public sealed record FileArt(ArrayMesh Mesh, int FaceSurface, Vector2 FaceSize, Vector3 Lantern, float HeightMetres);
 
@@ -56,7 +58,11 @@ public sealed record LauncherArt(ArrayMesh Pad, ArrayMesh Core, IReadOnlyList<Ar
     /// <summary>Petal tilt above the pad when fully closed (a bud) and fully open (a flat bloom), degrees.</summary>
     public const float ClosedTiltDegrees = 74f, OpenTiltDegrees = 6f;
 
-    /// <summary>Local transform of petal <paramref name="index"/> (0–5) at openness <paramref name="open01"/> (0 = bud, 1 = open).</summary>
+    /// <summary>
+    /// Local transform of petal <paramref name="index"/> (0–5) at openness <paramref name="open01"/> (0 = bud, 1 = open,
+    /// clamped): the petal is turned round the pad by its share of the circle, offset by half a share (so no petal points
+    /// straight along +Z), hinged 2 cm below the walkable top (its root tucks into the pad), then tilted up about its hinge.
+    /// </summary>
     public Transform3D PetalPose(int index, float open01)
     {
         var yaw = index * Mathf.Tau / Petals.Count + Mathf.Pi / Petals.Count;
@@ -66,7 +72,7 @@ public sealed record LauncherArt(ArrayMesh Pad, ArrayMesh Core, IReadOnlyList<Ar
         return new Transform3D(basis, origin);
     }
 
-    /// <summary>A node with children "Pad", "Core" and "Petal0".."Petal4" (petals at <paramref name="open01"/>).</summary>
+    /// <summary>A node with children "Pad", "Core" and "Petal0".."Petal5" (one per petal, at <paramref name="open01"/>); the app finds the petals and the core by these names.</summary>
     public Node3D Instantiate(float open01 = 1f)
     {
         var root = new Node3D { Name = "Launcher" };
@@ -99,8 +105,16 @@ public sealed record LauncherArt(ArrayMesh Pad, ArrayMesh Core, IReadOnlyList<Ar
 /// </summary>
 public static partial class PlanetArt
 {
+    /// <summary>
+    /// The radius the overlook and the workbench meshes are built at, metres: the composer's default platform radius
+    /// (<see cref="PlanetParams.OverlookRadius"/>); <see cref="PlanetVisual"/> scales the mesh by the composed radius over
+    /// this, so the drawn platform is the walked one.
+    /// </summary>
+    internal const float OverlookRadiusMetres = 2.2f;
+
     // ------------------------------------------------------------------ palettes
 
+    /// <summary>A colour from sRGB channels 0–1 (opaque: alpha 1 also means "not glowing", see <see cref="Glowing"/>).</summary>
     private static Color C(float r, float g, float b) => new(r, g, b);
 
     /// <summary>The palette of a theme: eleven distinct, harmonious, saturated pastel worlds under one shared night sky.</summary>
@@ -171,6 +185,7 @@ public static partial class PlanetArt
     {
         if (_surface != null) return _surface;
         _surface = new ShaderMaterial { Shader = Load("planet_toon") };
+        // Ground: a stronger, coarser speckle (≈ 1.4 m period) than props get, so wide ground never looks flat-filled.
         _surface.SetShaderParameter("speckle", 0.1f);
         _surface.SetShaderParameter("speckle_per_metre", 0.7f);
         _surface.SetShaderParameter("sky_rim", 0.1f);
@@ -184,6 +199,7 @@ public static partial class PlanetArt
     {
         if (_prop != null) return _prop;
         _prop = new ShaderMaterial { Shader = Load("planet_toon") };
+        // Props: a faint, fine speckle (≈ 0.33 m period) and a glossier finish than the ground.
         _prop.SetShaderParameter("speckle", 0.03f);
         _prop.SetShaderParameter("speckle_per_metre", 3f);
         _prop.SetShaderParameter("roughness", 0.6f);
@@ -193,6 +209,8 @@ public static partial class PlanetArt
     /// <summary>An unlit glowing material of <paramref name="color"/> (lantern cores, the launcher's heart). Cached per colour.</summary>
     public static ShaderMaterial GlowMaterial(Color color, float energy = 2.6f, float pulse = 0f)
     {
+        // The cache key packs energy and pulse into one float (pulse in hundreds): distinct for the few (energy < 100,
+        // pulse) pairs the app uses, not a general encoding.
         var key = new Color(color.R, color.G, color.B, energy + pulse * 100f);
         if (Glows.TryGetValue(key, out var m)) return m;
         m = new ShaderMaterial { Shader = Load("planet_glow") };
@@ -253,6 +271,8 @@ public static partial class PlanetArt
         GlowBloom = 0.04f,
         GlowHdrThreshold = 1.1f,
         GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
+        // Fog off since DJ's playtest (e7c9777: "sky without the artificial horizon and fog"); the settings below take
+        // effect only if it is turned back on.
         FogEnabled = false,
         FogLightColor = p.Fog,
         FogDensity = 0.0011f,
@@ -271,15 +291,20 @@ public static partial class PlanetArt
         RotationDegrees = new Vector3(-48, 35, 0),
         ShadowEnabled = true,
         ShadowBlur = 1.5f,
-        DirectionalShadowMaxDistance = 90f,
+        DirectionalShadowMaxDistance = 90f, // metres (rationale not recorded; a short range keeps the shadow map's detail near the walker)
     };
 
-    /// <summary>A soft atmosphere halo shell for a planet of <paramref name="planetRadiusMetres"/> (centred at the origin).</summary>
+    /// <summary>
+    /// A soft atmosphere halo shell for a planet of <paramref name="planetRadiusMetres"/> (centred at the origin), its radius
+    /// <paramref name="shellRatio"/> times the planet's: drawn only for worlds seen from outside (see <see cref="PlanetVisual"/>).
+    /// </summary>
     public static MeshInstance3D Atmosphere(float planetRadiusMetres, PlanetPalette p, float shellRatio = 1.12f)
     {
         var m = new ShaderMaterial { Shader = Load("planet_atmosphere") };
         m.SetShaderParameter("color", p.Accent.Lerp(p.GroundHigh, 0.4f).Lerp(C(0.8f, 0.7f, 1f), 0.35f));
         m.SetShaderParameter("intensity", 0.45f);
+        // Where a sightline grazes the planet it meets the shell at an angle whose sine is 1/shellRatio to the shell's
+        // normal, so 1 − cos(view, normal) there is 1 − √(1 − 1/ratio²): the shader is brightest just outside that limb.
         m.SetShaderParameter("limb_f", 1f - Mathf.Sqrt(1f - 1f / (shellRatio * shellRatio)));
         var r = planetRadiusMetres * shellRatio;
         return new MeshInstance3D
@@ -293,7 +318,10 @@ public static partial class PlanetArt
 
     // ------------------------------------------------------------------ planet
 
-    /// <summary>Icosphere subdivisions that keep edges ≈ 0.6–1.2 m for a planet of <paramref name="radiusMetres"/>.</summary>
+    /// <summary>
+    /// Icosphere subdivisions that keep edges ≈ 0.6–1.2 m for a planet of <paramref name="radiusMetres"/>: an edge is about
+    /// 0.066 × radius at 4 and 0.033 × radius at 5, so worlds up to 15 m use 4 (≤ ≈ 1 m) and larger ones 5.
+    /// </summary>
     public static int SubdivisionsFor(float radiusMetres) => radiusMetres <= 15f ? 4 : 5;
 
     /// <summary>
@@ -344,14 +372,21 @@ public static partial class PlanetArt
             verts[i] = d * (shape.Radius + h);
             var n = shape.Normal(nd);
             normals[i] = new Vector3(n.X, n.Y, n.Z);
+            // Low to high ground: half by height (−amplitude … +amplitude → 0 … 1), half by broad noise (features ≈ 9 m),
+            // so colour bands do not simply follow contour lines. The noise offsets only decorrelate the layers and seeds.
             var t = Mathf.Clamp(h / amp * 0.5f + 0.5f, 0, 1);
             var broad = Noise(verts[i] * (1f / 9f) + new Vector3(4.2f, shape.Seed * 0.13f, 1.7f));
             var col = palette.GroundLow.Lerp(palette.GroundHigh, Smooth(0.2f, 0.8f, 0.5f * t + 0.5f * broad));
+            // Slopes darken: 1 − cos(tilt) from 0.01 (≈ 8°) to 0.07 (≈ 21°).
             var slope = 1f - NVector3.Dot(n, nd);
             col = col.Lerp(palette.GroundLow.Darkened(0.22f), Smooth(0.01f, 0.07f, slope));
             var p = verts[i];
 
-            // Clearings and paths: lighter around flat spots and along great-circle paths from the arrival spot.
+            // Clearings and paths: lighter around flat spots and along great-circle paths from the arrival spot. Per spot of
+            // radius sr (metres along the surface): a faint worn disc (0.35 of the path colour) over it, a brighter ring
+            // path (0.6) whose line runs 0.8 m outside its edge (full within ±0.35 m, gone by ±1 m), accent patches damped
+            // (to 30 %) inside it and for 3 m beyond, and from the arrival (spot 0) to every other spot a path (0.65; full
+            // within ±0.45 m, gone by ±1.2 m).
             var path = 0f;
             var clear = 1f;
             for (var s = 0; s < spots.Count; s++)
@@ -364,7 +399,8 @@ public static partial class PlanetArt
                 if (s > 0) path = MathF.Max(path, 0.65f * (1 - Smooth(0.45f, 1.2f, ArcDistance(nd, spots[0].Direction, sd, shape.Radius))));
             }
 
-            // Patches of the accent (flower meadows) away from clearings, and a fine brightness wobble.
+            // Patches of the accent (flower meadows: features ≈ 6.5 m, where the noise passes 0.6–0.75) away from
+            // clearings, and a fine brightness wobble (features ≈ 1.8 m, at most 7 % towards white or black).
             var patch = Noise(p * (1f / 6.5f) + new Vector3(shape.Seed * 0.37f, 1.3f, 2.9f));
             col = col.Lerp(palette.Accent.Lerp(palette.GroundHigh, 0.35f), 0.5f * Smooth(0.6f, 0.75f, patch) * MathF.Max(clear, 0.3f));
             var fine = Noise(p * 0.55f + new Vector3(7.1f, 3.3f, shape.Seed * 0.11f));
@@ -394,6 +430,10 @@ public static partial class PlanetArt
         return MathF.Min(PlanetShape.Angle(p, a), PlanetShape.Angle(p, b)) * radius;
     }
 
+    /// <summary>
+    /// A unit icosphere: the icosahedron's 12 vertices (from the golden ratio), each subdivision splitting every triangle
+    /// into four with the edge midpoints pushed out onto the sphere (shared midpoints cached per edge); 20 × 4ⁿ triangles.
+    /// </summary>
     private static (List<Vector3> Dirs, List<int> Tris) Icosphere(int subdivisions)
     {
         var t = (1f + MathF.Sqrt(5f)) / 2f;
@@ -442,6 +482,7 @@ public static partial class PlanetArt
 
     // ------------------------------------------------------------------ shared bits
 
+    // The materials of the toy world, shared by every builder so props on all planets belong together (sRGB).
     private static readonly Color Stone = C(0.76f, 0.70f, 0.88f);
     private static readonly Color StoneDark = C(0.56f, 0.50f, 0.74f);
     private static readonly Color Wood = C(0.66f, 0.42f, 0.30f);
@@ -454,18 +495,25 @@ public static partial class PlanetArt
     /// <summary>A colour marked as glowing: <paramref name="amount"/> 0..1 of emission (stored in vertex alpha as 1 − amount).</summary>
     internal static Color Glowing(Color c, float amount = 1f) => new(c.R, c.G, c.B, 1f - Mathf.Clamp(amount, 0, 1));
 
+    /// <summary>sRGB to linear for a vertex colour (the shaders work in linear light), keeping alpha (the glow mark) as it is.</summary>
     internal static Color Linear(Color c)
     {
         var l = c.SrgbToLinear();
         return new Color(l.R, l.G, l.B, c.A);
     }
 
+    /// <summary>Smoothstep: 0 below <paramref name="e0"/>, 1 above <paramref name="e1"/>, an S-curve between.</summary>
     private static float Smooth(float e0, float e1, float x)
     {
         var t = Mathf.Clamp((x - e0) / (e1 - e0), 0, 1);
         return t * t * (3 - 2 * t);
     }
 
+    /// <summary>
+    /// A repeatable pseudo-random value in [0, 1] for an integer lattice point (the corners of <see cref="Noise"/>). Large
+    /// odd multipliers (two are xxHash32's primes) scatter neighbouring points, the xor-shifts mix the high bits down, and
+    /// the low 24 bits become the float (exact: a float's mantissa holds 24 bits). Wrapping arithmetic is intended.
+    /// </summary>
     private static float Hash(int x, int y, int z)
     {
         unchecked
@@ -477,7 +525,7 @@ public static partial class PlanetArt
         }
     }
 
-    /// <summary>Smooth 3D value noise in [0, 1].</summary>
+    /// <summary>Smooth 3D value noise in [0, 1]: <see cref="Hash"/> at the 8 surrounding lattice corners (1 unit apart), blended trilinearly with a smoothstep fade.</summary>
     internal static float Noise(Vector3 p)
     {
         int x = Mathf.FloorToInt(p.X), y = Mathf.FloorToInt(p.Y), z = Mathf.FloorToInt(p.Z);
@@ -494,15 +542,18 @@ public static partial class PlanetArt
     internal static Transform3D T(Vector3 position, Vector3 eulerDegrees = default, float scale = 1f) =>
         new(Basis.FromEuler(eulerDegrees * (Mathf.Pi / 180f)).Scaled(new Vector3(scale, scale, scale)), position);
 
+    /// <summary>As <see cref="T(Vector3, Vector3, float)"/> with a per-axis scale (applied before the rotation).</summary>
     internal static Transform3D T(Vector3 position, Vector3 eulerDegrees, Vector3 scale) =>
         new(Basis.FromEuler(eulerDegrees * (Mathf.Pi / 180f)) * Basis.FromScale(scale), position);
 
+    /// <summary>The round stone plinth a file object or pile stands on (base at y = 0, a slight bulge, top at <paramref name="height"/>).</summary>
     private static void Plinth(MeshBuilder b, float radius = 0.44f, float height = 0.1f)
     {
         b.Lathe([new(0, 0), new(radius, 0), new(radius, 0), new(radius * 1.02f, height * 0.6f), new(radius * 0.94f, height), new(radius * 0.94f, height), new(0, height)],
             (_, i) => i < 3 ? StoneDark : Stone, 20);
     }
 
+    /// <summary>Adds the builder's triangles as a new surface of <paramref name="mesh"/> (a new mesh when null) with the prop toon material unless another is given.</summary>
     private static ArrayMesh Commit(MeshBuilder b, ArrayMesh? mesh = null, Material? material = null)
     {
         mesh ??= new ArrayMesh();
@@ -531,7 +582,7 @@ public static partial class PlanetArt
             Commit(face, mesh, FacePlaceholder());
         }
 
-        return new FileArt(mesh, faceIndex, size, lantern, category == FileCategory.Executable ? 1.1f : 1.0f);
+        return new FileArt(mesh, faceIndex, size, lantern, category == FileCategory.Executable ? 1.1f : 1.0f); // the rocket stands taller
     }
 
     /// <summary>
@@ -850,7 +901,10 @@ public static partial class PlanetArt
         C(0.92f, 0.42f, 0.46f), C(0.30f, 0.62f, 0.72f), C(0.96f, 0.76f, 0.36f), C(0.60f, 0.50f, 0.88f), C(0.46f, 0.74f, 0.48f), C(0.95f, 0.58f, 0.36f),
     ];
 
-    /// <summary>A stack of <paramref name="count"/> books (width ≈ <paramref name="width"/> m), covers and cream page blocks.</summary>
+    /// <summary>
+    /// A stack of <paramref name="count"/> books (width ≈ <paramref name="width"/> m), covers and cream page blocks, each
+    /// turned a little (±15°); <paramref name="seed"/> picks the sizes and turns and offsets the cover colours.
+    /// </summary>
     private static void Books(MeshBuilder b, Transform3D t, int count, float width, int seed)
     {
         b.Push(t);
@@ -878,8 +932,11 @@ public static partial class PlanetArt
     // ------------------------------------------------------------------ launcher, overlook, stepping stone
 
     /// <summary>
-    /// A bloom launcher: a round pad (radius 1.65 m, walkable top 0.32 m) with a glowing core and five separate petals the
-    /// app rotates open or closed (<see cref="LauncherArt.PetalPose"/>).
+    /// A bloom launcher: a round pad (radius 1.65 m, walkable top 0.32 m at scale 1) with a glowing core and six separate
+    /// petals the app rotates open or closed (<see cref="LauncherArt.PetalPose"/>). Base at y = 0. <see cref="PlanetVisual"/>
+    /// scales it so the drawn pad matches the composed pad radius (<see cref="LauncherArt.PadRadiusMetres"/>); the core's
+    /// glow material is replaced there by the destination's colour. <paramref name="palette"/> null gives a pink-and-gold
+    /// launcher, tinted per pad by the app.
     /// </summary>
     public static LauncherArt Launcher(PlanetPalette? palette = null)
     {
@@ -953,14 +1010,16 @@ public static partial class PlanetArt
     }
 
     /// <summary>
-    /// The overlook ("inspection station"): a round stone platform 2.4 m high, radius 2.2 m, with a rail (open towards +Z,
-    /// where stepping stones arrive) and a small brass telescope on a tripod near the −Z edge.
+    /// The overlook ("inspection station"): a round stone platform 2.4 m high, radius <see cref="OverlookRadiusMetres"/>
+    /// (the composer's default <see cref="PlanetParams.OverlookTop"/> and radius: the walker stands on what is drawn), with a
+    /// rail (open towards +Z, where stepping stones arrive) and a small brass telescope on a tripod near the −Z edge. Base at
+    /// y = 0 (the footing sinks 0.3 m below it).
     /// </summary>
     public static ArrayMesh Overlook(PlanetPalette? palette = null)
     {
         var accent = palette?.Accent ?? C(0.93f, 0.40f, 0.44f);
         var glow = palette?.Glow ?? C(1.0f, 0.8f, 0.45f);
-        const float h = 2.4f, r = 2.2f;
+        const float h = 2.4f, r = OverlookRadiusMetres;
         var b = new MeshBuilder();
         b.Lathe([new(0, -0.3f), new(r * 1.12f, -0.3f), new(r * 1.12f, 0.2f), new(r * 1.0f, 0.5f), new(r * 0.92f, 1.4f), new(r * 0.96f, h - 0.35f), new(r * 0.96f, h - 0.35f), new(r + 0.06f, h - 0.25f), new(r + 0.06f, h - 0.05f), new(r, h), new(r, h), new(0, h)],
             (_, i) => i < 3 ? StoneDark : i < 6 ? Stone : i < 10 ? accent.Lerp(Stone, 0.4f) : Cream.Lerp(Stone, 0.4f), 28);
@@ -994,7 +1053,12 @@ public static partial class PlanetArt
         return Commit(b);
     }
 
-    /// <summary>A rounded stepping stone with its top at <paramref name="topMetres"/> (radius ≈ 0.75 m; it sinks 0.4 m into the ground).</summary>
+    /// <summary>
+    /// A rounded stepping stone with its top at <paramref name="topMetres"/> (radius 0.72–0.8 m by <paramref name="seed"/>,
+    /// a gently wobbly outline; it sinks 0.4 m into the ground). The app scales it by the composed step radius over 0.6 m
+    /// (the composer's default <see cref="PlanetParams.StepRadius"/>), so at the default the stone's top is drawn a little
+    /// wider than the walkable disc.
+    /// </summary>
     public static ArrayMesh SteppingStone(float topMetres = 0.5f, int seed = 0)
     {
         var rng = new Random(seed);
@@ -1032,6 +1096,7 @@ public static partial class PlanetArt
         return Commit(b);
     }
 
+    /// <summary>Hearth's landmark: a striped lighthouse with a glowing lamp room (≈ 10.2 m), its door on the −Z front.</summary>
     private static void Lighthouse(MeshBuilder b, PlanetPalette p)
     {
         // Rocks at the foot, a tapered striped tower, a gallery, a glowing lamp room, a red cap and a glowing finial.
@@ -1073,6 +1138,7 @@ public static partial class PlanetArt
         b.Ellipsoid(new Vector3(0, 10.0f, 0), new Vector3(0.22f, 0.22f, 0.22f), Glowing(p.Glow), 10, 6);
     }
 
+    /// <summary>Meadow's landmark: a giant flower on a curving stem (≈ 9 m), its head tilted towards the −Z front.</summary>
     private static void FlowerTree(MeshBuilder b, PlanetPalette p)
     {
         // A giant flower on a curvy trunk-stem: leaves, a ring of big petals, a glowing centre, tilted towards the front.
@@ -1118,6 +1184,7 @@ public static partial class PlanetArt
         b.Pop();
     }
 
+    /// <summary>Workshop's landmark: a brick chimney (crown at 9.35 m, smoke puffs to ≈ 11.9 m) with a brass gear on its −Z face and a boiler.</summary>
     private static void Chimney(MeshBuilder b, PlanetPalette p)
     {
         // A tall brick chimney with dark bands, a flared crown and soft smoke puffs; a big brass gear on its face; a boiler.
@@ -1157,6 +1224,7 @@ public static partial class PlanetArt
         b.Tube([new(1.9f, 1.8f, 0.4f), new(1.9f, 3.0f, 0.4f), new(1.4f, 3.6f, 0.3f), new(1.0f, 3.7f, 0.2f)], _ => 0.16f, _ => Brass.Darkened(0.1f), 8);
     }
 
+    /// <summary>Library's landmark: a twisting tower of nine giant books (random sizes from a fixed seed, ≈ 8 m) under a reading lamp (≈ 10 m in all).</summary>
     private static void BookTower(MeshBuilder b, PlanetPalette p)
     {
         // A leaning, twisting tower of giant books with a reading lamp on top.
@@ -1188,6 +1256,7 @@ public static partial class PlanetArt
         b.Lathe([new(0, y), new(0.45f, y), new(0.45f, y), new(0.45f, y + 0.12f), new(0, y + 0.12f)], (_, _) => Brass.Darkened(0.2f), 14, origin: new Vector3(0.4f, 0, 0));
     }
 
+    /// <summary>Chime's landmark: an open bell tower with a pyramid roof (≈ 10.2 m) and a big bell hanging inside.</summary>
     private static void BellTower(MeshBuilder b, PlanetPalette p)
     {
         // Four posts on a round base, a swooping roof with chimes at its corners, and a big bell with a glowing clapper.
@@ -1218,6 +1287,7 @@ public static partial class PlanetArt
         b.Ellipsoid(new Vector3(0, 4.45f, 0), new Vector3(0.28f, 0.28f, 0.28f), Glowing(p.Glow), 10, 6);
     }
 
+    /// <summary>Theatre's landmark: a striped tent arch (≈ 10.5 m to the pennant, ≈ 7.4 m across) with a string of bulbs, open along Z.</summary>
     private static void TentArch(MeshBuilder b, PlanetPalette p)
     {
         // A tall striped arch (a pointed tent gate) between two striped posts, a little dome tent with a pennant on top,
@@ -1267,6 +1337,7 @@ public static partial class PlanetArt
         b.Tube(Enumerable.Range(0, 11).Select(k => new Vector3(Mathf.Lerp(-3.0f, 3.0f, k / 10f), 5.72f - 1.2f * Mathf.Sin(Mathf.Pi * k / 10f), -0.1f)).ToList(), _ => 0.02f, _ => Ink, 4, capEnds: false);
     }
 
+    /// <summary>Vault's landmark: a domed drum (≈ 8.9 m, radius 3.6 m) with a round door on its −Z front.</summary>
     private static void DomedVault(MeshBuilder b, PlanetPalette p)
     {
         // A round drum with gold bands, a dome, a lantern cupola, and a big round door with a glowing ring on its front.
@@ -1299,6 +1370,7 @@ public static partial class PlanetArt
         b.Pop();
     }
 
+    /// <summary>Crystal's landmark: a tall glowing crystal (≈ 11 m with its bead) in a ring of seven smaller ones.</summary>
     private static void CrystalSpire(MeshBuilder b, PlanetPalette p)
     {
         // A tall central crystal with a ring of tilted smaller ones on a rocky base; colours shift from base to tip.
@@ -1321,6 +1393,7 @@ public static partial class PlanetArt
         b.Ellipsoid(new Vector3(0, 11.0f, 0), new Vector3(0.25f, 0.25f, 0.25f), Glowing(p.Glow), 8, 5);
     }
 
+    /// <summary>Wild's landmark: two trunks arching into one canopy (≈ 10.2 m) hung with glowing fruit, open along Z.</summary>
     private static void TreeArch(MeshBuilder b, PlanetPalette p)
     {
         // Two curving trunks that meet in a puffy shared canopy hung with glowing fruit.
@@ -1351,6 +1424,7 @@ public static partial class PlanetArt
         b.Ellipsoid(new Vector3(-1.35f, 3.5f, -0.3f), new Vector3(0.16f, 0.2f, 0.16f), Glowing(p.Glow), 8, 5);
     }
 
+    /// <summary>Quiet's landmark: a small arch of stacked stones (≈ 4.9 m: an empty world's modest marker) with one hanging lamp.</summary>
     private static void StoneArch(MeshBuilder b, PlanetPalette p)
     {
         // A little arch of stacked rounded stones with a single lamp hanging from its lintel.
@@ -1376,6 +1450,7 @@ public static partial class PlanetArt
         b.Lathe([new(0.16f, 0.0f), new(0.12f, -0.06f), new(0, -0.08f)], (_, _) => Brass, 10, origin: new Vector3(0, 2.45f, 0));
     }
 
+    /// <summary>Veiled's landmark (and the default): a draped glowing shroud (≈ 10.2 m) ringed by mist bands, for a world whose contents are unknown or unlisted.</summary>
     private static void Shroud(MeshBuilder b, PlanetPalette p)
     {
         // A tall draped shroud with soft folds, ringed by glowing mist bands: the surface is unknown.
@@ -1415,6 +1490,8 @@ public static partial class PlanetArt
     public static ArrayMesh Decoration(DecorationKind kind, PlanetTheme theme, int seed)
     {
         var p = Palette(theme);
+        // One repeatable stream per (seed, kind, theme): 7919 and 131 are primes that keep the three apart (rationale for
+        // the particular primes not recorded). Changing the mix changes every planet's scenery.
         var rng = new Random(seed * 7919 + (int)kind * 131 + (int)theme);
         float R(float a, float b2) => a + (b2 - a) * (float)rng.NextDouble();
         var b = new MeshBuilder();
@@ -1652,6 +1729,7 @@ internal sealed class MeshBuilder
     private Transform3D _t = Transform3D.Identity;
     private Basis _nb = Basis.Identity;
 
+    /// <summary>Triangles added since the last <see cref="Commit"/>.</summary>
     public int Triangles => _v.Count / 3;
 
     /// <summary>Normals that came out non-finite or zero and were replaced by the face normal (a diagnostic).</summary>
@@ -1659,6 +1737,10 @@ internal sealed class MeshBuilder
 
     private static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
+    /// <summary>
+    /// Composes <paramref name="t"/> under the current transform for everything added until the matching <see cref="Pop"/>.
+    /// Normals use the inverse transpose of the basis, so they stay perpendicular under non-uniform scale (an ellipsoid).
+    /// </summary>
     public void Push(Transform3D t)
     {
         _stack.Push(_t);
@@ -1666,13 +1748,18 @@ internal sealed class MeshBuilder
         _nb = _t.Basis.Inverse().Transposed();
     }
 
+    /// <summary>Restores the transform before the last <see cref="Push"/>.</summary>
     public void Pop()
     {
         _t = _stack.Pop();
         _nb = _t.Basis.Inverse().Transposed();
     }
 
-    /// <summary>One triangle in local coordinates (colours in sRGB, alpha = 1 − glow).</summary>
+    /// <summary>
+    /// One triangle in local coordinates (colours in sRGB, alpha = 1 − glow). Degenerate (squared edge cross product below
+    /// 1e-14) or non-finite triangles are dropped; unusable normals are replaced by the face normal (counted in
+    /// <see cref="NonFiniteNormals"/>); the winding is swapped when needed so the front face looks along the normals.
+    /// </summary>
     public void Tri(Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc, Color ca, Color cb, Color cc, Vector2 ua = default, Vector2 ub = default, Vector2 uc = default)
     {
         a = _t * a;
@@ -1799,6 +1886,7 @@ internal sealed class MeshBuilder
         Pop();
     }
 
+    /// <summary>A basis whose Y is along <paramref name="y"/> (any X and Z; another reference axis when y is near vertical, where the cross product with up vanishes).</summary>
     private static Basis AlignY(Vector3 y)
     {
         y = y.Normalized();
@@ -2009,6 +2097,8 @@ internal sealed class MeshBuilder
         {
             var w = Mathf.Tau / teeth;
             var a = i * w;
+            // One tooth per pitch w: rising flank over the first 12 %, the flat tip to 42 %, falling to the root by 54 %; the
+            // rest of the pitch is the gap.
             foreach (var (f, r) in new[] { (0f, rootRadius), (0.12f, tipRadius), (0.42f, tipRadius), (0.54f, rootRadius) })
                 outline.Add(new Vector2(Mathf.Cos(a + f * w), Mathf.Sin(a + f * w)) * r);
         }
@@ -2020,6 +2110,7 @@ internal sealed class MeshBuilder
     public void Prism(int sides, float radius, float height, float tip, Func<int, int, Color> color) =>
         Lathe([new(0, 0), new(radius * 0.8f, 0), new(radius, height * 0.12f), new(radius, height), new(0, height + tip)], color, sides, smooth: false);
 
+    /// <summary>Adds everything accumulated as one new triangle surface of <paramref name="mesh"/> with <paramref name="material"/>, then clears the builder (nothing is added when empty).</summary>
     public void Commit(ArrayMesh mesh, Material material)
     {
         if (_v.Count == 0) return;

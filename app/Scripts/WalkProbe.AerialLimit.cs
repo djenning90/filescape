@@ -12,6 +12,11 @@ namespace FileScape.App;
 /// </summary>
 public partial class WalkProbe
 {
+    /// <summary>
+    /// --automate=walk-aerial-limit: which branch is checked depends on the budget given: the focus kept (budget ≥ the
+    /// way down plus the place) or the honest "unavailable here" with a recovery on landing. Either way it ends by going
+    /// back and landing on foot again.
+    /// </summary>
     private async Task AerialLimitJourney()
     {
         var limit = App.WorldLayoutParameters.MaxIslands;
@@ -52,6 +57,7 @@ public partial class WalkProbe
             await Shot("aerial-limit-focus-kept");
 
             // Landing over open space far from every place: the nearest place (the path that indexed the current island).
+            // 40 m up and 900 m back along the view: well outside every island of a small budget.
             var far = App.Rig.CameraPosition + new Vector3(0, 40, 0) + App.Rig.Camera.GlobalTransform.Basis.Z * 900f;
             App.ProbeFlyAt(far); // [direct] far out over nothing
             await Frames(6);
@@ -70,7 +76,7 @@ public partial class WalkProbe
             await Frames(3);
             Check(App.Navigator.Current == here, "clicking where islands would be does nothing unexpected");
 
-            var far = App.Rig.CameraPosition + App.Rig.Camera.GlobalTransform.Basis.Z * 600f;
+            var far = App.Rig.CameraPosition + App.Rig.Camera.GlobalTransform.Basis.Z * 600f; // 600 m back along the view
             App.ProbeFlyAt(far); // [direct] over open space, where landing used to look up the current island
             await Frames(6);
             await Key(Godot.Key.T);

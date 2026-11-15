@@ -19,8 +19,14 @@ public partial class Hud
     private HSlider _walkSlider = null!, _runSlider = null!;
     private Label _walkValue = null!, _runValue = null!, _settingsNote = null!;
     private Button _settingsButton = null!;
+    /// <summary>The preferences as last shown: edits start from them, so fields this panel does not show (pins) are kept.</summary>
     private Preferences _shownPrefs = Preferences.Default;
+
+    /// <summary>True while <see cref="SetPreferences"/> fills the controls, so their change events do not echo back as edits.</summary>
     private bool _settingsSync;
+
+    /// <summary>The speed sliders move in steps of 0.5 m/s (within Preferences.MinSpeed…MaxSpeed).</summary>
+    private const double SpeedStepMetresPerSecond = 0.5;
 
     public bool SettingsVisible => _settingsPanel.Visible;
     public Rect2 SettingsButtonRect => _settingsButton.GetGlobalRect();
@@ -32,6 +38,7 @@ public partial class Hud
     public Rect2 FlyGazeRect => _flyGaze.GetGlobalRect();
     public string WalkSpeedText => _walkValue.Text;
 
+    /// <summary>Adds the ⚙ button to the top bar (after Key) and builds the centred, initially hidden panel; it also adopts the Quality button.</summary>
     private void BuildSettings(HBoxContainer topRow)
     {
         _settingsButton = MakeButton("⚙ Settings", () => SettingsToggled?.Invoke(), "Mouse-look direction and walking speed (F4). Saved for next time.");
@@ -92,7 +99,7 @@ public partial class Hud
             {
                 MinValue = Preferences.MinSpeed.Value,
                 MaxValue = Preferences.MaxSpeed.Value,
-                Step = 0.5,
+                Step = SpeedStepMetresPerSecond,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
                 FocusMode = Control.FocusModeEnum.None,
@@ -148,6 +155,7 @@ public partial class Hud
         _settingsSync = false;
     }
 
+    /// <summary>Raises <see cref="PreferencesChanged"/> with every control's current value; Main saves and applies them (the panel never saves itself).</summary>
     private void EmitPreferences()
     {
         if (_settingsSync) return;
@@ -162,6 +170,7 @@ public partial class Hud
         });
     }
 
+    /// <summary>Opens or closes the panel (F4, the ⚙ button); opening brings it to the front, nearly opaque, and dismisses the first-run hint.</summary>
     public void ToggleSettings()
     {
         _settingsPanel.Visible = !_settingsPanel.Visible;

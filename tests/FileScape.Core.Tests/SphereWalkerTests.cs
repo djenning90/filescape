@@ -7,7 +7,7 @@ namespace FileScape.Core.Tests;
 
 /// <summary>
 /// Edge validation of the planet walker (SphereWalker): long laps, the poles and antipodes, collision anywhere on the
-/// sphere, steps, the double jump onto a high top, hills and frame-rate independence.
+/// sphere, steps, the double jump onto a high top, hills and frame-rate independence (PLANET-11).
 /// </summary>
 public class SphereWalkerTests
 {

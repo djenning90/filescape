@@ -9,8 +9,8 @@ using FileScape.Core.Scanning;
 namespace FileScape.Core.Tests;
 
 /// <summary>
-/// Planet composition (Planets experience): theme, layout budgets, launchers and belt, collision sanity and — the main
-/// claim — that everything on a planet can be walked to from the arrival.
+/// Planet composition (PLANET-10, PLANET-16, PLANET-19; AD-44): theme, layout budgets, launchers and belt, collision sanity
+/// and — the main claim — that everything on a planet can be walked to from the arrival.
 /// </summary>
 public class PlanetComposerTests
 {
@@ -119,7 +119,7 @@ public class PlanetComposerTests
         var tree = Modest();
         var c = PlanetComposer.Compose(tree, 0);
         var R = c.Shape.Radius;
-        R.Should().BeInRange(16f, 34f);
+        R.Should().BeInRange(16f, 34f); // the composer clamps every planet's radius to 16–34 m
         c.Shape.HillAmplitude.Should().BeInRange(0.6f, 0.9f);
         c.Arrival.Up.Should().Be(Vector3.UnitY);
         c.Arrival.Facing.Should().Be(-Vector3.UnitZ);

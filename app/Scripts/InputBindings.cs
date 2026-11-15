@@ -51,6 +51,10 @@ public static class InputBindings
         (Up, "E (flight: up)"), (Down, "Q or C (flight: down)"), (Fast, "Shift"), (Jump, "Space (flight: up)"),
     ];
 
+    /// <summary>
+    /// Adds every action and its default events to Godot's InputMap (once, at start-up, before any input is read).
+    /// Physical keys keep their position on any layout; logical ones (arrows, Enter, Escape, F-keys, Shift) keep their meaning.
+    /// </summary>
     public static void Register()
     {
         Physical(Forward, Key.W); Logical(Forward, Key.Up);
@@ -99,7 +103,7 @@ public static class InputBindings
     public static long KeyId(InputEvent e) => e switch
     {
         InputEventKey k => (long)(k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode),
-        InputEventMouseButton m => 1_000_000L + (long)m.ButtonIndex,
+        InputEventMouseButton m => 1_000_000L + (long)m.ButtonIndex, // offset clear of every Key code, so a button never shares a key's id
         _ => -1,
     };
 
@@ -113,7 +117,7 @@ public static class InputBindings
     {
         if (!InputMap.HasAction(action))
         {
-            InputMap.AddAction(action, 0.2f);
+            InputMap.AddAction(action, 0.2f); // Godot's default dead zone (it only affects analogue inputs; every binding here is digital)
         }
 
         InputMap.ActionAddEvent(action, e);

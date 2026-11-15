@@ -8,13 +8,20 @@ namespace FileScape.Core.Scanning;
 /// synthetic:// root, so the data cannot be mistaken for the live filesystem (UX-06). Problem cases
 /// (access denied, links, cloud) are simulated by flags only. Real Windows behaviour is covered by the on-disk
 /// fixture (FileScape.Fixtures).
+/// <para>
+/// It is the default world when no folder is given, the sample for screenshots and the load generator for frame-time
+/// probes (<see cref="NodesPerSecond"/>). Any change to the generator (an extra random draw, a reordered table, a new
+/// literal) changes every synthetic tree, so the tests and probes that count its nodes must be updated with it.
+/// </para>
 /// </summary>
 public sealed class SyntheticTreeSource : IScanSource
 {
     /// <summary>The fixed age reference, so synthetic colours never drift.</summary>
     public static readonly DateTime ReferenceUtc = new(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>The generator seed; the default 1965 is the tree every test and screenshot expects (choice of value not recorded).</summary>
     public int Seed { get; init; } = 1965;
+
     /// <summary>
     /// The total node count. The fixed edge cases alone need about 2,330 nodes. Below that, the tree contains just
     /// those cases, and the seed only affects their timestamps and sizes.
@@ -43,6 +50,10 @@ public sealed class SyntheticTreeSource : IScanSource
         public List<Spec> Children = [];
     }
 
+    /// <summary>
+    /// Generates the whole tree up front, then emits it breadth first, one directory per batch, as a real scan would;
+    /// when <see cref="NodesPerSecond"/> is set it sleeps so the cumulative node count tracks that rate.
+    /// </summary>
     public void Run(ScanContext context, CancellationToken ct)
     {
         var root = Generate();
@@ -233,6 +244,10 @@ public sealed class SyntheticTreeSource : IScanSource
         "willow", "xenon", "yarrow", "zephyr", "atlas", "basalt", "cobalt", "drift",
     ];
 
+    /// <summary>
+    /// File types and their size distribution: sizes are log-normal, e^(LogMean + LogSd·z) bytes, so LogMean 8 is a typical
+    /// ~3 KB text file, 14 a ~1.2 MB photo and 19 a ~180 MB video; LogSd is how widely sizes spread around that.
+    /// </summary>
     private static readonly (string Ext, double LogMean, double LogSd)[] FileTypes =
     [
         ("txt", 8, 1.5), ("md", 8, 1.2), ("pdf", 13, 1.5), ("docx", 11.5, 1.2), ("xlsx", 11, 1.3),
@@ -241,13 +256,18 @@ public sealed class SyntheticTreeSource : IScanSource
         ("log", 10, 2.5), ("psd", 18, 1),
     ];
 
+    /// <summary>
+    /// Fills one folder of a random "project" until the node budget runs out: up to 30 files near the top (12 below
+    /// depth 4), 2–6 subfolders at depths 1–2 and 0–3 below, recursion stopping at depth 7. The draw order matters: it
+    /// fixes the tree for a seed.
+    /// </summary>
     private static void FillRandom(Spec dir, int depth, SplitMix rng, ref int budget)
     {
         var fileCount = (int)Math.Min(budget, rng.NextInt(depth == 1 ? 2 : 0, depth > 4 ? 12 : 30));
         var type = FileTypes[rng.NextInt(0, FileTypes.Length)];
         for (var i = 0; i < fileCount && budget > 0; i++)
         {
-            // Directories tend to hold one dominant type with some variety.
+            // Directories tend to hold one dominant type with some variety (70 % of files are the folder's type).
             var ft = rng.NextDouble() < 0.7 ? type : FileTypes[rng.NextInt(0, FileTypes.Length)];
             var size = (long)Math.Exp(ft.LogMean + ft.LogSd * rng.NextGaussian());
             dir.Children.Add(File($"{Words[rng.NextInt(0, Words.Length)]}-{rng.NextInt(1, 999):D3}.{ft.Ext}", Math.Max(0, size), rng));
@@ -293,10 +313,17 @@ public sealed class SyntheticTreeSource : IScanSource
     private static Spec File(string name, long size, SplitMix rng, NodeFlags flags = NodeFlags.None) =>
         new() { Name = name, Kind = NodeKind.File, Size = size, Flags = flags, Modified = Date(rng) };
 
-    /// <summary>Ages are skewed so every FSN age band (one week up to more than one year) is well represented.</summary>
+    /// <summary>
+    /// Ages are skewed so every FSN age band (one week up to more than one year) is well represented: up to 900 days
+    /// old, u^2.2 crowding most files towards recent dates, plus a random time of day.
+    /// </summary>
     private static DateTime Date(SplitMix rng) => ReferenceUtc.AddDays(-Math.Pow(rng.NextDouble(), 2.2) * 900).AddSeconds(-rng.NextInt(0, 86_400));
 
-    /// <summary>A small deterministic PRNG. It avoids depending on System.Random's seeding behaviour across .NET versions.</summary>
+    /// <summary>
+    /// A small deterministic PRNG. It avoids depending on System.Random's seeding behaviour across .NET versions.
+    /// The constants are SplitMix64's (Steele, Lea and Flood): 0x9E3779B97F4A7C15 is 2⁶⁴/φ, the step that walks the
+    /// state, and the two multipliers are its output mixer; the second constant in the seeding just offsets small seeds.
+    /// </summary>
     public sealed class SplitMix(int seed)
     {
         private ulong _state = (ulong)seed * 0x9E3779B97F4A7C15UL + 0x632BE59BD9B4E019UL;
@@ -309,10 +336,12 @@ public sealed class SyntheticTreeSource : IScanSource
             return z ^ (z >> 31);
         }
 
+        /// <summary>Uniform in [0, 1): the top 53 bits, exactly a double's mantissa.</summary>
         public double NextDouble() => (NextULong() >> 11) * (1.0 / (1UL << 53));
         public int NextInt(int minInclusive, int maxExclusive) => minInclusive + (int)(NextDouble() * (maxExclusive - minInclusive));
         public long NextLong(long minInclusive, long maxExclusive) => minInclusive + (long)(NextDouble() * (maxExclusive - minInclusive));
 
+        /// <summary>A standard normal sample (Box–Muller); 1 − u keeps the logarithm's argument above 0.</summary>
         public double NextGaussian()
         {
             var u1 = 1.0 - NextDouble();

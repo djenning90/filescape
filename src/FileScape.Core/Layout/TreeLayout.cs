@@ -20,6 +20,7 @@ public enum Arrangement
     Rows,
 }
 
+/// <summary>How a parent's pedestal is drawn joined to each child directory's pedestal (Classic wires, District streets).</summary>
 public enum ConnectorStyle
 {
     /// <summary>FSN-style straight wire from the parent's back edge to the child's front edge.</summary>
@@ -29,7 +30,11 @@ public enum ConnectorStyle
     Street,
 }
 
-/// <summary>Spatial parameters that distinguish one visualization's layout from another's.</summary>
+/// <summary>
+/// Spatial parameters that distinguish one map visualization's layout from another's (<see cref="Classic"/>,
+/// <see cref="District"/>). All lengths are abstract layout units (u), not metres (docs/units.md); Places has its own
+/// <c>PlaceParams</c>.
+/// </summary>
 public sealed record LayoutParams
 {
     /// <summary>The spacing of the file grid on a pedestal.</summary>
@@ -38,16 +43,27 @@ public sealed record LayoutParams
     /// <summary>The width and depth of a file block inside its cell.</summary>
     public float FileFootprint { get; init; } = 0.62f;
 
+    /// <summary>The border between a pedestal's edge and its file grid.</summary>
     public float PedestalMargin { get; init; } = 0.45f;
+
+    /// <summary>The smallest pedestal width and depth, so an empty or nearly empty directory is still a visible, pickable slab.</summary>
     public float MinPedestalSize { get; init; } = 1.4f;
+
+    /// <summary>The clear space between neighbouring subtrees (and between children along a spine).</summary>
     public float SiblingGap { get; init; } = 1.1f;
+
+    /// <summary>The distance from a parent's back edge to its children (Rows: between rows; Fishbone: the aisle and cross street live in it).</summary>
     public float LevelGap { get; init; } = 5.5f;
+
+    /// <summary>The height of a pedestal with no direct file bytes.</summary>
     public float PedestalBaseHeight { get; init; } = 0.3f;
 
     /// <summary>The pedestal height gained per ten-fold increase in the directory's direct file bytes (FSN VIS-02).</summary>
     public float PedestalPerDecade { get; init; } = 0.07f;
 
     public float PedestalMaxHeight { get; init; } = 1.2f;
+
+    /// <summary>The fixed height of a link's block: a link has no size of its own (its destination is never counted).</summary>
     public float LinkHeight { get; init; } = 0.35f;
     public SizeScale Scale { get; init; } = SizeScale.Classic;
     public ConnectorStyle Connectors { get; init; } = ConnectorStyle.Wire;
@@ -59,8 +75,10 @@ public sealed record LayoutParams
     /// <summary>The height at which connectors run.</summary>
     public float ConnectorHeight { get; init; } = 0.12f;
 
+    /// <summary>The FSN-like map: small cells, raised pedestals, wires.</summary>
     public static readonly LayoutParams Classic = new();
 
+    /// <summary>The city-plan map: larger blocks on flat plots, wider streets at ground level.</summary>
     public static readonly LayoutParams District = new()
     {
         FileCell = 1.55f,
@@ -79,6 +97,7 @@ public sealed record LayoutParams
         Connectors = ConnectorStyle.Street,
     };
 
+    /// <summary>A directory's pedestal height from its direct file bytes (log scale, VIS-02), capped at <see cref="PedestalMaxHeight"/>.</summary>
     public float PedestalHeight(long directBytes) =>
         MathF.Min(PedestalBaseHeight + PedestalPerDecade * MathF.Log10(1f + MathF.Max(0, directBytes)), PedestalMaxHeight);
 }
@@ -136,6 +155,26 @@ public sealed class LayoutResult
 /// </remarks>
 public static class TreeLayout
 {
+    /// <summary>
+    /// How far behind a directory's back edge its first children start, as a fraction of <see cref="LayoutParams.LevelGap"/>
+    /// (Fishbone): the aisle between parent and children.
+    /// </summary>
+    private const float AisleFractionOfLevelGap = 0.5f;
+
+    /// <summary>
+    /// Where the cross street joining several spines runs behind the parent, as a fraction of
+    /// <see cref="LayoutParams.LevelGap"/> (Fishbone): half of <see cref="AisleFractionOfLevelGap"/>, so the street runs
+    /// midway between the parent's back edge and its first children.
+    /// </summary>
+    private const float CrossStreetFractionOfLevelGap = 0.25f;
+
+    /// <summary>The height of Rows street connectors (layout units): just above the ground plane, like District's <see cref="LayoutParams.ConnectorHeight"/>.</summary>
+    private const float RowStreetHeight = 0.02f;
+
+    /// <summary>
+    /// Lays out the whole tree for the maps (Classic and District): every node's box, every directory's subtree bounds
+    /// and the connectors. Pure and deterministic (children keep tree order); O(n) passes over the node ids, no recursion.
+    /// </summary>
     public static LayoutResult Compute(FsTree tree, LayoutParams p)
     {
         var n = tree.Count;
@@ -360,7 +399,7 @@ public static class TreeLayout
                 continue;
             }
 
-            var aisleStart = pedD[id] + p.LevelGap * 0.5f;
+            var aisleStart = pedD[id] + p.LevelGap * AisleFractionOfLevelGap;
             if (node.DirectDirCount == 1)
             {
                 // A single child continues the spine, which keeps deep chains straight and readable.
@@ -475,7 +514,7 @@ public static class TreeLayout
             else
             {
                 var spineX = centreX[parent] + spineOf[id];
-                var crossZ = frontZ[id] + gap * 0.5f;
+                var crossZ = frontZ[id] + gap * 0.5f; // halfway across the gap in front of the child
                 if (MathF.Abs(spineOf[id]) < 1e-4f)
                 {
                     // Down the parent's own spine, then across the clear gap just in front of the child.
@@ -491,7 +530,7 @@ public static class TreeLayout
                 {
                     // Back to the cross street behind the parent, along it to this child's spine, down the spine,
                     // then across into the child.
-                    var streetZ = frontZ[parent] - pedD[parent] - p.LevelGap * 0.25f;
+                    var streetZ = frontZ[parent] - pedD[parent] - p.LevelGap * CrossStreetFractionOfLevelGap;
                     connectors.Add(new Connector(parent, id,
                     [
                         start,
@@ -506,6 +545,10 @@ public static class TreeLayout
         }
     }
 
+    /// <summary>
+    /// A Rows connector from the parent's back edge to the child's front edge: a straight wire at half the pedestals'
+    /// heights, or an orthogonal street at ground level that turns halfway between the rows.
+    /// </summary>
     private static Vector3[] RowConnector(Box parent, Box child, LayoutParams p)
     {
         var from = new Vector3(parent.Center.X, parent.Max.Y * 0.5f, parent.Min.Z);
@@ -515,7 +558,7 @@ public static class TreeLayout
             return [from, to];
         }
 
-        const float y = 0.02f;
+        const float y = RowStreetHeight;
         var midZ = (from.Z + to.Z) / 2;
         return
         [

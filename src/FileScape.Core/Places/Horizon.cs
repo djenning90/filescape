@@ -32,11 +32,67 @@ public readonly record struct HorizonMark(HorizonKind Kind, Vector3 Position, fl
 /// </summary>
 public static class Horizon
 {
+    /// <summary>The most marks per place (AD-35): a stated bound, however wide the folders beyond are.</summary>
     public const int MaxMarks = 220;
 
     /// <summary>Silhouettes per vista beacon (a folder's own folders, largest first).</summary>
     public const int SilhouettesPerBeacon = 3;
 
+    // ---- where the marks stand: rings beyond each vista, along the bearing from the place's centre (metres past the vista's edge)
+    /// <summary>The silhouettes' ring, metres beyond the vista's edge: behind its beacons (which stand ≈ 9 m out).</summary>
+    private const float SilhouetteSetback = 14f;
+
+    /// <summary>The haze band, metres beyond the vista's edge: further out than the silhouettes, so it reads as distance.</summary>
+    private const float HazeSetback = 36f;
+
+    /// <summary>The most sideways space per beacon's group, metres; narrower vistas share 2.2 × their radius among the beacons.</summary>
+    private const float MaxBeaconGroupSpacing = 3.2f;
+
+    private const float BeaconGroupSpreadPerRadius = 2.2f;
+
+    // ---- an unknown folder's veil (PLACE-11: pale, never drawn as empty), metres; weight 0.5 = mid brightness
+    private const float UnknownVeilHeight = 9f;
+    private const float UnknownVeilRadius = 1.6f;
+    private const float UnknownVeilWeight = 0.5f;
+
+    /// <summary>A silhouette whose folder is not known yet: shorter than the beacon's own veil.</summary>
+    private const float UnknownSilhouetteHeight = 7f;
+
+    // ---- a silhouette's size from its subtree (folders and files): base + per tenfold more entries, metres
+    private const float SilhouetteBaseHeight = 5f;
+    private const float SilhouetteHeightPerDecade = 4.5f;
+    private const float SilhouetteBaseRadius = 0.9f;
+    private const float SilhouetteRadiusPerDecade = 0.25f;
+
+    /// <summary>A beacon's silhouettes stand this far apart sideways and step this far back each, metres, so they stand apart.</summary>
+    private const float SilhouetteSideStep = 1.6f;
+
+    private const float SilhouetteBackStep = 2.5f;
+
+    /// <summary>
+    /// Brightness weight = log10(1 + count) / this, clamped: 4 decades (≈ 10,000 entries) reach full weight. The same
+    /// value for silhouettes (entries) and haze (folders), separately named because they count different things.
+    /// </summary>
+    private const float SilhouetteFullWeightDecades = 4f;
+
+    private const float HazeFullWeightDecades = 4f;
+
+    /// <summary>The dimmest a silhouette or the haze is drawn (weight), so a small one is still visible.</summary>
+    private const float MinSilhouetteWeight = 0.1f;
+
+    private const float MinHazeWeight = 0.08f;
+
+    // ---- the haze band: height base + span × weight, radius at least the minimum or (factor + weight) × the vista's radius, metres
+    private const float HazeBaseHeight = 10f;
+    private const float HazeHeightSpan = 22f;
+    private const float MinHazeRadius = 6f;
+    private const float HazeRadiusFactor = 0.8f;
+
+    /// <summary>
+    /// The horizon marks of a place: for each vista (only a single-ring place has vistas), up to
+    /// <see cref="SilhouettesPerBeacon"/> silhouettes behind each of its beacons, then one haze band for everything
+    /// deeper in that direction. Reads only the tree's aggregates; lists nothing.
+    /// </summary>
     public static IReadOnlyList<HorizonMark> Compose(FsTree tree, PlaceComposition place, PlaceParams p)
     {
         var marks = new List<HorizonMark>();
@@ -45,18 +101,19 @@ public static class Horizon
             if (marks.Count >= MaxMarks) break;
             var bearing = Vector3.Normalize(v.Center with { Y = 0 });
             var side = new Vector3(-bearing.Z, 0, bearing.X);
-            var silhouetteRing = v.Center + bearing * (v.Radius + 14f);
-            var hazeRing = v.Center + bearing * (v.Radius + 36f);
+            var silhouetteRing = v.Center + bearing * (v.Radius + SilhouetteSetback);
+            var hazeRing = v.Center + bearing * (v.Radius + HazeSetback);
             var deeper = 0;
             for (var bi = 0; bi < v.Beacons.Count && marks.Count < MaxMarks; bi++)
             {
                 var b = v.Beacons[bi];
                 var node = tree[b.Id];
-                var across = (bi - (v.Beacons.Count - 1) / 2f) * MathF.Min(3.2f, 2.2f * v.Radius / MathF.Max(1, v.Beacons.Count));
+                // Each beacon's group is centred on the bearing, side by side in beacon order.
+                var across = (bi - (v.Beacons.Count - 1) / 2f) * MathF.Min(MaxBeaconGroupSpacing, BeaconGroupSpreadPerRadius * v.Radius / MathF.Max(1, v.Beacons.Count));
                 var basePos = silhouetteRing + side * across;
                 if (Listing.IsUnknown(Listing.Of(node)) && Listing.Of(node) != ListingState.Partial)
                 {
-                    marks.Add(new HorizonMark(HorizonKind.Unknown, basePos, 9f, 1.6f, 0.5f, b.Id));
+                    marks.Add(new HorizonMark(HorizonKind.Unknown, basePos, UnknownVeilHeight, UnknownVeilRadius, UnknownVeilWeight, b.Id));
                     continue;
                 }
 
@@ -66,10 +123,10 @@ public static class Horizon
                 {
                     var g = tree[kids[k]];
                     var size = g.SubtreeFileCount + g.SubtreeDirCount;
-                    var h = 5f + 4.5f * MathF.Log10(1 + size);
-                    var offset = side * ((k - (MathF.Min(kids.Count, SilhouettesPerBeacon) - 1) / 2f) * 1.6f) + bearing * (k * 2.5f);
+                    var h = SilhouetteBaseHeight + SilhouetteHeightPerDecade * MathF.Log10(1 + size);
+                    var offset = side * ((k - (MathF.Min(kids.Count, SilhouettesPerBeacon) - 1) / 2f) * SilhouetteSideStep) + bearing * (k * SilhouetteBackStep);
                     var unknown = Listing.IsUnknown(Listing.Of(g)) && Listing.Of(g) != ListingState.Partial;
-                    marks.Add(new HorizonMark(unknown ? HorizonKind.Unknown : HorizonKind.Silhouette, basePos + offset, unknown ? 7f : h, 0.9f + 0.25f * MathF.Log10(1 + size), Math.Clamp(MathF.Log10(1 + size) / 4f, 0.1f, 1f), g.Id));
+                    marks.Add(new HorizonMark(unknown ? HorizonKind.Unknown : HorizonKind.Silhouette, basePos + offset, unknown ? UnknownSilhouetteHeight : h, SilhouetteBaseRadius + SilhouetteRadiusPerDecade * MathF.Log10(1 + size), Math.Clamp(MathF.Log10(1 + size) / SilhouetteFullWeightDecades, MinSilhouetteWeight, 1f), g.Id));
                     deeper += Math.Max(0, g.SubtreeDirCount);
                 }
 
@@ -80,8 +137,8 @@ public static class Horizon
             {
                 // Everything deeper in this direction, as one restrained band of haze whose size and brightness follow its
                 // count: the density of the tree beyond, not its detail.
-                var w = Math.Clamp(MathF.Log10(1 + deeper) / 4f, 0.08f, 1f);
-                marks.Add(new HorizonMark(HorizonKind.Haze, hazeRing, 10f + 22f * w, MathF.Max(6f, v.Radius * (0.8f + w)), w, v.FolderId));
+                var w = Math.Clamp(MathF.Log10(1 + deeper) / HazeFullWeightDecades, MinHazeWeight, 1f);
+                marks.Add(new HorizonMark(HorizonKind.Haze, hazeRing, HazeBaseHeight + HazeHeightSpan * w, MathF.Max(MinHazeRadius, v.Radius * (HazeRadiusFactor + w)), w, v.FolderId));
             }
         }
 

@@ -18,6 +18,9 @@ public sealed class DistrictVisualization : Visualization
     private static readonly Color PlazaColor = new(0.05f, 0.055f, 0.08f);
     private static readonly Color StreetColor = new(0.35f, 0.85f, 1f);
 
+    /// <summary>A street's cross-section, layout units: 0.7 wide and only 0.03 tall, so it reads as painted on the ground.</summary>
+    private const float StreetWidth = 0.7f, StreetHeight = 0.03f;
+
     private readonly BoxMesh _box = new() { Size = Vector3.One };
     private readonly ShaderMaterial _towerMaterial;
     private readonly ShaderMaterial _plazaMaterial;
@@ -40,7 +43,7 @@ public sealed class DistrictVisualization : Visualization
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             VertexColorUseAsAlbedo = true,
-            AlbedoColor = new Color(2.2f, 2.2f, 2.2f),
+            AlbedoColor = new Color(2.2f, 2.2f, 2.2f), // above 1: unshaded and past the glow threshold, so markers bloom
         };
     }
 
@@ -60,6 +63,11 @@ public sealed class DistrictVisualization : Visualization
         _ => Palette.Category[FileCategories.Of(node.Name)],
     };
 
+    /// <summary>
+    /// The night look: a near-black violet sky, glow, haze (depth fog on Low, volumetric on High), reflections and
+    /// occlusion on High, a faint moon and the wet ground. Distances are layout units (docs/units.md). Apart from the
+    /// VIS-11 specular note below, the values are an art direction tuned by eye (rationale not recorded).
+    /// </summary>
     public override void ConfigureEnvironment(WorldEnvironment world, DirectionalLight3D sun, MeshInstance3D ground, Quality quality)
     {
         var high = quality == Quality.High;
@@ -122,6 +130,10 @@ public sealed class DistrictVisualization : Visualization
         ground.MaterialOverride = wet;
     }
 
+    /// <summary>
+    /// Directories as plazas, files as towers, state markers, and a street along every connector. Each street's
+    /// <c>offsetAlong</c> is its distance from the connector's start, so the shader's pulses run continuously from parent to child.
+    /// </summary>
     protected override int Build(FsTree tree, LayoutResult layout, List<int> order)
     {
         var plazas = new InstanceBatch();
@@ -155,7 +167,7 @@ public sealed class DistrictVisualization : Visualization
             {
                 var a = Gd(c.Points[i - 1]);
                 var b = Gd(c.Points[i]);
-                streets.AddSegment(a, b, 0.7f, 0.03f, StreetColor, along);
+                streets.AddSegment(a, b, StreetWidth, StreetHeight, StreetColor, along);
                 along += a.DistanceTo(b);
             }
         }

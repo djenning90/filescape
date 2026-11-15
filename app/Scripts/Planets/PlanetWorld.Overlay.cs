@@ -16,6 +16,11 @@ namespace FileScape.App.Planets;
 /// list (every folder and file here, filterable), names in the sky (the shared sign layer), and the travel effects
 /// (the trail you fly, the landing ring, the warp's light). Text is the last resort (research): the prompt is one line
 /// and only appears when there is something to do.
+/// <para>
+/// Layout offsets here are viewport units (docs/units.md), anchored to the screen's edges so they hold at any window
+/// size; the HUD (toolbar, place bar, selection card) is Main's and is laid out elsewhere, so these leave room for it.
+/// Worker-thread results (previews) come back through <see cref="Deliver"/> and run on the main thread in <see cref="Tick"/>.
+/// </para>
 /// </summary>
 public partial class PlanetWorld
 {
@@ -32,7 +37,10 @@ public partial class PlanetWorld
     private Label _contentsTitle = null!;
     private readonly List<int> _contentsIds = [];
     private FileCategory? _contentsCategory;
+    /// <summary>The full-screen warp light (its colour and cap are <see cref="FlashColor"/> and <see cref="FlashPeakOpacity"/>).</summary>
     private ColorRect _flash = null!;
+
+    /// <summary>The flash's level, 0..1 (its opacity is the square of it times the peak).</summary>
     private float _warpFlash;
     private AudioStreamPlayer _previewPlayer = null!;
 
@@ -43,6 +51,20 @@ public partial class PlanetWorld
     public bool PreviewHasText => _previewText.Visible && _previewText.Text.Length > 0;
     public int ListCount => _contentsIds.Count;
 
+    // ---- how long the screen texts stay, seconds (by eye; rationale not recorded)
+    /// <summary>The arrival title card: fully shown for 2.8 s, then fading over <see cref="TitleFadeSeconds"/> (gone at 3.6 s).</summary>
+    private const float TitleCardSeconds = 3.6f, TitleFadeSeconds = 0.8f;
+
+    /// <summary>A hint (the overlook's, the bench's): 5 s, the last <see cref="HintFadeSeconds"/> fading.</summary>
+    private const float HintSeconds = 5f, HintFadeSeconds = 0.8f;
+
+    /// <summary>While travelling the title shows the destination for at least this long, seconds (kept topped up each frame).</summary>
+    private const float TravelTitleSeconds = 1.2f;
+
+    /// <summary>A flash left over while walking (none should be) fades at this rate, level per second (gone in ≤ 0.5 s).</summary>
+    private const float StrayFlashFadePerSecond = 2f;
+
+    /// <summary>Builds the screen layer once (<see cref="_Ready"/>): everything starts hidden and is shown as needed.</summary>
     private void BuildOverlay()
     {
         _overlay = new CanvasLayer { Layer = 1, Visible = false };
@@ -51,6 +73,7 @@ public partial class PlanetWorld
         root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         _overlay.AddChild(root);
 
+        // Transparent to start; its colour is set every frame (UpdateOverlay, UpdateUniverse) to FlashColor at the flash's opacity.
         _flash = new ColorRect { Color = new Color(1f, 0.95f, 0.85f, 0f), MouseFilter = Control.MouseFilterEnum.Ignore };
         _flash.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         root.AddChild(_flash);
@@ -86,6 +109,8 @@ public partial class PlanetWorld
         AddChild(_previewPlayer);
     }
 
+    /// <summary>A one-line label for the screen layer: <paramref name="size"/> in font pixels, a dark outline of
+    /// <paramref name="outline"/> pixels so it reads over any sky, trimmed with an ellipsis rather than wrapped.</summary>
     private static Label MakeLabel(int size, Color color, HorizontalAlignment align, int outline)
     {
         var l = new Label { HorizontalAlignment = align, MouseFilter = Control.MouseFilterEnum.Ignore, AutowrapMode = TextServer.AutowrapMode.Off, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
@@ -96,6 +121,7 @@ public partial class PlanetWorld
         return l;
     }
 
+    /// <summary>The planets' panel look: deep blue-violet, nearly opaque, a thin warm-gold border, rounded corners.</summary>
     private static StyleBoxFlat PanelStyle()
     {
         var s = new StyleBoxFlat { BgColor = new Color(0.07f, 0.06f, 0.14f, 0.92f), BorderColor = new Color(0.95f, 0.8f, 0.5f, 0.55f), ContentMarginLeft = 14, ContentMarginRight = 14, ContentMarginTop = 10, ContentMarginBottom = 10 };
@@ -172,6 +198,7 @@ public partial class PlanetWorld
         v.AddChild(hint);
     }
 
+    /// <summary>The point is over one of the planet's own open panels (preview, list, bench).</summary>
     private bool OverOverlay(Vector2 p) =>
         (_previewPanel.Visible && _previewPanel.GetGlobalRect().HasPoint(p)) || (_contentsPanel.Visible && _contentsPanel.GetGlobalRect().HasPoint(p)) || (_benchPanel.Visible && _benchPanel.GetGlobalRect().HasPoint(p));
 
@@ -190,11 +217,12 @@ public partial class PlanetWorld
         if (c.State is ListingState.Partial) parts.Add("partly listed");
         if (Listing.IsUnknown(c.State)) parts.Add(Listing.Describe(c.State));
         _titleDetail.Text = (lead != null ? lead + " · " : "") + string.Join("  ·  ", parts.Where(p => p.Length > 0));
-        _titleTime = 3.6f;
+        _titleTime = TitleCardSeconds;
     }
 
     private string _promptKey = "";
 
+    /// <summary>Sets the prompt line and its quiet second line; unchanged text is not re-set (it is called every frame).</summary>
     private void SetPrompt(string text, string detail = "")
     {
         if (_promptKey == text + detail) return;
@@ -206,30 +234,47 @@ public partial class PlanetWorld
     private void ShowHint(string text)
     {
         _hint.Text = text;
-        _hintTime = 5f;
+        _hintTime = HintSeconds;
     }
 
+    /// <summary>Per frame on a planet: fades the title and hint, hides the prompt while travelling, draws the flash, and
+    /// during travel titles the destination with how you are going there.</summary>
     private void UpdateOverlay(float dt)
     {
         _titleTime = MathF.Max(0, _titleTime - dt);
-        _titleBox.Modulate = new Color(1, 1, 1, Mathf.Clamp(_titleTime / 0.8f, 0, 1));
+        _titleBox.Modulate = new Color(1, 1, 1, Mathf.Clamp(_titleTime / TitleFadeSeconds, 0, 1));
         _hintTime = MathF.Max(0, _hintTime - dt);
-        _hint.Modulate = new Color(1, 1, 1, Mathf.Clamp(_hintTime / 0.8f, 0, 1));
+        _hint.Modulate = new Color(1, 1, 1, Mathf.Clamp(_hintTime / HintFadeSeconds, 0, 1));
         _promptBox.Visible = !Busy;
-        if (_phase == Phase.Walking && _transfer == null) _warpFlash = Mathf.MoveToward(_warpFlash, 0, dt * 2f); // a stray veil fades
-        _flash.Color = new Color(1f, 0.95f, 0.86f, Mathf.Clamp(_warpFlash * _warpFlash * 0.85f, 0, 0.85f));
+        if (_phase == Phase.Walking && _transfer == null) _warpFlash = Mathf.MoveToward(_warpFlash, 0, dt * StrayFlashFadePerSecond); // a stray veil fades
+        // The same flash curve as the overview's (squared level, capped; see FlashPeakOpacity).
+        _flash.Color = FlashColor with { A = Mathf.Clamp(_warpFlash * _warpFlash * FlashPeakOpacity, 0, FlashPeakOpacity) };
         if (Busy && _transfer?.Change is { } ch && _s.Tree is { } tree && tree.Contains(ch.To))
         {
             _title.Text = tree.DisplayName(ch.To);
             _titleDetail.Text = ch.Move switch { PlaceMove.Up => "up to", PlaceMove.Back => "back to", PlaceMove.Link => "through the link", _ => "flying to" };
-            _titleTime = MathF.Max(_titleTime, 1.2f);
+            _titleTime = MathF.Max(_titleTime, TravelTitleSeconds);
         }
     }
 
     // ------------------------------------------------------------------ preview
 
+    /// <summary>The largest files previewed, bytes: 24 MiB for a picture, 4 MiB for text, 12 MiB for a sound (bigger ones
+    /// say there is no preview; Enter still opens them). Keeps a preview's read and decode bounded (rationale for the
+    /// exact sizes not recorded).</summary>
     private const long MaxImageBytes = 24L * 1024 * 1024, MaxTextBytes = 4L * 1024 * 1024, MaxAudioBytes = 12L * 1024 * 1024;
 
+    /// <summary>A picture preview is decoded to at most this many pixels on its longer side.</summary>
+    private const int PreviewImagePixels = 512;
+
+    /// <summary>A text preview reads at most this many bytes from the start of the file.</summary>
+    private const int PreviewTextBytes = 6000;
+
+    /// <summary>
+    /// Shows a file's card in the preview panel and starts its preview, if it has one, on a worker. A file's contents
+    /// are read only here, on a deliberate E (FILE-02, DEV-02); never for sample data, folders, links, cloud placeholders
+    /// or reparse points. A result that comes back after you have moved on is dropped (it checks the selection).
+    /// </summary>
     private void ShowPreview(FsTree tree, FsNode n)
     {
         _contentsPanel.Visible = false;
@@ -260,7 +305,7 @@ public partial class PlanetWorld
         if (ext is ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" && n.Size <= MaxImageBytes)
         {
             _previewImage.Visible = true;
-            _ = Thumbnails.LoadAsync(path, 512).ContinueWith(t => Deliver(() =>
+            _ = Thumbnails.LoadAsync(path, PreviewImagePixels).ContinueWith(t => Deliver(() =>
             {
                 if (t.Result is { } img) ApplyPreviewImage(img, id);
                 else PreviewSays(id, "This picture could not be shown here (Enter opens it with Windows).");
@@ -276,7 +321,7 @@ public partial class PlanetWorld
         {
             _previewText.Visible = true;
             _previewText.Text = "…";
-            _ = Task.Run(() => PlanetText.ReadPreview(path, 6000)).ContinueWith(t => Deliver(() => PreviewSays(id, t.Result)));
+            _ = Task.Run(() => PlanetText.ReadPreview(path, PreviewTextBytes)).ContinueWith(t => Deliver(() => PreviewSays(id, t.Result)));
         }
         else
         {
@@ -295,6 +340,7 @@ public partial class PlanetWorld
         while (_deliveries.TryDequeue(out var a)) a();
     }
 
+    /// <summary>Shows a line in the preview's text area, if the preview is still open on <paramref name="id"/>.</summary>
     private void PreviewSays(int id, string text)
     {
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
@@ -302,6 +348,7 @@ public partial class PlanetWorld
         _previewText.Text = text;
     }
 
+    /// <summary>A decoded picture: shown on its easel in the world, and in the panel if it is still open on it.</summary>
     private void ApplyPreviewImage(Image img, int id)
     {
         _previewImage.Visible = true;
@@ -332,7 +379,7 @@ public partial class PlanetWorld
             if (stream == null) return;
             _previewPlayer.Stream = stream;
             _previewPlayer.Play();
-            _audio.Duck(true);
+            _audio.Duck(true); // the music drops under the preview; ClosePreview restores it
             PreviewSays(id, "♪ playing a preview…  (E or Esc stops it)");
         }
         catch (Exception e)
@@ -341,6 +388,7 @@ public partial class PlanetWorld
         }
     }
 
+    /// <summary>Closes the preview, stops a sound preview and restores the music.</summary>
     private void ClosePreview()
     {
         if (!_previewPanel.Visible) return;
@@ -351,12 +399,18 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ the planet's list (J, a pile, the telescope)
 
+    /// <summary>The list shows at most this many rows (it is refilled on every keystroke of the filter; the number's
+    /// rationale is not recorded). The title then says to type to filter, and that text says "5,000": change both together.</summary>
+    private const int MaxListRows = 5000;
+
+    /// <summary>J: the planet's list, open or closed.</summary>
     public void ToggleContents()
     {
         if (_contentsPanel.Visible) _contentsPanel.Visible = false;
         else OpenContents(null);
     }
 
+    /// <summary>Opens the list (all of it, or one kind of file for a pile) with an empty filter that has keyboard focus.</summary>
     private void OpenContents(FileCategory? category)
     {
         _contentsCategory = category;
@@ -367,6 +421,8 @@ public partial class PlanetWorld
         _contentsFilter.GrabFocus();
     }
 
+    /// <summary>Lists the visible children here (folders and links first, then files, in natural name order), filtered,
+    /// up to <see cref="MaxListRows"/> (a filter narrows the rest).</summary>
     private void FillContents()
     {
         var tree = _s.Tree;
@@ -380,7 +436,7 @@ public partial class PlanetWorld
             .Where(n => _contentsCategory == null || (n.Kind == NodeKind.File && FileCategories.Of(n.Name) == _contentsCategory))
             .Where(n => filter.Length == 0 || n.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
             .OrderBy(n => n.IsDirectory || n.Kind == NodeKind.Link ? 0 : 1).ThenBy(n => n.Name, NaturalNameOrder.Instance)
-            .Take(5000)
+            .Take(MaxListRows)
             .ToList();
         foreach (var n in rows)
         {
@@ -391,15 +447,43 @@ public partial class PlanetWorld
         }
 
         var what = _contentsCategory is { } c ? PlaceText.CategoryName(c).ToLowerInvariant() : "worlds and files";
-        _contentsTitle.Text = $"{tree.DisplayName(_current.FolderId)} · {rows.Count:N0} {what}" + (rows.Count >= 5000 ? " (first 5,000: type to filter)" : "") + (folder.IsListingIncomplete ? " · partly listed" : "");
+        _contentsTitle.Text = $"{tree.DisplayName(_current.FolderId)} · {rows.Count:N0} {what}" + (rows.Count >= MaxListRows ? " (first 5,000: type to filter)" : "") + (folder.IsListingIncomplete ? " · partly listed" : "");
     }
 
     // ------------------------------------------------------------------ names in the sky (the shared sign layer)
 
     private int _hovered = -1;
 
+    /// <summary>What the mouse points at this frame (a node id, or −1).</summary>
     public int HoveredNodeId => _hovered;
     private readonly List<SignCandidate> _signs = [];
+
+    // ---- names (AD-45; by eye unless stated)
+    /// <summary>A pad's name is pinned this high above the pad, metres (probes check the same anchor: <see cref="PadAnchor"/>).</summary>
+    private const float PadNameHeightMetres = 1.35f;
+
+    /// <summary>Pads further than this from the camera are not named unless they are in focus, metres (AD-45).</summary>
+    private const float PadNameReachMetres = 46f;
+
+    /// <summary>A world's name sits just above its top: this many of its drawn radii above its centre.</summary>
+    private const float WorldNameLiftRadii = 1.06f;
+
+    /// <summary>
+    /// "Hidden by the planet" tests a sphere this much smaller than the planet's radius, metres, so the ground's own
+    /// bumps and what stands on it are not counted as hiding things.
+    /// </summary>
+    private const float OcclusionInsetMetres = 0.3f;
+
+    /// <summary>The ground must be hit at least this much nearer than the thing itself, metres, to hide it (so a ray that
+    /// grazes the ground right at the anchor does not).</summary>
+    private const float OcclusionSlackMetres = 0.5f;
+
+    /// <summary>The "looked at" boost starts within ≈ 12° of the view's centre (cos 12° ≈ 0.978, AD-45) and reaches 1 at the
+    /// centre (the 0.022 below is 1 − 0.978).</summary>
+    private const float LookedCosine = 0.978f;
+
+    // Sign ids: a node's own id for pads and objects; offset key spaces for the other kinds (worlds −100 000 − id, groves
+    // −1000 − n, bench cards −200 000 − id), so signs of different kinds never share an id even when they name the same node.
 
     /// <summary>
     /// Names on screen (2026-11-11, after DJ's playtest), every frame so they stay attached as the camera turns:
@@ -436,28 +520,29 @@ public partial class PlanetWorld
 
         var selected = _s.Selection.Selected;
         // Looking at it: within ≈ 12° of the middle of the view gives a boost that grows towards the centre.
-        float Looked(Godot.Vector3 at) => MathF.Max(0, (camFwd.Dot((at - camPos).Normalized()) - 0.978f) / 0.022f);
+        float Looked(Godot.Vector3 at) => MathF.Max(0, (camFwd.Dot((at - camPos).Normalized()) - LookedCosine) / 0.022f);
 
         // Launcher pads: the ring round the arrival, named on the ground.
         var surf = _current.Comp.Surface;
         var padNamed = new HashSet<int>();
-        var groundTest = _current.Comp.Shape.Radius - 0.3f;
+        var groundTest = _current.Comp.Shape.Radius - OcclusionInsetMetres;
         foreach (var l in _current.Comp.Launchers)
         {
             if (!tree.Contains(l.TargetId)) continue;
-            var anchor = Gd(surf.PointAt(l.Direction, 1.35f));
+            var anchor = Gd(surf.PointAt(l.Direction, PadNameHeightMetres));
             var d = camPos.DistanceTo(anchor);
             var standing = _focusLauncher?.TargetId == l.TargetId;
             var focus = standing || selected == l.TargetId || _hovered == l.TargetId;
-            if (d > 46f && !focus) continue;
+            if (d > PadNameReachMetres && !focus) continue;
             var n = tree[l.TargetId];
             var detail = l.IsParent ? "the way back" : l.IsLink ? PlaceText.LinkShort(tree, n) : FolderSummary.Gate(n, Listing.Of(n));
-            var color = l.IsParent ? new Color(0.8f, 0.86f, 1f) : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
+            var color = l.IsParent ? new Color(0.8f, 0.86f, 1f) /* the way back: a pale sky blue */ : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
             var mark = ProminenceMark(l.TargetId);
-            var padHidden = RayPlanet(camPos, (anchor - camPos).Normalized(), groundTest) is { } ph && ph < d - 0.5f;
-            // Counted as named only if it is on screen (else the world in the sky must carry the name).
+            var padHidden = RayPlanet(camPos, (anchor - camPos).Normalized(), groundTest) is { } ph && ph < d - OcclusionSlackMetres;
+            // Counted as named only if it is on screen, 8 px inside the edges (else the world in the sky must carry the name).
             if (!padHidden && !_camera.IsPositionBehind(anchor) && GetViewport().GetVisibleRect().Grow(-8).HasPoint(_camera.UnprojectPosition(anchor))) padNamed.Add(l.TargetId);
             _signs.Add(new SignCandidate(l.TargetId, anchor, mark + tree.DisplayName(l.TargetId), detail, color,
+                // Priority (higher wins an overlap): up to 40 for being looked at, plus 6 for a prominent folder.
                 l.IsParent ? IconKind.Up : FileIcons.For(n), focus, 40f * Looked(anchor) + (mark.Length > 0 ? 6f : 0f), FixedAnchor: true));
         }
 
@@ -467,8 +552,8 @@ public partial class PlanetWorld
             if (!tree.Contains(b.FolderId)) return;
             var scale = b.Node.Transform.Basis.Scale.X;
             var centre = b.Node.GlobalPosition;
-            var top = centre + screenUp * (b.Comp.Shape.Radius * scale * 1.06f);
-            // A world high in the view: its top is off screen, so the name is pinned on the world itself.
+            var top = centre + screenUp * (b.Comp.Shape.Radius * scale * WorldNameLiftRadii);
+            // A world high in the view: its top is off screen (or under the top 60 px), so the name is pinned on the world itself.
             if (!_camera.IsPositionBehind(top) && _camera.UnprojectPosition(top).Y < 60) top = centre;
             var looked = Looked(centre);
             var focus = selected == b.FolderId || _hovered == b.FolderId;
@@ -476,6 +561,7 @@ public partial class PlanetWorld
             if (padNamed.Contains(b.FolderId)) return; // its pad is named on screen already: one name per destination
             var detail = isParent ? "the way back" : FolderSummary.Gate(tree[b.FolderId], Listing.Of(tree[b.FolderId]));
             var color = PlanetArt.Palette(b.Comp.Theme).Accent.Lightened(0.35f);
+            // A world's look boost (60) is larger than a pad's (40); rationale not recorded.
             _signs.Add(new SignCandidate(-100_000 - b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, 60f * looked, FixedAnchor: true));
         }
 
@@ -492,7 +578,7 @@ public partial class PlanetWorld
             if (anchor is { } a)
             {
                 var detail = hn.IsDirectory ? FolderSummary.Gate(hn, Listing.Of(hn)) + " · double-click: fly there" : SizeFormat.Short(hn.Size) + " · double-click: go to it";
-                _signs.Add(new SignCandidate(hn.Id, a, hn.Name, detail, new Color(1f, 0.95f, 0.75f), FileIcons.For(hn), true, 8f, FixedAnchor: true));
+                _signs.Add(new SignCandidate(hn.Id, a, hn.Name, detail, new Color(1f, 0.95f, 0.75f) /* warm white */, FileIcons.For(hn), true, 8f, FixedAnchor: true));
             }
         }
 
@@ -500,6 +586,7 @@ public partial class PlanetWorld
         {
             foreach (var g in _current.Comp.Groves)
             {
+                // A grove's name floats 2.6 m over its centre, with no priority boost (it gives way to any other name).
                 _signs.Add(new SignCandidate(-1000 - _signs.Count, Gd(surf.PointAt(g.CentreDirection, 2.6f)), g.Label, "", PlanetArt.CategoryColor(g.Category), FileIcons.For(g.Category), false, FixedAnchor: true));
             }
         }
@@ -507,6 +594,7 @@ public partial class PlanetWorld
         if (_focusItem is { NodeId: >= 0 } fi && tree.Contains(fi.NodeId))
         {
             var n = tree[fi.NodeId];
+            // Above the object: 1.25 × its scale plus 0.3 m (the same anchor as a pointed-at object and the bench's trails).
             _signs.Add(new SignCandidate(n.Id, Gd(surf.PointAt(fi.Direction, 1.25f * fi.Scale + 0.3f)), n.Name, SizeFormat.Short(n.Size), PlanetArt.CategoryColor(fi.Category), FileIcons.For(n), true, 3f, FixedAnchor: true));
         }
 
@@ -517,18 +605,20 @@ public partial class PlanetWorld
         if (_contentsPanel.Visible) blocked.Add(_contentsPanel.GetGlobalRect());
         blocked.Add(_promptBox.GetGlobalRect());
         // Hidden by the planet: the line from the camera to the thing meets the ground first.
-        var groundR = _current.Comp.Shape.Radius - 0.3f;
+        var groundR = _current.Comp.Shape.Radius - OcclusionInsetMetres;
         _s.Signs.Layout(_camera, _signs, blocked, (sign, distance) =>
-            RayPlanet(camPos, (sign.Anchor - camPos).Normalized(), groundR) is { } hit && hit < distance - 0.5f);
+            RayPlanet(camPos, (sign.Anchor - camPos).Normalized(), groundR) is { } hit && hit < distance - OcclusionSlackMetres);
         SignsOccludedTest = groundR;
     }
 
     /// <summary>The ground radius used for the occlusion test (probes).</summary>
     public float SignsOccludedTest { get; private set; }
 
+    /// <summary>The theme of the world a launcher leads to (its sky body's), for the name's colour.</summary>
     private PlanetTheme SkyTheme(PlanetLauncher l) =>
         _current != null && l.SkyBody >= 0 && l.SkyBody < _current.Comp.SkyBodies.Count ? _current.Comp.SkyBodies[l.SkyBody].Theme : PlanetTheme.Veiled;
 
+    /// <summary>The session's prominence mark for a folder, with a trailing space ("" when it is not prominent).</summary>
     private string ProminenceMark(int id)
     {
         var p = _s.ProminenceOf(id);
@@ -537,6 +627,7 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ thumbnails on the picture easels
 
+    /// <summary>Lets the planet's easels load pictures, at most two loading at once; by themselves only in the Starter Sky (FILE-02/DEV-02).</summary>
     private void UpdateThumbnails()
     {
         if (_current?.Visual is not { } v || !_s.IsLive || _s.Tree is not { } tree) return;
@@ -556,6 +647,7 @@ public partial class PlanetWorld
         AddChild(_landFx);
     }
 
+    /// <summary>Animates the planets in view (only the current one reacts to the selection and focus) and the travel effects.</summary>
     private void AnimateScene(float dt)
     {
         _current?.Visual?.Animate(dt, Nv(_camera.GlobalPosition), _s.Selection.Selected, FocusNodeId);

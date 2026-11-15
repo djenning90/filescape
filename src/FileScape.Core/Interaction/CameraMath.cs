@@ -78,7 +78,7 @@ public static class CameraMath
     {
         var world = forward * input.Z + right * input.X + Vector3.UnitY * input.Y;
         var len = world.Length();
-        if (len < 1e-6f)
+        if (len < 1e-6f) // no input (or axes that cancel): no direction to normalise
         {
             return Vector3.Zero;
         }
@@ -86,6 +86,7 @@ public static class CameraMath
         return world / len * MathF.Min(1f, input.Length()) * speed;
     }
 
+    /// <summary>Keeps a look pitch within <see cref="MinLookPitch"/>..<see cref="MaxLookPitch"/>.</summary>
     public static Degrees ClampLookPitch(Degrees pitch) => pitch.Clamp(MinLookPitch, MaxLookPitch);
 
     /// <summary>
@@ -99,7 +100,17 @@ public static class CameraMath
     /// The starting fly speed (world units per second) for an orbit distance (world units): 0.6 per second of the
     /// distance, so crossing what you were looking at takes about 1.7 s at any scale; clamped to 2..400.
     /// </summary>
-    public static float InitialFlySpeed(float orbitDistanceWorldUnits) => Math.Clamp(orbitDistanceWorldUnits * 0.6f, 2f, 400f);
+    public static float InitialFlySpeed(float orbitDistanceWorldUnits) =>
+        Math.Clamp(orbitDistanceWorldUnits * InitialFlySpeedPerOrbitDistance, MinInitialFlySpeedWorldUnitsPerSecond, MaxInitialFlySpeedWorldUnitsPerSecond);
+
+    /// <summary>Starting fly speed per world unit of orbit distance, per second: higher makes entering fly mode feel jumpier.</summary>
+    private const float InitialFlySpeedPerOrbitDistance = 0.6f;
+
+    /// <summary>
+    /// The starting fly speed's range, world units per second: close up it never crawls, far out it never shoots off
+    /// (narrower than the wheel's <see cref="MinFlySpeedWorldUnitsPerSecond"/>..<see cref="MaxFlySpeedWorldUnitsPerSecond"/>).
+    /// </summary>
+    private const float MinInitialFlySpeedWorldUnitsPerSecond = 2f, MaxInitialFlySpeedWorldUnitsPerSecond = 400f;
 
     /// <summary>The camera position in orbit mode: on a sphere of <paramref name="distanceWorldUnits"/> around the target, opposite the look direction.</summary>
     public static Vector3 OrbitPosition(Vector3 target, Degrees yaw, Degrees lookPitch, float distanceWorldUnits) =>
@@ -116,7 +127,7 @@ public static class CameraMath
     public static Degrees MaxOrbitLookPitchAboveGround(float targetHeight, float distanceWorldUnits, float minCameraHeight)
     {
         // camera.y = target.y − sin(p)·d ≥ h  ⇒  sin(p) ≤ (target.y − h) / d
-        var s = (targetHeight - minCameraHeight) / MathF.Max(distanceWorldUnits, 1e-3f);
+        var s = (targetHeight - minCameraHeight) / MathF.Max(distanceWorldUnits, 1e-3f); // guard: a zero orbit distance
         return s >= 1 ? MaxLookPitch : s <= -1 ? MinLookPitch : Degrees.Min(MaxLookPitch, Degrees.FromRadians(MathF.Asin(s)));
     }
 }
@@ -130,6 +141,7 @@ public sealed class HeldActions
 {
     private readonly Dictionary<string, HashSet<long>> _held = new(StringComparer.Ordinal);
 
+    /// <summary>Records <paramref name="key"/> (the engine's key code, or any id unique per physical input) as holding <paramref name="action"/>.</summary>
     public void Press(string action, long key)
     {
         if (!_held.TryGetValue(action, out var keys))
@@ -152,6 +164,7 @@ public sealed class HeldActions
 
     public bool IsHeld(string action) => _held.TryGetValue(action, out var keys) && keys.Count > 0;
 
+    /// <summary>−1, 0 or +1 from two opposing actions; both held cancel out.</summary>
     public float Axis(string negative, string positive) => (IsHeld(positive) ? 1f : 0f) - (IsHeld(negative) ? 1f : 0f);
 
     public void Clear() => _held.Clear();

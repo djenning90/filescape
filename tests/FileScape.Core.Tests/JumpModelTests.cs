@@ -5,7 +5,7 @@ using FileScape.Core.Units;
 
 namespace FileScape.Core.Tests;
 
-/// <summary>The shared vertical model (JumpModel) on its own, and the flat walker's double jump.</summary>
+/// <summary>The shared vertical model (JumpModel) on its own, and the flat walker's double jump (JUMP-04, PLANET-11).</summary>
 public class JumpModelTests
 {
     private const float StepSeconds = 1f / 120;
@@ -56,6 +56,7 @@ public class JumpModelTests
         var held = new Column();
         held.Step(press: true).Kind.Should().Be(JumpEventKind.Jump);
         held.RunUntilLanded();
+        // JUMP-04 / PLANET-11: a held jump peaks at ≈ 1.2 m (DJ asked for a higher jump on 2026-11-06; it was 0.83 m).
         held.ApexMeters.Should().BeInRange(1.15f, 1.3f);
         held.M.Landings.Should().Be(1);
 
@@ -74,6 +75,7 @@ public class JumpModelTests
         c.Step(press: true).Kind.Should().Be(JumpEventKind.AirJump);
         c.M.VerticalVelocity.Value.Should().BeApproximately(c.M.Params.AirJumpSpeed.Value - c.M.Params.Gravity.Value * StepSeconds, 0.05f, "the boost replaces the vertical speed");
         c.RunUntilLanded();
+        // PLANET-11: jump + boost ≈ 2.7 m in both walkers, enough for the high tops the double jump exists for.
         c.ApexMeters.Should().BeInRange(2.5f, 3.0f);
         c.M.Jumps.Should().Be(1);
         c.M.AirJumps.Should().Be(1);

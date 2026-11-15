@@ -49,6 +49,10 @@ public sealed class WslFixtureFactAttribute : FactAttribute
     }
 }
 
+/// <summary>
+/// Test helpers for running a scan source the way the app does (start, wait, apply every batch in order) and for
+/// finding nodes by name in the resulting tree. <see cref="Find"/> expects the name to be unique in the tree.
+/// </summary>
 public static class ScanRunner
 {
     /// <summary>Runs a source to completion synchronously and applies every batch, as the app does on its main thread.</summary>

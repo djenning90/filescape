@@ -241,7 +241,7 @@ public class LookLevelingTests
             MathF.Abs(p).Should().BeLessThanOrEqualTo(MathF.Abs(previous) + 1e-4f, "it only moves toward level");
             largestStep = MathF.Max(largestStep, MathF.Abs(previous - p));
             previous = p;
-            frames.Should().BeLessThan(100);
+            frames.Should().BeLessThan(100); // a runaway guard: CTRL-04's 0.35 s is about 21 frames at this rate
         }
 
         previous.Should().Be(0f, "it ends exactly level");

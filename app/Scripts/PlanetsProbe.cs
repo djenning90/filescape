@@ -23,6 +23,13 @@ namespace FileScape.App;
 /// </list>
 /// Measured throughout: frame times while walking and flying, the camera's roll rate, launch phase timing, and the
 /// traveller's screen position across each landing (it must not jump: there is no cut).
+/// <para>
+/// Other modes: planets-discover, planets-flows (the three flows from DJ's 2026-11-11 playtest), planets-route and
+/// planets-route-hub (PLANET-27..30, world characters), planets-reel (a short recording) and planets-camera-trace (a
+/// frame-by-frame trace of the overview camera for comparing a refactor). Timing: waits use <see cref="ProbeBase"/>'s
+/// clock, which is simulated time while a movie is written, so the same thresholds hold for a recording; frame times
+/// are judged only outside the functional tier.
+/// </para>
 /// </summary>
 public partial class PlanetsProbe : ProbeBase
 {
@@ -41,6 +48,18 @@ public partial class PlanetsProbe : ProbeBase
     private PlanetWorld P => App.Planets;
     private FsTree Tree => App.Tree!;
 
+    /// <summary>
+    /// Sign ids for names that are not a pad's own: a destination's world in the sky is <c>-100_000 - id</c>
+    /// (PlanetWorld.Overlay) and a key place over the workbench is <c>-200_000 - id</c> (PlanetWorld.Bench).
+    /// </summary>
+    private const int WorldSignOffset = -100_000, BenchSignOffset = -200_000;
+
+    /// <summary>
+    /// Records each frame's time and phase while <see cref="_recording"/>, and tracks the traveller's screen position
+    /// (0.6 m above its origin, as a fraction of the screen height per frame) so <see cref="Fly"/> can judge the landing
+    /// frame and the flight frames separately. Also logs the first part of each flight (u &lt; 0.12, at most 40 lines),
+    /// where a jump would show if the camera were handed over badly.
+    /// </summary>
     public override void _Process(double delta)
     {
         base._Process(delta); // simulated time for recordings
@@ -85,12 +104,14 @@ public partial class PlanetsProbe : ProbeBase
         ReportPerf();
     }
 
+    /// <summary>Waits until the planets world is shown and not busy (no launch, landing or recomposition in progress), then 3 frames.</summary>
     private async Task WaitSettled(double timeout = 20)
     {
         await Until(() => App.Experience == Experience.Planets && P.Composition != null && !P.Busy && Tree.Count > 0, timeout);
         await Frames(3);
     }
 
+    /// <summary>The child of <paramref name="parent"/> with this name (case-insensitive), or −1.</summary>
     private int Child(int parent, string name) =>
         Tree[parent].Children.FirstOrDefault(c => string.Equals(Tree[c].Name, name, StringComparison.OrdinalIgnoreCase), -1);
 
@@ -118,12 +139,14 @@ public partial class PlanetsProbe : ProbeBase
 
         // Walking: camera-relative, round the curve; feet stay on the ground; the camera's roll stays capped.
         var start = P.Walker.Feet;
+        // 1.6 s forward then 0.9 s diagonally must cover more than 6 m, with the feet within 5 cm of the surface.
         await Hold(1.6, Godot.Key.W);
         await Hold(0.9, Godot.Key.W, Godot.Key.D);
         await Seconds(0.3);
         var walked = Vector3Distance(start, P.Walker.Feet);
         var r = P.Walker.Feet.Length() - comp.Shape.GroundRadius(P.Walker.Up) - P.Walker.Height.Value;
         Check(walked > 6f && MathF.Abs(r) < 0.05f && P.Walker.Grounded, F($"walking on the planet: {walked:0.0} m, feet on the surface ({r:+0.000;-0.000} m), grounded"));
+        // A 0.5°/s allowance over the cap (its rationale is not recorded).
         Check(P.MaxCameraRollRateDegreesPerSecond <= PlanetWorld.CameraRollCapDegreesPerSecond + 0.5f, F($"the camera's roll stays within the cap (E4): max {P.MaxCameraRollRateDegreesPerSecond:0.0}°/s ≤ {PlanetWorld.CameraRollCapDegreesPerSecond:0}°/s"));
 
         // Jump, then a second press in the air: one deliberate boost (twirl), higher than a single jump.
@@ -137,6 +160,7 @@ public partial class PlanetsProbe : ProbeBase
         for (var i = 0; i < 90; i++) { await Frames(1); apex = MathF.Max(apex, P.Walker.Height.Value); }
         Key1(Godot.Key.Space, false);
         await Until(() => P.Walker.Grounded, 3);
+        // A single jump peaks at about 1.2 m, so an apex over 2.2 m can only come from the air boost.
         Check(P.Walker.AirJumps == air0 + 1 && apex > 2.2f, F($"jump and twirl: one air boost, apex {apex:0.00} m (a single jump peaks ≈ 1.2 m)"));
         await Shot("after-twirl");
 
@@ -147,7 +171,7 @@ public partial class PlanetsProbe : ProbeBase
             await Seconds(1.6);
             Check(P.OnOverlook, "standing on the overlook");
             // A destination counts as named when its pad or its world is (one name per destination, 2026-11-11).
-            var named = comp.SkyBodies.Count(k => !k.InBelt && (App.Signs.ShownIds.Contains(k.TargetId) || App.Signs.ShownIds.Contains(-100_000 - k.TargetId)));
+            var named = comp.SkyBodies.Count(k => !k.InBelt && (App.Signs.ShownIds.Contains(k.TargetId) || App.Signs.ShownIds.Contains(WorldSignOffset - k.TargetId)));
             Check(named >= Math.Min(3, comp.SkyBodies.Count(k => !k.InBelt)), $"from the overlook the destinations are named ({named} of {comp.SkyBodies.Count(k => !k.InBelt)}): {string.Join(" | ", App.Signs.ShownText.Values.Take(8))}");
             await Shot("overlook");
         }
@@ -230,6 +254,7 @@ public partial class PlanetsProbe : ProbeBase
             var files = Tree[archive].Children.Count(id => Tree[id].Kind == NodeKind.File && App.IsVisibleInPlaceForProbe(Tree[id]));
             var shown = c.Items.Count(i => i.Kind == PlanetItemKind.File);
             var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
+            // 64 is PlanetComposer.MaxItems (PLANET-16): beyond it, files are gathered into piles and none is lost.
             Check(files >= 1000 && shown <= 64 && shown + piled == files, $"Star Archive: {files:N0} files, {shown} stand as objects and {piled:N0} are in {c.Items.Count(i => i.Kind == PlanetItemKind.Pile)} piles");
             await Shot("archive-piles");
             await Key(Godot.Key.J);
@@ -282,7 +307,11 @@ public partial class PlanetsProbe : ProbeBase
         Log(F($"launch log: {string.Join(", ", P.LaunchLog.TakeLast(12).Select(l => $"{l.Phase}@{l.AtSeconds:0.00}"))}"));
     }
 
-    /// <summary>Presses the key that starts a launch and follows it to the landing; checks the phases and the landing.</summary>
+    /// <summary>
+    /// Presses the key that starts a launch and follows it to the landing; checks the phases and the landing. The phase
+    /// windows bracket the design values with room for frame timing: the wind-up is PlanetWorld.WindUpSeconds (0.4 s)
+    /// moved by at most ±0.09 s onto the music's grid, so 0.25…0.55 s; the crossing must be brisk, 1.2…2.7 s.
+    /// </summary>
     private async Task Fly(Key key, int expected, string name)
     {
         var before = P.Transfers;
@@ -295,10 +324,18 @@ public partial class PlanetsProbe : ProbeBase
         Check(App.Navigator.Current == expected && P.Composition?.FolderId == expected && P.Transfers == before + 1, $"{key}: flew to {name}");
         Check(P.LastWindUpSeconds is > 0.25 and < 0.55, F($"a visible wind-up first: {P.LastWindUpSeconds:0.00} s (0.4 s, aligned to the beat ±0.09 s)"));
         Check(P.LastFlightSeconds is >= 1.2 and <= 2.7, F($"a brisk crossing: {P.LastFlightSeconds:0.00} s"));
-        Check(_maxLandingScreenJump < 0.04f, F($"the landing does not cut: the traveller moves {_maxLandingScreenJump * 100:0.0} % of the screen height in the landing frame (flight frames ≤ {_maxFlightScreenJump * 100:0.0} %, the largest at {_maxFlightJumpAt:0.00} of the way)"));
+        Check(_maxLandingScreenJump < LandingScreenJumpLimit, F($"the landing does not cut: the traveller moves {_maxLandingScreenJump * 100:0.0} % of the screen height in the landing frame (flight frames ≤ {_maxFlightScreenJump * 100:0.0} %, the largest at {_maxFlightJumpAt:0.00} of the way)"));
         Check(P.Walker.Grounded, "landed on foot");
     }
 
+    /// <summary>
+    /// The largest move of the traveller on screen in the landing frame, as a fraction of the screen height: 4 %. A cut
+    /// (the camera handed over to a new pose) would move it much further; the check's text also reports the largest
+    /// flight-frame move for comparison.
+    /// </summary>
+    private const float LandingScreenJumpLimit = 0.04f;
+
+    /// <summary>Go to path with the real controls: Ctrl+L, type the path, Enter; then waits for the travel to start and end.</summary>
     private async Task GoToPath(string path)
     {
         await KeyCombo(Godot.Key.L, ctrl: true);
@@ -309,6 +346,7 @@ public partial class PlanetsProbe : ProbeBase
         await Until(() => !P.Busy, 10);
     }
 
+    /// <summary>Goes to a named child of <paramref name="root"/> by path, waits for its listing, runs the check and photographs it.</summary>
     private async Task VisitByPath(int root, string name, Action<int> check)
     {
         var id = Child(root, name);
@@ -328,6 +366,7 @@ public partial class PlanetsProbe : ProbeBase
 
     // ------------------------------------------------------------------ a bounded real fixture (Windows, links, WSL)
 
+    /// <summary>--automate=planets-fixture: the bounded real fixture (see the class summary).</summary>
     private async Task FixtureTour()
     {
         await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
@@ -395,6 +434,10 @@ public partial class PlanetsProbe : ProbeBase
 
     // ------------------------------------------------------------------ responsiveness
 
+    /// <summary>
+    /// The 95th-percentile frame time for walking and for flying must stay under <see cref="FrameP95LimitMs"/>; a phase
+    /// with fewer than 10 recorded frames is not judged. In the functional tier the line is logged as SKIP, not judged.
+    /// </summary>
     private void ReportPerf()
     {
         foreach (var phase in new[] { "Walking", "Flying" })
@@ -406,14 +449,21 @@ public partial class PlanetsProbe : ProbeBase
             var p99 = ms[(int)(ms.Count * 0.99)];
             var line = F($"perf {phase.ToLowerInvariant()}: {ms.Count} frames, mean {mean:0.0} ms, p95 {p95:0.0} ms, p99 {p99:0.0} ms, max {ms[^1]:0.0} ms");
             if (ProbeTier.Functional) Log("SKIP " + line + " (functional tier: not a measurement)");
-            else Check(p95 < 25, line);
+            else Check(p95 < FrameP95LimitMs, line);
         }
     }
+
+    /// <summary>
+    /// Walking and flying frame budget, milliseconds at the 95th percentile: 25 ms is 40 fps (rationale for this figure
+    /// not recorded).
+    /// </summary>
+    private const double FrameP95LimitMs = 25;
 
     private static float Vector3Distance(NVector3 a, NVector3 b) => NVector3.Distance(a, b);
 
     // ------------------------------------------------------------------ 2026-11-11: the three flows from DJ's playtest
 
+    /// <summary>The value of a <c>--name=value</c> user argument, or null.</summary>
     private static string? Arg(string name) =>
         OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith($"--{name}=", StringComparison.Ordinal))?[(name.Length + 3)..];
 
@@ -445,7 +495,8 @@ public partial class PlanetsProbe : ProbeBase
         Log(F($"{Tree.FullPath(here)}: {c.Launchers.Count(l => !l.IsParent)} launchers on {c.Launchers.Select(l => MathF.Round(c.Surface.SurfaceDistance(l.Direction, System.Numerics.Vector3.UnitY))).Distinct().Count()} ring(s), {c.SkyBodies.Count(b => b.InBelt)} in the belt; looking for {name}"));
         if (!Check(pad != null, $"{name} has a launcher on {Tree.DisplayName(here)} ({ring:0.0} m from the arrival)")) return false;
         var namedAtArrival = App.Signs.ShownIds.Contains(pad!.TargetId);
-        // Turn the camera towards it with the real control, in steps (right-drag; ≈ 0.25°/px).
+        // Turn the camera towards it with the real control, in steps (right-drag; ≈ 0.25°/px). At most 30 steps of up
+        // to 40°, each given 6 frames to settle; within 6° counts as facing it.
         var turned = 0f;
         for (var i = 0; i < 30 && MathF.Abs(P.CameraTurnTo(pad.Direction)) > 6f; i++)
         {
@@ -460,7 +511,8 @@ public partial class PlanetsProbe : ProbeBase
         var named = App.Signs.ShownIds.Contains(pad.TargetId);
         Check(named, F($"turning the camera {turned:0}° in place shows its name, pinned on its pad (named already at the arrival: {namedAtArrival})"));
         await Shot($"discover-{name.Replace(' ', '-').ToLowerInvariant()}-in-view");
-        // Walk onto it: hold W (camera-relative), correcting the heading with the mouse now and then.
+        // Walk onto it: hold W (camera-relative) in 0.25 s steps, correcting the heading when it drifts by more than 8°.
+        // "Straight" is judged below as at most 1.6 × the pad's distance plus 3 m (the margin's rationale is not recorded).
         var start = P.Walker.Feet;
         var walked = 0f;
         var last = start;
@@ -529,6 +581,7 @@ public partial class PlanetsProbe : ProbeBase
         // A real jump onto the bench: stand a step from its edge, face it, run and jump.
         var ov = P.Composition.Overlook;
         var r = P.Composition.Shape.Radius;
+        // [direct] set-up: stand 1.4 m outside the bench's edge, facing its centre; then the jump itself is real input.
         var near = PlanetFrame.Move(ov.Direction, P.Walker.Up - ov.Direction, ov.Radius + 1.4f, r);
         var toward = ov.Direction - near * System.Numerics.Vector3.Dot(ov.Direction, near);
         P.Walker.Teleport(P.Composition.Surface, near, System.Numerics.Vector3.Normalize(toward));
@@ -544,12 +597,13 @@ public partial class PlanetsProbe : ProbeBase
         await Frames(10);
         Check(P.BenchRevealed && P.BenchPanelOpen, $"jumping onto the bench reveals the project's key places (panel open: {P.BenchPanelOpen})");
         await Seconds(1.2);
-        var named = P.BenchEntries.Count(e => App.Signs.ShownIds.Contains(-200_000 - e.NodeId));
+        var named = P.BenchEntries.Count(e => App.Signs.ShownIds.Contains(BenchSignOffset - e.NodeId));
         Check(named >= P.BenchEntries.Count - 1, $"the key places rise over the bench, named: {named} of {P.BenchEntries.Count} ({string.Join(" | ", App.Signs.ShownText.Values.Take(10))})");
         await Shot("route-bench-revealed");
         Check(!P.PreviewOpen, "landing reveals; it does not open anything");
 
-        // The spin: jump from the bench and twirl (the second Space a quarter second later, in time: also when recording).
+        // The spin: jump from the bench and twirl (the second Space 0.2 s after the first tap ends, in time: also when
+        // recording, as Seconds counts simulated time then).
         await Key(Godot.Key.Space);
         await Seconds(0.2);
         await Key(Godot.Key.Space);
@@ -674,6 +728,7 @@ public partial class PlanetsProbe : ProbeBase
         await Shot("repository");
         var ov = P.Composition!.Overlook;
         var r = P.Composition.Shape.Radius;
+        // [direct] set-up: stand 1.4 m outside the bench's edge, facing its centre; then the jump itself is real input.
         var near = PlanetFrame.Move(ov.Direction, P.Walker.Up - ov.Direction, ov.Radius + 1.4f, r);
         var toward = ov.Direction - near * System.Numerics.Vector3.Dot(ov.Direction, near);
         P.Walker.Teleport(P.Composition.Surface, near, System.Numerics.Vector3.Normalize(toward));
@@ -716,6 +771,7 @@ public partial class PlanetsProbe : ProbeBase
     /// overview camera and the landing flash — open the overview, select Star Archive's 2025, land there — written to
     /// camera-trace.txt in --out, so a refactor of the camera or flash code can be compared with diff (2026-11-14).
     /// </summary>
+    /// <remarks>Frames traced: 90 to open, 90 to select, 150 to land (1.5 s, 1.5 s and 2.5 s at 60 fps).</remarks>
     private async Task CameraTraceRun()
     {
         await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
@@ -769,6 +825,12 @@ public partial class PlanetsProbe : ProbeBase
         await Overview(root);
     }
 
+    /// <summary>
+    /// Labels during a full camera turn (120 frames of 12 px): every pad name stays pinned on its pad (within 1 px of
+    /// the freshly projected anchor, unless clamped at a screen edge), no pad the planet hides is named, names never
+    /// overlap, and at least 8 pads (or all, if fewer) are named at some point. Then a selected destination is named
+    /// exactly once, on its pad or its world.
+    /// </summary>
     private async Task Labels()
     {
         var c = P.Composition!;
@@ -827,11 +889,12 @@ public partial class PlanetsProbe : ProbeBase
             await Frames(4);
             // One name per destination: on its pad when the pad is on screen, otherwise on its world.
             var onPad = App.Signs.ShownAnchors.TryGetValue(target, out var padAt);
-            var onWorld = App.Signs.ShownAnchors.TryGetValue(-100_000 - target, out var worldAt);
+            var onWorld = App.Signs.ShownAnchors.TryGetValue(WorldSignOffset - target, out var worldAt);
             var launcher = c.Launchers.First(l => l.TargetId == target);
             var (padAnchor, _) = P.PadAnchor(launcher);
             var (worldCentre, radiusPx) = P.WorldOnScreen(target);
             var padGap = onPad && !P.Camera.IsPositionBehind(padAnchor) ? P.Camera.UnprojectPosition(padAnchor).DistanceTo(padAt) : 999f;
+            // A world's name sits just outside its disc (1.15 × its screen radius); 999 px stands for "not shown there".
             var worldGap = onWorld ? worldAt.DistanceTo(worldCentre) - radiusPx * 1.15f : 999f;
             Check(onPad != onWorld && (padGap < 1f || worldGap <= 1f), F($"the selected destination ({Tree[target].Name}) is named once, pinned {(onPad ? $"on its pad ({padGap:0.00} px)" : $"on its world ({worldGap:0.0} px outside its disc)")}"));
             await Shot("labels-selected-wins");
@@ -839,6 +902,11 @@ public partial class PlanetsProbe : ProbeBase
         }
     }
 
+    /// <summary>
+    /// The overview (T): it opens with more than 30 known folders as worlds, orbits and zooms with the real controls,
+    /// selects a world elsewhere in the tree by clicking it, lands there with Enter (one history entry), returns with
+    /// Backspace, and leaves with Escape exactly where you stood (within 5 cm).
+    /// </summary>
     private async Task Overview(int root)
     {
         var before = App.Navigator.Current;

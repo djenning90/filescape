@@ -10,6 +10,7 @@ public static class BuildInfo
 {
     private static string? _identifier;
 
+    /// <summary>The build identity (read once, then cached): shown in Help and the start-up log, so a report names the build it came from.</summary>
     public static string Identifier => _identifier ??= Read();
 
     private static string Read()

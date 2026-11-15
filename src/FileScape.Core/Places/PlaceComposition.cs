@@ -49,8 +49,17 @@ public enum ListingState
     Listing,
 }
 
+/// <summary>
+/// Turns a node's scan state and flags into the one <see cref="ListingState"/> that gates, vistas, the horizon and the
+/// HUD show, and words for it. Keeping this in one place is what guarantees "unknown never looks empty" (PLACE-11).
+/// </summary>
 public static class Listing
 {
+    /// <summary>
+    /// A node's listing state. The checks run in priority order: a link is always a link; an unavailable volume or a
+    /// failure only when nothing was listed (what was found before the error still shows, as <see cref="ListingState.Partial"/>);
+    /// a denial and a cloud placeholder whatever was listed; then the scan state.
+    /// </summary>
     public static ListingState Of(FsNode n)
     {
         if (n.Kind == NodeKind.Link) return ListingState.Link;
@@ -73,6 +82,7 @@ public static class Listing
     /// <summary>True when the folder's contents are unknown or incomplete (as opposed to known to be empty).</summary>
     public static bool IsUnknown(ListingState s) => s is not (ListingState.Open or ListingState.Empty or ListingState.Link);
 
+    /// <summary>Short lower-case words for a state, as gates and the HUD show them ("" for an ordinary open folder).</summary>
     public static string Describe(ListingState s) => s switch
     {
         ListingState.Open => "",
@@ -153,8 +163,13 @@ public sealed record Vista(
 /// <summary>A route drawn on the ground: from the landmark to a gate and on to its vista.</summary>
 public sealed record Avenue(int TargetId, Vector3[] Points);
 
+/// <summary>
+/// The folder's own monument at the place's centre: its height grows with the subtree (<see cref="PlaceComposer.LandmarkHeight"/>),
+/// its form and accent come from <see cref="PlaceIdentity"/>. It blocks walking and is picked as the folder itself.
+/// </summary>
 public sealed record Landmark(Vector3 Base, float Height, float Radius, PlaceIdentity Identity)
 {
+    /// <summary>The landmark's solid (a square column of side 2 × radius), for picking, highlighting and the terrain.</summary>
     public Box Bounds => Box.FromBase(Base, Radius * 2, Height, Radius * 2);
 }
 
@@ -174,8 +189,26 @@ public readonly record struct PlacePose(Vector3 Eye, Degrees Yaw, Degrees LookPi
 /// The full description of one folder's place, independent of any renderer. Positions are in the place's own frame:
 /// the landmark is at the origin, the arrival point south of it, child gates on the northern arc.
 /// </summary>
+/// <remarks>
+/// Made by <see cref="PlaceComposer.Compose"/>, consumed by the app's place renderer, the walker (through
+/// <see cref="Terrain"/>), <see cref="ThresholdTracker"/> (gates), <see cref="PlacePicker"/> and <see cref="Horizon"/>.
+/// It is immutable: the app replaces it when <see cref="Signature"/> changes rather than editing it.
+/// </remarks>
 public sealed class PlaceComposition
 {
+    /// <summary>The look pitch when standing in front of a child's gate after coming back up: slightly down, into the place.</summary>
+    private static readonly Degrees ReturnLookPitch = Degrees.Of(-4);
+
+    /// <summary>The look pitch when standing to look at a gate before going through it: slightly down, at the opening.</summary>
+    private static readonly Degrees ApproachLookPitch = Degrees.Of(-3);
+
+    // A composed pose's ground: the highest support under a 0.3 m disc, for feet at 0, ignoring anything whose underside
+    // is more than 0.45 m up (the walker's step height: gate lintels). With no maxRise, any top under the disc counts.
+    // (0.3 m is a little narrower than the walker's 0.35 m radius; rationale not recorded.)
+    private const float StandingProbeRadius = 0.3f;
+    private const float StandingProbeFeet = 0;
+    private const float StandingProbeReach = 0.45f;
+
     public required int FolderId { get; init; }
     public required ListingState State { get; init; }
     public required Landmark Landmark { get; init; }
@@ -223,20 +256,20 @@ public sealed class PlaceComposition
     public PlacePose ReturnPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, Degrees.Of(-4), p);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ReturnStandOff, gate.AngleDeg + 180, ReturnLookPitch, p);
     }
 
     /// <summary>Where to stand to look at a gate before going through it (destination list, PLACE-06).</summary>
     public PlacePose ApproachPose(int childId, PlaceParams p)
     {
         var gate = GateFor(childId);
-        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, Degrees.Of(-3), p);
+        return gate == null ? Arrival : Standing(gate.Position - gate.Outward * p.ApproachStandOff, gate.AngleDeg, ApproachLookPitch, p);
     }
 
     /// <summary>A pose standing on the ground at a point (eye 1.75 m above the support there, WALK-01).</summary>
     public PlacePose Standing(Vector3 at, float angleFromNorthDeg, Degrees lookPitch, PlaceParams p)
     {
-        var ground = Terrain.SupportHeight(new Vector2(at.X, at.Z), 0.3f, 0, 0.45f);
+        var ground = Terrain.SupportHeight(new Vector2(at.X, at.Z), StandingProbeRadius, StandingProbeFeet, StandingProbeReach);
         return PlaceGeometry.FacingPose(at with { Y = ground }, angleFromNorthDeg, p.EyeHeight, lookPitch);
     }
 }
@@ -244,25 +277,44 @@ public sealed class PlaceComposition
 /// <summary>A folder's deterministic identity: accent hue and landmark form, derived from its name (PLACE-14).</summary>
 public readonly record struct PlaceIdentity(float Hue, int Form)
 {
+    /// <summary>The number of landmark forms (the app draws one shape per form index).</summary>
     public const int Forms = 3;
 
-    /// <summary>FNV-1a over the case-folded name. string.GetHashCode is randomised per process, so it cannot be used.</summary>
+    /// <summary>The 32-bit FNV-1a offset basis (the standard starting value).</summary>
+    private const uint FnvOffsetBasis = 2166136261u;
+
+    /// <summary>The 32-bit FNV-1a prime (the standard multiplier).</summary>
+    private const uint FnvPrime = 16777619u;
+
+    /// <summary>How far a hue may be nudged within its band (0–1 hue units): 100 steps over 0.035, so folders in the same band differ slightly.</summary>
+    private const float HueJitter = 0.035f;
+
+    /// <summary>
+    /// FNV-1a over the case-folded name. string.GetHashCode is randomised per process, so it cannot be used. The hash's
+    /// bits are used three ways: the low bits pick a palette band, bits 8 and up nudge the hue within it, bits 16 and up
+    /// pick the form; so the same name gives the same look in every session and on every machine.
+    /// </summary>
     public static PlaceIdentity For(string name)
     {
-        var h = 2166136261u;
+        var h = FnvOffsetBasis;
         foreach (var ch in name.ToUpperInvariant())
         {
             h ^= ch;
-            h *= 16777619u;
+            h *= FnvPrime;
         }
 
         // A futuristic palette: hues are drawn from cyan → violet → magenta → amber bands, avoiding muddy greens.
         float[] bands = [0.50f, 0.56f, 0.62f, 0.72f, 0.80f, 0.88f, 0.95f, 0.08f, 0.13f];
-        var hue = bands[(int)(h % (uint)bands.Length)] + ((h >> 8) % 100) / 100f * 0.035f;
+        var hue = bands[(int)(h % (uint)bands.Length)] + ((h >> 8) % 100) / 100f * HueJitter;
         return new PlaceIdentity(hue - MathF.Floor(hue), (int)((h >> 16) % Forms));
     }
 }
 
+/// <summary>
+/// The shared conversions of place geometry: a place angle (clockwise from north, −Z) to a direction or a camera yaw,
+/// standing poses, and the bounds of rotated blocks (docs/units.md "Angles"). <see cref="YawFor"/> is the one place
+/// where the place-angle and camera-yaw conventions meet; <see cref="PlaceTerrain.PlaceAngle"/> is the inverse of <see cref="Direction"/>.
+/// </summary>
 public static class PlaceGeometry
 {
     /// <summary>The horizontal unit vector for an angle measured clockwise from north (-Z).</summary>
@@ -272,8 +324,8 @@ public static class PlaceGeometry
         return new Vector3(MathF.Sin(a), 0, -MathF.Cos(a));
     }
 
-    /// <summary>The camera yaw (CameraMath convention: 0 looks -Z, positive turns left) that looks along an angle.</summary>
     /// <summary>
+    /// The camera yaw (CameraMath convention: 0 looks −Z, positive turns left) that looks along a place angle.
     /// Converts a place angle (clockwise from north, as gates use) to a camera yaw (counter-clockwise, CameraMath): the
     /// two conventions differ only in sign. This is the one place where they meet.
     /// </summary>

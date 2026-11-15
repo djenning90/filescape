@@ -28,6 +28,7 @@ public static class Picker
         while (stack.Count > 0)
         {
             var id = stack.Pop();
+            // Prune: the ray misses this directory's whole subtree, or enters it only beyond the nearest hit so far.
             var bt = layout.SubtreeBounds[id].Intersect(origin, direction);
             if (bt is null || bt.Value > bestT)
             {
@@ -49,6 +50,7 @@ public static class Picker
                     continue; // added to the tree after this layout was computed
                 }
 
+                // Directories descend (their subtree bounds prune); files and links are leaves, tested here directly.
                 if (tree[c].IsDirectory)
                 {
                     stack.Push(c);

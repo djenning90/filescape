@@ -12,6 +12,19 @@ namespace FileScape.App;
 /// <summary>
 /// The walking-world journey (--automate=walk…, WALK/JUMP/LINK/LOC/VISI). Input is injected through Godot's pipeline
 /// (ProbeBase); "[direct]" steps only set up a case.
+/// <para>
+/// It runs in Places on the owned Wayfarer fixture (its names — Photos, Journeys › Coast › Harbour › Pier,
+/// to-shared-library, Projects/lighthouse — are what the checks look for) and proves walking at eye level: the eye
+/// height, walk and run speeds, stairs, ramps and jump blocks, jumping, gates and links, the upward chain, hidden
+/// entries, locations, flight and safe landing, mouse-look direction settings and levelling on release, and that
+/// labels and signs never overlap the HUD or each other. Other modes are in WalkProbe.Explore.cs (camera, vertical
+/// controls and the aerial world), WalkProbe.Project.cs (the hub and project actions) and WalkProbe.AerialLimit.cs.
+/// </para>
+/// <para>
+/// Timing: speeds are measured over a timed window after the start-up ramp, so they do not depend on when a key
+/// event lands; positions used as starting points are set directly (marked [direct]) so each measurement starts on
+/// clear, flat ground.
+/// </para>
 /// </summary>
 public partial class WalkProbe : ProbeBase
 {
@@ -25,6 +38,12 @@ public partial class WalkProbe : ProbeBase
     private PlaceComposition Place => App.Place!;
 
     protected override void Finish() => System.IO.File.WriteAllText(System.IO.Path.Combine(Out, $"{Mode}-perf.csv"), _perf.ToString());
+
+    /// <summary>
+    /// The walker's eye above its support, metres: the default <c>WalkParams.EyeHeight</c>, used for poses set
+    /// directly and for the "on foot" checks (which allow 3 cm, or 5 cm just after a landing).
+    /// </summary>
+    private const float EyeMetres = 1.75f;
 
     protected override async Task RunProbe()
     {
@@ -52,7 +71,7 @@ public partial class WalkProbe : ProbeBase
         var foot = ov.RampFoot;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - foot);
         var start = foot - axis * 2;
-        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, EyeMetres, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         await Hold(3.2, Godot.Key.W);
         await Seconds(0.5);
@@ -67,13 +86,13 @@ public partial class WalkProbe : ProbeBase
             var c = new NVector2(f.Box.Center.X, f.Box.Center.Z);
             var toward = NVector2.Normalize(c);
             var at = c - toward * 7f; // between the landmark (r ≈ 2.4 m) and the tower, on the plaza
-            App.ProbePlaceUser(new PlacePose(new NVector3(at.X, 1.75f, at.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(toward)), Degrees.Of(-4)));
+            App.ProbePlaceUser(new PlacePose(new NVector3(at.X, EyeMetres, at.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(toward)), Degrees.Of(-4)));
             await Frames(4);
             await Shot("file-badges-7m");
         }
 
         // [direct] The arrival terrace and its stairs seen from the plaza (WALK-11: solid, lit steps).
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, Place.Arrival.Eye.Z - 9f), PlaceGeometry.YawFor(180f) + Degrees.Of(20), Degrees.Of(-12)));
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, EyeMetres, Place.Arrival.Eye.Z - 9f), PlaceGeometry.YawFor(180f) + Degrees.Of(20), Degrees.Of(-12)));
         await Frames(4);
         await Shot("terrace-stairs");
         App.ProbePlaceUser(Place.Arrival);
@@ -93,14 +112,17 @@ public partial class WalkProbe : ProbeBase
     private float EyeAboveSupport => App.Rig.CameraPosition.Y - W.Support.Value;
     private NVector2 FeetXz => new(W.Feet.X, W.Feet.Z);
 
+    /// <summary>The child of <paramref name="parent"/> with exactly this name, or −1.</summary>
     private int Find(int parent, string name) => Tree[parent].Children.FirstOrDefault(c => Tree[c].Name == name, -1);
 
+    /// <summary>Waits until a place is shown with no transition, arrival or listing request outstanding, then 4 frames.</summary>
     private async Task WaitPlace(double seconds = 15)
     {
         await Until(() => App.Place != null && !App.InTransition && !App.AwaitingArrival && App.PendingRequests == 0, seconds);
         await Frames(4);
     }
 
+    /// <summary>Waits (at most 8 s) for a guided glide (the walk up to a selected gate) and any transition to finish.</summary>
     private async Task WaitGuide()
     {
         await Until(() => !App.GuidedGlide && !App.InTransition, 8);
@@ -130,6 +152,7 @@ public partial class WalkProbe : ProbeBase
         await Frames(3);
     }
 
+    /// <summary>Holds a key until a transition starts (or the time runs out) and the place settles; true if a place change completed.</summary>
     private async Task<bool> WalkThrough(Godot.Key key, double maxSeconds)
     {
         var before = App.CompletedTransitions;
@@ -148,10 +171,10 @@ public partial class WalkProbe : ProbeBase
     {
         // [direct] the same clear start just north of the landmark each time: ≈ 20 m of free plaza ahead (north, the
         // gap between the gates). At 8 m/s the old start in the south corridor ran into the landmark.
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, -3f), yaw, pitch));
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, EyeMetres, -3f), yaw, pitch));
         await Frames(3);
         foreach (var k in keys) Key1(k, true);
-        await Seconds(0.45);
+        await Seconds(0.45); // past the walker's start-up ramp, so the window measures the steady speed
         var p0 = FeetXz;
         var t0 = Time.GetTicksUsec();
         await Seconds(window); // a longer window keeps one frame of sampling jitter below 2 %
@@ -162,6 +185,7 @@ public partial class WalkProbe : ProbeBase
         return NVector2.Distance(p0, p1) / ((t1 - t0) / 1e6f);
     }
 
+    /// <summary>A right-mouse look by <paramref name="total"/> pixels in equal steps, one a frame; records the pitch just before release.</summary>
     private async Task Look(Vector2 total, int steps = 20)
     {
         var centre = App.GetViewport().GetVisibleRect().Size / 2;
@@ -206,6 +230,12 @@ public partial class WalkProbe : ProbeBase
         Check(signOverlaps == 0 && signsOnHud == 0 && signsOverLabels == 0, $"world signs at {where}: {signs.Count} shown, {signOverlaps} overlapping, {signsOnHud} under the HUD, {signsOverLabels} under overlay labels");
     }
 
+    /// <summary>
+    /// --automate=walk: the main walking journey, nineteen numbered sections (see the comments), each starting from
+    /// where the previous one left you. The tolerances are named in the check texts: speeds within 3 % of each other,
+    /// the walk within 0.35 m/s and the run within 0.7 m/s of their settings, a tapped jump's apex between 0.6 and
+    /// 0.95 m (about 0.8 m; a held jump goes higher, checked in WalkProbe.Explore.cs).
+    /// </summary>
     private async Task Journey()
     {
         var tree = Tree;
@@ -215,7 +245,7 @@ public partial class WalkProbe : ProbeBase
 
         // ---- 1. Arrive on foot (WALK-01, PLACE-02)
         Check(App.Locomotion == Locomotion.Walking, "arrives on foot (walking is the default)");
-        Check(MathF.Abs(EyeAboveSupport - 1.75f) < 0.03f, F($"eye is 1.75 m above the support (got {EyeAboveSupport:0.00} on support {W.Support.Value:0.00})"));
+        Check(MathF.Abs(EyeAboveSupport - EyeMetres) < 0.03f, F($"eye is 1.75 m above the support (got {EyeAboveSupport:0.00} on support {W.Support.Value:0.00})"));
         Check(App.Hud.BreadcrumbNames.LastOrDefault() == rootName && App.Hud.BreadcrumbNames.FirstOrDefault() == "This computer", $"breadcrumb runs from This computer to {rootName} ({string.Join(" › ", App.Hud.BreadcrumbNames)})");
         Check(App.PlaceWorld.LandmarkSign == rootName, "the landmark plaque names the place");
         await Shot("arrival-on-foot");
@@ -237,6 +267,7 @@ public partial class WalkProbe : ProbeBase
         // ---- 4. Looking sharply down does not push into the ground (WALK-02)
         App.ProbeSetGaze(W.Yaw, Degrees.Zero); // [direct]
         await Look(new Vector2(0, App.Preferences.ReverseLookVertical ? -700 : 700)); // down, in the chosen direction
+        // 700 px × LookDegreesPerPixel (0.12) = 84°, just short of the −85° look limit; below −70° counts as "sharply".
         Check(_pitchAtRelease < -70f, F($"looking sharply down ({_pitchAtRelease:0} deg)"));
         var downSpeed = await SteadySpeed(Degrees.Zero, W.LookPitch, Godot.Key.W);
         var levelSpeed = await SteadySpeed(Degrees.Zero, Degrees.Zero, Godot.Key.W);
@@ -249,13 +280,14 @@ public partial class WalkProbe : ProbeBase
         // ---- 5. Turning with the arrows while walking curves (WALK-03), diagonal not faster (WALK-04)
         yaw0 = W.Yaw.Value;
         var a = FeetXz;
+        // One second of Up + Left must turn more than 90° and still move more than 2.5 m: a curve, not a turn on the spot.
         await Hold(1.0, Godot.Key.Up, Godot.Key.Left);
         Check(W.Yaw.Value - yaw0 > 90f && NVector2.Distance(a, FeetXz) > 2.5f, F($"Up + Left walks a curve (turned {W.Yaw.Value - yaw0:0}°, moved {NVector2.Distance(a, FeetXz):0.0} m)"));
         var diag = await SteadySpeed(Degrees.Of(45), Degrees.Zero, Godot.Key.W, Godot.Key.D); // heading north-west, so W+D runs due north
         Check(MathF.Abs(diag / levelSpeed - 1) < 0.03f, F($"W+D is not faster than W ({diag:0.00} vs {levelSpeed:0.00} m/s)"));
 
         // ---- 6. Jump (JUMP-01), on flat plaza ground
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, 5.2f), Degrees.Zero, Degrees.Of(-5))); // [direct] a clear flat spot south of the landmark
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, EyeMetres, 5.2f), Degrees.Zero, Degrees.Of(-5))); // [direct] a clear flat spot south of the landmark
         await Frames(3);
         var takeoff = W.Feet.Y;
         var apex = 0f;
@@ -263,7 +295,7 @@ public partial class WalkProbe : ProbeBase
         Key1(Godot.Key.Space, true);
         await Frames(2);
         Key1(Godot.Key.Space, false);
-        for (var i = 0; i < 70; i++) { apex = MathF.Max(apex, W.Feet.Y - takeoff); await Frames(1); }
+        for (var i = 0; i < 70; i++) { apex = MathF.Max(apex, W.Feet.Y - takeoff); await Frames(1); } // 70 frames (≈ 1.2 s at 60 fps): longer than the ≈ 0.8 s air time
         await Until(() => W.Grounded, 2);
         Check(W.Jumps == jumps + 1 && apex > 0.6f && apex < 0.95f && W.Grounded, F($"Space jumps about 0.8 m and lands (apex {apex:0.00} m)"));
 
@@ -272,7 +304,7 @@ public partial class WalkProbe : ProbeBase
         var foot = ov.RampFoot;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - foot);
         var rampStart = foot - axis * 1.5f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(rampStart.X, 1.75f, rampStart.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(rampStart.X, EyeMetres, rampStart.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         jumps = W.Jumps;
         await Hold(3.0, Godot.Key.W);
@@ -285,7 +317,7 @@ public partial class WalkProbe : ProbeBase
         var blocks = ov.JumpBlocks;
         var along = NVector2.Normalize(blocks[1] - blocks[0]);
         var before1 = blocks[0] - along * 4f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(before1.X, 1.75f, before1.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(along)), Degrees.Of(-5))); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(before1.X, EyeMetres, before1.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(along)), Degrees.Of(-5))); // [direct]
         await Frames(3);
         var heights = new[] { ov.Top.Y / 3, ov.Top.Y * 2 / 3, ov.Top.Y };
         var stops = new[] { blocks[0], blocks[1], new NVector2(ov.Top.X, ov.Top.Z) };
@@ -315,7 +347,7 @@ public partial class WalkProbe : ProbeBase
         var photos = Find(root, "Photos");
         Check(await ClickDestination(photos) && App.Locomotion == Locomotion.Walking && W.Grounded, "clicking Photos in Destinations walks you up to its gate");
         await ApproachAndEnter(photos, "Photos");
-        Check(MathF.Abs(EyeAboveSupport - 1.75f) < 0.03f, "arrival in the child is on foot");
+        Check(MathF.Abs(EyeAboveSupport - EyeMetres) < 0.03f, "arrival in the child is on foot");
         await Shot("child-entered");
         await Key(Godot.Key.U);
         await WaitPlace();
@@ -485,6 +517,7 @@ public partial class WalkProbe : ProbeBase
             var worst = frames.Count > 0 ? frames.Max(x => x.FrameMs) : 0;
             Check(App.Navigator.Current == notReady.Id && Place.State is ListingState.Unavailable or ListingState.Failed,
                 F($"entering {notReady.Name} (no media) shows it as {Listing.Describe(Place.State)}: {Tree[notReady.Id].Error}"));
+            // A frozen UI shows as one very long frame while Windows answers; 250 ms is the limit (rationale not recorded).
             Check(worst < 250, F($"the UI did not freeze while Windows answered (worst frame {worst:0} ms)"));
             await Shot("unavailable-drive");
             App.Hud.Toast(""); // [direct] clear the toast before the next shot
@@ -519,6 +552,8 @@ public partial class WalkProbe : ProbeBase
             last = y;
         }
 
+        // Judged: a rise of more than 3.3 m, no frame carrying more than a quarter of it, the rise lasting over 300 ms;
+        // a cut would put most of the rise in one frame. A frame that rises more than 2 mm counts as still rising.
         var rise = last - y0;
         Check(App.Locomotion == Locomotion.Flying && rise > 3.3f && maxStep < 0.25f * rise && riseEnd - riseStart > 300 && App.Hud.FlyChipVisible && App.Hud.FlightButtonPressed,
             F($"T takes off: a continuous rise of {rise:0.0} m over {riseEnd - riseStart} ms (largest frame step {maxStep:0.00} m), chip and pressed button"));
@@ -528,7 +563,7 @@ public partial class WalkProbe : ProbeBase
         await Key(Godot.Key.T);
         await Until(() => App.Locomotion == Locomotion.Walking && !App.LandingInProgress, 5);
         await Seconds(0.3);
-        Check(App.Locomotion == Locomotion.Walking && W.Grounded && MathF.Abs(EyeAboveSupport - 1.75f) < 0.05f && Place.Terrain.IsClear(FeetXz, W.Params.Radius.Value, W.Support.Value, W.Params.BodyHeight.Value),
+        Check(App.Locomotion == Locomotion.Walking && W.Grounded && MathF.Abs(EyeAboveSupport - EyeMetres) < 0.05f && Place.Terrain.IsClear(FeetXz, W.Params.Radius.Value, W.Support.Value, W.Params.BodyHeight.Value),
             F($"T lands on a valid surface below, not inside anything (support {W.Support.Value:0.00})"));
         await Shot("landed");
 
@@ -592,6 +627,7 @@ public partial class WalkProbe : ProbeBase
             return (W.Yaw.Value - y, _pitchAtRelease - p); // pitch while still held: on release it levels (checked below)
         }
 
+        // A look of N px must turn N × LookDegreesPerPixel within 1°, in the direction the setting says.
         var right = await Delta(() => Look(new Vector2(300, 0)));
         var down = await Delta(() => Look(new Vector2(0, 120)));
         Check(MathF.Abs(right.Yaw - 300 * k) < 1f && MathF.Abs(right.Pitch) < 0.01f, F($"reversed (default), right mouse held: moving right turns left (yaw {right.Yaw:+0.0;-0.0}°, positive = left)"));
@@ -670,6 +706,8 @@ public partial class WalkProbe : ProbeBase
             return (_pitchAtRelease, soon, W.LookPitch.Value, yawHeld, W.Yaw.Value, monotone, seconds);
         }
 
+        // Levelling must finish within 0.6 s of release, never overshoot level, and keep the heading; levelling is
+        // watched for at most 2 s.
         var up = await LookAndLetGo(() => Look(new Vector2(150, -250)));
         Check(MathF.Abs(up.Held) > 20f && MathF.Abs(up.Soon) > 1f && MathF.Abs(up.Later) < 0.01f && up.Monotone && up.Seconds < 0.6,
             F($"right mouse: pitch {up.Held:+0;-0}° while held eases to level after release ({up.Soon:+0.0;-0.0}° three frames later, level within {up.Seconds + 0.05:0.00} s, never past level)"));
@@ -747,7 +785,7 @@ public partial class WalkProbe : ProbeBase
         var closeShot = false;
         var start = Time.GetTicksMsec();
         Key1(Godot.Key.W, true);
-        while (!App.InTransition && (Time.GetTicksMsec() - start) < 6000)
+        while (!App.InTransition && (Time.GetTicksMsec() - start) < 6000) // 6 s for the ≈ 9 m approach: a generous bound
         {
             await Frames(1);
             if (App.InTransition) break;
@@ -757,7 +795,7 @@ public partial class WalkProbe : ProbeBase
             if (plateOk) byPlate++;
             if (plateOk || chipOk) named++;
             var d = new NVector2(gate.Position.X - App.Rig.CameraPosition.X, gate.Position.Z - App.Rig.CameraPosition.Z).Length();
-            if (!closeShot && d < 3.5f)
+            if (!closeShot && d < 3.5f) // one close-up of the gate at 3.5 m
             {
                 closeShot = true;
                 Key1(Godot.Key.W, false); // pause for the close-up, then walk on
@@ -814,7 +852,7 @@ public partial class WalkProbe : ProbeBase
         var segmentStart = Time.GetTicksMsec();
         var t0 = segmentStart;
         var last = App.Navigator.Current;
-        while (App.Navigator.Current != root && (Time.GetTicksMsec() - t0) < 40_000)
+        while (App.Navigator.Current != root && (Time.GetTicksMsec() - t0) < 40_000) // 40 s for three Ups
         {
             await Frames(1);
             if (App.Navigator.Current != last)
@@ -855,6 +893,7 @@ public partial class WalkProbe : ProbeBase
         await Frames(1);
     }
 
+    /// <summary>A right-mouse look of <paramref name="perFrame"/> pixels a frame for a number of frames (recording timing).</summary>
     private async Task LookFrames(Vector2 perFrame, int frames)
     {
         var centre = App.GetViewport().GetVisibleRect().Size / 2;
@@ -886,7 +925,7 @@ public partial class WalkProbe : ProbeBase
         var ov = Place.Overlook;
         var axis = NVector2.Normalize(new NVector2(ov.Top.X, ov.Top.Z) - ov.RampFoot);
         var start = ov.RampFoot - axis * 2.5f;
-        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, 1.75f, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-4))); // [direct]
+        App.ProbePlaceUser(new PlacePose(new NVector3(start.X, EyeMetres, start.Y), PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(axis)), Degrees.Of(-4))); // [direct]
         await Frames(10);
         await HoldFrames(80, Godot.Key.W);
         await LookFrames(new Vector2(-6, 0.4f), 30);
@@ -991,6 +1030,10 @@ public partial class WalkProbe : ProbeBase
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Enabled);
     }
 
+    /// <summary>
+    /// Frame times for a fixed walk (forward, a curve, a run, a look round, back), vsync off; one CSV row. Measurement
+    /// only: left out of the functional tier. Nothing is judged here: the CSV is the evidence.
+    /// </summary>
     private async Task PerfWalk(string label)
     {
         if (!ProbeTier.Measure(label, Log)) return;
@@ -1012,6 +1055,7 @@ public partial class WalkProbe : ProbeBase
 
     private static Vector3 ToGd(NVector3 v) => new(v.X, v.Y, v.Z);
 
+    /// <summary>Logs the walker's state (feet, support, eye, heading, pitch) under a label.</summary>
     private void LogPose(string what)
     {
         var w = App.Walker;

@@ -10,19 +10,37 @@ namespace FileScape.App;
 /// <summary>
 /// VIS-11 investigation: DJ saw a sun-like bright source and/or its reflection flash on and off while moving in
 /// District. This script flies a fixed street-level path towards the sun's azimuth and measures, per frame, how
-/// many pixels are bright and how many are *single-frame flashes* (bright now, dark in a 3×3 neighbourhood in both
-/// the previous and the next frame). It repeats the path with one effect changed at a time, plus a stationary
-/// control, so the cause can be isolated rather than assumed.
+/// many pixels are bright and how many are *single-frame flashes* (bright now, dark in a 5×5 neighbourhood in both
+/// the previous and the next frame: see <see cref="Near"/>). It repeats the path with one effect changed at a time,
+/// plus a stationary control, so the cause can be isolated rather than assumed.
+/// <para>
+/// A measurement, not a pass/fail check: the result is flicker-summary.csv, compared across configurations by a
+/// person. The camera is posed (snapped) per frame index, not per second, so a run is the same frame sequence on any
+/// machine. The root cause found was a NaN at the selection beam's top cap spread by glow (a94dc4c, 2026-11-04);
+/// the "pre-fix" and "beam-unclamped" configurations reproduce it.
+/// </para>
 /// </summary>
 public partial class Automation
 {
+    /// <summary>Frames measured per configuration (also the length of the camera path, which is posed per frame).</summary>
     private const int FlickerFrames = 200;
+
+    /// <summary>Each frame is downsampled to this size before measuring (a quarter of 1280×720 each way), pixels.</summary>
     private const int SampleW = 320, SampleH = 180;
+
+    /// <summary>Relative luminance (0…1) above which a sampled pixel counts as bright.</summary>
     private const float BrightThreshold = 0.82f;
 
+    /// <summary>A frame with at least this many single-frame flash pixels counts as flashing (and is re-rendered full size).</summary>
+    private const int FlashFramePixels = 4;
+
+    /// <summary>A cell spike: a cell's mean luminance (0…1) differs from the mean of its previous and next frame by more than this.</summary>
+    private const float CellSpikeLuminance = 0.06f;
+
+    /// <summary>--automate=flicker: see the class summary. Options: --vis, --open-test=selection|street|beamtop.</summary>
     private async Task Flicker()
     {
-        await WaitForScan(TimeSpan.FromSeconds(120));
+        await WaitForScan(SyntheticScanTimeout);
         var district = _args.Visualization is null or 1;
         _main.SetVisualization(district ? 1 : 0);
         _main.SetQuality(Quality.High);
@@ -82,6 +100,7 @@ public partial class Automation
         foreach (var (name, apply, moving) in configs)
         {
             _main.SetQuality(Quality.High); // resets the environment, sun and MSAA to the shipped High state
+            // ...but not these, which some configurations change: put them back to the values Main creates them with.
             _main.Sun.Visible = true;
             _main.SelectionSpot.LightEnergy = 9;
             _main.SelectionSpot.LightSpecular = 0.15f;
@@ -93,7 +112,7 @@ public partial class Automation
             }
 
             apply();
-            await Frames(10);
+            await Frames(10); // let the change take effect before measuring (the count's rationale is not recorded)
             var frames = new List<bool[]>(FlickerFrames);
             var cells = new List<float[]>(FlickerFrames);
             var bright = new List<int>(FlickerFrames);
@@ -110,6 +129,7 @@ public partial class Automation
                 var count = 0;
                 for (var p = 0; p < mask.Length; p++)
                 {
+                    // Relative luminance with the Rec. 709 weights (sRGB values used directly, not linearised).
                     var l = (0.2126f * data[p * 3] + 0.7152f * data[p * 3 + 1] + 0.0722f * data[p * 3 + 2]) / 255f;
                     if (l > BrightThreshold) { mask[p] = true; count++; }
                 }
@@ -119,6 +139,7 @@ public partial class Automation
                 cells.Add(CellLuminance(data));
             }
 
+            // The first and last frames have no neighbour on one side, and a 2 px border is skipped so Near stays in bounds.
             var flashes = new int[FlickerFrames];
             var worst = 1;
             for (var i = 1; i < FlickerFrames - 1; i++)
@@ -138,8 +159,8 @@ public partial class Automation
             }
 
             // Blob-scale spikes: a 16×9 grid of cells (80×80 px at 1280×720); a spike is a cell whose luminance differs
-            // from the average of the previous and next frame by more than 0.06 — a flash of a large area, which
-            // sub-pixel window twinkle averages away.
+            // from the average of the previous and next frame by more than CellSpikeLuminance — a flash of a large area,
+            // which sub-pixel window twinkle averages away.
             var spikes = new int[FlickerFrames];
             float maxSpike = 0;
             for (var i = 1; i < FlickerFrames - 1; i++)
@@ -148,7 +169,7 @@ public partial class Automation
                 {
                     var d = MathF.Abs(cells[i][c] - 0.5f * (cells[i - 1][c] + cells[i + 1][c]));
                     maxSpike = MathF.Max(maxSpike, d);
-                    if (d > 0.06f) spikes[i]++;
+                    if (d > CellSpikeLuminance) spikes[i]++;
                 }
             }
 
@@ -157,12 +178,12 @@ public partial class Automation
             for (var i = 0; i < FlickerFrames; i++) csv.Append(CultureInfo.InvariantCulture, $"{i},{bright[i]},{flashes[i]}\n");
             System.IO.File.WriteAllText($"{_out}/flicker-{name}.csv", csv.ToString());
             var line = string.Create(CultureInfo.InvariantCulture,
-                $"{name},{moving},{FlickerFrames},{bright.Average():0.0},{bright.Max()},{flashes.Average():0.00},{flashes.Max()},{flashes.Count(f => f >= 4)},{jumps},{spikes.Sum()},{spikes.Count(x => x > 0)},{maxSpike:0.000}");
+                $"{name},{moving},{FlickerFrames},{bright.Average():0.0},{bright.Max()},{flashes.Average():0.00},{flashes.Max()},{flashes.Count(f => f >= FlashFramePixels)},{jumps},{spikes.Sum()},{spikes.Count(x => x > 0)},{maxSpike:0.000}");
             summary.AppendLine(line);
             Log($"flicker {line} worst_frame={worst}");
 
             // Re-render the worst frame and its neighbours at full size, so the flash can be looked at.
-            if (flashes[worst] >= 4)
+            if (flashes[worst] >= FlashFramePixels)
             {
                 for (var k = -1; k <= 1; k++)
                 {
@@ -181,8 +202,10 @@ public partial class Automation
 
     private GEnvironment Env() => _main.World.Environment;
 
+    /// <summary>The coarse grid for blob-scale spikes: 16 × 9 cells (20 × 20 sampled pixels each).</summary>
     private const int CellsX = 16, CellsY = 9;
 
+    /// <summary>Mean relative luminance (0…1) of each grid cell of a sampled RGB8 frame.</summary>
     private static float[] CellLuminance(byte[] rgb)
     {
         var sums = new float[CellsX * CellsY];
@@ -202,6 +225,11 @@ public partial class Automation
         return sums;
     }
 
+    /// <summary>
+    /// True when any pixel within 2 px (a 5×5 neighbourhood) is bright in <paramref name="mask"/>: a bright pixel whose
+    /// neighbourhood is dark in both adjacent frames is a single-frame flash, while edges that move by a pixel or two
+    /// between frames are not counted.
+    /// </summary>
     private static bool Near(bool[] mask, int x, int y)
     {
         for (var dy = -2; dy <= 2; dy++)
@@ -220,6 +248,7 @@ public partial class Automation
     /// geometry (the first run's path did, which produced false "flashes"), heading towards the sun's azimuth and
     /// looking down at the wet ground, with a gentle pan.
     /// </summary>
+    /// <remarks>Starts 30 u before the layout centre (sunwards), travels 36 u at 17 u up, panning ±10°.</remarks>
     private void PathPose(int frame)
     {
         var b = _main.Layout!.Bounds;
@@ -233,14 +262,20 @@ public partial class Automation
         _main.Rig.SetPose(pos, Degrees.Of(lookYaw), Degrees.Of(-elevation), 30f);
     }
 
+    /// <summary>The settings before the VIS-11 fix: sun specular 1.0 and a mirror-like puddle roughness of 0.04.</summary>
     private void PreFix()
     {
         _main.Sun.LightSpecular = 1f;
         ((ShaderMaterial)_main.Ground.MaterialOverride).SetShaderParameter("puddle_roughness", 0.04f);
     }
 
+    /// <summary>The beam shader's clamp of its fade (false reproduces the NaN at the top cap).</summary>
     private void Beam(bool clamp) => ((ShaderMaterial)_main.SelectionBeam.MaterialOverride).SetShaderParameter("clamp_fade", clamp);
 
+    /// <summary>
+    /// Poses the camera for a frame index (the rig is snapped or set directly, so no smoothing carries over between
+    /// frames): the beam-top orbit, the street walk, the selection orbit (0.9° a frame) or the fixed dolly path.
+    /// </summary>
     private void Pose(int frame, bool orbitSelection)
     {
         if (_args.OpenTest == "beamtop" && _main.Selection.Selected >= 0)
@@ -275,6 +310,7 @@ public partial class Automation
     {
         var layout = _main.Layout!;
         var best = layout.Connectors.SelectMany(c => c.Points.Zip(c.Points.Skip(1))).MaxBy(seg => System.Numerics.Vector3.Distance(seg.First, seg.Second));
+        // Eye height 2.5 u; the segment's middle 70 % is walked (from 10 % to 80 %), with an ±8° look-around.
         var a = Visualization.Gd(best.First) with { Y = 2.5f };
         var b = Visualization.Gd(best.Second) with { Y = 2.5f };
         var t = frame / (float)FlickerFrames;
@@ -284,6 +320,7 @@ public partial class Automation
         _main.Rig.SetPose(pos, Degrees.Of(yaw), Degrees.Of(-6f), 20f);
     }
 
+    /// <summary>The horizontal unit direction towards the sun (opposite to the way its light travels).</summary>
     private Vector3 TowardSun()
     {
         var sunForward = -_main.Sun.GlobalTransform.Basis.Z; // the direction the light travels

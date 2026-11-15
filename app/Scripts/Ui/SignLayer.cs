@@ -4,6 +4,10 @@ using Godot;
 namespace FileScape.App.Ui;
 
 /// <summary>One destination the sign layer may name: a gate in a place, or a place in the aerial world.</summary>
+/// <param name="Anchor">The world point the sign names (it is drawn just above where this projects).</param>
+/// <param name="Focus">Approached, selected or hovered: placed first, larger, with its detail line.</param>
+/// <param name="Boost">Priority, world units: the sign ranks as if this much nearer than it is.</param>
+/// <param name="FixedAnchor">Pinned straight above its anchor with a stem (planets); never moved to another slot.</param>
 public readonly record struct SignCandidate(
     int Id,
     Vector3 Anchor,
@@ -35,12 +39,25 @@ public partial class SignLayer : Control
     /// <summary>The detail line is added for this many nearest destinations (and every focused one).</summary>
     public const int DetailCount = 4;
 
+    /// <summary>Anchors this far outside the window (viewport units) are still considered: their sign may fit inside it.</summary>
+    private const int OffscreenMargin = 40;
+
+    /// <summary>
+    /// Distance bands, world units (metres in Places and the aerial world): within 25 a sign is 17 px and keeps 26
+    /// characters, within 60 15 px / 20, within 140 14 px / 16, beyond 13 px / 12; a focused sign is 18 px / 40.
+    /// </summary>
+    private const float NearBand = 25f, MidBand = 60f, FarBand = 140f;
+
+    /// <summary>The detail line keeps at most this many characters and is 4 px smaller than the name.</summary>
+    private const int DetailMaxChars = 46, DetailFontReduction = 4;
+
     private readonly List<Placed> _placed = [];
     private readonly List<Rect2> _occupied = [];
     private Font _font = null!;
     private StyleBoxFlat _back = null!, _focusBack = null!;
     private Texture2D? _icons;
 
+    /// <summary>A sign placed this frame: its rectangle (viewport units), the projected anchor, the text as shortened, and whether it needs a leader line.</summary>
     private readonly record struct Placed(SignCandidate C, Rect2 Rect, Vector2 AnchorScreen, string Name, string Detail, int FontSize, bool Leader);
 
     /// <summary>Ids named in the last layout, in placement order.</summary>
@@ -74,6 +91,7 @@ public partial class SignLayer : Control
         _icons = FileIcons.Atlas;
     }
 
+    /// <summary>Removes every sign (leaving a world, or when no candidates apply).</summary>
     public void Clear()
     {
         _placed.Clear();
@@ -105,7 +123,7 @@ public partial class SignLayer : Control
         {
             if (camera.IsPositionBehind(c.Anchor)) continue;
             var s = camera.UnprojectPosition(c.Anchor);
-            if (s.X < -40 || s.X > vp.Size.X + 40 || s.Y < -40 || s.Y > vp.Size.Y + 40) continue;
+            if (s.X < -OffscreenMargin || s.X > vp.Size.X + OffscreenMargin || s.Y < -OffscreenMargin || s.Y > vp.Size.Y + OffscreenMargin) continue;
             var d = eye.DistanceTo(c.Anchor);
             if (skip != null && skip(c, d)) continue;
             ordered.Add((c, d, s));
@@ -120,8 +138,9 @@ public partial class SignLayer : Control
             if (_placed.Count >= MaxSigns) break;
             var detailed = c.Focus || rank < DetailCount;
             // Nearer and focused signs are larger and carry more of the name; far ones are short (a glance, not a read).
-            var size = c.Focus ? 18 : d < 25 ? 17 : d < 60 ? 15 : d < 140 ? 14 : 13;
-            var maxChars = c.Focus ? 40 : d < 25 ? 26 : d < 60 ? 20 : d < 140 ? 16 : 12;
+            var size = c.Focus ? 18 : d < NearBand ? 17 : d < MidBand ? 15 : d < FarBand ? 14 : 13;
+            var maxChars = c.Focus ? 40 : d < NearBand ? 26 : d < MidBand ? 20 : d < FarBand ? 16 : 12;
+            // Three tries: as chosen; without the detail line; then 2 px smaller and at most 10 characters.
             if (TryPlace(c, s, size, maxChars, detailed, vp) || (detailed && TryPlace(c, s, size, maxChars, false, vp)) || TryPlace(c, s, Math.Max(12, size - 2), Math.Min(maxChars, 10), false, vp))
             {
                 rank++;
@@ -131,12 +150,16 @@ public partial class SignLayer : Control
         QueueRedraw();
     }
 
+    /// <summary>
+    /// Tries the slots round <paramref name="anchor"/> (screen) for one sign of this font size and length; the first slot
+    /// inside the window and clear of HUD panels and earlier signs wins and is recorded. False if none is free.
+    /// </summary>
     private bool TryPlace(SignCandidate c, Vector2 anchor, int size, int maxChars, bool detailed, Rect2 vp)
     {
         var name = Fit(c.Name, maxChars);
-        var detail = detailed && c.Detail.Length > 0 ? Fit(c.Detail, 46) : "";
+        var detail = detailed && c.Detail.Length > 0 ? Fit(c.Detail, DetailMaxChars) : "";
         var nameSize = _font.GetStringSize(name, HorizontalAlignment.Left, -1, size);
-        var detailSize = detail.Length > 0 ? _font.GetStringSize(detail, HorizontalAlignment.Left, -1, size - 4) : Vector2.Zero;
+        var detailSize = detail.Length > 0 ? _font.GetStringSize(detail, HorizontalAlignment.Left, -1, size - DetailFontReduction) : Vector2.Zero;
         var icon = size + 2;
         var w = Mathf.Max(nameSize.X + icon + 6, detailSize.X) + 12;
         var h = nameSize.Y + (detail.Length > 0 ? detailSize.Y : 0) + 4;
@@ -150,6 +173,7 @@ public partial class SignLayer : Control
         ];
         for (var i = 0; i < (c.FixedAnchor ? 1 : offsets.Length); i++)
         {
+            // The sign's bottom sits 6 units above the anchor (16 for a pinned sign, leaving room for its stem and dot).
             var r = new Rect2(anchor.X - w / 2 + offsets[i].X, anchor.Y - h - (c.FixedAnchor ? 16 : 6) + offsets[i].Y, w, h);
             if (c.FixedAnchor && !vp.Encloses(r) && vp.HasPoint(anchor))
             {
@@ -179,6 +203,7 @@ public partial class SignLayer : Control
         return false;
     }
 
+    /// <summary>Draws the signs placed by the last <see cref="Layout"/>: stem or leader, backing, icon, name and detail, each with a dark outline.</summary>
     public override void _Draw()
     {
         foreach (var p in _placed)
@@ -212,9 +237,9 @@ public partial class SignLayer : Control
             DrawString(_font, new Vector2(x + iconSize + 4, nameY), p.Name, HorizontalAlignment.Left, -1, p.FontSize, p.C.Color);
             if (p.Detail.Length > 0)
             {
-                var dy = nameY + _font.GetDescent(p.FontSize) + _font.GetAscent(p.FontSize - 4);
-                DrawStringOutline(_font, new Vector2(x, dy), p.Detail, HorizontalAlignment.Left, -1, p.FontSize - 4, 3, new Color(0, 0, 0, 0.85f));
-                DrawString(_font, new Vector2(x, dy), p.Detail, HorizontalAlignment.Left, -1, p.FontSize - 4, new Color(0.82f, 0.88f, 0.98f));
+                var dy = nameY + _font.GetDescent(p.FontSize) + _font.GetAscent(p.FontSize - DetailFontReduction);
+                DrawStringOutline(_font, new Vector2(x, dy), p.Detail, HorizontalAlignment.Left, -1, p.FontSize - DetailFontReduction, 3, new Color(0, 0, 0, 0.85f));
+                DrawString(_font, new Vector2(x, dy), p.Detail, HorizontalAlignment.Left, -1, p.FontSize - DetailFontReduction, new Color(0.82f, 0.88f, 0.98f));
             }
         }
     }

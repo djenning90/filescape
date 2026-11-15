@@ -13,6 +13,18 @@ namespace FileScape.App;
 /// to judge results. Exceptions, each labelled in the log: opening a confirmation dialog and starting the stale-layout
 /// scan are direct method calls (set-up), and focus loss is a simulated Godot notification. Real OS-level Alt-Tab
 /// and SendInput are covered by tools/os-input-probe.ps1.
+/// <para>
+/// What it proves, for the overview camera (CameraRig): ground movement is heading-relative and the same speed for
+/// arrows, WASD, both together and diagonals; Shift is ×3; flight starts and ends without a jump, mouse-look stops at
+/// ±85° without flipping or rolling; the wheel zooms in orbit and changes speed in flight; Escape releases flight
+/// before it navigates; a focused text field or a modal dialog owns the keys; focus loss forgets held keys and drags;
+/// and labels and commands keep working while the layout lags the tree during a scan.
+/// </para>
+/// <para>
+/// Timing: speeds are measured on the wall clock over a held interval, so they are rates, not distances, and the
+/// tolerances are ratios between two measurements taken the same way (frame pacing affects both alike). This probe
+/// predates <see cref="ProbeBase"/> and keeps its own copies of the injection helpers.
+/// </para>
 /// </summary>
 public partial class NavigationProbe : Node
 {
@@ -46,6 +58,19 @@ public partial class NavigationProbe : Node
 
     private CameraRig Rig => _main.Rig;
 
+    /// <summary>
+    /// Two speeds measured by the same method count as equal within 8 % (absorbs frame-pacing jitter over a 0.3…0.6 s
+    /// hold; a doubled or √2-faster speed is far outside it).
+    /// </summary>
+    private const double SpeedRatioTolerance = 0.08;
+
+    /// <summary>Two unit directions count as the same when their dot product is within 0.02 of 1 (≈ 11°).</summary>
+    private const double DirectionDotTolerance = 0.02;
+
+    /// <summary>
+    /// The journey. Waits for the scan and its final layout (no timeout: the synthetic source always finishes), then
+    /// runs the sections in order; each section leaves the camera in a known state for the next (reset, released).
+    /// </summary>
     private async Task Run()
     {
         while (_main.Session is { IsFinished: false } || _main.Layout == null || _main.Layout.TreeVersion != _main.Tree!.Version)
@@ -69,12 +94,13 @@ public partial class NavigationProbe : Node
         var fwd = Forward();
         Log(F($"ground speeds u/s: W={w.Speed:0.00} Up={up.Speed:0.00} W+Up={both.Speed:0.00} W+D={diag.Speed:0.00} Right={right.Speed:0.00} D={dKey.Speed:0.00} Shift+W={shift.Speed:0.00}"));
         Check(w.Speed > 1, "W moves the view in orbit mode");
-        Check(Near(up.Speed / w.Speed, 1, 0.08), F($"Up arrow = W speed (ratio {up.Speed / w.Speed:0.000})"));
-        Check(Near(both.Speed / w.Speed, 1, 0.08), F($"W+Up together does not double speed (ratio {both.Speed / w.Speed:0.000})"));
-        Check(Near(diag.Speed / w.Speed, 1, 0.08), F($"diagonal W+D is not faster (ratio {diag.Speed / w.Speed:0.000})"));
-        Check(Near(Dot(w.Dir, fwd), 1, 0.02), "W moves along the horizontal heading");
+        Check(Near(up.Speed / w.Speed, 1, SpeedRatioTolerance), F($"Up arrow = W speed (ratio {up.Speed / w.Speed:0.000})"));
+        Check(Near(both.Speed / w.Speed, 1, SpeedRatioTolerance), F($"W+Up together does not double speed (ratio {both.Speed / w.Speed:0.000})"));
+        Check(Near(diag.Speed / w.Speed, 1, SpeedRatioTolerance), F($"diagonal W+D is not faster (ratio {diag.Speed / w.Speed:0.000})"));
+        Check(Near(Dot(w.Dir, fwd), 1, DirectionDotTolerance), "W moves along the horizontal heading");
         Check(Near(Dot(diag.Dir, fwd), 0.7071f, 0.05), F($"W+D moves at 45° (dot {Dot(diag.Dir, fwd):0.000})"));
-        Check(Near(Dot(right.Dir, dKey.Dir), 1, 0.02) && Near(right.Speed / dKey.Speed, 1, 0.08), "Right arrow = D");
+        Check(Near(Dot(right.Dir, dKey.Dir), 1, DirectionDotTolerance) && Near(right.Speed / dKey.Speed, 1, SpeedRatioTolerance), "Right arrow = D");
+        // ×3 is CameraRig's fast multiplier; the wider absolute tolerance allows about the same 8 % on the larger ratio.
         Check(Near(shift.Speed / w.Speed, 3, 0.25), F($"Shift accelerates ×3 (ratio {shift.Speed / w.Speed:0.00})"));
         var eUp = await GroundMove([Key.E], 0.4);
         var qDown = await GroundMove([Key.Q], 0.2);
@@ -105,6 +131,7 @@ public partial class NavigationProbe : Node
         Motion(new Vector2(0, -20000));
         await Frames(2);
         var upY = Rig.Camera.GlobalTransform.Basis.Y.Y;
+        // ±85° is CameraMath's look-pitch limit; a camera up vector with y > 0.05 has not tipped over the vertical.
         Check(Near(Rig.LookPitch.Value, 85, 0.01f) && upY > 0.05f, F($"look up stops at {Rig.LookPitch.Value:0.0}° without flipping (camera up.y {upY:0.000})"));
         Motion(new Vector2(0, 40000));
         await Frames(2);
@@ -130,10 +157,10 @@ public partial class NavigationProbe : Node
         var look = ToGd(FileScape.Core.Interaction.CameraMath.Forward(Rig.Yaw, Rig.LookPitch));
         Check(Rig.Camera.GlobalPosition.Y > CameraRig.MinCameraHeightWorldUnits + 1, F($"instrument: the speed series stayed above ground (altitude {Rig.Camera.GlobalPosition.Y:0} u)"));
         Log(F($"fly speeds u/s (speed setting {Rig.FlySpeedWorldUnitsPerSecond:0.0}): W={fw.Speed:0.00} Up={fup.Speed:0.00} W+Up={fboth.Speed:0.00} W+A={fdiag.Speed:0.00} Left={fleft.Speed:0.00} Shift+W={fshift.Speed:0.00}"));
-        Check(Near(Dot(fw.Dir, look), 1, 0.02) && fw.Delta.Y < 0, F($"W flies along the view direction, descending when looking down (dot {Dot(fw.Dir, look):0.000})"));
-        Check(Near(fup.Speed / fw.Speed, 1, 0.08), F($"Up arrow = W in flight (ratio {fup.Speed / fw.Speed:0.000})"));
-        Check(Near(fboth.Speed / fw.Speed, 1, 0.08), F($"W+Up does not double flight speed (ratio {fboth.Speed / fw.Speed:0.000})"));
-        Check(Near(fdiag.Speed / fw.Speed, 1, 0.08), F($"diagonal flight is not faster (ratio {fdiag.Speed / fw.Speed:0.000})"));
+        Check(Near(Dot(fw.Dir, look), 1, DirectionDotTolerance) && fw.Delta.Y < 0, F($"W flies along the view direction, descending when looking down (dot {Dot(fw.Dir, look):0.000})"));
+        Check(Near(fup.Speed / fw.Speed, 1, SpeedRatioTolerance), F($"Up arrow = W in flight (ratio {fup.Speed / fw.Speed:0.000})"));
+        Check(Near(fboth.Speed / fw.Speed, 1, SpeedRatioTolerance), F($"W+Up does not double flight speed (ratio {fboth.Speed / fw.Speed:0.000})"));
+        Check(Near(fdiag.Speed / fw.Speed, 1, SpeedRatioTolerance), F($"diagonal flight is not faster (ratio {fdiag.Speed / fw.Speed:0.000})"));
         Check(Mathf.Abs(fleft.Delta.Y) < 0.01f, "strafe stays level");
         Check(Near(fshift.Speed / fw.Speed, 3, 0.3), F($"Shift ×3 in flight (ratio {fshift.Speed / fw.Speed:0.00})"));
         var fe = await FlyMove([Key.E], 0.4);
@@ -142,6 +169,7 @@ public partial class NavigationProbe : Node
         Check(fq.Delta.Y < 0, "Q descends while flying");
         var s0 = Rig.FlySpeedWorldUnitsPerSecond;
         await Wheel(true, 3);
+        // Three notches of CameraMath.WheelSpeedFactorPerNotch (×1.25 each): 1.25³ = 1.953.
         Check(Near(Rig.FlySpeedWorldUnitsPerSecond / s0, 1.953f, 0.02f), F($"wheel up ×3 raises flight speed {s0:0.0} → {Rig.FlySpeedWorldUnitsPerSecond:0.0} u/s"));
         Check(_main.Hud.FlyChipText.Contains(Rig.FlySpeedWorldUnitsPerSecond.ToString("0.#", CultureInfo.CurrentCulture), StringComparison.Ordinal), "flight speed shown while it changes");
         await Wheel(false, 3);
@@ -283,6 +311,8 @@ public partial class NavigationProbe : Node
 
         // ---------------------------------------------------- stale layout during a scan (review finding 1)
         _main.StartScan(new SyntheticTreeSource { TargetNodes = 60_000, NodesPerSecond = 15_000 }); // set-up: direct call
+        // At 15 000 nodes/s the 60 000-node scan takes about 4 s, with relayouts trailing it; 20 s is the cap. The
+        // commands are injected every 20th stale frame, and more than 20 stale frames prove the case was exercised.
         var intervalFrames = 0;
         var labelFramesDuringInterval = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -317,6 +347,7 @@ public partial class NavigationProbe : Node
 
     private static void Inject(InputEvent e) => Input.ParseInputEvent(e);
 
+    /// <summary>One key event (logical and physical code; Shift also sets its modifier flag; letters carry their character).</summary>
     private static void Key1(Key key, bool pressed) =>
         Inject(new InputEventKey
         {
@@ -339,6 +370,7 @@ public partial class NavigationProbe : Node
         Inject(new InputEventMouseMotion { Relative = relative, ScreenRelative = relative, Position = pos, GlobalPosition = pos, ButtonMask = mask });
     }
 
+    /// <summary>Wheel notches at the view centre, two frames apart (each notch is a press and a release, as Godot reports a wheel).</summary>
     private async Task Wheel(bool up, int notches)
     {
         var at = _main.GetViewport().GetVisibleRect().Size / 2;
@@ -350,6 +382,7 @@ public partial class NavigationProbe : Node
         }
     }
 
+    /// <summary>A measured movement: displacement (world units) over a wall-clock interval (seconds).</summary>
     private readonly record struct Move(Vector3 Delta, double Seconds)
     {
         public float Speed => Seconds > 0 ? Delta.Length() / (float)Seconds : 0;
@@ -374,7 +407,10 @@ public partial class NavigationProbe : Node
         return new Move(p1 - p0, (t1 - t0) / 1e6);
     }
 
-    /// <summary>Holds keys in flight, measuring the steady-state part (after the ~70 ms velocity ramp).</summary>
+    /// <summary>
+    /// Holds keys in flight, measuring the steady-state part (after the ~70 ms velocity ramp: 0.35 s of lead-in leaves
+    /// a wide margin), then waits 0.4 s after release for the coast-down to end before the next measurement.
+    /// </summary>
     private async Task<Move> FlyMove(Key[] keys, double seconds)
     {
         foreach (var k in keys) Key1(k, true);
@@ -401,10 +437,15 @@ public partial class NavigationProbe : Node
 
     private static bool Near(float a, float b, double tol) => Mathf.Abs(a - b) <= (float)tol;
 
+    /// <summary>
+    /// The same camera pose, for the "no jump" checks: positions within 1e-3 world units (or 1e-5 of the distance from
+    /// the origin when that is larger, for float precision far out) and basis vectors within 1e-4.
+    /// </summary>
     private static bool Same(Transform3D a, Transform3D b) =>
         a.Origin.DistanceTo(b.Origin) < 1e-3f * Mathf.Max(1, a.Origin.Length() * 0.01f) &&
         a.Basis.X.DistanceTo(b.Basis.X) < 1e-4f && a.Basis.Y.DistanceTo(b.Basis.Y) < 1e-4f && a.Basis.Z.DistanceTo(b.Basis.Z) < 1e-4f;
 
+    /// <summary>Waits for the rig to settle (at most 300 frames, so a rig that never settles fails a check rather than hangs), then 5 more.</summary>
     private async Task Settle()
     {
         for (var i = 0; i < 300 && !Rig.IsSettled; i++) await Frames(1);

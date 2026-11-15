@@ -8,6 +8,14 @@ namespace FileScape.App;
 /// Shared plumbing for in-app probes: injected input through <see cref="Input.ParseInputEvent"/> (InputMap → GUI →
 /// Main._Input/_UnhandledInput, the same path as real devices after the OS), frame waits, screenshots, checks and a
 /// log. Steps that call app methods directly are labelled "[direct]" by the probes.
+/// <para>
+/// Timing assumptions every probe inherits: a key or click is held for a couple of frames so the app's _Process sees
+/// it at least once between press and release (an event pressed and released in the same frame can be missed by
+/// polled actions); waits are by frames or by seconds, and seconds are simulated time while a movie is being written
+/// (<see cref="RecordingMovie"/>). Injected input is ignored while the window is unfocused (KD-31), so focus changes
+/// are logged next to the checks. The process exit code is the failure count's verdict (0 = every check passed),
+/// which tools/fs.sh reads.
+/// </para>
 /// </summary>
 public abstract partial class ProbeBase : Node
 {
@@ -46,7 +54,10 @@ public abstract partial class ProbeBase : Node
         GetTree().Quit(Failures == 0 ? 0 : 1);
     }
 
+    /// <summary>The probe's journey: inject input, wait, <see cref="Check"/>. An exception is recorded as a failed check.</summary>
     protected abstract Task RunProbe();
+
+    /// <summary>Runs after the log is written and before the app quits (for a probe's own report files).</summary>
 
     protected virtual void Finish()
     {
@@ -54,6 +65,10 @@ public abstract partial class ProbeBase : Node
 
     protected static void Inject(InputEvent e) => Input.ParseInputEvent(e);
 
+    /// <summary>
+    /// One key event with the logical and the physical code set alike, so a binding to either matches. A letter also carries its
+    /// lower-case character, as a real keyboard's would, so text fields and shortcuts both see it.
+    /// </summary>
     protected static void Key1(Key key, bool pressed, bool ctrl = false) =>
         Inject(new InputEventKey
         {
@@ -67,22 +82,30 @@ public abstract partial class ProbeBase : Node
     /// <summary>Holds or releases a key (both its logical and physical code).</summary>
     protected static void HoldKey(Key key, bool down) => Key1(key, down);
 
+    /// <summary>A tap: pressed for <see cref="TapFrames"/> frames, then released and given as long to take effect.</summary>
     protected async Task Key(Key key)
     {
         Key1(key, true);
-        await Frames(2);
+        await Frames(TapFrames);
         Key1(key, false);
-        await Frames(2);
+        await Frames(TapFrames);
     }
 
+    /// <summary>
+    /// Frames a tapped key or button stays down, and frames given to the release: two, so at least one whole _Process
+    /// sees the press whichever point in the frame the event lands (rationale for two rather than one not recorded).
+    /// </summary>
+    private const int TapFrames = 2;
+
+    /// <summary>A Ctrl+key chord: Ctrl goes down first and comes up last, as a person's fingers do.</summary>
     protected async Task KeyCombo(Key key, bool ctrl)
     {
         Inject(new InputEventKey { Keycode = Godot.Key.Ctrl, PhysicalKeycode = Godot.Key.Ctrl, Pressed = true, CtrlPressed = true });
         Key1(key, true, ctrl);
-        await Frames(2);
+        await Frames(TapFrames);
         Key1(key, false, ctrl);
         Inject(new InputEventKey { Keycode = Godot.Key.Ctrl, PhysicalKeycode = Godot.Key.Ctrl, Pressed = false });
-        await Frames(2);
+        await Frames(TapFrames);
     }
 
     /// <summary>
@@ -122,12 +145,14 @@ public abstract partial class ProbeBase : Node
         await Frames(1);
     }
 
+    /// <summary>A mouse button event at a window-pixel position; the button mask says the button is held while pressed.</summary>
     protected static void Mouse(MouseButton button, bool pressed, Vector2 position)
     {
         var mask = pressed ? (MouseButtonMask)(1 << ((int)button - 1)) : 0;
         Inject(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, Position = position, GlobalPosition = position, ButtonMask = mask });
     }
 
+    /// <summary>A relative mouse move, window pixels (the mouse-look path: captured mouse, no absolute position).</summary>
     protected static void Motion(Vector2 relative) =>
         Inject(new InputEventMouseMotion { Relative = relative, ScreenRelative = relative });
 
@@ -137,17 +162,23 @@ public abstract partial class ProbeBase : Node
     /// </summary>
     protected Vector2 ToWindow(Vector2 viewportPoint) => viewportPoint * GetWindow().ContentScaleFactor;
 
+    /// <summary>
+    /// A left click on a UI point (viewport units): the pointer moves there first and is given a frame, so hover state
+    /// (which Control is under the pointer) is current before the press; the button is held for a tap and the click is
+    /// given three frames to act (rationale for three not recorded).
+    /// </summary>
     protected async Task Click(Vector2 uiPoint)
     {
         var at = ToWindow(uiPoint);
         Inject(new InputEventMouseMotion { Position = at, GlobalPosition = at });
         await Frames(1);
         Mouse(MouseButton.Left, true, at);
-        await Frames(2);
+        await Frames(TapFrames);
         Mouse(MouseButton.Left, false, at);
         await Frames(3);
     }
 
+    /// <summary>Types characters only (no key codes), so text fields receive them and no shortcut fires.</summary>
     protected async Task TypeText(string text)
     {
         foreach (var ch in text)
@@ -159,11 +190,13 @@ public abstract partial class ProbeBase : Node
         await Frames(3);
     }
 
+    /// <summary>Waits for <paramref name="n"/> process frames.</summary>
     protected async Task Frames(int n)
     {
         for (var i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
+    /// <summary>Waits <paramref name="s"/> seconds (simulated time while recording a movie).</summary>
     protected async Task Seconds(double s)
     {
         var start = Time.GetTicksMsec();
@@ -171,6 +204,10 @@ public abstract partial class ProbeBase : Node
         while (Since(start, sim) < s) await Frames(1);
     }
 
+    /// <summary>
+    /// Waits until <paramref name="condition"/> holds or the timeout passes, checked once a frame. It does not fail on
+    /// timeout: the caller's next <see cref="Check"/> says what was not reached, so the log names the real expectation.
+    /// </summary>
     protected async Task Until(Func<bool> condition, double timeoutSeconds)
     {
         var start = Time.GetTicksMsec();
@@ -178,6 +215,10 @@ public abstract partial class ProbeBase : Node
         while (!condition() && Since(start, sim) < timeoutSeconds) await Frames(1);
     }
 
+    /// <summary>
+    /// Captures the next drawn frame as NN-name.png in --out (numbered in order taken) and logs where the app was, so
+    /// the evidence journey reads in sequence. Saving happens on a worker thread (<see cref="ProbeTier.SaveAsync"/>).
+    /// </summary>
     protected async Task Shot(string name)
     {
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -188,8 +229,10 @@ public abstract partial class ProbeBase : Node
         Log($"screenshot {path} current={(tree != null && tree.Count > 0 ? tree.FullPath(App.Navigator.Current) : "-")} selected={(tree != null && App.Selection.Selected >= 0 ? tree[App.Selection.Selected].Name : "-")}");
     }
 
+    /// <summary>Formats with the invariant culture, so logged numbers parse the same on any machine's locale.</summary>
     protected static string F(FormattableString s) => s.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Logs PASS or FAIL with what was asserted and counts failures; returns <paramref name="ok"/>.</summary>
     protected bool Check(bool ok, string what)
     {
         if (!ok) Failures++;
@@ -197,6 +240,7 @@ public abstract partial class ProbeBase : Node
         return ok;
     }
 
+    /// <summary>A time-stamped line to the console (tagged with the mode) and to the probe's log file.</summary>
     protected void Log(string line)
     {
         var stamped = $"[{DateTime.Now:HH:mm:ss.fff}] {line}";

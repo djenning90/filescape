@@ -11,9 +11,19 @@ namespace FileScape.App;
 /// on-demand panels (VIEW-01..04), several destinations named at once (LABEL-01), the higher jump (JUMP-04), flight
 /// camera and vertical controls (FLY-01..05), and the aerial world: discovery, travel to another place, landing,
 /// history (AERIAL-01..06). Injected input through Godot's pipeline; "[direct]" steps only set up a case.
+/// <para>
+/// The aerial checks assume the owned Wayfarer fixture (Journeys and its children) and that nothing outside the
+/// arrival folder may be listed by flying over it (AERIAL-04: <see cref="IsListedByReveal"/> guards that).
+/// </para>
 /// </summary>
 public partial class WalkProbe
 {
+    /// <summary>
+    /// The least share of the window that must show the world at arrival with the default panels (VIEW-01): 72 %.
+    /// </summary>
+    private const float MinWorldVisibleFraction = 0.72f;
+
+    /// <summary>--automate=walk-explore: ten numbered sections, each starting from where the previous one left you.</summary>
     private async Task Explore()
     {
         var root = App.Navigator.Current;
@@ -24,7 +34,7 @@ public partial class WalkProbe
         // ---- 1. The default view is the world (VIEW-01/02)
         Check(!App.Hud.LegendVisible && !App.Hud.DestinationsOpen && !App.Hud.InspectorVisible, "default view: no key, no Destinations drawer, no inspector card");
         var free = WorldVisibleFraction();
-        Check(free >= 0.72f, F($"at arrival {free:P0} of the window shows the world (HUD panels cover the rest)"));
+        Check(free >= MinWorldVisibleFraction, F($"at arrival {free:P0} of the window shows the world (HUD panels cover the rest)"));
         await Shot("explore-arrival-default-view");
         await Key(Godot.Key.K);
         await Frames(3);
@@ -37,6 +47,7 @@ public partial class WalkProbe
         await Frames(4);
         var gatesInView = App.Signs.InView;
         var named = App.Signs.ShownIds.Count(id => Place.GateFor(id) != null || Place.ParentGate?.TargetId == id);
+        // At least 8 (or every gate, if fewer are in view) and at least three quarters of those in view.
         Check(named >= Math.Min(8, gatesInView) && named >= gatesInView * 0.75f, F($"from the arrival point {named} of {gatesInView} gates in view are named at once"));
         Check(NoOverlaps(App.Signs.ShownRects) && App.Signs.ShownRects.All(r => !App.Hud.BlockingRects.Any(h => h.Intersects(r))), "no two signs overlap, and none is under a HUD panel");
         var shortened = App.Signs.ShownText.Where(kv => kv.Value.Contains('…')).Select(kv => $"{kv.Value} ({Tree[kv.Key].Name})").ToList();
@@ -77,6 +88,7 @@ public partial class WalkProbe
         // ---- 3. Higher jump: a held jump peaks over 1.1 m, a tap is a short hop (JUMP-04, injected Space)
         var apexHeld = await JumpApex(holdSeconds: 0.6);
         var apexTap = await JumpApex(holdSeconds: 0.03);
+        // Held: 1.1…1.35 m around the design's ≈ 1.22 m (Walker's JumpSpeed); a tap must be at least 0.3 m lower.
         Check(apexHeld is > 1.1f and < 1.35f && apexTap < apexHeld - 0.3f, F($"Space held jumps {apexHeld:0.00} m, a tap {apexTap:0.00} m (was 0.83 m)"));
 
         // ---- 4. Take-off: rise to a downward view once; in flight the pitch you choose stays (FLY-01/04)
@@ -85,6 +97,7 @@ public partial class WalkProbe
         await Key(Godot.Key.T);
         await Seconds(2.2);
         var alt = App.CameraAltitude;
+        // After 2.2 s: above 14 m and looking down at −35° ± 4° (the take-off's downward view).
         Check(App.Locomotion == Locomotion.Flying && alt > 14f && MathF.Abs(W.LookPitch.Value + 35f) < 4f, F($"T rises to {alt:0} m and looks down ({W.LookPitch.Value:0}°)"));
         await Shot("explore-take-off");
         await Look(new Vector2(0, App.Preferences.ReverseLookVertical ? -260 : 260)); // look further down with the real control
@@ -101,6 +114,8 @@ public partial class WalkProbe
             var (downY, downXz) = await FlightDelta(Godot.Key.Q);
             var (cY, _) = await FlightDelta(Godot.Key.C);
             var (wY, wXz) = await FlightDelta(Godot.Key.W);
+            // Per 0.5 s hold: vertical keys move more than 2 m vertically and less than 0.3 m sideways; W moves more
+            // than 3 m and stays within 0.3 m of level, whatever the gaze.
             Check(upY > 2f && spaceY > 2f && downY < -2f && cY < -2f && upXz < 0.3f && downXz < 0.3f && MathF.Abs(wY) < 0.3f && wXz > 3f,
                 F($"gaze {pitch:+0;-0}°: E {upY:+0.0;-0.0} m, Space {spaceY:+0.0;-0.0}, Q {downY:+0.0;-0.0}, C {cY:+0.0;-0.0} (sideways {upXz:0.00}/{downXz:0.00} m); W {wXz:0.0} m level ({wY:+0.00;-0.00} m)"));
         }
@@ -160,6 +175,7 @@ public partial class WalkProbe
         await Key(Godot.Key.G);
         await WaitPlace();
         await Seconds(0.5);
+        // Arriving by G from the air keeps you in the air: more than 30 m up.
         Check(App.Navigator.Current == journeys && App.Locomotion == Locomotion.Flying && App.CameraAltitude > 30f && App.Navigator.History.Count == history + 1,
             F($"G flies you to Journeys and you arrive above it ({App.CameraAltitude:0} m up, history {history} → {App.Navigator.History.Count})"));
         await Shot("explore-arrived-above-journeys");
@@ -179,7 +195,7 @@ public partial class WalkProbe
             App.ProbeSetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(NVector2.Normalize(to))), W.LookPitch); // [direct] steer
             Key1(Godot.Key.W, true);
             await Frames(1);
-            flew += 1 / 60.0;
+            flew += 1 / 60.0; // an estimate for the log only (assumes 60 fps); at most 400 frames of steering
         }
 
         Key1(Godot.Key.W, false);
@@ -238,6 +254,7 @@ public partial class WalkProbe
         return free / (float)(nx * ny);
     }
 
+    /// <summary>True when no two screen rectangles intersect.</summary>
     private static bool NoOverlaps(IReadOnlyList<Rect2> rects)
     {
         for (var i = 0; i < rects.Count; i++)
@@ -254,13 +271,14 @@ public partial class WalkProbe
     /// <summary>Jumps in place with Space held for <paramref name="holdSeconds"/>; returns the apex above the start (metres).</summary>
     private async Task<float> JumpApex(double holdSeconds)
     {
-        App.ProbePlaceUser(new PlacePose(new NVector3(0, 1.75f, Place.Arrival.Eye.Z - 12f), Degrees.Zero, Degrees.Zero)); // [direct] flat plaza
+        App.ProbePlaceUser(new PlacePose(new NVector3(0, EyeMetres, Place.Arrival.Eye.Z - 12f), Degrees.Zero, Degrees.Zero)); // [direct] flat plaza
         await Frames(6);
         var y0 = W.Feet.Y;
         var apex = 0f;
         Key1(Godot.Key.Space, true);
         var start = Time.GetTicksMsec();
         var released = false;
+        // At most 120 frames (≈ 2 s); landing is only looked for after 10 frames, so the take-off frame is not taken for it.
         for (var i = 0; i < 120; i++)
         {
             if (!released && (Time.GetTicksMsec() - start) / 1000.0 >= holdSeconds)
@@ -289,6 +307,7 @@ public partial class WalkProbe
         return (b.Y - a.Y, new Vector2(b.X - a.X, b.Z - a.Z).Length());
     }
 
+    /// <summary>A folder flying may list: inside the arrival folder or a place already visited (AERIAL-04).</summary>
     private bool MayBeRevealed(int id, int root)
     {
         foreach (var a in Tree.Ancestors(id)) if (a == root || App.VisitedPlaces.Contains(a)) return true;
@@ -298,8 +317,10 @@ public partial class WalkProbe
     /// <summary>Folders outside the allowed area must not be listed by the probe's flight: they were stubs before and still are.</summary>
     private bool IsListedByReveal(int id) => Tree[id].ScanState == Core.Model.DirScanState.Complete && !App.VisitedPlaces.Contains(id) && _unlistedAtStart.Contains(id);
 
+    /// <summary>Folders not yet listed when <see cref="Explore"/> began (the baseline for <see cref="IsListedByReveal"/>).</summary>
     private HashSet<int> _unlistedAtStart = [];
 
+    /// <summary>Frame times for a fixed flight over the aerial world, vsync off; one CSV row (measurement only, not judged).</summary>
     private async Task PerfFly(string label)
     {
         if (!ProbeTier.Measure(label, Log)) return;

@@ -9,14 +9,19 @@ namespace FileScape.Fixtures;
 /// </summary>
 public static class PlacesFixture
 {
+    /// <summary>Files above this size are created sparse (on Windows) and smaller ones written in full, bytes (64 KiB).</summary>
+    private const long SparseAboveBytes = 65_536;
+
     public const string RootName = "Atlas Studio";
     public const string EmptyRootName = "empty-root";
 
+    /// <summary>The created fixture: its own directory, the Places root, the empty root, and the manifest of everything in it.</summary>
     public sealed record Result(string FixtureDir, string Root, string EmptyRoot, FixtureManifest Manifest)
     {
         public override string ToString() => $"places fixture: {FixtureDir}\n  root: {Root}\n  empty root: {EmptyRoot}\n{Manifest}";
     }
 
+    /// <summary>Creates the fixture in a new, uniquely named, marked directory under <paramref name="parent"/> (default: the fixtures parent).</summary>
     public static Result Create(string? parent = null)
     {
         parent ??= FixtureBuilder.DefaultParent;
@@ -43,6 +48,7 @@ public static class PlacesFixture
         for (var i = 1; i <= 8; i++) File(m, reports, $"report-q{(i - 1) % 4 + 1}-{i:D2}.pdf", 120_000 + i * 45_000);
 
         var photos = Dir(m, root, "Photos");
+        // Sizes vary but repeat on every run: i × 7919 (a prime) mod 37 scatters them over 37 steps.
         for (var i = 1; i <= 40; i++) File(m, photos, $"IMG_{2400 + i}.jpg", 280_000 + (i * 7919 % 37) * 90_000);
         foreach (var year in new[] { "2024", "2025" })
         {
@@ -75,6 +81,7 @@ public static class PlacesFixture
 
         var many = Dir(m, root, "many-files");
         string[] ext = [".txt", ".png", ".cs", ".zip", ".json", ".mp3", ".log", ".pdf", ".dat"];
+        // Sizes on a geometric ladder, 37 B × 1.9^0…20 (37 B to about 14 MB logical): a wide spread of file heights.
         for (var i = 0; i < 800; i++) File(m, many, $"item-{i:D4}{ext[i % ext.Length]}", (long)(37 * Math.Pow(1.9, i % 21)));
         Dir(m, many, "one");
         Dir(m, many, "two");
@@ -109,13 +116,14 @@ public static class PlacesFixture
     private static void File(FixtureManifest m, string dir, string name, long size)
     {
         var path = Path.Combine(dir, name);
-        if (size > 65_536 && OperatingSystem.IsWindows())
+        if (size > SparseAboveBytes && OperatingSystem.IsWindows())
         {
             FixtureBuilder.CreateSparse(m, path, size);
         }
         else
         {
-            FixtureBuilder.WriteFile(m, path, new byte[Math.Min(size, 65_536)]);
+            // Off Windows, large files are capped at 64 KiB written (the manifest counts what was written).
+            FixtureBuilder.WriteFile(m, path, new byte[Math.Min(size, SparseAboveBytes)]);
         }
     }
 }

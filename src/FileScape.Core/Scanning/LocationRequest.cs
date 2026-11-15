@@ -3,7 +3,10 @@ namespace FileScape.Core.Scanning;
 /// <summary>What a location request names: the "This computer" hub, or an ordinary filesystem path.</summary>
 public enum LocationTargetKind
 {
+    /// <summary>FileScape's own "This computer" hub (drives and places), which has no filesystem path.</summary>
     Hub,
+
+    /// <summary>An ordinary filesystem path, passed on as typed (trimmed).</summary>
     Path,
 }
 

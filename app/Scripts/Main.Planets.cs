@@ -23,6 +23,7 @@ public partial class Main : IWorldSession
 
     public PlanetWorld Planets => _planets;
 
+    /// <summary>Adds the planetary world; it stays inactive (no camera, no ticks) until Planets is the experience.</summary>
     private void BuildPlanets()
     {
         _planets = new PlanetWorld(this) { Name = "Planets" };
@@ -102,6 +103,7 @@ public partial class Main : IWorldSession
         }
     }
 
+    /// <summary>The planets' legend: the file-kind lantern colours, then the launchers' and veiled worlds' colours.</summary>
     private static IReadOnlyList<(Color, string)> PlanetLegend()
     {
         var list = Palette.Category.Select(kv => (kv.Value, PlaceText.CategoryName(kv.Key) + " (lantern colour)")).ToList();

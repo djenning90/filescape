@@ -27,7 +27,6 @@ public partial class Main
 {
     // Places flight (world units are metres here; docs/units.md).
 
-    /// <summary>How high T lifts you before free flight takes over (above the eye on foot).</summary>
     /// <summary>
     /// How high T lifts you above the eye (FLY-04): 16 m (was 3.5 m) — high enough to see the whole plaza and its gates
     /// below, low enough that the place still fills the view. B goes higher (the neighbourhood).
@@ -54,17 +53,29 @@ public partial class Main
     /// plaza is crossed gently and the aerial world (places hundreds of metres apart) in seconds. The wheel still sets
     /// the base speed.
     /// </summary>
-    public float FlightAltitudeFactor => Mathf.Clamp(CameraAltitude / 15f, 1f, 30f);
+    public float FlightAltitudeFactor => Mathf.Clamp(CameraAltitude / FlightSpeedReferenceAltitudeMetres, 1f, FlightMaxAltitudeFactor);
 
     /// <summary>
-    /// The take-off rise eases out: its speed is the remaining height × this rate (3.5 m → 9.1 m/s at first), never
-    /// below <see cref="TakeOffMinRiseSpeed"/>, so it ends gently but does end. It takes ≈ 1.3 s.
+    /// The take-off rise eases out: its speed is the remaining height × this rate (16 m → 41.6 m/s at first), never
+    /// below <see cref="TakeOffMinRiseSpeed"/>, so it ends gently but does end. The full 16 m takes ≈ 1.9 s (it took
+    /// ≈ 1.3 s when the rise was 3.5 m).
     /// </summary>
     private static readonly PerSecond TakeOffEasing = PerSecond.Of(2.6f);
 
+    /// <summary>The take-off rise's floor speed: the last ≈ 0.3 m are climbed at this steady pace rather than ever more slowly.</summary>
     private static readonly MetersPerSecond TakeOffMinRiseSpeed = MetersPerSecond.Of(0.8f);
 
+    /// <summary>The base flight speed before the altitude factor; the wheel steps it (<see cref="StepPlaceFlightSpeed"/>).</summary>
     private static readonly MetersPerSecond FlightDefaultSpeed = MetersPerSecond.Of(10f);
+
+    /// <summary>The altitude factor (FLY-02): ×1 up to this height, metres, then in proportion to height.</summary>
+    private const float FlightSpeedReferenceAltitudeMetres = 15f;
+
+    /// <summary>The altitude factor's cap: at 450 m and above flight is 30× the base speed.</summary>
+    private const float FlightMaxAltitudeFactor = 30f;
+
+    /// <summary>Shift in flight: this many times faster (a separate choice from the walker's run speed).</summary>
+    private const float FlightFastMultiplier = 3f;
 
     /// <summary>The eye never goes lower than this above the ground under it while flying.</summary>
     private static readonly Meters FlightMinClearance = Meters.Of(0.6f);
@@ -76,6 +87,18 @@ public partial class Main
     private static readonly MetersPerSecond LandingSpeed = MetersPerSecond.Of(9f);
 
     private static readonly TimeSpan LandingMinDuration = TimeSpan.FromSeconds(0.45), LandingMaxDuration = TimeSpan.FromSeconds(1.8);
+
+    /// <summary>Back on foot, a gaze more than this far from level, degrees, is eased back to level (FLY-05); a smaller tilt is left alone.</summary>
+    private const float LandedLevelToleranceDegrees = 0.5f;
+
+    /// <summary>The take-off gaze counts as reached within this many degrees (once the rise is over), and stops being eased.</summary>
+    private const float TakeOffGazeReachedDegrees = 0.5f;
+
+    /// <summary>Landing from the air over open space: farther than this beyond the current island's rim, metres, you land in the nearest place.</summary>
+    private const float LandHereMarginMetres = 15f;
+
+    /// <summary>A landing spot moved less than this from straight below, metres, is not mentioned to the user.</summary>
+    private const float LandingShiftNoticeMetres = 0.3f;
 
     private readonly Walker _walker = new();
     private Locomotion _locomotion = Locomotion.Walking;
@@ -170,7 +193,7 @@ public partial class Main
                 _walker.TeleportToEye(Terrain, l.To.ToNumerics(), _walker.Yaw, _walker.LookPitch);
                 _rig.SetPose(Gd(_walker.Eye), _walker.Yaw, _walker.LookPitch, PivotAhead);
                 // Back on foot: the walking gaze returns to level (FLY-05), whatever was chosen in the air.
-                if (Mathf.Abs(_walker.LookPitch.Value) > 0.5f) _leveling = new LookLeveling(_walker.LookPitch);
+                if (Mathf.Abs(_walker.LookPitch.Value) > LandedLevelToleranceDegrees) _leveling = new LookLeveling(_walker.LookPitch);
                 UpdateFlightHud();
             }
 
@@ -186,12 +209,12 @@ public partial class Main
             // The take-off settles the gaze on a downward view once, smoothly; looking with the mouse takes over at once.
             var k = TakeOffGazeRate.SmoothingFactor(dt);
             _walker.SetGaze(_walker.Yaw, _walker.LookPitch + (aim - _walker.LookPitch) * k);
-            if (_riseRemaining <= Meters.Zero && Mathf.Abs((aim - _walker.LookPitch).Value) < 0.5f) _takeOffPitch = null;
+            if (_riseRemaining <= Meters.Zero && Mathf.Abs((aim - _walker.LookPitch).Value) < TakeOffGazeReachedDegrees) _takeOffPitch = null;
         }
 
         var vertical = blocked ? 0 : _held.Axis(InputBindings.Down, InputBindings.Up) + (_held.IsHeld(InputBindings.Jump) ? 1 : 0);
         LastFlightVertical = Mathf.Clamp(vertical, -1, 1);
-        var speed = _flightSpeed * FlightAltitudeFactor * (run ? 3f : 1f);
+        var speed = _flightSpeed * FlightAltitudeFactor * (run ? FlightFastMultiplier : 1f);
         GVector3 wantedVelocity;
         if (_prefs.FlyAlongGaze)
         {
@@ -258,14 +281,15 @@ public partial class Main
         UpdateFlightHud();
     }
 
-    /// <summary>
-    /// Returns to walking on a valid surface below (WALK-07). Above a spot that is outside the walkable place (a vista,
-    /// beyond the boundary) or inside a structure, the nearest clear ground nearby is used, else the arrival point —
-    /// and the user is told why.
-    /// </summary>
     /// <summary>The last time landing could not use the aerial world (AERIAL-07), for probes; null if never.</summary>
     public string? LastAerialRecovery { get; private set; }
 
+    /// <summary>
+    /// Returns to walking on a valid surface below (WALK-07). Above a spot that is outside the walkable place (a vista,
+    /// beyond the boundary) or inside a structure, the nearest clear ground nearby is used, else the arrival point —
+    /// and the user is told why. From the aerial world, over another place (or far out over open space) it travels there
+    /// and lands in it instead (AERIAL-03).
+    /// </summary>
     public void Land()
     {
         if (_locomotion != Locomotion.Flying || _place == null) return;
@@ -287,7 +311,7 @@ public partial class Main
             if (under < 0)
             {
                 var here = _worldMap.Islands[_nav.Current]; // laid out: checked above
-                if (System.Numerics.Vector2.Distance(xz, here.Center) > here.Radius + 15f)
+                if (System.Numerics.Vector2.Distance(xz, here.Center) > here.Radius + LandHereMarginMetres)
                 {
                     under = _worldMap.Islands.Values.MinBy(i => System.Numerics.Vector2.Distance(xz, i.Center) - i.Radius)!.Id;
                 }
@@ -308,7 +332,7 @@ public partial class Main
         {
             var target = new GVector3(s.X, Terrain.SupportHeight(s, r, 1000, 0) + _walker.Params.EyeHeight.Value, s.Y);
             var moved = new NVector2(s.X - p.X, s.Y - p.Y).Length();
-            LastLandingNote = moved > 0.3f ? $"Landed {moved:0.#} m away: there was no clear ground right below." : null;
+            LastLandingNote = moved > LandingShiftNoticeMetres ? $"Landed {moved:0.#} m away: there was no clear ground right below." : null;
             if (LastLandingNote != null) _hud.Toast(LastLandingNote);
             var duration = Meters.Of(eye.DistanceTo(target)) / LandingSpeed;
             _landing = new LandingGlide { From = eye, To = target, Duration = duration < LandingMinDuration ? LandingMinDuration : duration > LandingMaxDuration ? LandingMaxDuration : duration };
@@ -324,6 +348,13 @@ public partial class Main
         UpdateFlightHud();
     }
 
+    /// <summary>
+    /// Where to land near <paramref name="p"/> (ground-plane x, z): the spot itself if the body fits on ground, terraces,
+    /// stairs or the overlook there (not on a tower roof, the landmark or a pillar, nor where a standing eye would be
+    /// more than 0.5 m above the flying one, and at least 0.2 m inside the boundary), else
+    /// the nearest clear spot on rings 0.5 m apart out to 6 m (16 directions each). Null when nothing nearby is clear or
+    /// <paramref name="p"/> is beyond the place's boundary.
+    /// </summary>
     private NVector2? FindLandingSpot(NVector2 p, float eyeY)
     {
         var t = Terrain;
@@ -334,7 +365,7 @@ public partial class Main
         var stepHeight = w.StepHeight.Value;
         bool Ok(NVector2 q, out float support)
         {
-            support = t.SupportHeight(q, radius, 1000, 0);
+            support = t.SupportHeight(q, radius, 1000, 0); // probed from 1 km up: the highest surface there, whatever the eye's height
             if (q.Length() >= t.BoundaryRadius - radius - 0.2f || support + eyeHeight > eyeY + 0.5f || !t.IsClear(q, radius, support, bodyHeight)) return false;
             // Land on ground, terraces, stairs, the overlook — not on the roof of a file tower, the landmark or a pillar.
             foreach (var i in t.BoxesNear(q, radius))
@@ -348,7 +379,8 @@ public partial class Main
 
         if (Ok(p, out _)) return p;
         if (p.Length() > t.BoundaryRadius + 1) return null;
-        // Inside a structure or just outside the edge: the nearest clear spot within a few metres.
+        // Inside a structure or just outside the edge: the nearest clear spot within a few metres (12 rings × 0.5 m = 6 m).
+        // The order is nearest ring first, then clockwise from east within a ring, so the result is repeatable.
         for (var ring = 1; ring <= 12; ring++)
         {
             var searchRadius = ring * 0.5f;
@@ -375,6 +407,7 @@ public partial class Main
         UpdateFlightHud();
     }
 
+    /// <summary>The toolbar's Flight button state and the fly chip (speed, landing), in Places only.</summary>
     private void UpdateFlightHud()
     {
         var places = _experience == Experience.Places;
@@ -395,6 +428,7 @@ public partial class Main
         _rig.GlideToPose(Gd(pose.Eye), pose.Yaw, pose.LookPitch, PivotAhead);
     }
 
+    /// <summary>Like <see cref="StartGuide"/>, to a framing of <paramref name="box"/> instead of a pose (B, F in flight).</summary>
     private void StartGuideFrame(Aabb box, Degrees elevation, Degrees? yaw, float padding, Locomotion after)
     {
         _leveling = null;
@@ -404,6 +438,7 @@ public partial class Main
         _rig.Frame(box, elevation: elevation, yaw: yaw, padding: padding);
     }
 
+    /// <summary>The glide is over (settled, or the user moved): resume <see cref="_afterGuide"/> from where the camera is, on the ground below when walking.</summary>
     private void EndGuide()
     {
         _guided = false;
@@ -458,6 +493,10 @@ public partial class Main
 
     // ------------------------------------------------------------------ look capture (hold right mouse)
 
+    /// <summary>
+    /// Right mouse pressed in a place: capture the mouse for look (WALK-03). It ends any glide, leveling or take-off gaze
+    /// (the user's look wins) and remembers where the cursor was, to put it back on release.
+    /// </summary>
     private void BeginPlaceLook(Vector2 mousePosition)
     {
         if (ModalOpen || !_windowFocused || _placeLook) return;
@@ -471,6 +510,7 @@ public partial class Main
         Input.MouseMode = Input.MouseModeEnum.Captured;
     }
 
+    /// <summary>Ends look capture: level the view if the user wants it, release the mouse where it was captured.</summary>
     private void EndPlaceLook()
     {
         if (!_placeLook) return;
@@ -510,6 +550,7 @@ public partial class Main
         _walker.Look(yaw, pitch);
     }
 
+    /// <summary>The wheel in Places flight: steps the base flight speed by <paramref name="notches"/> (<see cref="CameraMath.StepFlySpeed"/>).</summary>
     private void StepPlaceFlightSpeed(float notches)
     {
         _flightSpeed = MetersPerSecond.Of(CameraMath.StepFlySpeed(_flightSpeed.Value, notches));
@@ -517,6 +558,7 @@ public partial class Main
     }
 }
 
+// Probe set-up hooks for locomotion ([direct]: they place the user, they do not exercise a control).
 public partial class Main
 {
     /// <summary>[direct] Puts the walker at a pose (probes use it to set up a case, never to test a control).</summary>

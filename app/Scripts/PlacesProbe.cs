@@ -15,6 +15,12 @@ namespace FileScape.App;
 /// Main._Input/_UnhandledInput), exactly like <see cref="NavigationProbe"/>. Steps that are direct calls are
 /// labelled "[direct]" in the log: they set up a case (for example jumping to the wide folder) rather than test a
 /// control. Screenshots form the evidence journey; frame times are recorded while walking.
+/// <para>
+/// Modes: places (the journey, <see cref="Run"/>), places-scan (the place during a streaming scan and after a cancel),
+/// places-tour (a recording) and places-debug (artefact isolation). Timing: waits are on the wall clock and bounded,
+/// and a timed-out wait is followed by a check that names the condition, so a hang becomes a FAIL with a reason.
+/// This probe predates <see cref="ProbeBase"/> and keeps its own copies of the injection helpers.
+/// </para>
 /// </summary>
 public partial class PlacesProbe : Node
 {
@@ -62,9 +68,19 @@ public partial class PlacesProbe : Node
     /// <summary>The arrival root: node 0 for synthetic data, a node under "This computer" for live data (AD-17).</summary>
     private int R => _main.Navigator.Root;
 
+    /// <summary>The scan has nothing left to apply: finished, or (live data, explored on demand) idle.</summary>
     private bool ScanSettled => _main.Session is { } s && !s.HasPendingBatches && (s.IsFinished || (_main.Explorer != null && s.Snapshot().Idle));
     private PlaceComposition Place => _main.Place!;
 
+    /// <summary>The longest <see cref="Run"/> waits for the first place to settle after the scan, milliseconds.</summary>
+    private const int PlaceSettleTimeoutMsec = 60_000;
+
+    /// <summary>
+    /// --automate=places: arrival and identity, every child folder a gate, look-around, selection without moving, travel
+    /// on foot through a gate with threshold hysteresis, the way back with context, deliberate travel (double-click, G,
+    /// Ctrl+Home), ascent and the maps, the fixture's difficult cases (wide, many files, empty, denied, a junction) and
+    /// the walking frame times. Each section starts from where the previous one left the camera.
+    /// </summary>
     private async Task Run()
     {
         // Live data is explored on demand (AD-17): wait until the explorer is idle rather than "finished".
@@ -75,7 +91,7 @@ public partial class PlacesProbe : Node
         // exact version hung the full tier on a release build whose batches happened to arrive that way (2026-11-14).
         while (!ScanSettled || _main.Place == null || _main.AwaitingArrival || _main.Place.Signature != PlaceComposer.Signature(_main.Tree!, _main.Navigator.Current))
         {
-            if (Time.GetTicksMsec() - waitStart > 60_000)
+            if (Time.GetTicksMsec() - waitStart > PlaceSettleTimeoutMsec)
             {
                 var snap = _main.Session?.Snapshot();
                 Check(false, F($"the place settles after the scan (signature {(_main.Place != null && _main.Place.Signature == PlaceComposer.Signature(_main.Tree!, _main.Navigator.Current) ? "current" : "stale")}, settled={ScanSettled} finished={_main.Session?.IsFinished} pending={_main.Session?.HasPendingBatches} idle={snap?.Idle} explorer={_main.Explorer != null} place={_main.Place != null} awaiting={_main.AwaitingArrival} placeVersion={_main.Place?.TreeVersion} treeVersion={_main.Tree?.Version} state={snap?.State})"));
@@ -85,7 +101,7 @@ public partial class PlacesProbe : Node
             await Frames(1);
         }
 
-        await Frames(30);
+        await Frames(30); // a short pause before the first checks (the count's rationale is not recorded)
         var p = _main.Session!.Snapshot();
         Log($"scan state={p.State} nodes={p.Nodes} dirs={p.Directories} files={p.Files} links={p.Links} problems={p.Problems} elapsed={p.Elapsed.TotalMilliseconds:0}ms source={Tree.Source.RootDisplayPath}");
 
@@ -109,6 +125,7 @@ public partial class PlacesProbe : Node
         Mouse(MouseButton.Right, true, centre);
         await Frames(2);
         Check(_main.PlaceLookCaptured && Input.MouseMode == Input.MouseModeEnum.Captured, "right-hold captures the mouse to look around (WALK-03)");
+        // 30 moves of 50 px, one a frame: 1 500 px × LookDegreesPerPixel (0.12) = a 180° turn, back towards the way in.
         for (var i = 0; i < 30; i++) { Motion(new Vector2(50, 0)); await Frames(1); }
         Mouse(MouseButton.Right, false, centre);
         await Frames(3);
@@ -151,7 +168,7 @@ public partial class PlacesProbe : Node
         await Settle();
         Check(_main.Selection.Selected == target.TargetId && _main.Navigator.Current == R, F($"clicking '{targetName}' in Destinations selects it and walks up to its gate without travelling"));
         await Shot("approaching-a-gate");
-        var crossed = await WalkUntilTransition(Godot.Key.W, 6);
+        var crossed = await WalkUntilTransition(Godot.Key.W, GateWalkSeconds);
         Check(crossed, F($"holding W walks through the '{targetName}' gate and starts the threshold transition"));
         await Frames(12);
         await Shot("threshold-transition");
@@ -172,7 +189,9 @@ public partial class PlacesProbe : Node
         var pg = Place.ParentGate!;
         _main.Rig.SetPose(ToGd(pg.Position - pg.Outward * 1.2f) + new Vector3(0, 2.6f, 0), PlaceGeometry.YawFor(pg.AngleDeg), Degrees.Of(-4), 12);
         Log("[direct] placed the camera 1.2 u inside the parent gate, facing it (set-up for the dithering test)");
-        await Frames(70); // past the arrival cooldown
+        await Frames(70); // past the arrival cooldown (PlaceNavigator.Cooldown, 1 s; 70 frames ≈ 1.2 s at 60 fps)
+        // Six short back-and-forth steps (0.06 s each) from 1.2 u inside: they cross the gate plane both ways but never
+        // reach the 2 u re-arm distance behind it.
         for (var i = 0; i < 6; i++)
         {
             await Hold(Godot.Key.S, 0.06);
@@ -229,6 +248,7 @@ public partial class PlacesProbe : Node
             }
 
             var fromRoot = _main.Hud.BreadcrumbNames.SkipWhile(n => n != rootName).ToList();
+            // The root, the chain's first folder (double-clicked), then five levels by G: seven names.
             Check(fromRoot.Count == 7 && fromRoot[^1] == "level-05", F($"G five times descends the chain: {string.Join(" › ", fromRoot)}"));
             await Settle();
             await Shot("deep-chain");
@@ -275,6 +295,9 @@ public partial class PlacesProbe : Node
         // ---------------------------------------------------- difficult cases
         await Case("wide-hall", "wide", async () =>
         {
+            // The counts are the Places fixture's (wide-hall has 240 folders, many-files 800 files and 2 folders). At most
+            // 70 visible signs and at least 12 named gates are the thresholds this check guards (their rationale is not
+            // recorded here).
             Check(Place.IsWide && Place.Gates.Count == 240, F($"wide-hall: 240 gates on {Place.Tiers.Count} tiers"));
             Check(_main.PlaceWorld.VisibleSigns <= 70, F($"at most 70 managed signs visible at arrival ({_main.PlaceWorld.VisibleSigns} of {_main.PlaceWorld.SignCount})"));
             Check(_main.Hud.DestinationCount == 241, F($"Destinations lists all 240 folders plus the way up ({_main.Hud.DestinationCount})"));
@@ -362,10 +385,17 @@ public partial class PlacesProbe : Node
     /// neighbourhood while the scan streams in (no whole-tree layout), stays responsive while walking and looking,
     /// and shows pending/not-scanned gates distinctly; then a second scan is cancelled part-way.
     /// </summary>
+    /// <summary>
+    /// H3, the frame-time hypothesis for scanning (docs/implementation-status.md): the 99th-percentile frame time while a
+    /// scan streams in stays under 50 ms, milliseconds.
+    /// </summary>
+    private const double ScanP99LimitMs = 50;
+
     private async Task ScanScenario()
     {
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         var start = Time.GetTicksMsec();
+        // 20 s for each first place to appear, 120 s for the whole scan to stream in while walking (wall clock).
         while (_main.Place == null && Time.GetTicksMsec() - start < 20_000) await Frames(1);
         Check(_main.Place != null, F($"the root place appears {(Time.GetTicksMsec() - start)} ms after launch while the scan runs"));
         Check(_main.Session is { IsFinished: false }, "the scan is still running when the place is first shown");
@@ -399,7 +429,7 @@ public partial class PlacesProbe : Node
         Log(F($"scan finished state={p.State} nodes={p.Nodes} elapsed={p.Elapsed.TotalSeconds:0.0}s"));
         Log(F($"perf places-during-scan: frames={a.Count} mean={a.Mean:0.00} p50={a.P50:0.00} p95={a.P95:0.00} p99={a.P99:0.00} max={a.Max:0.00}; recompositions={r.Count} mean={r.Mean:0.0}ms max={r.Max:0.0}ms; layout_computed={_main.Layout != null}"));
         _perf.Append(CultureInfo.InvariantCulture, $"places-during-scan,{_main.Quality},{a.Count},{a.Mean:0.00},{a.P50:0.00},{a.P95:0.00},{a.P99:0.00},{a.Max:0.00},,{_main.InstanceCount},{Place.Gates.Count},{Place.Files.Count},{Tree.Count},{r.Mean:0.0},{r.Max:0.0}\n");
-        Check(a.P99 < 50, F($"p99 frame time during the scan {a.P99:0.0} ms < 50 ms (H3)"));
+        Check(a.P99 < ScanP99LimitMs, F($"p99 frame time during the scan {a.P99:0.0} ms < 50 ms (H3)"));
         await Shot("scan-finished");
         var recompositions = r.Count;
         if (!sawPending || recompositions == 0)
@@ -416,6 +446,7 @@ public partial class PlacesProbe : Node
             var builds = _main.LastPlaceBuildMs;
             var before = Time.GetTicksMsec();
             _main.Perf.StartRecording();
+            // Up to 4 s for the first recomposition (the throttle allows one every 0.35 s), then 30 frames to record it.
             while (Time.GetTicksMsec() - before < 4_000 && Place.Signature == firstSig) await Frames(1);
             await Frames(30);
             recompositions = _main.Perf.StopRecording().Count(x => x.RelayoutMs > 0);
@@ -476,6 +507,8 @@ public partial class PlacesProbe : Node
             await Frames(2);
         }
 
+        // Look left, right and back (6 px a frame) at a pace that reads on a recording; the frame counts in the tour are
+        // pauses chosen for the recording (rationale not recorded).
         await Look(-6, 30);
         await Look(6, 60);
         await Look(-6, 30);
@@ -531,6 +564,10 @@ public partial class PlacesProbe : Node
 
     // ------------------------------------------------------------ steps
 
+    /// <summary>
+    /// PLACE-04: every child folder (and folder link) of the current place has a gate, a Destinations row and a sign
+    /// that starts with its name. The parent's row is left out of the comparison.
+    /// </summary>
     private async Task AllChildrenRepresented(string label)
     {
         var folder = Tree[_main.Navigator.Current];
@@ -543,6 +580,11 @@ public partial class PlacesProbe : Node
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// One of the fixture's difficult cases: select the named child of the root in Destinations, walk through its gate
+    /// (falling back to a logged direct TravelInto if walking does not reach it), run <paramref name="body"/>, then U
+    /// back to the root.
+    /// </summary>
     private async Task Case(string name, string label, Func<Task> body)
     {
         var node = Tree.Nodes.FirstOrDefault(n => n.ParentId == R && n.Name == name);
@@ -554,7 +596,7 @@ public partial class PlacesProbe : Node
 
         await ClickDestination(node.Id);
         await Settle();
-        var crossed = await WalkUntilTransition(Godot.Key.W, 6);
+        var crossed = await WalkUntilTransition(Godot.Key.W, GateWalkSeconds);
         if (!crossed)
         {
             Log($"[direct] walking did not reach {name}; travelling by TravelInto");
@@ -571,6 +613,10 @@ public partial class PlacesProbe : Node
         await Settle();
     }
 
+    /// <summary>
+    /// Clicks the nearest file tower that the pick confirms is visible (on screen, not under the HUD, not hidden behind
+    /// another tower); returns its id, or −1 when none is.
+    /// </summary>
     private async Task<int> ClickVisibleFile()
     {
         var cam = _main.Rig.Camera;
@@ -611,6 +657,7 @@ public partial class PlacesProbe : Node
         await Frames(3);
     }
 
+    /// <summary>Selects a folder by clicking its row in the Destinations drawer (opened for the click, closed after unless asked).</summary>
     private async Task ClickDestination(int id, bool close = true)
     {
         await SetDestinationsOpen(true);
@@ -618,6 +665,7 @@ public partial class PlacesProbe : Node
         if (close) await SetDestinationsOpen(false);
     }
 
+    /// <summary>Scrolls a Destinations row into view (set-up) and clicks it; a missing row is a failed check.</summary>
     private async Task ClickDestinationRow(int id)
     {
         var index = _main.Hud.DestinationIds().ToList().IndexOf(id);
@@ -637,6 +685,7 @@ public partial class PlacesProbe : Node
         await Frames(3);
     }
 
+    /// <summary>A double-click on a Destinations row: a click, then a press flagged as Godot's double-click, then release.</summary>
     private async Task DoubleClickDestination(int id)
     {
         await ClickDestination(id, close: false);
@@ -650,6 +699,10 @@ public partial class PlacesProbe : Node
         await SetDestinationsOpen(false);
     }
 
+    /// <summary>The longest a walk towards a selected gate is held, seconds (a generous bound; rationale for 6 not recorded).</summary>
+    private const double GateWalkSeconds = 6;
+
+    /// <summary>Holds a key until a place transition starts or the time runs out; returns whether one started.</summary>
     private async Task<bool> WalkUntilTransition(Godot.Key key, double maxSeconds)
     {
         var start = Time.GetTicksMsec();
@@ -663,18 +716,28 @@ public partial class PlacesProbe : Node
         return _main.InTransition;
     }
 
+    /// <summary>
+    /// Waits, on the wall clock, until the place is composed at the current tree version, but at least 0.6 s (longer than
+    /// the 0.35 s recomposition throttle, so a pending recomposition has happened) and at most 3 s.
+    /// </summary>
     private async Task WaitPlaceCurrent()
     {
         var t0 = Time.GetTicksMsec();
         while (Time.GetTicksMsec() - t0 < 3000 && (_main.Place == null || _main.Place.TreeVersion != Tree.Version || Time.GetTicksMsec() - t0 < 600)) await Frames(1);
     }
 
+    /// <summary>Waits for a place transition to end (at most 600 frames, ≈ 10 s at 60 fps), then 4 frames for the arrival to draw.</summary>
     private async Task WaitTransition()
     {
         for (var i = 0; i < 600 && _main.InTransition; i++) await Frames(1);
         await Frames(4);
     }
 
+    /// <summary>
+    /// Frame times for a fixed walk in the current place (W 1.2 s, A 0.8 s, S 1.2 s, D 0.8 s: roughly back to the start)
+    /// and 90 frames of looking around with a gentle nod, vsync off; one row of the perf CSV. Measurement only: left
+    /// out of the functional tier (<see cref="ProbeTier.Measure"/>). Ends at the arrival point either way.
+    /// </summary>
     private async Task PerfWalk(string label)
     {
         await Settle();
@@ -707,6 +770,7 @@ public partial class PlacesProbe : Node
 
     // ------------------------------------------------------------ helpers
 
+    /// <summary>The camera is at a pose: within 0.6 u of its eye and 2° of its heading (pitch is not compared).</summary>
     private bool AtPose(PlacePose pose) => _main.Rig.CameraPosition.DistanceTo(ToGd(pose.Eye)) < 0.6f && Mathf.Abs((_main.Rig.Yaw - pose.Yaw).Wrapped().Value) < 2f;
 
     private static void Inject(InputEvent e) => Input.ParseInputEvent(e);
@@ -730,6 +794,7 @@ public partial class PlacesProbe : Node
         await Frames(2);
     }
 
+    /// <summary>A Ctrl+key chord: Ctrl down first and up last.</summary>
     private async Task KeyCombo(Godot.Key key, bool ctrl)
     {
         Inject(new InputEventKey { Keycode = Godot.Key.Ctrl, PhysicalKeycode = Godot.Key.Ctrl, Pressed = true, CtrlPressed = true });
@@ -740,6 +805,7 @@ public partial class PlacesProbe : Node
         await Frames(2);
     }
 
+    /// <summary>Holds one key for a wall-clock duration.</summary>
     private async Task Hold(Godot.Key key, double seconds)
     {
         var start = Time.GetTicksMsec();
@@ -765,6 +831,7 @@ public partial class PlacesProbe : Node
     private static void Motion(Vector2 relative) =>
         Inject(new InputEventMouseMotion { Relative = relative, ScreenRelative = relative });
 
+    /// <summary>Waits for the camera to settle and any transition to end (at most 240 frames), then 6 more.</summary>
     private async Task Settle()
     {
         for (var i = 0; i < 240 && (!_main.Rig.IsSettled || _main.InTransition); i++) await Frames(1);
@@ -776,6 +843,7 @@ public partial class PlacesProbe : Node
         for (var i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
+    /// <summary>Captures the next drawn frame as NN-name.png (numbered in order) and logs where the app was.</summary>
     private async Task Shot(string name)
     {
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

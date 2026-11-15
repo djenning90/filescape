@@ -13,6 +13,10 @@ namespace FileScape.App;
 /// </summary>
 public partial class WalkProbe
 {
+    /// <summary>
+    /// --automate=walk-project --root=hub --project-root=&lt;the fixture's Projects folder&gt;: the journey in the class
+    /// summary. The editor confirmation is opened and cancelled through probe hooks, so no editor can start.
+    /// </summary>
     private async Task ProjectJourney()
     {
         var tree = App.Tree!;

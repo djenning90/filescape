@@ -28,7 +28,7 @@ public sealed class SampleSkyFixture : IDisposable
     }
 }
 
-/// <summary>The curated first-impression sample (Planets): structure, real file formats, size budget and safety.</summary>
+/// <summary>The curated first-impression sample (PLANET-15, AD-43): structure, real file formats, size budget and safety.</summary>
 public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleSkyFixture>
 {
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -225,6 +225,8 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
     public void Total_size_is_under_12_megabytes()
     {
         var totalBytes = Directory.GetFiles(sky.Root, "*", NoLinks).Sum(f => new FileInfo(f).Length);
+        // The Starter Sky (AD-43, PLANET-15) is written into the app's own data folder on first use; 12 MiB is its
+        // size budget (the reason for this figure is not recorded).
         totalBytes.Should().BeLessThan(12L * 1024 * 1024);
     }
 

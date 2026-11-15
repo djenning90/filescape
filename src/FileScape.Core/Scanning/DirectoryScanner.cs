@@ -6,6 +6,12 @@ namespace FileScape.Core.Scanning;
 /// <summary>
 /// Scans a real directory tree, breadth first, reading metadata only. Shallow levels appear first, which suits
 /// incremental display.
+/// <para>
+/// This is the whole-tree reference mode (the "bounded tree scan" behind the Classic FSN and District maps): one chosen
+/// folder listed completely in the background, up to <see cref="ScanContext.MaxNodes"/>. The connected world uses
+/// <see cref="WorldExplorer"/> instead, which lists on demand; it reuses this class's attribute policy
+/// (<see cref="FlagsFor"/>, <see cref="ShouldEnumerateDirectory"/>) so both modes classify entries identically.
+/// </para>
 /// </summary>
 /// <remarks>
 /// Policies (docs/requirements.md FS-01 to FS-10):
@@ -30,7 +36,7 @@ public sealed class DirectoryScanner : IScanSource
         AttributesToSkip = 0,
         IgnoreInaccessible = false,
         ReturnSpecialDirectories = false,
-        BufferSize = 64 * 1024,
+        BufferSize = 64 * 1024, // bytes for the OS directory-entry buffer: fewer kernel round trips per big folder than the default buffer (rationale for 64 KiB not recorded)
     };
 
     private readonly string _rootPath;
@@ -60,12 +66,20 @@ public sealed class DirectoryScanner : IScanSource
     /// </summary>
     public static bool ShouldEnumerateDirectory(FileAttributes attributes) => (attributes & RecallOnDataAccess) == 0;
 
-    /// <summary>The number of entries per emitted batch for very large directories.</summary>
+    /// <summary>
+    /// The number of entries per emitted batch for very large directories: a huge folder arrives in slices, so the
+    /// consumer can apply one slice per frame instead of one enormous batch.
+    /// </summary>
     public int MaxBatchEntries { get; init; } = 4096;
 
     public DataSourceInfo Describe() =>
         new(DataOrigin.LiveFilesystem, _rootPath, "Live Windows filesystem (metadata only)");
 
+    /// <summary>
+    /// Emits the root, then lists directories in breadth-first order until the queue empties, the node limit is reached
+    /// (the rest are marked <see cref="DirScanState.NotTraversed"/>) or cancellation (the rest are marked
+    /// <see cref="DirScanState.Cancelled"/>). Ids are assigned in emission order, as <see cref="ScanBatch"/> requires.
+    /// </summary>
     public void Run(ScanContext context, CancellationToken ct)
     {
         var rootBatch = new ScanBatch();
@@ -130,6 +144,7 @@ public sealed class DirectoryScanner : IScanSource
             if (context.Nodes >= context.MaxNodes)
             {
                 context.LimitReached = true;
+                // Put it back so MarkRemaining marks it too: it was never listed.
                 queue.Enqueue((dirId, dirPath, depth));
                 MarkRemaining(context, queue, DirScanState.NotTraversed);
                 return;
@@ -242,10 +257,15 @@ public sealed class DirectoryScanner : IScanSource
         context.Emit(batch);
     }
 
+    /// <summary>One directory entry as read from the OS, before it is given an id.</summary>
     private readonly record struct Entry(
         string Name, NodeKind Kind, NodeFlags Flags, FileAttributes Attributes, long Size,
         DateTime? Created, DateTime? Modified, DateTime? Accessed);
 
+    /// <summary>
+    /// Lists one directory inside a reported OS-operation window. Returns what was read even on failure (a partial
+    /// listing is kept), the failure as a flag and message, or the error text "cancelled" when it stopped early on request.
+    /// </summary>
     private static (List<Entry> Entries, NodeFlags FailureFlags, string? Error) Enumerate(
         ScanContext context, string dirPath, Action<string>? beforeEnumerate, CancellationToken ct)
     {
@@ -322,6 +342,7 @@ public sealed class DirectoryScanner : IScanSource
             SafeTime(e.LastAccessTimeUtc));
     }
 
+    // Windows reports "no time" as the FILETIME epoch (1601-01-01); show that as unknown rather than as a real date.
     private static DateTime? SafeTime(DateTimeOffset t) =>
         t.UtcDateTime.Year <= 1601 ? null : t.UtcDateTime;
 
@@ -331,6 +352,7 @@ public sealed class DirectoryScanner : IScanSource
     public const FileAttributes Pinned = (FileAttributes)0x00080000;
     public const FileAttributes Unpinned = (FileAttributes)0x00100000;
 
+    /// <summary>The node flags an entry's attributes imply; any recall or offline attribute marks a cloud placeholder.</summary>
     internal static NodeFlags FlagsFor(FileAttributes attrs)
     {
         var f = NodeFlags.None;

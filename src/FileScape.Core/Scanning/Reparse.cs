@@ -10,6 +10,7 @@ namespace FileScape.Core.Scanning;
 /// </summary>
 public static class Reparse
 {
+    // The reparse tags FileScape tells apart (IO_REPARSE_TAG_* in winnt.h; the values are fixed by Windows, not tuning).
     public const uint TagMountPoint = 0xA0000003;
     public const uint TagSymlink = 0xA000000C;
     public const uint TagLxSymlink = 0xA000001D;
@@ -103,6 +104,10 @@ public static class Reparse
         }
     }
 
+    /// <summary>
+    /// WIN32_FIND_DATAW, laid out field for field for P/Invoke (260 = MAX_PATH, 14 = the 8.3 name buffer). Only
+    /// <see cref="Attributes"/> and <see cref="Reserved0"/> (dwReserved0: the reparse tag when the entry is a reparse point) are read.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Win32FindData
     {

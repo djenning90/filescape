@@ -29,7 +29,7 @@ public sealed class SkySynthEvidenceFactAttribute : FactAttribute
     }
 }
 
-/// <summary>The Planets audio synth (pure DSP): safety, determinism, latency, smooth crossfades, the worlds' music and cost.</summary>
+/// <summary>The Planets audio synth (pure DSP; PLANET-23, PLANET-28, AD-49): safety, determinism, latency, smooth crossfades, the worlds' music and cost.</summary>
 public class SkySynthTests(ITestOutputHelper output)
 {
     private const int Rate = SkySynth.DefaultSampleRateHz;
@@ -369,6 +369,7 @@ public class SkySynthTests(ITestOutputHelper output)
     {
         foreach (var id in Enum.GetValues<MusicIdentity>()) output.WriteLine($"{id,-12} {SkySynth.TempoFor(id)} BPM");
         SkySynth.TempoFor(MusicIdentity.Hub).Should().BeInRange(90, 96, "a calm arrival");
+        // AD-49's tempos (hub 94, Windows volume 116, WSL 112, repository 126 BPM) with a few BPM of room either side.
         SkySynth.TempoFor(MusicIdentity.WindowsRoot).Should().BeInRange(110, 118);
         SkySynth.TempoFor(MusicIdentity.WslRoot).Should().BeInRange(110, 118);
         SkySynth.TempoFor(MusicIdentity.Repository).Should().BeInRange(122, 128);

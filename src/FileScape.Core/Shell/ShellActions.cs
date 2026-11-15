@@ -72,10 +72,17 @@ public static class LaunchRisk
         ".application", ".gadget", ".inf", ".sct", ".scf", ".appx", ".msix", ".appinstaller",
     };
 
+    /// <summary>
+    /// True for extensions Windows runs (or installs, or follows like a shortcut) when opened. Trailing dots and spaces
+    /// are trimmed first because Windows ignores them, so "setup.exe." is still an executable.
+    /// </summary>
     public static bool RunsCode(string path) => Executable.Contains(Path.GetExtension(path.TrimEnd('.', ' ')));
 }
 
-/// <summary>Windows implementation built on ShellExecuteExW and Explorer.</summary>
+/// <summary>
+/// Windows implementation built on ShellExecuteExW and Explorer: the real actions behind Open, Show in Explorer and the
+/// editor launches (DEV-03). Every call is synchronous and reports Windows' own error text rather than a shell dialog.
+/// </summary>
 public sealed class WindowsShellActions : IShellActions
 {
     public ShellResult Open(string path)
@@ -127,7 +134,10 @@ public sealed class WindowsShellActions : IShellActions
         return new ShellResult(false, false, $"Could not start {Path.GetFileName(program)} (error {error}: {new Win32Exception(error).Message}).");
     }
 
-    /// <summary>Windows command-line quoting for one argument (CommandLineToArgvW rules).</summary>
+    /// <summary>
+    /// Windows command-line quoting for one argument (CommandLineToArgvW rules): backslashes are literal except before a
+    /// quote, where each must be doubled and the quote itself escaped; a closing quote doubles any trailing backslashes.
+    /// </summary>
     public static string Quote(string a)
     {
         if (a.Length > 0 && a.IndexOfAny([' ', '\t', '"']) < 0) return a;
@@ -167,12 +177,14 @@ public sealed class WindowsShellActions : IShellActions
         }
     }
 
+    // Win32 values (shellapi.h, winuser.h, objbase.h), fixed by Windows.
     private const uint SeeMaskNoAsync = 0x00000100;
     private const uint SeeMaskFlagNoUi = 0x00000400;
     private const int SwShowNormal = 1;
     private const uint CoinitApartmentThreaded = 0x2;
     private const uint CoinitDisableOle1Dde = 0x4;
 
+    /// <summary>SHELLEXECUTEINFOW, field for field for P/Invoke (<c>hIconOrMonitor</c> is the DUMMYUNIONNAME union).</summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct ShellExecuteInfo
     {

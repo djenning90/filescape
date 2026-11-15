@@ -44,15 +44,48 @@ public partial class PlanetoidExperiment : Node3D
     private FsTree _orchard = null!;
     private PlaceComposition _place = null!;
     private bool _firstPerson;
-    private float _lookPitch;
-    private float _chasePitch = 20f;
-    private float _landKick;
+    private float _lookPitch; // first-person look pitch, degrees (up positive)
+    private float _chasePitch = 20f; // the chase camera's elevation, degrees
+    private float _landKick; // 1 at a landing, decaying to 0: drives the camera's dip
     private int _lastTransfers;
     private string _picked = "";
-    private float _launchFov;
+    private float _launchFov; // 1 at a launch, decaying to 0: a brief widening of the view
 
     /// <summary>The teal world's radius: large enough that the composed place stays within ≈ 35° of the pole.</summary>
     private const float TealRadius = 48f;
+
+    /// <summary>A launch pad's radius, metres: the drawn pad and the area that counts as standing on it.</summary>
+    private const float PadRadiusMetres = 2.2f;
+
+    /// <summary>A launch is aimed at the other world's centre, raised by this much of the local up (a lofted arc, not a skim).</summary>
+    private const float LaunchLoft = 0.6f;
+
+    /// <summary>The launch speed when the simulation finds no arc that arrives, m/s.</summary>
+    private const float FallbackLaunchSpeedMetresPerSecond = 30f;
+
+    /// <summary>Right-drag sensitivity, degrees per pixel: turning, first-person pitch, and chase-camera elevation (separate choices).</summary>
+    private const float LookYawDegreesPerPixel = 0.25f, LookPitchDegreesPerPixel = 0.2f, ChaseElevationDegreesPerPixel = 0.2f;
+
+    /// <summary>Limits: first-person pitch ±80°; the chase camera from just below level (−5°) to steeply above (70°).</summary>
+    private const float MaxLookPitchDegrees = 80f, MinChaseDegrees = -5f, MaxChaseDegrees = 70f;
+
+    /// <summary>The landing dip and the launch widening run out linearly at these rates (per second: in ≈ 0.45 s and ≈ 0.6 s); the dip is at most 0.8 m.</summary>
+    private const float LandKickDecayPerSecond = 2.2f, LaunchFovDecayPerSecond = 1.6f, LandDipMetres = 0.8f;
+
+    /// <summary>First-person eye height and the avatar capsule's centre above the feet, metres (the capsule is 1.8 m tall).</summary>
+    private const float EyeHeightMetres = 1.75f, AvatarCentreMetres = 0.9f;
+
+    /// <summary>The chase camera on foot: 9 m back at the chosen elevation, easing at 6/s (≈ 0.17 s), looking 5 m ahead.</summary>
+    private const float WalkChaseMetres = 9f, WalkFollowRatePerSecond = 6f, WalkLookAheadMetres = 5f;
+
+    /// <summary>In flight: 15 m back at 28°, a tighter 9/s (≈ 0.11 s) for the fast transfer, looking 9 m ahead.</summary>
+    private const float FlightChaseMetres = 15f, FlightChaseDegrees = 28f, FlightFollowRatePerSecond = 9f, FlightLookAheadMetres = 9f;
+
+    /// <summary>The field of view, degrees: the base, widening by up to 12° mid-transfer (with speed) and 6° at the launch kick.</summary>
+    private const float BaseFovDegrees = 60f, TransferFovWidenDegrees = 12f, LaunchFovKickDegrees = 6f;
+
+    /// <summary>Picking marches the ray in 0.15 m steps from 0.3 m out; 0.5 m below the ground counts as hitting it.</summary>
+    private const float PickStepMetres = 0.15f, PickStartMetres = 0.3f, PickGroundDepthMetres = 0.5f;
 
     public PlanetoidExperiment(bool automate, string outDir)
     {
@@ -95,13 +128,13 @@ public partial class PlanetoidExperiment : Node3D
             var chart = i == 0 ? new NVector2(0, 12.5f) : new NVector2(0, -18);
             var at = b.ToWorld(chart);
             var up = NVector3.Normalize(at - b.Center);
-            var dir = NVector3.Normalize(NVector3.Normalize(other.Center - at) + up * 0.6f);
-            var speed = PlanetoidTraveller.LaunchSpeed(_bodies, at, dir, 1 - i) ?? 30f;
-            _pads.Add((i, chart, 2.2f, dir * speed));
+            var dir = NVector3.Normalize(NVector3.Normalize(other.Center - at) + up * LaunchLoft);
+            var speed = PlanetoidTraveller.LaunchSpeed(_bodies, at, dir, 1 - i) ?? FallbackLaunchSpeedMetresPerSecond;
+            _pads.Add((i, chart, PadRadiusMetres, dir * speed));
             var (u, n, e) = b.FrameAt(chart);
             var pad = new MeshInstance3D
             {
-                Mesh = new CylinderMesh { TopRadius = 2.2f, BottomRadius = 2.4f, Height = 0.25f },
+                Mesh = new CylinderMesh { TopRadius = PadRadiusMetres, BottomRadius = 2.4f, Height = 0.25f },
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.1f, 0.1f, 0.15f), EmissionEnabled = true, Emission = new Color(1f, 0.9f, 0.4f), EmissionEnergyMultiplier = 2.2f },
             };
             pad.Transform = new Transform3D(new Basis(Gd(e), Gd(u), Gd(-n)), Gd(at + u * 0.1f));
@@ -114,7 +147,7 @@ public partial class PlanetoidExperiment : Node3D
             MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(1f, 0.95f, 0.8f), EmissionEnabled = true, Emission = new Color(1f, 0.85f, 0.5f), EmissionEnergyMultiplier = 0.6f },
         };
         AddChild(_avatar);
-        _camera = new Camera3D { Fov = 60, Near = 0.1f, Far = 5000, Current = true };
+        _camera = new Camera3D { Fov = BaseFovDegrees, Near = 0.1f, Far = 5000, Current = true };
         AddChild(_camera);
         var layer = new CanvasLayer();
         AddChild(layer);
@@ -128,6 +161,11 @@ public partial class PlanetoidExperiment : Node3D
         if (_automate) _ = Script();
     }
 
+    /// <summary>
+    /// Adds a world: its sphere (shaded between <paramref name="a"/> and <paramref name="c"/> with a <paramref name="glow"/>
+    /// rim), an optional ring, and its terrain in the body's chart — the composed <paramref name="place"/>'s, or else a
+    /// tiny hand-made place (a landmark and seven pillars).
+    /// </summary>
     private void AddBody(Planetoid b, Color a, Color c, Color glow, bool ring, PlaceComposition? place = null)
     {
         _bodies.Add(b);
@@ -290,11 +328,11 @@ public partial class PlanetoidExperiment : Node3D
     public (int NodeId, TerrainKind Kind, float Distance) Pick(Vector3 origin, Vector3 dir, float maxDistance = 90f)
     {
         var b = _bodies[0];
-        for (var t = 0.3f; t < maxDistance; t += 0.15f)
+        for (var t = PickStartMetres; t < maxDistance; t += PickStepMetres)
         {
             var p = origin + dir * t;
             var (chart, h) = b.ToChart(new NVector3(p.X, p.Y, p.Z));
-            if (h < -0.5f) return (-1, TerrainKind.Platform, t); // into the ground
+            if (h < -PickGroundDepthMetres) return (-1, TerrainKind.Platform, t); // into the ground
             foreach (var box in _place.Terrain.Boxes)
             {
                 if (h >= box.Bottom && h <= box.Top && box.Overlaps(chart, 0.02f)) return (box.NodeId, box.Kind, t);
@@ -316,9 +354,9 @@ public partial class PlanetoidExperiment : Node3D
         if (@event is InputEventMouseMotion m && (m.ButtonMask & MouseButtonMask.Right) != 0)
         {
             // Right-drag looks: yaw turns the walker; pitch tilts the first-person view or raises the chase camera.
-            _traveller.Walker.Look(Degrees.Of(-m.Relative.X * 0.25f), Degrees.Zero);
-            if (_firstPerson) _lookPitch = Mathf.Clamp(_lookPitch - m.Relative.Y * 0.2f, -80f, 80f);
-            else _chasePitch = Mathf.Clamp(_chasePitch + m.Relative.Y * 0.2f, -5f, 70f);
+            _traveller.Walker.Look(Degrees.Of(-m.Relative.X * LookYawDegreesPerPixel), Degrees.Zero);
+            if (_firstPerson) _lookPitch = Mathf.Clamp(_lookPitch - m.Relative.Y * LookPitchDegreesPerPixel, -MaxLookPitchDegrees, MaxLookPitchDegrees);
+            else _chasePitch = Mathf.Clamp(_chasePitch + m.Relative.Y * ChaseElevationDegreesPerPixel, MinChaseDegrees, MaxChaseDegrees);
         }
 
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click && _traveller.Body == 0)
@@ -349,7 +387,7 @@ public partial class PlanetoidExperiment : Node3D
         var feet = Gd(_traveller.Position);
         var up = Gd(_traveller.Up);
         var forward = Gd(_traveller.Forward);
-        _avatar.Transform = new Transform3D(BasisFrom(up, forward), feet + up * 0.9f);
+        _avatar.Transform = new Transform3D(BasisFrom(up, forward), feet + up * AvatarCentreMetres);
         // A chase camera: behind and above, so the curvature and the other world are in view.
         if (_traveller.Transfers != _lastTransfers)
         {
@@ -357,14 +395,15 @@ public partial class PlanetoidExperiment : Node3D
             _landKick = 1f; // a decisive landing: the camera dips and settles (no shake, no cut)
         }
 
-        _landKick = Mathf.Max(0, _landKick - (float)delta * 2.2f);
-        _launchFov = Mathf.Max(0, _launchFov - (float)delta * 1.6f);
-        var dip = up * (-0.8f * Mathf.Sin(_landKick * Mathf.Pi));
+        _landKick = Mathf.Max(0, _landKick - (float)delta * LandKickDecayPerSecond);
+        _launchFov = Mathf.Max(0, _launchFov - (float)delta * LaunchFovDecayPerSecond);
+        // sin(π·kick): the dip goes down and comes back up as the kick runs out, zero at both ends, so the camera never jumps.
+        var dip = up * (-LandDipMetres * Mathf.Sin(_landKick * Mathf.Pi));
         if (_firstPerson && _traveller.Body >= 0)
         {
             var right = forward.Cross(up).Normalized();
             var look = forward.Rotated(right, Mathf.DegToRad(_lookPitch));
-            _camPos = feet + up * 1.75f + dip;
+            _camPos = feet + up * EyeHeightMetres + dip;
             _camera.LookAtFromPosition(_camPos, _camPos + look, up);
         }
         else
@@ -372,20 +411,22 @@ public partial class PlanetoidExperiment : Node3D
             // A chase camera: behind and above. In a transfer it pulls back and widens a little with speed, so the arc and
             // the target world read; it never shakes or cuts.
             var flying = _traveller.Body < 0;
-            var back = flying ? 15f : 9f;
-            var elev = Mathf.DegToRad(flying ? 28f : _chasePitch);
+            // Exponential follow: each frame closes 1 − e^(−rate·dt) of the gap, the same at any frame rate.
+            var back = flying ? FlightChaseMetres : WalkChaseMetres;
+            var elev = Mathf.DegToRad(flying ? FlightChaseDegrees : _chasePitch);
             var want = feet + up * (back * Mathf.Sin(elev) + 1.5f) - forward * (back * Mathf.Cos(elev)) + dip;
-            _camPos = _camPos.Lerp(want, 1 - Mathf.Exp((flying ? -9f : -6f) * (float)delta));
-            _camera.LookAtFromPosition(_camPos, feet + up * 1.4f + forward * (flying ? 9f : 5f), up);
+            _camPos = _camPos.Lerp(want, 1 - Mathf.Exp((flying ? -FlightFollowRatePerSecond : -WalkFollowRatePerSecond) * (float)delta));
+            _camera.LookAtFromPosition(_camPos, feet + up * 1.4f + forward * (flying ? FlightLookAheadMetres : WalkLookAheadMetres), up);
         }
 
         var progress = _traveller.Guided ? _traveller.GuidedProgress : 0f;
-        _camera.Fov = 60f + 12f * Mathf.Sin(progress * Mathf.Pi) + 6f * _launchFov;
+        _camera.Fov = BaseFovDegrees + TransferFovWidenDegrees * Mathf.Sin(progress * Mathf.Pi) + LaunchFovKickDegrees * _launchFov;
         var where = _traveller.Body switch { 0 => "on the teal world · the folder-place “Orchard”", 1 => "on the coral world", _ => $"flying between worlds ({_traveller.FlightSeconds:0.0} s)" };
         _label.Text = $"EXPERIMENT · planetoid traversal (not the FileScape view) · {where}\nW/S walk · A/D turn · right-drag look · V first person · click pick · Space jump · Space on the glowing pad: fly to the other world · Esc quit" +
                       (_picked.Length > 0 ? $"\n{_picked}" : "");
     }
 
+    /// <summary>The launch velocity of the pad the traveller stands on (within its radius, on its body), or null.</summary>
     private NVector3? OnPad()
     {
         var feet = new NVector2(_traveller.Walker.Feet.X, _traveller.Walker.Feet.Z);
@@ -397,6 +438,7 @@ public partial class PlanetoidExperiment : Node3D
         return null;
     }
 
+    /// <summary>An upright basis for the avatar: Y along <paramref name="up"/>, −Z along <paramref name="forward"/> made perpendicular to it.</summary>
     private static Basis BasisFrom(Vector3 up, Vector3 forward)
     {
         var right = forward.Cross(up).Normalized();
@@ -408,6 +450,7 @@ public partial class PlanetoidExperiment : Node3D
 
     // ------------------------------------------------------------------ automation (--automate=planetoids)
 
+    /// <summary>The automated check: walk, jump, look, pick, walk back to the pad, launch, land; each step logs PASS or FAIL, and the exit code is the number of failures.</summary>
     private async Task Script()
     {
         await Frames(30);
@@ -519,9 +562,10 @@ public partial class PlanetoidExperiment : Node3D
         var t = new PlanetoidTraveller(_bodies, _terrains);
         t.PlaceOn(from, _pads[from].Chart, Degrees.Zero);
         var at = t.Position;
-        var dir = NVector3.Normalize(NVector3.Normalize(_bodies[1 - from].Center - at) + t.Up * 0.6f);
-        var speed = PlanetoidTraveller.LaunchSpeed(_bodies, at, dir, 1 - from) ?? 30f;
+        var dir = NVector3.Normalize(NVector3.Normalize(_bodies[1 - from].Center - at) + t.Up * LaunchLoft);
+        var speed = PlanetoidTraveller.LaunchSpeed(_bodies, at, dir, 1 - from) ?? FallbackLaunchSpeedMetresPerSecond;
         t.Launch(dir * speed);
+        // Flown at 120 steps per second for at most 40 s; NaN if it never arrives.
         for (var i = 0; i < 120 * 40 && t.Body != 1 - from; i++) t.Update(WalkInput.None, Durations.FromSeconds(1.0 / 120));
         return t.Body == 1 - from ? t.FlightSeconds : float.NaN;
     }

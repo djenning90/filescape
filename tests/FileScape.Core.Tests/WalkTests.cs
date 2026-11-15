@@ -94,10 +94,13 @@ public class WalkTests
         var w = new Walker();
         w.Teleport(t, Vector3.Zero, Deg(0), Deg(0));
         var time = 0f;
+        // WALK-04: a responsive start reaches ≥ 90 % of walking speed within 0.25 s.
         while (w.HorizontalVelocity.Length() < 0.9f * W.WalkSpeed.Value && time < 2) { w.Update(t, new WalkInput(1, 0, 0, false, false), Frame120); time += 1 / 120f; }
         time.Should().BeLessThanOrEqualTo(0.25f);
         Run(w, t, new WalkInput(1, 0, 0, false, false), 1f);
         time = 0;
+        // A stop: below 5 % of walking speed within 0.25 s. WALK-04's row says stops take ≤ 0.2 s; this check is looser
+        // than that (rationale for the difference not recorded).
         while (w.HorizontalVelocity.Length() > 0.05f * W.WalkSpeed.Value && time < 2) { w.Update(t, WalkInput.None, Frame120); time += 1 / 120f; }
         time.Should().BeLessThanOrEqualTo(0.25f);
     }
@@ -142,7 +145,7 @@ public class WalkTests
     {
         var c = Sample();
         var ramp = c.Terrain.Ramps[0];
-        ramp.SlopeDeg.Should().BeLessThan(35f);
+        ramp.SlopeDeg.Should().BeLessThan(35f); // WALK-05: walkable slopes are ≤ 35°.
         var w = new Walker();
         var dir = Vector2.Normalize(ramp.End - ramp.Start);
         var start = ramp.Start - dir * 1.5f;

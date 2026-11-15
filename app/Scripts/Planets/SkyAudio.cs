@@ -27,6 +27,7 @@ public partial class SkyAudio : Node
     /// <summary>The generator's ring buffer: room for hitches up to ≈ 0.12 s.</summary>
     public static readonly TimeSpan BufferLength = TimeSpan.FromSeconds(0.12);
 
+    /// <summary>Frames rendered and pushed per step (the scratch buffers' size, so nothing allocates per frame).</summary>
     private const int PushChunkFrames = 512;
 
     private readonly SkySynth _synth;
@@ -35,6 +36,7 @@ public partial class SkyAudio : Node
     private readonly Stopwatch _cost = new();
     private AudioStreamPlayer _player = null!;
     private AudioStreamGeneratorPlayback? _playback;
+    /// <summary>The generator's capacity in frames, read once when it is empty (so queued = capacity − available).</summary>
     private int _capacityFrames;
 
     /// <summary>A synth with seed 1 starting in the Hearth theme (Godot needs a parameterless constructor).</summary>
@@ -87,6 +89,7 @@ public partial class SkyAudio : Node
         }
     }
 
+    /// <summary>Tops up the buffer while active (see <see cref="Fill"/>).</summary>
     public override void _Process(double delta)
     {
         if (!_active) return;
@@ -121,14 +124,19 @@ public partial class SkyAudio : Node
     /// <summary>N: sound on or off (the music and effects; kept while FileScape runs).</summary>
     public bool Muted { get; private set; }
 
+    /// <summary>N: flips <see cref="Muted"/>.</summary>
     public void ToggleMute()
     {
         Muted = !Muted;
         _synth.Mute(Muted || !_active);
     }
 
+    /// <summary>The music's level under a sound preview (linear, 20 %): the preview is clearly heard and the music
+    /// does not stop (rationale for 0.2 not recorded).</summary>
+    private const float DuckedMusicVolume = 0.2f;
+
     /// <summary>Lowers the music under a sound preview (and restores it).</summary>
-    public void Duck(bool ducked) => _synth.MusicVolume = ducked ? 0.2f : 1f;
+    public void Duck(bool ducked) => _synth.MusicVolume = ducked ? DuckedMusicVolume : 1f;
 
     /// <summary>Bell flowers rung since start (probes).</summary>
     public int ChimeCount { get; private set; }
@@ -142,7 +150,7 @@ public partial class SkyAudio : Node
     public float AlignToSixteenth(float seconds, float maxShiftSeconds)
     {
         var aligned = _synth.AlignToGrid(Durations.FromSeconds(seconds), Durations.FromSeconds(maxShiftSeconds));
-        return MathF.Max(0.1f, aligned.ToSecondsF());
+        return MathF.Max(0.1f, aligned.ToSecondsF()); // never shorter than 0.1 s, whatever the grid says
     }
 
     public override void _ExitTree()
@@ -151,6 +159,11 @@ public partial class SkyAudio : Node
         _playback = null;
     }
 
+    /// <summary>
+    /// Renders just enough to bring the queued audio up to <see cref="TargetFill"/> (never more than the buffer has room
+    /// for), in chunks of <see cref="PushChunkFrames"/>. Rendering ahead of need would add latency to every effect, so
+    /// this deliberately keeps the queue short. Records its own cost in <see cref="LastProcessCost"/>.
+    /// </summary>
     private void Fill()
     {
         if (_playback == null) return;
@@ -212,6 +225,7 @@ public partial class SkyAudio : Node
     /// <summary>A launcher wind-up that peaks exactly <paramref name="duration"/> from now (call <see cref="Launch"/> then). Immediate.</summary>
     public void WindUp(TimeSpan duration) => _synth.WindUp(duration);
 
+    /// <summary>The same, for a wind-up length in float seconds (as <see cref="AlignToSixteenth"/> returns it).</summary>
     public void WindUp(float seconds) => _synth.WindUp(Durations.FromSeconds(seconds));
 
     /// <summary>The launch whoosh and glissando. Immediate.</summary>

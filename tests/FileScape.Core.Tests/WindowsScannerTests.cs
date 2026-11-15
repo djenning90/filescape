@@ -179,7 +179,7 @@ public sealed class WindowsScannerTests : IDisposable
         session.WaitForExit(TimeSpan.FromSeconds(2)).Should().BeTrue();
         var p = session.Snapshot();
         p.State.Should().Be(ScanState.Cancelled);
-        p.CancelAcknowledgedAfter!.Value.Should().BeLessThan(TimeSpan.FromMilliseconds(250));
+        p.CancelAcknowledgedAfter!.Value.Should().BeLessThan(TimeSpan.FromMilliseconds(250)); // FS-09: "immediately".
     }
 
     [WindowsFact]

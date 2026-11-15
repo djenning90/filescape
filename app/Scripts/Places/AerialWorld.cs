@@ -25,6 +25,67 @@ public partial class AerialWorld : Node3D
     /// <summary>Largest files shown on an island (an honest sample, not every file).</summary>
     public const int TowersPerIsland = 9;
 
+    // ---- island shape, metres (an island's radius comes from the Core world map; these are the fixed proportions round it)
+    /// <summary>The island disc: 0.8 m thick, centred 0.2 m below the ground, so its top is at <see cref="IslandTopMetres"/>.</summary>
+    private const float DiscThicknessMetres = 0.8f, DiscCentreMetres = -0.2f;
+
+    /// <summary>The island's top surface: spires and towers stand on it.</summary>
+    private const float IslandTopMetres = 0.2f;
+
+    /// <summary>
+    /// The spire: 6 m plus 5 m per factor of ten in the subtree's entries (files and folders), so a folder with 10,000
+    /// entries stands 26 m tall and big places read from far away; 0.12 of the island radius wide at the base.
+    /// </summary>
+    private const float SpireBaseMetres = 6f, SpireMetresPerDecade = 5f, SpireWidthRadii = 0.12f;
+
+    /// <summary>The veil over a folder not listed yet: a translucent column 1.2 island radii wide and 18 m tall (PLACE-11).</summary>
+    private const float VeilWidthRadii = 1.2f, VeilHeightMetres = 18f, VeilCentreMetres = 9f, VeilOpacity = 0.45f;
+
+    /// <summary>A sign floats this far above its spire's top.</summary>
+    private const float SignAboveSpireMetres = 2f;
+
+    /// <summary>
+    /// Sign priority (<see cref="SignCandidate.Boost"/>, metres): when signs compete for room, the current place's parent and
+    /// children rank as if 120 m nearer than they are, visited places 80 m (the two add).
+    /// </summary>
+    private const float NeighbourSignBoost = 120f, VisitedSignBoost = 80f;
+
+    /// <summary>Island style bits in INSTANCE_CUSTOM.w; keep in sync with island.gdshader.</summary>
+    private const int IslandListing = 1, IslandHatched = 2, IslandVeiled = 4, IslandVisited = 8, IslandSelected = 16;
+
+    /// <summary>The hub (all drives and distributions) has no folder colour of its own: a pale blue.</summary>
+    private static readonly Color HubColor = new(0.75f, 0.85f, 1f);
+
+    // ---- the current place's beacon (its full detail is PlaceWorld's): a 160 m gold column
+    private const float BeaconWidthMetres = 2.4f, BeaconHeightMetres = 160f, BeaconCentreMetres = 80f;
+    private static readonly Color BeaconColor = new(1f, 0.85f, 0.4f, 0.9f);
+
+    /// <summary>The "You are here" sign: 30 m up the beacon, in its gold.</summary>
+    private const float HereSignMetres = 30f;
+    private static readonly Color HereSignColor = new(1f, 0.88f, 0.5f);
+
+    // ---- lines between places, metres
+    /// <summary>Parent-child lines lie just above the ground, from rim to rim.</summary>
+    private const float TreeLineHeightMetres = 0.15f, TreeLineThicknessMetres = 0.1f;
+
+    /// <summary>Lines in the current place's own neighbourhood are wider and brighter, so the way up and down reads first.</summary>
+    private const float NeighbourLineWidthMetres = 2.2f, TreeLineWidthMetres = 1.4f, NeighbourLineBrightness = 0.9f, TreeLineBrightness = 0.45f;
+
+    /// <summary>
+    /// A link's arc (AD-18): from 2 m above each island, rising to 0.18 of the span at its middle (capped at 140 m, so a
+    /// link across the world does not tower over everything), drawn as 12 straight pieces.
+    /// </summary>
+    private const float LinkEndMetres = 2f, LinkLiftPerMetre = 0.18f, MaxLinkLiftMetres = 140f;
+    private const int LinkArcSegments = 12;
+    private const float LinkWidthMetres = 1.2f, LinkThicknessMetres = 0.6f, LinkBrightness = 0.9f;
+
+    // ---- file towers on an island
+    /// <summary>
+    /// Towers stand on two arcs either side of the north avenue: the first pair 60° off north, each further pair 18° more,
+    /// at 0.42 island radii from the centre (like a place's file quarters); each is 2.2 m square.
+    /// </summary>
+    private const float TowerFirstAngleDeg = 60f, TowerStepAngleDeg = 18f, TowerRingRadii = 0.42f, TowerWidthMetres = 2.2f;
+
     private readonly BoxMesh _box = new() { Size = Vector3.One };
     private readonly CylinderMesh _disc = new() { TopRadius = 0.5f, BottomRadius = 0.5f, Height = 1, RadialSegments = 48, Rings = 1 };
     private readonly CylinderMesh _column = new() { TopRadius = 0.5f, BottomRadius = 0.5f, Height = 1, RadialSegments = 12, Rings = 1 };
@@ -80,52 +141,52 @@ public partial class AerialWorld : Node3D
             var at = new Vector3(local.X, 0, local.Y);
             var state = Listing.Of(n);
             var identity = PlaceIdentity.For(n.Name);
-            var color = n.IsHub ? new Color(0.75f, 0.85f, 1f) : PlacePalette.For(state, identity);
+            var color = n.IsHub ? HubColor : PlacePalette.For(state, identity);
 
             // The line to the parent (from rim to rim), brighter on the current place's own neighbourhood.
             if (island.ParentId >= 0 && map.Islands.TryGetValue(island.ParentId, out var parent))
             {
                 var pl = Frame.ToLocal(parent.Center);
-                var from = new Vector3(pl.X, 0.15f, pl.Y);
-                var to = at with { Y = 0.15f };
+                var from = new Vector3(pl.X, TreeLineHeightMetres, pl.Y);
+                var to = at with { Y = TreeLineHeightMetres };
                 var dir = (to - from).Normalized();
                 var near = island.ParentId == current || island.Id == current || island.Id == currentIsland?.ParentId;
-                lines.AddSegment(from + dir * parent.Radius, to - dir * island.Radius, near ? 2.2f : 1.4f, 0.1f, color * (near ? 0.9f : 0.45f), 0);
+                lines.AddSegment(from + dir * parent.Radius, to - dir * island.Radius, near ? NeighbourLineWidthMetres : TreeLineWidthMetres, TreeLineThicknessMetres, color * (near ? NeighbourLineBrightness : TreeLineBrightness), 0);
             }
 
             if (island.Id == current)
             {
                 // The place you are in is drawn in full by PlaceWorld; from the air a gold beacon marks it.
-                veils.Add(new Vector3(2.4f, 0, 0), new Vector3(0, 160, 0), new Vector3(0, 0, 2.4f), new Vector3(0, 80, 0), new Color(1f, 0.85f, 0.4f, 0.9f), new Color(0, 0, 0, 0));
-                _labels.Add(new SignCandidate(island.Id, new Vector3(0, 30, 0), $"You are here · {tree.DisplayName(island.Id)}", "", new Color(1f, 0.88f, 0.5f), FileIcons.For(n), Focus: true));
+                veils.Add(new Vector3(BeaconWidthMetres, 0, 0), new Vector3(0, BeaconHeightMetres, 0), new Vector3(0, 0, BeaconWidthMetres), new Vector3(0, BeaconCentreMetres, 0), BeaconColor, new Color(0, 0, 0, 0));
+                _labels.Add(new SignCandidate(island.Id, new Vector3(0, HereSignMetres, 0), $"You are here · {tree.DisplayName(island.Id)}", "", HereSignColor, FileIcons.For(n), Focus: true));
                 continue;
             }
 
             var style = state switch
             {
-                ListingState.Pending or ListingState.Listing => 1,
-                ListingState.Denied or ListingState.Unavailable or ListingState.Failed => 2,
-                _ when Listing.IsUnknown(state) && state != ListingState.Partial => 4,
+                ListingState.Pending or ListingState.Listing => IslandListing,
+                ListingState.Denied or ListingState.Unavailable or ListingState.Failed => IslandHatched,
+                _ when Listing.IsUnknown(state) && state != ListingState.Partial => IslandVeiled,
                 _ => 0,
-            } + (visited.Contains(island.Id) ? 8 : 0) + (island.Id == selected ? 16 : 0);
+            } + (visited.Contains(island.Id) ? IslandVisited : 0) + (island.Id == selected ? IslandSelected : 0);
             var r = island.Radius;
-            discs.Add(new Vector3(r * 2, 0, 0), new Vector3(0, 0.8f, 0), new Vector3(0, 0, r * 2), at + new Vector3(0, -0.2f, 0), color, new Color(r, 0, 0, style));
+            discs.Add(new Vector3(r * 2, 0, 0), new Vector3(0, DiscThicknessMetres, 0), new Vector3(0, 0, r * 2), at + new Vector3(0, DiscCentreMetres, 0), color, new Color(r, 0, 0, style));
 
             // A spire as tall as the subtree is large (log of its files), so big places stand out from far away.
-            var h = 6f + 5f * Mathf.Log(1 + n.SubtreeFileCount + n.SubtreeDirCount) / Mathf.Log(10);
-            spires.Add(new Vector3(r * 0.12f, 0, 0), new Vector3(0, h, 0), new Vector3(0, 0, r * 0.12f), at + new Vector3(0, h / 2 + 0.2f, 0), color, new Color(0, 0, 0, 0));
-            if ((style & 4) != 0)
+            var h = SpireBaseMetres + SpireMetresPerDecade * Mathf.Log(1 + n.SubtreeFileCount + n.SubtreeDirCount) / Mathf.Log(10);
+            spires.Add(new Vector3(r * SpireWidthRadii, 0, 0), new Vector3(0, h, 0), new Vector3(0, 0, r * SpireWidthRadii), at + new Vector3(0, h / 2 + IslandTopMetres, 0), color, new Color(0, 0, 0, 0));
+            if ((style & IslandVeiled) != 0)
             {
                 // Not listed yet: a veiled column, never a bare (empty-looking) island (PLACE-11).
-                veils.Add(new Vector3(r * 1.2f, 0, 0), new Vector3(0, 18, 0), new Vector3(0, 0, r * 1.2f), at + new Vector3(0, 9, 0), color with { A = 0.45f }, new Color(0, 0, 0, 0));
+                veils.Add(new Vector3(r * VeilWidthRadii, 0, 0), new Vector3(0, VeilHeightMetres, 0), new Vector3(0, 0, r * VeilWidthRadii), at + new Vector3(0, VeilCentreMetres, 0), color with { A = VeilOpacity }, new Color(0, 0, 0, 0));
             }
 
             AddTowers(tree, n, island, Frame, towers, showEntry);
             var detail = Listing.IsUnknown(state) && state != ListingState.Partial ? Listing.Describe(state) : FolderSummary.Gate(n, state);
             if (island.HiddenChildren > 0) detail += $" · {island.HiddenChildren} more folders not drawn";
             var near2 = island.ParentId == current || island.Id == currentIsland?.ParentId;
-            _labels.Add(new SignCandidate(island.Id, at + new Vector3(0, h + 2f, 0), tree.DisplayName(island.Id), detail, color.Lightened(0.35f), FileIcons.For(n),
-                island.Id == selected, Boost: (near2 ? 120f : 0f) + (visited.Contains(island.Id) ? 80f : 0f)));
+            _labels.Add(new SignCandidate(island.Id, at + new Vector3(0, h + SignAboveSpireMetres, 0), tree.DisplayName(island.Id), detail, color.Lightened(0.35f), FileIcons.For(n),
+                island.Id == selected, Boost: (near2 ? NeighbourSignBoost : 0f) + (visited.Contains(island.Id) ? VisitedSignBoost : 0f)));
         }
 
         foreach (var (_, from, to) in map.LinkEdges)
@@ -133,15 +194,15 @@ public partial class AerialWorld : Node3D
             // A link: a raised cyan arc between the two places (not a road: it is a shortcut, AD-18).
             var a = Frame.ToLocal(map.Islands[from].Center);
             var b = Frame.ToLocal(map.Islands[to].Center);
-            var pa = new Vector3(a.X, 2, a.Y);
-            var pb = new Vector3(b.X, 2, b.Y);
-            var lift = Mathf.Min(140f, pa.DistanceTo(pb) * 0.18f);
+            var pa = new Vector3(a.X, LinkEndMetres, a.Y);
+            var pb = new Vector3(b.X, LinkEndMetres, b.Y);
+            var lift = Mathf.Min(MaxLinkLiftMetres, pa.DistanceTo(pb) * LinkLiftPerMetre);
             var prev = pa;
-            for (var i = 1; i <= 12; i++)
+            for (var i = 1; i <= LinkArcSegments; i++)
             {
-                var t = i / 12f;
-                var p = pa.Lerp(pb, t) + new Vector3(0, 4 * lift * t * (1 - t), 0);
-                lines.AddSegment(prev, p, 1.2f, 0.6f, PlacePalette.Link * 0.9f, 0);
+                var t = i / (float)LinkArcSegments;
+                var p = pa.Lerp(pb, t) + new Vector3(0, 4 * lift * t * (1 - t), 0); // a parabola: 0 at the ends, lift at t = ½
+                lines.AddSegment(prev, p, LinkWidthMetres, LinkThicknessMetres, PlacePalette.Link * LinkBrightness, 0);
                 prev = p;
             }
         }
@@ -159,6 +220,8 @@ public partial class AerialWorld : Node3D
     /// <summary>Up to <see cref="TowersPerIsland"/> of the folder's largest files, on an arc around its spire.</summary>
     private static void AddTowers(FsTree tree, FsNode n, WorldIsland island, PlaceFrame frame, InstanceBatch towers, Func<FsNode, bool> showEntry)
     {
+        // Keep the largest TowersPerIsland files in one pass: add each, and when the list overflows sort it (largest first)
+        // and drop the smallest. Ties keep no particular order (List.Sort is unstable).
         var files = new List<FsNode>(TowersPerIsland + 1);
         foreach (var c in n.Children)
         {
@@ -179,15 +242,16 @@ public partial class AerialWorld : Node3D
         {
             // Two arcs either side of the place's north avenue, like its file quarters.
             var side = i % 2 == 0 ? -1 : 1;
-            var a = north + side * (60f + 18f * (i / 2));
+            var a = north + side * (TowerFirstAngleDeg + TowerStepAngleDeg * (i / 2)); // i / 2 is integer: one step per pair
             var dir = PlaceGeometry.Direction(a);
-            var pos = new NVector2(local.X, local.Y) + new NVector2(dir.X, dir.Z) * island.Radius * 0.42f;
+            var pos = new NVector2(local.X, local.Y) + new NVector2(dir.X, dir.Z) * island.Radius * TowerRingRadii;
             var h = SizeScale.Place.Height(files[i].Size);
             var cat = FileScape.Core.Interaction.FileCategories.Of(files[i].Name);
-            towers.AddBox(new Vector3(pos.X, h / 2 + 0.2f, pos.Y), new Vector3(2.2f, h, 2.2f), Palette.Category[cat], 0);
+            towers.AddBox(new Vector3(pos.X, h / 2 + IslandTopMetres, pos.Y), new Vector3(TowerWidthMetres, h, TowerWidthMetres), Palette.Category[cat], 0);
         }
     }
 
+    /// <summary>Builds one named batch into its reused pool of MultiMesh nodes (see <see cref="InstanceBatch.BuildInto"/>).</summary>
     private void Emit(string slot, InstanceBatch batch, Mesh mesh, Material material, bool shadows)
     {
         if (!_pools.TryGetValue(slot, out var pool))

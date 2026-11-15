@@ -5,6 +5,7 @@ using Godot;
 
 namespace FileScape.App;
 
+/// <summary>How the map camera is being driven: <see cref="CameraRig"/> keeps one pose and switches only how it changes.</summary>
 public enum CameraMode
 {
     /// <summary>Orbit around a target point, with eased framing (inspection).</summary>
@@ -44,12 +45,50 @@ public partial class CameraRig : Node3D
     /// </summary>
     public const float LookDegreesPerPixel = 0.12f, OrbitYawDegreesPerPixel = 0.28f, OrbitPitchDegreesPerPixel = 0.22f;
 
+    /// <summary>The pose before anything has framed the view: looking 32° down from 60 world units (the first framing or place pose replaces it; rationale for the exact values not recorded).</summary>
+    private const float StartLookPitchDegrees = -32f, StartDistanceWorldUnits = 60f;
+
+    /// <summary>The lens: a vertical field of view in degrees, and near/far clip planes in world units (the far plane sits beyond <see cref="MaxDistanceWorldUnits"/>, so the widest overview is never clipped).</summary>
+    private const float FieldOfViewDegrees = 55f, NearClipWorldUnits = 0.15f, FarClipWorldUnits = 30_000f;
+
+    /// <summary>
+    /// <see cref="IsSettled"/> tolerances: the target and distance within this fraction of the orbit distance (1 %), the
+    /// angles within this many degrees. Automation and probes wait on it, and Main.Walk uses it to skip idle frames,
+    /// so loosening it lets them go on while the camera is still visibly moving; tightening it makes those waits longer.
+    /// </summary>
+    private const float SettledDistanceFraction = 0.01f, SettledAngleDegrees = 0.05f;
+
+    /// <summary>Extra height (world units) the orbit-pitch limit keeps above <see cref="MinCameraHeightWorldUnits"/>, so the eye stops before the safety floor clips it.</summary>
+    private const float OrbitGroundClearanceWorldUnits = 0.05f;
+
+    /// <summary>
+    /// Keyboard movement over the ground (<see cref="MoveGround"/>): at least 4 world units per second, otherwise 0.9 orbit
+    /// distances per second (so crossing the view takes about the same time at any zoom), ×3 with Shift.
+    /// </summary>
+    private const float GroundMinSpeedWorldUnitsPerSecond = 4f, GroundSpeedDistancesPerSecond = 0.9f, GroundFastMultiplier = 3f;
+
+    /// <summary>Map flight with Shift: ×3 (NAV-10); a separate choice from <see cref="GroundFastMultiplier"/>.</summary>
+    private const float FlyFastMultiplier = 3f;
+
+    /// <summary>
+    /// Framing (<see cref="Frame"/>): the requested elevation is kept between 4° and 88° (never edge-on, never exactly
+    /// straight down; rationale for the exact angles not recorded); the framed distance is at least 2.5 world units, so a
+    /// tiny file is not framed closer than that.
+    /// </summary>
+    private const float FrameMinElevationDegrees = 4f, FrameMaxElevationDegrees = 88f, FrameMinFitWorldUnits = 2.5f;
+
+    /// <summary>
+    /// The remembered wheel speed multiplier (<see cref="StepFlySpeed"/>) stays within 1/50…50 × the distance-based
+    /// starting speed, so one extreme flight does not leave the next one unusable (rationale for the exact bounds not recorded).
+    /// </summary>
+    private const float MinFlySpeedMultiplier = 0.02f, MaxFlySpeedMultiplier = 50f;
+
     // Current pose (drawn) and desired pose (eased towards in orbit mode). Targets are world positions; distances are
     // world units along the view ray.
     private Vector3 _target, _desiredTarget;
     private Degrees _yaw, _desiredYaw;
-    private Degrees _lookPitch = Degrees.Of(-32), _desiredLookPitch = Degrees.Of(-32);
-    private float _distanceWorldUnits = 60, _desiredDistanceWorldUnits = 60;
+    private Degrees _lookPitch = Degrees.Of(StartLookPitchDegrees), _desiredLookPitch = Degrees.Of(StartLookPitchDegrees);
+    private float _distanceWorldUnits = StartDistanceWorldUnits, _desiredDistanceWorldUnits = StartDistanceWorldUnits;
 
     /// <summary>Map-fly velocity, world units per second, eased towards the input (see <see cref="FlyMove"/>).</summary>
     private Vector3 _flyVelocity;
@@ -81,14 +120,13 @@ public partial class CameraRig : Node3D
 
     /// <summary>True once the current pose is within 1 % (distance) and 0.05° (angles) of the desired pose.</summary>
     public bool IsSettled =>
-        _target.DistanceTo(_desiredTarget) < 0.01f * Mathf.Max(1, _distanceWorldUnits) &&
-        Mathf.Abs(_distanceWorldUnits - _desiredDistanceWorldUnits) < 0.01f * _distanceWorldUnits &&
-        Mathf.Abs((_yaw - _desiredYaw).Value) < 0.05f && Mathf.Abs((_lookPitch - _desiredLookPitch).Value) < 0.05f;
+        _target.DistanceTo(_desiredTarget) < SettledDistanceFraction * Mathf.Max(1, _distanceWorldUnits) &&
+        Mathf.Abs(_distanceWorldUnits - _desiredDistanceWorldUnits) < SettledDistanceFraction * _distanceWorldUnits &&
+        Mathf.Abs((_yaw - _desiredYaw).Value) < SettledAngleDegrees && Mathf.Abs((_lookPitch - _desiredLookPitch).Value) < SettledAngleDegrees;
 
     public override void _Ready()
     {
-        // Field of view in degrees (vertical); near/far planes in world units.
-        Camera = new Camera3D { Fov = 55, Near = 0.15f, Far = 30_000f, Current = true };
+        Camera = new Camera3D { Fov = FieldOfViewDegrees, Near = NearClipWorldUnits, Far = FarClipWorldUnits, Current = true };
         AddChild(Camera);
         Apply();
     }
@@ -112,6 +150,7 @@ public partial class CameraRig : Node3D
     /// <summary>The eye position in world space.</summary>
     public Vector3 CameraPosition => Visualization.Gd(CameraMath.OrbitPosition(Visualization.Num(_target), _yaw, _lookPitch, _distanceWorldUnits));
 
+    /// <summary>Writes the current pose to the Camera3D, raising the eye to the height floor if it would go below.</summary>
     private void Apply()
     {
         var pos = CameraPosition;
@@ -126,6 +165,10 @@ public partial class CameraRig : Node3D
 
     // ------------------------------------------------------------ orbit mode
 
+    /// <summary>
+    /// Turns the desired orbit by a yaw and look-pitch delta (the current pose eases after it). The pitch is clamped
+    /// (<see cref="ClampOrbitPitch"/>) so that, at the desired distance, the eye stays above the height floor.
+    /// </summary>
     public void Orbit(Degrees deltaYaw, Degrees deltaLookPitch)
     {
         _desiredYaw += deltaYaw;
@@ -134,7 +177,7 @@ public partial class CameraRig : Node3D
 
     private static Degrees ClampOrbitPitch(Degrees lookPitch, Vector3 target, float distanceWorldUnits) =>
         lookPitch.Clamp(CameraMath.MinLookPitch,
-            CameraMath.MaxOrbitLookPitchAboveGround(target.Y, distanceWorldUnits, MinCameraHeightWorldUnits + 0.05f));
+            CameraMath.MaxOrbitLookPitchAboveGround(target.Y, distanceWorldUnits, MinCameraHeightWorldUnits + OrbitGroundClearanceWorldUnits));
 
     /// <summary>Multiplies the orbit distance (dimensionless factor: below 1 zooms in).</summary>
     public void Zoom(float factor)
@@ -164,7 +207,7 @@ public partial class CameraRig : Node3D
     /// </summary>
     public void MoveGround(Vector3 input, bool fast, TimeSpan dt)
     {
-        var speedWorldUnitsPerSecond = Mathf.Max(4f, _distanceWorldUnits * 0.9f) * (fast ? 3f : 1f);
+        var speedWorldUnitsPerSecond = Mathf.Max(GroundMinSpeedWorldUnitsPerSecond, _distanceWorldUnits * GroundSpeedDistancesPerSecond) * (fast ? GroundFastMultiplier : 1f);
         var delta = Visualization.Gd(CameraMath.GroundDelta(Visualization.Num(input), _yaw, speedWorldUnitsPerSecond, dt));
         _target += delta;
         _desiredTarget += delta;
@@ -181,11 +224,14 @@ public partial class CameraRig : Node3D
     public void Frame(Aabb box, Degrees? elevation = null, Degrees? yaw = null, float padding = 1.25f)
     {
         ExitFly();
-        if (elevation.HasValue) _desiredLookPitch = -elevation.Value.Clamp(Degrees.Of(4), Degrees.Of(88));
+        if (elevation.HasValue) _desiredLookPitch = -elevation.Value.Clamp(Degrees.Of(FrameMinElevationDegrees), Degrees.Of(FrameMaxElevationDegrees));
         if (yaw.HasValue) _desiredYaw = yaw.Value;
         _desiredTarget = box.GetCenter();
 
         // Fit the box's projected extents rather than its bounding sphere: wide trees otherwise become a sliver.
+        // halfW is the box's half-width across the view; depth its extent along the ground heading; halfH its half-height
+        // on screen at this elevation. The distance is whichever of the two fields of view is tighter, plus the near half of
+        // the depth projected onto the view ray (that half is closer to the camera than the centre).
         var yawR = _desiredYaw.ToRadians();
         var pitchR = (-_desiredLookPitch).ToRadians();
         var right = new Vector3(Mathf.Cos(yawR), 0, -Mathf.Sin(yawR));
@@ -197,7 +243,7 @@ public partial class CameraRig : Node3D
         var aspect = GetViewport().GetVisibleRect().Size.Aspect();
         var hfov = Mathf.Atan(Mathf.Tan(vfov) * aspect);
         var fit = Mathf.Max(halfW / Mathf.Tan(hfov), halfH / Mathf.Tan(vfov)) + depth * 0.5f * Mathf.Cos(pitchR);
-        _desiredDistanceWorldUnits = Mathf.Clamp(Mathf.Max(fit * padding, 2.5f), MinDistanceWorldUnits * 2, MaxDistanceWorldUnits);
+        _desiredDistanceWorldUnits = Mathf.Clamp(Mathf.Max(fit * padding, FrameMinFitWorldUnits), MinDistanceWorldUnits * 2, MaxDistanceWorldUnits);
         _desiredLookPitch = ClampOrbitPitch(_desiredLookPitch, _desiredTarget, _desiredDistanceWorldUnits);
     }
 
@@ -262,10 +308,10 @@ public partial class CameraRig : Node3D
     /// <summary>Moves in map flight: the velocity (world units per second) eases towards the input, then integrates.</summary>
     public void FlyMove(Vector3 input, bool fast, TimeSpan dt)
     {
-        var speedWorldUnitsPerSecond = FlySpeedWorldUnitsPerSecond * (fast ? 3f : 1f);
+        var speedWorldUnitsPerSecond = FlySpeedWorldUnitsPerSecond * (fast ? FlyFastMultiplier : 1f);
         var wantedVelocity = Visualization.Gd(CameraMath.FlyVelocity(Visualization.Num(input), _yaw, _lookPitch, speedWorldUnitsPerSecond));
         _flyVelocity = _flyVelocity.Lerp(wantedVelocity, FlyResponse.SmoothingFactor(dt));
-        if (_flyVelocity.LengthSquared() < 1e-8f)
+        if (_flyVelocity.LengthSquared() < 1e-8f) // effectively at rest (< 0.0001 u/s): leave the pose, and the desired pose, untouched
         {
             return;
         }
@@ -281,7 +327,7 @@ public partial class CameraRig : Node3D
     {
         var baseSpeed = CameraMath.InitialFlySpeed(_distanceWorldUnits);
         FlySpeedWorldUnitsPerSecond = CameraMath.StepFlySpeed(FlySpeedWorldUnitsPerSecond, notches);
-        _flySpeedMultiplier = Mathf.Clamp(FlySpeedWorldUnitsPerSecond / baseSpeed, 0.02f, 50f);
+        _flySpeedMultiplier = Mathf.Clamp(FlySpeedWorldUnitsPerSecond / baseSpeed, MinFlySpeedMultiplier, MaxFlySpeedMultiplier);
     }
 
     // ------------------------------------------------------------ shared
@@ -315,6 +361,7 @@ public partial class CameraRig : Node3D
     /// <summary>The equivalent of <paramref name="angle"/> closest to <paramref name="current"/>, so turns take the short way round.</summary>
     public static Degrees NearestAngle(Degrees current, Degrees angle) => current + (angle - current).Wrapped();
 
+    /// <summary>Makes the desired pose the current one, so orbit easing has nothing left to do (used after every direct manipulation).</summary>
     private void FreezeDesired()
     {
         _desiredTarget = _target;

@@ -64,6 +64,7 @@ public sealed class WorldMap
     /// <summary>Folders known but not laid out because of <see cref="WorldLayoutParams.MaxIslands"/>.</summary>
     public required int Truncated { get; init; }
 
+    /// <summary>The tree version this map was laid out from (the app re-lays out when the tree has moved on).</summary>
     public required int TreeVersion { get; init; }
 
     /// <summary>The place the layout was asked to keep (AERIAL-07), or −1.</summary>
@@ -77,7 +78,10 @@ public sealed class WorldMap
     /// <summary>The frame of a place: its world centre and north (AERIAL-02, docs/units.md "World and place frames").</summary>
     public PlaceFrame FrameOf(int id) => Islands.TryGetValue(id, out var i) ? new PlaceFrame(i.Center, i.NorthDeg) : PlaceFrame.Identity;
 
-    /// <summary>The island whose footprint contains a world point (the nearest centre wins), or −1.</summary>
+    /// <summary>
+    /// The island whose footprint contains a world point (the nearest centre wins), or −1. <paramref name="slack"/>
+    /// scales every footprint radius (above 1 is more forgiving).
+    /// </summary>
     public int IslandAt(Vector2 world, float slack = 1f)
     {
         var best = -1;
@@ -104,6 +108,7 @@ public sealed class WorldMap
 /// </summary>
 public readonly record struct PlaceFrame(Vector2 Center, float NorthDeg)
 {
+    /// <summary>The world's own frame: origin at the world centre, north = world north.</summary>
     public static readonly PlaceFrame Identity = new(Vector2.Zero, 0);
 
     private Vector2 North => Flat(PlaceGeometry.Direction(NorthDeg));
@@ -122,6 +127,7 @@ public readonly record struct PlaceFrame(Vector2 Center, float NorthDeg)
     /// <summary>A world place angle (clockwise from world north) as seen in this frame.</summary>
     public float AngleToLocal(float worldDeg) => worldDeg - NorthDeg;
 
+    /// <summary>A local place angle as a world place angle (the inverse of <see cref="AngleToLocal"/>).</summary>
     public float AngleToWorld(float localDeg) => localDeg + NorthDeg;
 
     private static Vector2 Flat(Vector3 v) => new(v.X, v.Z);
@@ -142,6 +148,52 @@ public readonly record struct PlaceFrame(Vector2 Center, float NorthDeg)
 /// </summary>
 public static class WorldLayout
 {
+    // ---- fitting a place's children into its arc
+    /// <summary>
+    /// When the children's slots do not fit the arc, their distance from the parent grows by this factor and the angles
+    /// are measured again (a farther ring makes each child's slot narrower). 3 % steps give a distance within 3 % of the
+    /// tightest that fits; bigger steps would spread children further than needed.
+    /// </summary>
+    private const float RingGrowthPerTry = 1.03f;
+
+    /// <summary>A safety bound on the growth loop (1.03^800 ≈ 2 × 10¹⁰: far more than any real folder needs).</summary>
+    private const int MaxRingGrowthTries = 800;
+
+    // ---- FootprintRadius: an estimate of a composed place's radius from its counts, metres. The numbers follow the
+    // spacious PlaceParams (gates from 24 m, 24 gates on one ring, tiers from 40 m every 13 m, 2.4 m file cells),
+    // not the compact default (PLACE-14 came a day later and the estimate was not changed; rationale not recorded).
+    private const int SingleRingGateLimit = 24;
+    private const float MinGateRingRadius = 24f;
+
+    /// <summary>Gate ring radius per gate, metres: ≈ gate spacing 8 m ÷ the 160° arc in radians (2.79), so n gates 8 m apart fit.</summary>
+    private const float GateRingRadiusPerGate = 2.9f;
+
+    private const float FirstTierRingRadius = 40f;
+    private const float TierRingGap = 13f;
+
+    /// <summary>Gates assumed per tier when estimating how many tiers a wide folder needs.</summary>
+    private const float EstimatedGatesPerTier = 32f;
+
+    private const float FileRingInnerRadius = 8f;
+
+    /// <summary>One file cell's ground area, m² (2.4 m × 2.4 m).</summary>
+    private const float FileCellArea = 5.76f;
+
+    /// <summary>Reads as the file quarters' 120° span in radians (2.09), so the ring holds the files' total cell area (rationale not recorded).</summary>
+    private const float FileSpanRadians = 2.1f;
+
+    /// <summary>The smallest footprint of a known folder, metres (an unknown one uses <see cref="WorldLayoutParams.UnknownRadius"/>).</summary>
+    private const float MinFootprintRadius = 30f;
+
+    /// <summary>Margin beyond the gate ring, metres (rationale not recorded).</summary>
+    private const float GateRingMargin = 8f;
+
+    /// <summary>Margin beyond the estimated outermost file row, metres (rationale not recorded).</summary>
+    private const float FileRingMargin = 4f;
+
+    /// <summary>The smallest rounded subtree radius, metres: everything up to it rounds to it; larger radii round up in <see cref="WorldLayoutParams.RadiusStep"/> ratios from it.</summary>
+    private const float RoundingUnit = 30f;
+
     /// <param name="focus">
     /// The place the user is in (AERIAL-07): under <see cref="WorldLayoutParams.MaxIslands"/> its whole ancestry, itself
     /// and its own child folders are laid out first, wherever breadth-first order would put them, so the aerial view
@@ -232,7 +284,8 @@ public static class WorldLayout
             foreach (var c in children) maxOwn = MathF.Max(maxOwn, own[c]);
             var rho = r + maxOwn + p.Gap;
             var half = new float[groups.Count];
-            for (var guard = 0; guard < 800; guard++)
+            // Each group's half-angle is what its half-width plus half a gap subtends at distance rho; grow rho until all fit the arc.
+            for (var guard = 0; guard < MaxRingGrowthTries; guard++)
             {
                 var sum = 0f;
                 for (var g = 0; g < groups.Count; g++)
@@ -244,7 +297,7 @@ public static class WorldLayout
                 }
 
                 if (sum <= arc) break;
-                rho *= 1.03f;
+                rho *= RingGrowthPerTry;
             }
 
             var used = 0f;
@@ -357,17 +410,21 @@ public static class WorldLayout
         var state = Listing.Of(n);
         if (Listing.IsUnknown(state) && state != ListingState.Partial && n.Children.Count == 0) return p.UnknownRadius;
         var gates = Math.Max(childPlaces, n.DirectDirCount + n.DirectLinkCount);
-        var gateRing = gates <= 24 ? MathF.Max(24f, gates * 2.9f) : 40f + 13f * (MathF.Ceiling(gates / 32f) - 1);
+        var gateRing = gates <= SingleRingGateLimit ? MathF.Max(MinGateRingRadius, gates * GateRingRadiusPerGate) : FirstTierRingRadius + TierRingGap * (MathF.Ceiling(gates / EstimatedGatesPerTier) - 1);
         var files = n.DirectFileCount;
-        var fileRing = 8f + MathF.Sqrt(files * 5.76f / 2.1f);
-        return MathF.Max(30f, MathF.Max(gateRing + 8f, fileRing + 4f));
+        var fileRing = FileRingInnerRadius + MathF.Sqrt(files * FileCellArea / FileSpanRadians);
+        return MathF.Max(MinFootprintRadius, MathF.Max(gateRing + GateRingMargin, fileRing + FileRingMargin));
     }
 
     private static Vector2 Flat(Vector3 v) => new(v.X, v.Z);
 
+    /// <summary>
+    /// Rounds a subtree radius up to the next of 30 m × RadiusStep^k, so small growth does not move siblings (AERIAL-02
+    /// stability): with the default 1.4, radii come in steps 30, 42, 58.8, … m.
+    /// </summary>
     private static float Round(float r, WorldLayoutParams p)
     {
-        const float unit = 30f;
+        const float unit = RoundingUnit;
         if (r <= unit) return unit;
         var steps = MathF.Ceiling(MathF.Log(r / unit) / MathF.Log(p.RadiusStep));
         return unit * MathF.Pow(p.RadiusStep, steps);

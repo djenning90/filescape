@@ -55,6 +55,11 @@ public partial class Hud
     public string ProblemButtonText => _problemButton.Visible ? _problemButton.Text : "";
     public int ProblemCount => _problemList.ItemCount;
 
+    /// <summary>
+    /// Adds the Locations and Hidden buttons to the place bar's row, the connection line and problem button under it, and
+    /// builds the note, the Locations dialog, the problem list and the inspector's Retry / override buttons (all hidden).
+    /// Called from <see cref="BuildPlaces"/>, so the place bar exists.
+    /// </summary>
     private void BuildWorld(HBoxContainer placeRow, VBoxContainer placeColumn)
     {
         _locButton = MakeButton("Locations (L)", () => LocationsRequested?.Invoke(), "Drives and WSL distributions; type or paste any path (Ctrl+L).");
@@ -177,6 +182,10 @@ public partial class Hud
             : "Sample data has no locations: type or paste a path to explore your own folders (Ctrl+L).";
     }
 
+    /// <summary>
+    /// Opens the Locations dialog with these rows (drives, distributions, This computer). The path field gets the keyboard
+    /// when <paramref name="focusPath"/> (Ctrl+L) or when there are no rows; otherwise the list does.
+    /// </summary>
     public void ShowLocations(IReadOnlyList<(int Id, string Text, string Tooltip)> rows, bool focusPath)
     {
         _locList.Clear();
@@ -210,6 +219,7 @@ public partial class Hud
         return new Rect2(_locList.GetGlobalRect().Position + r.Position, r.Size);
     }
 
+    /// <summary>The row showing location <paramref name="id"/>, or −1 (the placeholder row has no metadata, hence the Nil check).</summary>
     public int LocationRowIndex(int id)
     {
         for (var i = 0; i < _locList.ItemCount; i++)
@@ -226,6 +236,7 @@ public partial class Hud
         _hiddenButton.Text = showing ? "Hidden: shown (H)" : "Hidden: off (H)";
     }
 
+    /// <summary>The Hidden button names how many entries here are hidden (when some are and they are not shown).</summary>
     public void SetHiddenCount(int hidden, bool showing)
     {
         _hiddenButton.Text = showing ? "Hidden: shown (H)" : hidden > 0 ? $"{hidden} hidden (H)" : "Hidden: off (H)";
@@ -239,6 +250,7 @@ public partial class Hud
         if (text != null) _connection.Text = text;
     }
 
+    /// <summary>A short note under the place bar while a link or path is being resolved ("Finding …"); null hides it.</summary>
     public void SetTransitionNote(string? text)
     {
         _notePanel.Visible = text != null;
@@ -259,7 +271,7 @@ public partial class Hud
         if (problems.Count == 0) _problemPanel.Visible = false;
     }
 
-    /// <summary>Esc peels popups first (Locations, problem list). Returns true if one was closed.</summary>
+    /// <summary>Esc peels popups first, one per press: README, Settings, Locations, then the problem list. Returns true if one was closed.</summary>
     public bool ClosePopups()
     {
         if (_readmePanel.Visible)

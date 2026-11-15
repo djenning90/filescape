@@ -17,12 +17,42 @@ namespace FileScape.Core.Scanning;
 /// resolutions run as worker tasks, several at a time, so one slow distribution or share blocks nothing else
 /// (LOC-04). Requests from the UI thread are queued and never block. Links are never followed by background
 /// traversal (FS-03); following is a deliberate request.
+/// <para>
+/// Listing priority, highest first: <c>Urgent</c> (what the user asked for: the place entered, a typed path, Retry),
+/// <c>Prefetch</c> (the destinations of a visited place, so its gates show their state, LIST-01; also aerial reveals),
+/// <c>Context</c> (a destination's own child folders, bounded per visited place) and <c>Background</c> (the arrival
+/// subtree). <see cref="ListAhead"/> refuses system and network folders for everything but deliberate requests, and the
+/// node budget (FS-10) keeps a reserve for deliberate requests so the destination stays reachable.
+/// </para>
+/// <para>
+/// The app owns one explorer per connected world (<c>Main.World.cs</c>), posts requests from the UI thread and applies
+/// the batches through <see cref="ScanSession"/>; replies to tickets come back in <see cref="ScanBatch.Replies"/>.
+/// </para>
 /// </remarks>
 public sealed class WorldExplorer : IScanSource, IDisposable
 {
+    /// <summary>The reply ticket of the initial arrival path; tickets from <see cref="GoTo"/> and <see cref="FollowLink"/> start above it.</summary>
     public const int ArrivalTicket = 0;
+
+    /// <summary>The hub node's name (node 0), as shown in the world and accepted by <see cref="LocationRequest.Parse"/>.</summary>
     public const string HubName = "This computer";
 
+    /// <summary>How long the coordinator sleeps between passes while listings, path jobs or link resolutions are in flight, milliseconds (a wake-up from a finished task cuts it short).</summary>
+    private const int BusyWaitMilliseconds = 15;
+
+    /// <summary>How long it sleeps when nothing is in flight, milliseconds: a posted request or a finished worker task wakes it at once, so this only sets how often an idle loop re-checks (rationale for 15 and 250 not recorded).</summary>
+    private const int IdleWaitMilliseconds = 250;
+
+    /// <summary>The most links one path may pass through before it is called a loop (the same figure as Linux's MAXSYMLINKS; whether it was chosen for that is not recorded).</summary>
+    private const int MaxLinkHops = 40;
+
+    /// <summary>The smallest node reserve for deliberate requests, and the share of MaxNodes it is otherwise (1/50 = 2 %); see <see cref="Options.LimitReserve"/>.</summary>
+    private const int MinLimitReserve = 64, LimitReserveDivisor = 50;
+
+    /// <summary>
+    /// Tuning for one explorer. The defaults are what the app uses; tests and probes shrink the limits to make
+    /// budget and ordering cases small.
+    /// </summary>
     public sealed record Options
     {
         /// <summary>Location roots for the hub; null discovers drives and WSL distributions.</summary>
@@ -31,6 +61,10 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         /// <summary>Traverse the arrival folder's subtree in the background (off for broad places, LOC-02).</summary>
         public bool? Background { get; init; }
 
+        /// <summary>
+        /// The most listings in flight at once (LOC-04): enough that one slow share or sleeping distribution blocks
+        /// nothing else, few enough not to flood a disk with parallel enumerations (rationale for 4 not recorded).
+        /// </summary>
         public int MaxConcurrent { get; init; } = 4;
 
         /// <summary>At most this many child folders of a visited place are listed ahead (gate states, vistas).</summary>
@@ -42,6 +76,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         /// </summary>
         public int ContextLimit { get; init; } = 48;
 
+        /// <summary>The WSL distribution that bare Linux paths (/home/…) map to; see <see cref="Locations.Normalize"/>.</summary>
         public string? DefaultDistribution { get; init; }
 
         /// <summary>
@@ -55,10 +90,16 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public Action<string>? BeforeEnumerate { get; init; }
     }
 
+    /// <summary>The coordinator's own view of a folder's listing (finer than <see cref="DirScanState"/>, which is what the UI sees).</summary>
     private enum DirState { Unlisted, Queued, Listing, Listed, Failed }
 
+    /// <summary>Listing priority, highest first (the order matters: <see cref="Enqueue"/> compares with &lt;). See the class remarks.</summary>
     private enum Priority { Urgent, Prefetch, Context, Background }
 
+    /// <summary>
+    /// The coordinator's record of one folder node: its path, its children by name (case-sensitive or not, as its volume)
+    /// and its listing state, visit and budget bookkeeping. Coordinator thread only.
+    /// </summary>
     private sealed class Dir
     {
         public required int Id;
@@ -69,14 +110,15 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public bool Background;
         public bool Visited;
         public bool Prefetched;
-        public bool Retry;
+        public bool Retry; // listed again on request: the next listing clears the old failure flags
         public int Depth;
         public int Parent = -1;
-        public int ContextLeft;
-        public bool Held;
+        public int ContextLeft; // further-context folders this visited place may still have listed (LIST-01)
+        public bool Held; // ListAhead refused it; the refusal note has been emitted once
         public Priority Priority = Priority.Background;
     }
 
+    /// <summary>The coordinator's record of one link node: where it lives, what is known of its target, and the request tickets waiting on it.</summary>
     private sealed class LinkEntry
     {
         public required int Id;
@@ -88,24 +130,32 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public readonly List<int> Waiting = [];
     }
 
+    /// <summary>One directory entry as a worker read it, before the coordinator gives it an id.</summary>
     private sealed record Entry(string Name, NodeKind Kind, NodeFlags Flags, FileAttributes Attributes, long Size,
         DateTime? Created, DateTime? Modified, DateTime? Accessed, LinkInfo? Link);
 
     /// <param name="Truncated">The listing stopped at its entry cap (the node budget), so the folder is only partly listed.</param>
     private sealed record ListResult(int DirId, List<Entry> Entries, NodeFlags Failure, string? Error, bool Truncated = false);
 
+    /// <summary>A worker's answer to "is this one name in that folder?" (<see cref="ProbeChild"/>): the entry, or why not.</summary>
     private sealed record ProbeResult(Entry? Entry, string? Error, NodeFlags Failure);
 
+    /// <summary>A worker's answer to "where does this link point?" (<see cref="Resolve"/>): a reachable target path, or a status and reason.</summary>
     private sealed record ResolveResult(string? TargetPath, LinkStatus Status, string? Message);
 
+    /// <summary>
+    /// Reaching one path (LOC-01): walks component by component from its root through known nodes, probing for an
+    /// unknown name instead of listing the parent, and continuing through links from their targets. Used for the
+    /// arrival folder, typed paths and link targets.
+    /// </summary>
     private sealed class PathJob
     {
         public required int Ticket;
         public required string Path;
         public string Root = "";
-        public List<string> Remaining = [];
-        public int Current = -1;
-        public int Hops;
+        public List<string> Remaining = []; // components still to walk below Current
+        public int Current = -1; // the node reached so far
+        public int Hops; // links passed through (see MaxLinkHops)
         public int ViaLink = -1;
         public bool Background;
         public bool Visit = true;
@@ -116,14 +166,28 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         public int ForLink = -1;
     }
 
+    /// <summary>A request posted from the UI thread; the coordinator handles it on its next pass (<see cref="Handle"/>).</summary>
     private abstract record Request;
+
+    /// <summary>From <see cref="GoTo"/>.</summary>
     private sealed record GoToRequest(int Ticket, string Path) : Request;
+
+    /// <summary>From <see cref="Visit"/>.</summary>
     private sealed record VisitRequest(int Id) : Request;
+
+    /// <summary>From <see cref="Reveal"/>.</summary>
     private sealed record RevealRequest(int Id) : Request;
+
+    /// <summary>From <see cref="FollowLink"/>.</summary>
     private sealed record FollowRequest(int Ticket, int LinkId) : Request;
+
+    /// <summary>From <see cref="Retry"/>: a folder or a link id.</summary>
     private sealed record RetryRequest(int Id) : Request;
+
+    /// <summary>From <see cref="CancelBackground"/>.</summary>
     private sealed record CancelBackgroundRequest : Request;
 
+    /// <summary>A listing running on a worker, with its start timestamp (for the "waiting on the OS" status, FS-09).</summary>
     private sealed class Inflight
     {
         public required Task<ListResult> Task;
@@ -205,6 +269,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     // ------------------------------------------------------------------ coordinator
 
+    /// <summary>
+    /// The coordinator loop: creates the hub and its location roots, starts the arrival path, then repeats one pass
+    /// (handle requests, advance path jobs, apply finished resolutions and listings, start new listings, emit one batch)
+    /// until cancelled. It sleeps between passes; posted requests and finished worker tasks wake it.
+    /// </summary>
     public void Run(ScanContext context, CancellationToken ct)
     {
         _ctx = context;
@@ -235,7 +304,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 StartListings();
                 Flush();
                 ReportProgress();
-                _wake.Wait(_inflight.Count + _jobs.Count + _resolving.Count > 0 ? 15 : 250, ct);
+                _wake.Wait(_inflight.Count + _jobs.Count + _resolving.Count > 0 ? BusyWaitMilliseconds : IdleWaitMilliseconds, ct);
             }
         }
         catch (OperationCanceledException)
@@ -270,6 +339,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
     }
 
+    /// <summary>Adds a node to the outgoing batch with the next id, counts it, and registers it under its parent's name map.</summary>
     private int NewNode(int parent, string name, NodeKind kind, NodeFlags flags, long size, DateTime? created, DateTime? modified, DateTime? accessed,
         FileAttributes attributes, DirScanState state, LinkInfo? link, string? locationPath = null, LocationKind location = LocationKind.None)
     {
@@ -348,6 +418,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     // ------------------------------------------------------------------ listing
 
+    /// <summary>
+    /// Queues a folder for listing at <paramref name="p"/>. A queued folder is only re-queued for Urgent (so a request
+    /// jumps ahead; the stale queue entry is skipped by <see cref="Next"/>), and the UI is told "queued" except for
+    /// background traversal, which stays quiet.
+    /// </summary>
     private void Enqueue(Dir d, Priority p)
     {
         if (d.State is DirState.Listing or DirState.Listed) return;
@@ -359,6 +434,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
         d.State = DirState.Queued;
         if (p < d.Priority || d.Priority == Priority.Background) d.Priority = p;
+        // Observable effect: Priority.Context falls to the _ arm, so context folders wait in _background, not _context,
+        // and the idle-time gate in Next() does not hold them back (they still come after Urgent and Prefetch). Whether
+        // that is intended is not recorded; LIST-01's tests check the context budget, not this ordering.
         (p switch { Priority.Urgent => _urgent, Priority.Prefetch => _prefetch, _ => _background }).Enqueue(d);
     }
 
@@ -419,7 +497,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
     }
 
-    private int Reserve => _o.LimitReserve ?? Math.Max(64, _ctx.MaxNodes / 50);
+    private int Reserve => _o.LimitReserve ?? Math.Max(MinLimitReserve, _ctx.MaxNodes / LimitReserveDivisor);
 
     /// <summary>
     /// Entries a listing of this priority may still add to the tree (FS-10, 2026-11-05). The tree never exceeds
@@ -430,6 +508,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     private int Budget(Priority p) =>
         Math.Max(0, (p == Priority.Urgent ? _ctx.MaxNodes + Reserve : _ctx.MaxNodes) - _ctx.Nodes);
 
+    /// <summary>Dispatches queued folders to workers, highest priority first, up to MaxConcurrent, each capped by the remaining budget.</summary>
     private void StartListings()
     {
         while (_inflight.Count < _o.MaxConcurrent && Next() is { } d)
@@ -488,6 +567,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
     }
 
+    /// <summary>
+    /// Applies a finished listing: new entries become nodes (names already known from a path stub are merged, not
+    /// duplicated), the budget is re-checked, and the folder's final state and flags are emitted. A listed visited place
+    /// then lists its destinations ahead, and a listed destination queues its context.
+    /// </summary>
     private void Apply(Dir d, ListResult r)
     {
         var hadChildren = d.Children.Count > 0;
@@ -537,6 +621,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         QueueContext(d);
     }
 
+    /// <summary>Adds one listed or probed entry under its parent; a subfolder of a background folder is queued for background traversal unless refused.</summary>
     private void AddEntry(Dir parent, Entry e)
     {
         var state = DirScanState.NotApplicable;
@@ -586,7 +671,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         AttributesToSkip = 0,
         IgnoreInaccessible = false,
         ReturnSpecialDirectories = false,
-        BufferSize = 64 * 1024,
+        BufferSize = 64 * 1024, // bytes, as DirectoryScanner's Options
     };
 
     /// <summary>The most entries a truncated listing kept (tests check that buffering respected the budget).</summary>
@@ -640,6 +725,10 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     private static int Order(NodeKind k) => k switch { NodeKind.Directory => 0, NodeKind.Link => 1, _ => 2 };
 
+    /// <summary>
+    /// Whether the path's root (drive, share, distribution) answers at all: tells "this folder is gone" (Vanished,
+    /// Broken) from "its whole location is unavailable right now".
+    /// </summary>
     private static bool RootReachable(string path)
     {
         try
@@ -663,6 +752,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
             Time(e.CreationTimeUtc), Time(e.LastWriteTimeUtc), Time(e.LastAccessTimeUtc), null);
     }
 
+    // As DirectoryScanner.SafeTime: the FILETIME epoch (1601) means "no time".
     private static DateTime? Time(DateTimeOffset t) => t.UtcDateTime.Year <= 1601 ? null : t.UtcDateTime;
 
     /// <summary>Reparse entries become what their tag says (LINK-01); others are unchanged.</summary>
@@ -679,6 +769,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     // ------------------------------------------------------------------ paths (LOC-01, AD-17)
 
+    /// <summary>Normalises a job's path, starts it at its root (adding the root as a location if it is new) and registers it; an unusable path is answered at once.</summary>
     private void StartJob(PathJob job)
     {
         var normalized = Locations.Normalize(job.Path, _o.DefaultDistribution, OperatingSystem.IsWindows());
@@ -700,6 +791,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         _jobs.Add(job);
     }
 
+    /// <summary>Moves every path job on: applies a finished probe (the found entry becomes a stub under its parent) and steps on.</summary>
     private void AdvanceJobs()
     {
         for (var i = _jobs.Count - 1; i >= 0; i--)
@@ -752,7 +844,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 if (_links.TryGetValue(childId, out var link))
                 {
                     // A path through a link continues from the link's target (LINK-03: entry path ≠ resolved path).
-                    if (++job.Hops > 40)
+                    if (++job.Hops > MaxLinkHops)
                     {
                         Reply(job, -1, "Too many links in a row (a loop).");
                         return true;
@@ -800,6 +892,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// <summary>Path jobs paused at a link in the middle of their path, until the link's target is known.</summary>
     private readonly List<(PathJob Job, int LinkId)> _pendingThroughLink = [];
 
+    /// <summary>Continues a job from a link's target: the target's components, then whatever was left after the link.</summary>
     private void Restart(PathJob job, string newPath)
     {
         var (root, parts) = Locations.Split(newPath);
@@ -814,6 +907,10 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         job.Current = rootId;
     }
 
+    /// <summary>
+    /// A job reached its node: a link-resolution job records the link as resolved and answers its waiters; otherwise
+    /// the folder is marked visited (and for the arrival, background), listed now if unlisted, and the ticket answered.
+    /// </summary>
     private void Arrived(PathJob job, int nodeId)
     {
         if (job.ForLink >= 0)
@@ -874,6 +971,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         }
     }
 
+    /// <summary>When the parent cannot be listed (access denied), reads the named entry directly: a traverse-only folder still lets you through.</summary>
     private static ProbeResult StatFallback(string parent, string name)
     {
         var full = Path.Join(parent, name);
@@ -899,6 +997,10 @@ public sealed class WorldExplorer : IScanSource, IDisposable
 
     // ------------------------------------------------------------------ links (AD-18)
 
+    /// <summary>
+    /// A deliberate follow (LINK-02): a resolved link answers at once with its target (listed if needed); an
+    /// unfollowable one answers why; otherwise the ticket waits while the link is resolved. Ticket −1: no reply wanted.
+    /// </summary>
     private void Follow(int ticket, int linkId)
     {
         if (!_links.TryGetValue(linkId, out var link))
@@ -929,6 +1031,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         StartResolve(link);
     }
 
+    /// <summary>Starts resolving a link on a worker, once (later callers join the one resolution).</summary>
     private void StartResolve(LinkEntry link)
     {
         if (link.Resolving) return;
@@ -941,6 +1044,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         _resolving.Add((task, link));
     }
 
+    /// <summary>Applies finished link resolutions, then resumes (or fails) the path jobs that were paused at those links.</summary>
     private void CompleteResolutions()
     {
         for (var i = _resolving.Count - 1; i >= 0; i--)
@@ -994,6 +1098,7 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         link.Waiting.Clear();
     }
 
+    /// <summary>The user-facing sentence for a link that cannot be followed: its own message if it has one, else one per status.</summary>
     public static string Explain(LinkInfo info) => info.Message ?? info.Status switch
     {
         LinkStatus.Broken => $"This {info.KindName} is broken: its target {Quote(info.TargetPath ?? info.TargetText)}does not exist.",
@@ -1033,6 +1138,8 @@ public sealed class WorldExplorer : IScanSource, IDisposable
         {
             var parent = Path.GetDirectoryName(linkPath) ?? linkPath;
             target = Path.IsPathFullyQualified(text) ? text : Path.GetFullPath(Path.Combine(parent, text));
+            // Strip NT and Win32 device prefixes so the target compares equal to paths the user would type:
+            // \??\X (a junction's raw target) always, \\?\C:\… only when it is a drive path (index 5 is the colon).
             if (target.StartsWith(@"\??\", StringComparison.Ordinal)) target = target[4..];
             if (target.StartsWith(@"\\?\", StringComparison.Ordinal) && target.Length > 6 && target[5] == ':') target = target[4..];
             target = Path.TrimEndingDirectorySeparator(target);

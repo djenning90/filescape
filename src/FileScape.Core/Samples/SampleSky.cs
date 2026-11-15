@@ -118,6 +118,7 @@ public static class SampleSky
             return null;
         }
 
+        // Our marker is one short line; anything larger is not ours, and is never read into memory.
         var info = new FileInfo(marker);
         if (info.Length > 4096)
         {
@@ -160,6 +161,7 @@ public static class SampleSky
         }
     }
 
+    /// <summary>On Windows, adds the "Shortcut to Garden" junction (so the sample includes a link); skipped quietly on failure or elsewhere.</summary>
     private static void TryLinkGarden(string root)
     {
         if (!OperatingSystem.IsWindows())
@@ -184,7 +186,7 @@ public static class SampleSky
             psi.ArgumentList.Add(link);
             psi.ArgumentList.Add(target);
             using var p = Process.Start(psi);
-            if (p is not null && !p.WaitForExit(10_000))
+            if (p is not null && !p.WaitForExit(10_000)) // ms: mklink is near-instant; a hung shell must not hang Create
             {
                 p.Kill();
             }
@@ -197,6 +199,7 @@ public static class SampleSky
 
     // ---------------------------------------------------------------- the tree
 
+    /// <summary>Writes (or rewrites) every sample file under <paramref name="root"/>; never deletes, and leaves a started repository alone.</summary>
     private static void WriteTree(string root)
     {
         Text(root, "README.md", SampleTexts.RootReadme);
@@ -279,6 +282,7 @@ public static class SampleSky
         Directory.CreateDirectory(Path.Combine(root, "Lantern Workshop", ".git", "refs", "heads"));
     }
 
+    /// <summary>Writes UTF-8 text without a BOM and with LF line ends, so the files are byte-identical on every platform.</summary>
     private static void Text(string root, string relative, string content) =>
         Bytes(root, relative, new UTF8Encoding(false).GetBytes(content.Replace("\r\n", "\n", StringComparison.Ordinal)));
 
@@ -295,9 +299,11 @@ internal struct SampleRandom
 {
     private ulong _state;
 
+    /// <summary>A generator seeded from a name (usually the file being generated), so each file's content is its own and stable.</summary>
     public SampleRandom(string seed)
     {
         // FNV-1a over the UTF-16 code units: stable across runs and platforms (unlike string.GetHashCode).
+        // (14695981039346656037 and 1099511628211 are FNV-1a's standard 64-bit offset basis and prime.)
         var h = 14695981039346656037UL;
         foreach (var c in seed)
         {
@@ -307,6 +313,7 @@ internal struct SampleRandom
         _state = h;
     }
 
+    /// <summary>The next 64 random bits: SplitMix64's golden-ratio increment and its standard finaliser constants (changing any changes every sample file).</summary>
     public ulong NextUInt64()
     {
         var z = _state += 0x9E3779B97F4A7C15UL;
@@ -315,20 +322,26 @@ internal struct SampleRandom
         return z ^ (z >> 31);
     }
 
-    /// <summary>Uniform in [0, 1).</summary>
+    /// <summary>Uniform in [0, 1): the top 53 bits, a double's full precision.</summary>
     public double NextDouble() => (NextUInt64() >> 11) * (1.0 / (1UL << 53));
 
+    /// <summary>Uniform in [<paramref name="min"/>, <paramref name="max"/>).</summary>
     public float Range(float min, float max) => min + (float)NextDouble() * (max - min);
 
     /// <summary>Uniform integer in [min, maxExclusive).</summary>
     public int Next(int min, int maxExclusive) => min + (int)(NextUInt64() % (ulong)(maxExclusive - min));
 
+    /// <summary>A uniformly chosen item.</summary>
     public T Pick<T>(IReadOnlyList<T> items) => items[Next(0, items.Count)];
 }
 
 // ==================================================================== pictures
 
-/// <summary>A float RGB canvas (0..1 per channel) in pixel space: x right, y down, pixel centres at +0.5.</summary>
+/// <summary>
+/// A float RGB canvas (0..1 per channel) in pixel space: x right, y down, pixel centres at +0.5. The painting
+/// primitives the sample pictures are made of; shapes are anti-aliased by a coverage of about one pixel at their edge
+/// (distance to the edge + 0.5, clamped), and anything drawn off the canvas is clipped.
+/// </summary>
 internal sealed class Canvas
 {
     public readonly int WidthPixels;
@@ -344,12 +357,14 @@ internal sealed class Canvas
 
     public static float Clamp01(float v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
+    /// <summary>Smoothstep: 0 at <paramref name="edge0"/>, 1 at <paramref name="edge1"/>, an S-curve between (edges may be reversed).</summary>
     public static float Smooth(float edge0, float edge1, float v)
     {
         var t = Clamp01((v - edge0) / (edge1 - edge0));
         return t * t * (3 - 2 * t);
     }
 
+    /// <summary>Mixes <paramref name="c"/> over one pixel by <paramref name="alpha"/> (clamped to 1); off-canvas pixels are ignored.</summary>
     public void Blend(int x, int y, Vector3 c, float alpha)
     {
         if ((uint)x >= (uint)WidthPixels || (uint)y >= (uint)HeightPixels || alpha <= 0) return;
@@ -357,12 +372,14 @@ internal sealed class Canvas
         p = Vector3.Lerp(p, c, alpha > 1 ? 1 : alpha);
     }
 
+    /// <summary>Adds light to one pixel (may exceed 1 until <see cref="ToRgb"/> clamps); off-canvas pixels are ignored.</summary>
     public void Add(int x, int y, Vector3 c)
     {
         if ((uint)x >= (uint)WidthPixels || (uint)y >= (uint)HeightPixels) return;
         Px[y * WidthPixels + x] += c;
     }
 
+    /// <summary>The colour at <paramref name="t"/> along ascending gradient stops, eased between neighbours.</summary>
     public static Vector3 Sample((float At, Vector3 Color)[] stops, float t)
     {
         if (t <= stops[0].At) return stops[0].Color;
@@ -405,6 +422,7 @@ internal sealed class Canvas
         }
     }
 
+    /// <summary>A filled, anti-aliased circle.</summary>
     public void Disc(float cx, float cy, float radiusPixels, Vector3 color, float alpha = 1) =>
         Shape(cx - radiusPixels - 1, cy - radiusPixels - 1, cx + radiusPixels + 1, cy + radiusPixels + 1,
             (x, y) => Clamp01(radiusPixels - MathF.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) + 0.5f), color, alpha);
@@ -420,6 +438,7 @@ internal sealed class Canvas
             return lit * (1 - shadow);
         }, color);
 
+    /// <summary>A filled ellipse rotated by <paramref name="angleDegrees"/> (clockwise on screen, since y is down); its edge softness uses the smaller radius.</summary>
     public void Ellipse(float cx, float cy, float rxPixels, float ryPixels, float angleDegrees, Vector3 color, float alpha = 1)
     {
         var a = angleDegrees * MathF.PI / 180f;
@@ -437,6 +456,7 @@ internal sealed class Canvas
         }, color, alpha);
     }
 
+    /// <summary>A straight stroke from a to b with round ends (the distance to the segment).</summary>
     public void Line(float ax, float ay, float bx, float by, float widthPixels, Vector3 color, float alpha = 1)
     {
         var half = widthPixels / 2;
@@ -452,6 +472,7 @@ internal sealed class Canvas
         }, color, alpha);
     }
 
+    /// <summary>A filled triangle in either winding (the sign makes every edge distance positive inside).</summary>
     public void Triangle(float ax, float ay, float bx, float by, float cx, float cy, Vector3 color, float alpha = 1)
     {
         var sign = MathF.Sign((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
@@ -470,7 +491,7 @@ internal sealed class Canvas
     /// <summary>Adds a soft light: <paramref name="color"/> × strength × e^(−(d/r)²).</summary>
     public void Glow(float cx, float cy, float radiusPixels, Vector3 color, float strength)
     {
-        var reach = radiusPixels * 2.6f;
+        var reach = radiusPixels * 2.6f; // e^(−2.6²) ≈ 0.001: beyond this the glow adds nothing visible
         var x0 = Math.Max(0, (int)(cx - reach));
         var x1 = Math.Min(WidthPixels - 1, (int)(cx + reach));
         var y0 = Math.Max(0, (int)(cy - reach));
@@ -517,6 +538,10 @@ internal sealed class Canvas
         return x => baseY - amplitudePixels * (MathF.Sin(x * f[0] + ph[0]) + 0.45f * MathF.Sin(x * f[1] + ph[1]) + 0.18f * MathF.Sin(x * f[2] + ph[2]));
     }
 
+    /// <summary>
+    /// Scatters <paramref name="count"/> stars above <paramref name="maxY"/>. Brightness is skewed (a power of 2.2), so most
+    /// stars are faint; brighter ones get a cross of neighbours (> 0.35) and a small glow (> 0.75).
+    /// </summary>
     public void Stars(ref SampleRandom rng, int count, float maxY, Vector3 tint)
     {
         for (var i = 0; i < count; i++)
@@ -632,6 +657,7 @@ internal sealed class Canvas
         Disc(cx - radiusPixels * 0.08f, cy - radiusPixels * 0.08f, radiusPixels * 0.12f, Vector3.Lerp(centre, Vector3.One, 0.35f));
     }
 
+    /// <summary>A pine: a short trunk and three narrowing, overlapping triangle tiers, each optionally capped with snow.</summary>
     public void PineTree(float x, float baseY, float heightPixels, Vector3 color, Vector3? snow = null)
     {
         var w = heightPixels * 0.3f;
@@ -655,6 +681,7 @@ internal sealed class Canvas
         Line(x - sizePixels * 0.4f, y - sizePixels, x + sizePixels * 0.4f, y - sizePixels, Math.Max(1, sizePixels * 0.25f), color * 0.5f);
     }
 
+    /// <summary>Darkens towards the corners: by <paramref name="strength"/> at the corners, quadratically with the distance from the centre.</summary>
     public void Vignette(float strength)
     {
         for (var y = 0; y < HeightPixels; y++)
@@ -712,12 +739,15 @@ internal static class Png
 {
     private static readonly uint[] CrcTable = BuildCrcTable();
 
+    /// <summary>Encodes 8-bit RGB rows (top to bottom) as a complete PNG file.</summary>
     public static byte[] Encode(int widthPixels, int heightPixels, byte[] rgb)
     {
         var stride = widthPixels * 3;
         var raw = new byte[heightPixels * (1 + stride)];
         for (var y = 0; y < heightPixels; y++)
         {
+            // Each row takes the PNG filter (none, sub, up, average, Paeth) whose residuals are smallest in absolute
+            // value (the usual "minimum sum of absolute differences" heuristic): smaller files, same pixels.
             var best = 0;
             var bestScore = long.MaxValue;
             for (var filter = 0; filter <= 4; filter++)
@@ -765,6 +795,7 @@ internal static class Png
         return png.ToArray();
     }
 
+    /// <summary>PNG's predictor for byte <paramref name="i"/> of row <paramref name="y"/>: a = left pixel, b = above, c = above-left (0 outside the image).</summary>
     private static int Predict(byte[] rgb, int stride, int y, int i, int filter)
     {
         int a = i >= 3 ? rgb[y * stride + i - 3] : 0;
@@ -783,6 +814,7 @@ internal static class Png
         }
     }
 
+    /// <summary>Writes one PNG chunk: big-endian length, type, data, and the CRC-32 of type and data.</summary>
     private static void Chunk(Stream s, string type, byte[] data)
     {
         Span<byte> word = stackalloc byte[4];
@@ -798,6 +830,7 @@ internal static class Png
         s.Write(word);
     }
 
+    /// <summary>The CRC-32 lookup table PNG specifies (reflected polynomial 0xEDB88320, as in zip and Ethernet).</summary>
     private static uint[] BuildCrcTable()
     {
         var t = new uint[256];
@@ -818,10 +851,13 @@ internal static class Pictures
     public const int WidthPixels = 320;
     public const int HeightPixels = 240;
 
+    /// <summary>Paints one picture onto a blank canvas, drawing randomness only from <paramref name="rng"/>.</summary>
     public delegate void Painter(Canvas c, ref SampleRandom rng);
 
+    /// <summary>A sample picture: its file name (which also seeds its randomness) and how to paint it.</summary>
     public sealed record Painting(string FileName, Painter Paint);
 
+    /// <summary>Paints <paramref name="p"/> and encodes it as PNG bytes (the same bytes on every run).</summary>
     public static byte[] Render(Painting p)
     {
         var c = new Canvas(WidthPixels, HeightPixels);
@@ -830,6 +866,7 @@ internal static class Pictures
         return Png.Encode(WidthPixels, HeightPixels, c.ToRgb());
     }
 
+    /// <summary>A colour from a 0xRRGGBB literal, so the painters read like a palette.</summary>
     private static Vector3 C(uint rgb) => new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f);
 
     private static readonly Vector3 White = Vector3.One;
@@ -1234,6 +1271,7 @@ internal static class Pictures
         }),
     ];
 
+    /// <summary>The pressed-flower sheets' paper: a faint top-to-bottom shading, grain and a soft vignette.</summary>
     private static void PaperBackground(Canvas c, ref SampleRandom r, uint tone)
     {
         c.Gradient((0, C(tone)), (1, C(tone) * 0.94f));
@@ -1241,6 +1279,7 @@ internal static class Pictures
         c.Vignette(0.12f);
     }
 
+    /// <summary>A translucent strip of tape holding a pressed flower to the page.</summary>
     private static void Tape(Canvas c, float x, float y, float angleDegrees) =>
         c.Ellipse(x, y, 22, 6, angleDegrees, C(0xF4E6B8), 0.55f);
 
@@ -1364,6 +1403,7 @@ internal static class MusicBox
     private static readonly int[] MajorPentatonic = [0, 2, 4, 7, 9];
     private static readonly int[] MinorPentatonic = [0, 3, 5, 7, 10];
 
+    /// <summary>One tune: its file and title, a tonic (MIDI; the melody spans two octaves from an octave below it), a five-note scale, tempo, metre and length.</summary>
     public sealed record Tune(string FileName, string Title, int RootMidi, int[] Scale, double BeatsPerMinute, int BeatsPerBar, double DurationSeconds);
 
     public static readonly Tune[] Tunes =
@@ -1376,18 +1416,23 @@ internal static class MusicBox
         new("goodnight-lanterns.wav", "Goodnight, Lanterns", 67, MinorPentatonic, 76, 3, 5.9),
     ];
 
+    /// <summary>A composed note: onset, pitch and velocity (0..1, scaling its partials).</summary>
     private readonly record struct Note(double StartSeconds, int Midi, float Velocity);
 
+    /// <summary>
+    /// The tune's notes: on each beat one or two melody notes (a seeded walk, mostly steps), a bass note on each downbeat
+    /// alternating the tonic and the fifth (and a soft scale note on the other beats of a waltz), ending on the tonic.
+    /// </summary>
     private static List<Note> Compose(Tune t)
     {
         var rng = new SampleRandom(t.FileName);
         var beatSeconds = 60.0 / t.BeatsPerMinute;
-        var lastStartSeconds = t.DurationSeconds - 1.3;
+        var lastStartSeconds = t.DurationSeconds - 1.3; // the final notes start 1.3 s before the end, to ring out under the fade
         var notes = new List<Note>();
         var degree = rng.Next(3, 7); // index over two octaves of the scale (0..10)
-        int[] steps = [-2, -1, -1, 1, 1, 2, -1, 1, 3, -3, 0];
+        int[] steps = [-2, -1, -1, 1, 1, 2, -1, 1, 3, -3, 0]; // the walk's moves, weighted towards single steps
         var beat = 0;
-        double time = 0.05;
+        double time = 0.05; // a breath of silence before the first note, seconds
         while (time < lastStartSeconds - beatSeconds * 0.5)
         {
             var downbeat = beat % t.BeatsPerBar == 0;
@@ -1401,7 +1446,7 @@ internal static class MusicBox
                 notes.Add(new(time, Pitch(t, 2) - 12, 0.16f));
             }
 
-            var eighths = rng.NextDouble() < 0.6;
+            var eighths = rng.NextDouble() < 0.6; // 60 % of beats split into two eighth notes
             for (var half = 0; half < (eighths ? 2 : 1); half++)
             {
                 degree = Math.Clamp(degree + rng.Pick(steps), 0, 10);
@@ -1418,42 +1463,49 @@ internal static class MusicBox
         return notes;
     }
 
+    /// <summary>The MIDI note of a degree 0…10 over two octaves of the five-note scale, from an octave below the tonic.</summary>
     private static int Pitch(Tune t, int degree) => t.RootMidi - 12 + 12 * (degree / 5) + t.Scale[degree % 5];
 
+    /// <summary>
+    /// Renders a tune as a WAV file: every note's partials summed, a short echo, normalised to a 0.6 peak, and faded out
+    /// over the last 0.35 s.
+    /// </summary>
     public static byte[] Render(Tune t)
     {
         var count = (int)Math.Round(t.DurationSeconds * SampleRateHertz);
         var mix = new float[count];
+        // A music-box tine's partials (frequency ratio, amplitude, decay time constant in seconds): slightly inharmonic
+        // upper partials (3.01, 5.4, 8.93) give the metallic ring, and they die away much faster than the fundamental.
         (float Ratio, float Amp, float DecaySeconds)[] partials = [(1f, 1f, 1.5f), (2f, 0.32f, 0.7f), (3.01f, 0.1f, 0.35f), (5.4f, 0.08f, 0.16f), (8.93f, 0.04f, 0.07f)];
         foreach (var n in Compose(t))
         {
             var f = 440.0 * Math.Pow(2, (n.Midi - 69) / 12.0);
-            var brightness = (float)Math.Pow(440 / f, 0.35);
+            var brightness = (float)Math.Pow(440 / f, 0.35); // higher notes decay sooner (decay times are for A 440)
             var start = (int)(n.StartSeconds * SampleRateHertz);
-            var lengthSamples = Math.Min(count - start, (int)(2.6 * SampleRateHertz));
+            var lengthSamples = Math.Min(count - start, (int)(2.6 * SampleRateHertz)); // each note rendered for at most 2.6 s
             foreach (var (ratio, amp, decaySeconds) in partials)
             {
                 var pf = f * ratio;
-                if (pf > SampleRateHertz * 0.45) continue;
+                if (pf > SampleRateHertz * 0.45) continue; // skip partials near or above Nyquist (they would alias)
                 var w = 2 * Math.PI * pf / SampleRateHertz;
                 var decayPerSample = Math.Exp(-1.0 / (decaySeconds * brightness * SampleRateHertz));
                 double env = amp * n.Velocity;
                 for (var i = 0; i < lengthSamples; i++)
                 {
-                    var attack = Math.Min(1.0, i / (0.004 * SampleRateHertz));
+                    var attack = Math.Min(1.0, i / (0.004 * SampleRateHertz)); // a 4 ms ramp, so the onset does not click
                     mix[start + i] += (float)(Math.Sin(w * i) * env * attack);
                     env *= decayPerSample;
                 }
             }
         }
 
-        // A short, soft echo: the room of a small wooden box.
+        // A short, soft echo: the room of a small wooden box (110 ms, each repeat at 22 %: it feeds back on itself).
         var delay = (int)(0.11 * SampleRateHertz);
         for (var i = delay; i < count; i++) mix[i] += mix[i - delay] * 0.22f;
 
         var peak = 1e-6f;
         foreach (var v in mix) peak = Math.Max(peak, Math.Abs(v));
-        var gain = 0.6f / peak;
+        var gain = 0.6f / peak; // normalised to a peak of 0.6 (about −4.4 dBFS): gentle, with headroom
         var fadeSamples = (int)(0.35 * SampleRateHertz);
         var pcm = new byte[count * 2];
         for (var i = 0; i < count; i++)
@@ -1487,6 +1539,7 @@ internal static class MusicBox
         return bytes;
     }
 
+    /// <summary>An extended M3U playlist of the tunes (durations rounded to whole seconds).</summary>
     public static string Playlist()
     {
         var sb = new StringBuilder("#EXTM3U\n#PLAYLIST:Music Box\n");
@@ -1504,7 +1557,10 @@ internal static class MusicBox
 /// <summary>The Star Archive: many small plausible observatory files (.log, .csv, .json), 200-900 bytes each.</summary>
 internal static class StarArchive
 {
+    /// <summary>Files in the archive's top folder (logs, readings and surveys in turn).</summary>
     public const int FileCount = 1500;
+
+    /// <summary>Files in its "2025" folder: 12 monthly readings and the rest night-watch logs.</summary>
     public const int YearFileCount = 30;
 
     private static readonly string[] Objects =
@@ -1523,6 +1579,7 @@ internal static class StarArchive
 
     private static readonly string[] Filters = ["clear", "rose", "amber", "violet", "deep blue"];
 
+    /// <summary>The top folder's files, cycling .log, .csv, .json, dated 0.73 days apart from 2024-01-01.</summary>
     public static IEnumerable<(string Name, string Text)> Files()
     {
         for (var i = 1; i <= FileCount; i++)
@@ -1539,6 +1596,7 @@ internal static class StarArchive
         }
     }
 
+    /// <summary>The 2025 folder's files: a reading per month, then night-watch logs every 19.5 days.</summary>
     public static IEnumerable<(string Name, string Text)> YearFiles()
     {
         for (var m = 1; m <= 12; m++)
@@ -1556,11 +1614,12 @@ internal static class StarArchive
 
     private static int Utf8(string s) => Encoding.UTF8.GetByteCount(s);
 
-    /// <summary>A file's size budget in bytes.</summary>
+    /// <summary>A file's size budget in bytes (340…900); each generator stops before the next line would exceed it.</summary>
     private static int Target(ref SampleRandom rng) => rng.Next(340, 901);
 
     private static string Stamp(DateTime t) => t.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
+    /// <summary>An observatory log: timestamped events from 20:30–21:30 onwards, one every 40 s to 23 min.</summary>
     private static string Log(string seed, DateTime night)
     {
         var rng = new SampleRandom(seed);
@@ -1581,6 +1640,7 @@ internal static class StarArchive
         return sb.ToString();
     }
 
+    /// <summary>A CSV of readings (object, magnitude, seeing, temperature) from 21:00–22:00, every 3–44 min.</summary>
     private static string Csv(string seed, DateTime night)
     {
         var rng = new SampleRandom(seed);
@@ -1599,6 +1659,7 @@ internal static class StarArchive
         return sb.ToString();
     }
 
+    /// <summary>A JSON survey of objects with positions and magnitudes; always at least one object, even past the budget.</summary>
     private static string Json(string seed, DateTime night, int index)
     {
         var rng = new SampleRandom(seed);

@@ -54,11 +54,34 @@ public enum PlanetTheme
 /// <param name="FlatSpots">Unit directions and surface radii (metres) kept flat.</param>
 public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IReadOnlyList<(Vector3 Direction, float Radius)> FlatSpots)
 {
+    // ---- the hills: HillCount Gaussian bumps a·exp(−(angle/width)²) at random directions from Seed
     private const int HillCount = 7;
+
+    /// <summary>A hill's width (its 1/e angular radius) is this plus up to <see cref="HillWidthSpreadRadians"/>: ≈ 20°…46°, broad swells rather than peaks.</summary>
+    private const float HillWidthMinRadians = 0.35f;
+
+    private const float HillWidthSpreadRadians = 0.45f;
+
+    /// <summary>A hill's height is this fraction of <see cref="HillAmplitude"/> plus up to <see cref="HillAmplitudeSpreadFraction"/>.</summary>
+    private const float HillAmplitudeMinFraction = 0.45f;
+
+    private const float HillAmplitudeSpreadFraction = 0.55f;
+
+    /// <summary>Every third hill (i % 3 == 2) is a hollow, half as deep as a hill would be high: gentle dips among the swells.</summary>
+    private const float HollowFactor = -0.5f;
+
+    /// <summary>
+    /// Hills are ignored beyond this many widths from their centre: exp(−3.2²) = exp(−10.24) ≈ 4·10⁻⁵ of their height,
+    /// under 0.05 mm for the tallest. Larger is exact to more digits and slower.
+    /// </summary>
+    private const float HillCutoffWidths = 3.2f;
+
     private (Vector3 Centre, float WidthRadians, float Amplitude)[]? _hills;
 
+    /// <summary>A perfect sphere with no hills (tests and placeholders).</summary>
     public static PlanetShape Sphere(float radius) => new(radius, 0, 0, []);
 
+    /// <summary>The hills, drawn once from <see cref="Seed"/> (the draw order is part of every planet's look: keep it).</summary>
     private (Vector3 Centre, float WidthRadians, float Amplitude)[] Hills
     {
         get
@@ -69,8 +92,8 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
             for (var i = 0; i < hills.Length; i++)
             {
                 var d = RandomDirection(rng);
-                var width = 0.35f + (float)rng.NextDouble() * 0.45f;
-                var amp = HillAmplitude * (0.45f + 0.55f * (float)rng.NextDouble()) * (i % 3 == 2 ? -0.5f : 1f); // some gentle hollows
+                var width = HillWidthMinRadians + (float)rng.NextDouble() * HillWidthSpreadRadians;
+                var amp = HillAmplitude * (HillAmplitudeMinFraction + HillAmplitudeSpreadFraction * (float)rng.NextDouble()) * (i % 3 == 2 ? HollowFactor : 1f); // some gentle hollows
                 hills[i] = (d, width, amp);
             }
 
@@ -92,7 +115,7 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
         foreach (var (c, w, a, cosCut) in cache.Hills)
         {
             var d = Vector3.Dot(up, c);
-            if (d < cosCut) continue; // beyond 3.2 widths: exp(−10) is nothing
+            if (d < cosCut) continue; // beyond HillCutoffWidths (3.2) widths: exp(−10) is nothing
             var ang = MathF.Acos(Math.Clamp(d, -1f, 1f)) / w;
             h += a * MathF.Exp(-ang * ang);
         }
@@ -114,6 +137,7 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
     /// <summary>How far beyond a flat spot's radius the hills fade back in, metres.</summary>
     public const float FlatFadeMetres = 3.5f;
 
+    /// <summary>The hills and flat spots with their precomputed cut-off cosines, and the flat-spot list they were built from.</summary>
     private sealed record ShapeCache(object FlatSource, (Vector3 C, float W, float A, float CosCut)[] Hills, (Vector3 Dir, float R, float CosInner, float CosOuter)[] Flats);
 
     private ShapeCache? _cache;
@@ -124,7 +148,7 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
         get
         {
             if (_cache != null && ReferenceEquals(_cache.FlatSource, FlatSpots)) return _cache;
-            var hills = Hills.Select(hh => (hh.Centre, hh.WidthRadians, hh.Amplitude, MathF.Cos(MathF.Min(MathF.PI, hh.WidthRadians * 3.2f)))).ToArray();
+            var hills = Hills.Select(hh => (hh.Centre, hh.WidthRadians, hh.Amplitude, MathF.Cos(MathF.Min(MathF.PI, hh.WidthRadians * HillCutoffWidths)))).ToArray();
             var flats = FlatSpots.Select(f => (f.Direction, f.Radius, MathF.Cos(MathF.Min(MathF.PI, f.Radius / Radius)), MathF.Cos(MathF.Min(MathF.PI, (f.Radius + FlatFadeMetres) / Radius)))).ToArray();
             return _cache = new ShapeCache(FlatSpots, hills, flats);
         }
@@ -138,7 +162,7 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
     {
         if (HillAmplitude <= 0) return up;
         var (a, b) = Tangents(up);
-        const float e = 0.01f;
+        const float e = 0.01f; // ≈ 0.01 rad steps (0.1–0.35 m on these planets): small against a hill's width, large against float error
         var p = up * GroundRadius(up);
         var pa = Vector3.Normalize(up + a * e);
         var pb = Vector3.Normalize(up + b * e);
@@ -153,6 +177,8 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
     /// <summary>Two unit tangents perpendicular to <paramref name="up"/> and each other (any stable choice).</summary>
     public static (Vector3 A, Vector3 B) Tangents(Vector3 up)
     {
+        // Y as the reference axis unless up is within ≈ 26° of it (|up.Y| ≥ 0.9), where the cross product gets short and
+        // its direction unstable; then X.
         var refAxis = MathF.Abs(up.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX;
         var a = Vector3.Normalize(Vector3.Cross(refAxis, up));
         return (a, Vector3.Cross(up, a));
@@ -223,6 +249,8 @@ public sealed class PlanetSurface
     public float SupportAt(Vector3 up, float bodyRadius, float feetHeight, float allowance)
     {
         var best = 0f;
+        // A top holds the walker while its footprint reaches within 0.6 body radii of the walker's centre: you stand on
+        // a ledge until most of your disc is past its edge, then step or fall off (rationale for 0.6 not recorded).
         foreach (var i in Near(up, bodyRadius * 0.6f))
         {
             var o = Obstacles[i];

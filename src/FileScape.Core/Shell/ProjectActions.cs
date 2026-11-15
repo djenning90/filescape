@@ -13,27 +13,39 @@ public sealed record ReadmeText(string Path, string Text, bool Truncated, string
 /// </summary>
 public static class Readme
 {
+    /// <summary>The most of a README that is read, bytes (256 KiB); anything longer is cut and marked truncated, so a huge file cannot stall the panel.</summary>
     public const int MaxBytes = 256 * 1024;
+
+    /// <summary>The most lines shown (a second cap for files of many short lines; the figure's rationale is not recorded).</summary>
     public const int MaxLines = 4000;
 
+    /// <summary>A NUL byte in this many leading bytes means "binary, not shown" (the same heuristic and window as Git's).</summary>
+    private const int BinarySniffBytes = 8000;
+
+    /// <summary>Extensions shown as README text ("" is a bare README); others are listed but not offered.</summary>
     public static readonly string[] Formats = ["", ".md", ".markdown", ".txt", ".rst", ".adoc", ".org"];
 
     /// <summary>True for README names FileScape will show (others are listed but not offered).</summary>
     public static bool IsSupported(string name) =>
         PlaceKinds.IsReadme(name) && Formats.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Reads at most <paramref name="maxBytes"/> (one more to know it was cut) without locking the file against other
+    /// programs, refuses binary content, decodes UTF-8 leniently (bad bytes become U+FFFD) and caps the line count.
+    /// Failures come back as <see cref="ReadmeText.Error"/>, never as exceptions.
+    /// </summary>
     public static ReadmeText Read(string path, int maxBytes = MaxBytes)
     {
         var format = Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown" ? "markdown" : "plain text";
         try
         {
-            using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 16 * 1024, FileOptions.SequentialScan);
+            using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 16 * 1024 /* buffer bytes */, FileOptions.SequentialScan);
             var buf = new byte[Math.Min(maxBytes + 1, (int)Math.Min(f.Length + 1, int.MaxValue))];
             var n = 0;
             while (n < buf.Length && f.Read(buf, n, buf.Length - n) is var r and > 0) n += r;
             var truncated = n > maxBytes;
             if (truncated) n = maxBytes;
-            if (Array.IndexOf(buf, (byte)0, 0, Math.Min(n, 8000)) >= 0) return new ReadmeText(path, "", false, "This file looks binary, so it is not shown as text.", format);
+            if (Array.IndexOf(buf, (byte)0, 0, Math.Min(n, BinarySniffBytes)) >= 0) return new ReadmeText(path, "", false, "This file looks binary, so it is not shown as text.", format);
             var text = new UTF8Encoding(false, false).GetString(buf, 0, n).Replace("\r\n", "\n");
             var lines = text.Split('\n');
             if (lines.Length > MaxLines)
@@ -69,7 +81,7 @@ public static class Readme
 
             if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal))
             {
-                sb.Append(inCode ? "[/code][/bgcolor]\n" : "[bgcolor=#1c2333][code]");
+                sb.Append(inCode ? "[/code][/bgcolor]\n" : "[bgcolor=#1c2333][code]"); // a dark slate panel behind code blocks
                 inCode = !inCode;
                 continue;
             }
@@ -84,7 +96,7 @@ public static class Readme
             var hashes = t.TakeWhile(c => c == '#').Count();
             if (hashes is > 0 and <= 6 && t.Length > hashes && t[hashes] == ' ')
             {
-                var size = hashes switch { 1 => 26, 2 => 22, 3 => 19, _ => 17 };
+                var size = hashes switch { 1 => 26, 2 => 22, 3 => 19, _ => 17 }; // heading font sizes, pixels: # largest, #### and deeper alike
                 sb.Append($"[font_size={size}][b]").Append(Inline(t[(hashes + 1)..])).Append("[/b][/font_size]\n");
                 continue;
             }
@@ -106,6 +118,7 @@ public static class Readme
     private static string Inline(string s)
     {
         s = System.Text.RegularExpressions.Regex.Replace(s, @"!\[lb\]([^\]]*)\]\(([^)]*)\)", m => $"[i](image: {m.Groups[1].Value})[/i]");
+        // Links: the text underlined, the address after it in muted grey-blue so it reads as metadata, not as something to click.
         s = System.Text.RegularExpressions.Regex.Replace(s, @"\[lb\]([^\]]+)\]\(([^)]*)\)", m => $"[u]{m.Groups[1].Value}[/u] [color=#8899aa]‹{m.Groups[2].Value}›[/color]");
         s = System.Text.RegularExpressions.Regex.Replace(s, @"`([^`]+)`", m => $"[code]{m.Groups[1].Value}[/code]");
         s = System.Text.RegularExpressions.Regex.Replace(s, @"\*\*([^*]+)\*\*", m => $"[b]{m.Groups[1].Value}[/b]");
@@ -132,6 +145,7 @@ public sealed record EditorOption(string Label, string Explanation, string Progr
 /// </summary>
 public static class EditorLaunch
 {
+    /// <summary>WSL for a <c>\\wsl.localhost</c> or <c>\\wsl$</c> path, Windows for a drive or other UNC path, otherwise Other.</summary>
     public static ProjectPlatform PlatformOf(string path) =>
         ListAhead.LinuxPath(path) != null && path.StartsWith(@"\\", StringComparison.Ordinal) ? ProjectPlatform.Wsl
         : path.Length >= 2 && path[1] == ':' || path.StartsWith(@"\\", StringComparison.Ordinal) ? ProjectPlatform.Windows
@@ -160,7 +174,7 @@ public static class EditorLaunch
         switch (PlatformOf(projectPath))
         {
             case ProjectPlatform.Windows:
-                foreach (var s in solutions.Take(2))
+                foreach (var s in solutions.Take(2)) // at most two solution buttons, so the panel stays short (rationale for 2 not recorded)
                 {
                     list.Add(new EditorOption($"Open {s}", $"Opens the solution with the app Windows associates with it (for example Visual Studio or Rider).",
                         projectPath.TrimEnd('\\') + "\\" + s, [], ViaAssociation: true));

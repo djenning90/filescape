@@ -5,6 +5,7 @@ using FileScape.Core.Units;
 
 namespace FileScape.Core.Places;
 
+/// <summary>How the current folder changed (<see cref="PlaceChange.Move"/>): the app picks the arrival pose and the transition from it.</summary>
 public enum PlaceMove
 {
     /// <summary>Into a child of the current folder.</summary>
@@ -42,6 +43,13 @@ public sealed record PlaceChange(int From, int To, PlaceMove Move, int ViaLink =
 /// </summary>
 public sealed class PlaceNavigator
 {
+    /// <summary>
+    /// The most visits Back remembers; the oldest is dropped beyond it, so a long session's history stays bounded
+    /// (the value itself: rationale not recorded).
+    /// </summary>
+    private const int MaxHistory = 200;
+
+    /// <summary>Visited folders, oldest first, each with the link it was entered through (−1 if none), for <see cref="Back"/>.</summary>
     private readonly List<(int Id, int Via)> _history = [];
 
     public int Root { get; private set; }
@@ -52,8 +60,10 @@ public sealed class PlaceNavigator
 
     public IReadOnlyList<int> History => _history.Select(h => h.Id).ToList();
 
+    /// <summary>Raised after every successful move (never for a refused one); the app follows it to the new place.</summary>
     public event Action<PlaceChange>? Changed;
 
+    /// <summary>Starts again at <paramref name="root"/> with no history (a new scan or location). Raises no event.</summary>
     public void Reset(int root = 0)
     {
         _history.Clear();
@@ -121,8 +131,13 @@ public sealed class PlaceNavigator
         return id >= 0 && id != Current && Move(id, move);
     }
 
+    /// <summary>Back to the arrival root (recorded in history, so Back returns here).</summary>
     public bool GoToRoot() => Current != Root && Move(Root, PlaceMove.Root);
 
+    /// <summary>
+    /// Returns to the previously visited folder, popping it from history (Back is not itself recorded, so repeated Back
+    /// walks further into the past). The change carries the link the folder being left was entered through.
+    /// </summary>
     public bool Back()
     {
         if (_history.Count == 0)
@@ -140,6 +155,7 @@ public sealed class PlaceNavigator
         return true;
     }
 
+    /// <summary>Records the current folder in history, moves to <paramref name="to"/> and raises <see cref="Changed"/>; false (and nothing changes) when already there.</summary>
     private bool Move(int to, PlaceMove move, int via = -1)
     {
         if (to == Current)
@@ -149,7 +165,7 @@ public sealed class PlaceNavigator
 
         var from = Current;
         _history.Add((from, CurrentVia));
-        if (_history.Count > 200)
+        if (_history.Count > MaxHistory)
         {
             _history.RemoveAt(0);
         }
@@ -205,7 +221,9 @@ public sealed class ThresholdTracker
     /// </summary>
     public const float MinFacingCosine = 0.3f;
 
+    /// <summary>Gates the camera has been at least <see cref="ArmDepth"/> inside of; a gate is disarmed when it is crossed.</summary>
     private readonly HashSet<Gate> _armed = [];
+
     private PlaceComposition? _place;
 
     /// <summary>The app-clock time from which crossings count again.</summary>
@@ -286,6 +304,11 @@ public sealed class ThresholdTracker
     /// <summary>Signed distance (metres) of a point from the gate plane; negative inside the place, positive beyond it.</summary>
     public static float Depth(Gate g, Vector3 point) => Vector3.Dot(point - g.Position, g.Outward);
 
+    /// <summary>
+    /// True when the segment <paramref name="from"/> → <paramref name="to"/> goes from inside the gate's plane to on or
+    /// beyond it, and the crossing point is within the opening (half the width either side, below the lintel). Pure
+    /// geometry: arming, the cooldown and facing are the caller's (<see cref="Update"/>, <see cref="PlaceRoutes"/>).
+    /// </summary>
     public static bool Crosses(Gate g, Vector3 from, Vector3 to)
     {
         if (!g.CanEnter)
@@ -300,7 +323,7 @@ public sealed class ThresholdTracker
             return false;
         }
 
-        var t = d0 / (d0 - d1);
+        var t = d0 / (d0 - d1); // where along the segment the plane is met (d0 < 0 ≤ d1, so 0 < t ≤ 1)
         var x = Vector3.Lerp(from, to, t);
         var lateral = MathF.Abs(Vector3.Dot(x - g.Position, g.Tangent));
         return lateral <= g.Width / 2 && x.Y <= g.Position.Y + g.Height;
@@ -310,9 +333,18 @@ public sealed class ThresholdTracker
 /// <summary>Ray picking against a place's structures (PLACE-01: picking selects, it never travels).</summary>
 public static class PlacePicker
 {
+    // Pick boxes for vista parts that have no solid of their own in the composition (metres): a vista's landmark is
+    // picked as a 2.8 m square column, a beacon as a 1.2 m one (rationale for the sizes not recorded).
+    private const float VistaLandmarkPickWidth = 2.8f;
+    private const float BeaconPickWidth = 1.2f;
+
     /// <summary>Returns the node id of the nearest structure hit, or -1. Landmark → the folder; gates and vistas → their folder.</summary>
     public static int Pick(PlaceComposition place, Vector3 origin, Vector3 direction) => PickWithDistance(place, origin, direction).Id;
 
+    /// <summary>
+    /// The nearest structure the ray hits and its distance along the (unit) <paramref name="direction"/>, or (−1, float.MaxValue):
+    /// the landmark, files, gates and, in vistas, landmarks, towers and beacons.
+    /// </summary>
     public static (int Id, float Distance) PickWithDistance(PlaceComposition place, Vector3 origin, Vector3 direction)
     {
         var best = -1;
@@ -332,9 +364,9 @@ public static class PlacePicker
         if (place.ParentGate is { } pg) Test(pg.TargetId, pg.Bounds);
         foreach (var v in place.ParentVista is { } pv ? place.Vistas.Append(pv) : place.Vistas)
         {
-            Test(v.FolderId, Box.FromBase(v.Center, 2.8f, v.LandmarkHeight, 2.8f));
+            Test(v.FolderId, Box.FromBase(v.Center, VistaLandmarkPickWidth, v.LandmarkHeight, VistaLandmarkPickWidth));
             foreach (var t in v.Towers) Test(t.Id, Box.FromBase(t.BaseCenter, t.Footprint, t.Height, t.Footprint));
-            foreach (var b in v.Beacons) Test(b.Id, Box.FromBase(b.Position, 1.2f, b.Height, 1.2f));
+            foreach (var b in v.Beacons) Test(b.Id, Box.FromBase(b.Position, BeaconPickWidth, b.Height, BeaconPickWidth));
         }
 
         return (best, bestT);
@@ -350,7 +382,7 @@ public static class PlacePicker
         foreach (var v in place.ParentVista is { } pv ? place.Vistas.Append(pv) : place.Vistas)
         {
             foreach (var t in v.Towers) if (t.Id == id) return Box.FromBase(t.BaseCenter, t.Footprint, t.Height, t.Footprint);
-            foreach (var b in v.Beacons) if (b.Id == id) return Box.FromBase(b.Position, 1.2f, b.Height, 1.2f);
+            foreach (var b in v.Beacons) if (b.Id == id) return Box.FromBase(b.Position, BeaconPickWidth, b.Height, BeaconPickWidth);
         }
 
         return null;

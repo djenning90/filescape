@@ -22,6 +22,13 @@ public enum LabelRole
 /// </summary>
 public static class LabelPlanner
 {
+    /// <summary>
+    /// The label candidates, highest priority first, each id once. Distances are compared squared (the order is the same).
+    /// </summary>
+    /// <param name="maxDirectories">How many of the nearest directories may be labelled (then the app's overlap test thins them).</param>
+    /// <param name="maxFiles">How many of the nearest files may be labelled.</param>
+    /// <param name="fileRadius">Files further than this from the camera, layout units, are never labelled: file labels only make sense close up.</param>
+    /// <remarks>The app's LabelLayer passes its own counts and keeps the default radius (rationale for the default figures not recorded).</remarks>
     public static List<(int Id, LabelRole Role)> Candidates(
         FsTree tree, LayoutResult layout, SelectionState selection, Vector3 cameraPosition,
         int maxDirectories = 220, int maxFiles = 160, float fileRadius = 30f)

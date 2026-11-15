@@ -6,6 +6,17 @@ namespace FileScape.App.Ui;
 /// The 2D interface: a top bar, a scan status strip, the inspector, the legend, a help line, the stats overlay, and
 /// toasts. It is built in code, so the scene file stays trivial and the layout is reviewable as source. The HUD only
 /// raises intent events; Main decides what they do.
+/// <para>
+/// Layout (viewport units, so it scales with the UI scale): a 10-unit margin round the window; the top bar on top and
+/// everything else from y = 70 below it; the inspector is the right-hand column (370 wide, from 380 left of the right
+/// edge), so left-column panels stop 390 from the right edge. <see cref="_Process"/> restacks the left column every
+/// frame, because the place panel's height changes with its content. <see cref="BlockingRects"/> tells 3D input,
+/// labels and signs where the panels are.
+/// </para>
+/// <para>
+/// Partial files: Hud.Places (place bar, Destinations, gate chip, notes), Hud.Project (the project card),
+/// Hud.Settings (the settings panel), Hud.World (the Locations dialog and go-to-path).
+/// </para>
 /// </summary>
 public partial class Hud : CanvasLayer
 {
@@ -93,6 +104,10 @@ public partial class Hud : CanvasLayer
     private PanelContainer _legendPanel = null!;
     private PanelContainer _statusPanel = null!;
 
+    /// <summary>
+    /// The shared UI theme: a system font list with fallbacks for every script, dark translucent panels and the button
+    /// states. Static, because PlaceWorld uses its font for in-world signs too.
+    /// </summary>
     public static Theme BuildTheme()
     {
         var font = new SystemFont
@@ -127,6 +142,7 @@ public partial class Hud : CanvasLayer
         return theme;
     }
 
+    /// <summary>A flat rounded panel style: 1 px border when <paramref name="border"/> is visible; corner radius and padding in viewport units.</summary>
     private static StyleBoxFlat Panel(Color bg, Color border, int radius = 7, int padX = 12, int padY = 9)
     {
         var sb = new StyleBoxFlat
@@ -250,7 +266,7 @@ public partial class Hud : CanvasLayer
     {
         _statusPanel = new PanelContainer();
         _statusPanel.SetAnchorsPreset(Control.LayoutPreset.TopWide);
-        _statusPanel.OffsetLeft = 10; _statusPanel.OffsetRight = -390; _statusPanel.OffsetTop = 70;
+        _statusPanel.OffsetLeft = 10; _statusPanel.OffsetRight = -390; _statusPanel.OffsetTop = 70; // left of the inspector column, below the top bar
         _root.AddChild(_statusPanel);
         var v = new VBoxContainer();
         _statusPanel.AddChild(v);
@@ -355,6 +371,7 @@ public partial class Hud : CanvasLayer
         ApplyInspectorMode();
     }
 
+    /// <summary>Applies the card (Places) or full-height panel (maps) layout; the offsets match <see cref="BuildInspector"/>.</summary>
     private void ApplyInspectorMode()
     {
         _inspector.Visible = _inspectorWanted;
@@ -476,10 +493,26 @@ public partial class Hud : CanvasLayer
         return b;
     }
 
+    /// <summary>The first-run hint goes after this long on screen, seconds, whatever the user has done.</summary>
+    private const double HintTimeoutSeconds = 60;
+
+    /// <summary>The flight chip turns gold for this long, seconds, after a speed change (wheel), so the new speed is noticed.</summary>
+    private const double FlyHighlightSeconds = 1.2;
+
+    /// <summary>The Places card may take at most this fraction of the window height; beyond it the details scroll.</summary>
+    private const float InspectorCardMaxViewportFraction = 0.55f;
+
+    /// <summary>The Destinations drawer: at least 160 tall (a few entries), at most 520, and never over the legend.</summary>
+    private const float DestinationsMinHeight = 160f, DestinationsMaxHeight = 520f;
+
+    /// <summary>The place bar grows to at most 1000 wide, as long as it stays left of the inspector column.</summary>
+    private const float PlaceBarMaxWidth = 1000f;
+
+    /// <summary>Timers (hint, toast, fly highlight) and the per-frame restacking of the left column and the hint.</summary>
     public override void _Process(double delta)
     {
         var nowS = Time.GetTicksMsec() / 1000.0;
-        if (_hintPanel.Visible && nowS - _hintShownAt > 60) DismissHint();
+        if (_hintPanel.Visible && nowS - _hintShownAt > HintTimeoutSeconds) DismissHint();
         _flyLabel.AddThemeColorOverride("font_color", nowS < _flyHighlightUntil ? new Color(1f, 0.92f, 0.5f) : new Color(0.75f, 0.95f, 1f));
         if (_toastPanel.Visible && Time.GetTicksMsec() / 1000.0 > _toastUntil)
         {
@@ -491,14 +524,14 @@ public partial class Hud : CanvasLayer
         // viewport units, so it holds at any UI scale (checked at 1.0 and 1.25).
         // Places: the status strip shows only while something is being scanned; its text is the place bar's tooltip.
         _statusPanel.Visible = !_placesMode || _scanning;
-        _placePanel.OffsetTop = _statusPanel.Visible ? 112 : 70;
+        _placePanel.OffsetTop = _statusPanel.Visible ? 112 : 70; // below the status strip, or straight below the top bar
         if (_inspector.Visible && _inspectorCompact)
         {
             // The card is as tall as its content, never taller than the window allows (it scrolls then).
             var vpH = GetViewport().GetVisibleRect().Size.Y;
             var body = _inspectorBody.Visible ? _inspectorBody.GetContentHeight() : 0;
-            _inspectorBody.CustomMinimumSize = new Vector2(0, Mathf.Min(body, vpH * 0.55f));
-            _inspectorBody.ScrollActive = body > vpH * 0.55f;
+            _inspectorBody.CustomMinimumSize = new Vector2(0, Mathf.Min(body, vpH * InspectorCardMaxViewportFraction));
+            _inspectorBody.ScrollActive = body > vpH * InspectorCardMaxViewportFraction;
             _inspector.Size = _inspector.Size with { Y = 0 };
         }
 
@@ -509,13 +542,13 @@ public partial class Hud : CanvasLayer
             _destPanel.OffsetTop = bottom + 8;
             var legendTop = _legendPanel.Visible ? _legendPanel.Position.Y : GetViewport().GetVisibleRect().Size.Y - 10;
             // The drawer is on demand, so when open it may use most of the column (wide folders have hundreds of entries).
-            _destPanel.OffsetBottom = Mathf.Max(_destPanel.OffsetTop + 160, Mathf.Min(_destPanel.OffsetTop + 520, legendTop - 8));
+            _destPanel.OffsetBottom = Mathf.Max(_destPanel.OffsetTop + DestinationsMinHeight, Mathf.Min(_destPanel.OffsetTop + DestinationsMaxHeight, legendTop - 8));
             // The place bar is only as wide as it needs, up to the inspector's column.
             var vpW = GetViewport().GetVisibleRect().Size.X;
-            _placePanel.OffsetRight = -Mathf.Max(390, vpW - 10 - 1000);
+            _placePanel.OffsetRight = -Mathf.Max(390, vpW - 10 - PlaceBarMaxWidth);
             _flyPanel.OffsetTop = bottom + 8;
             if (_ascentPanel.Visible && _hintPanel.Visible) DismissHint(); // one bottom line at a time
-            _notePanel.OffsetTop = bottom + 96;
+            _notePanel.OffsetTop = bottom + 96; // below the fly chip's or problem panel's slot (rationale for 96 not recorded)
             _problemPanel.OffsetTop = bottom + 8;
         }
 
@@ -715,6 +748,10 @@ public partial class Hud : CanvasLayer
         if (_movedOnce && _flewOnce) DismissHint();
     }
 
+    /// <summary>
+    /// The flight chip: in Places, height (metres), speed (m/s) and the flight keys; in the maps, speed in world units per
+    /// second. <paramref name="highlight"/> flashes it gold briefly (a speed change).
+    /// </summary>
     public void SetFlyStatus(bool flying, float speed, bool highlight, bool places = false, bool landing = false, float? altitude = null, bool alongGaze = false)
     {
         _flyPanel.Visible = flying;
@@ -723,7 +760,7 @@ public partial class Hud : CanvasLayer
         _flyLabel.Text = places
             ? landing ? "LANDING…" : $"✈ {(altitude is { } h ? $"{h:0} m up · " : "")}{speed:0} m/s  ·  {move}  ·  E/Space up · Q/C down  ·  B aerial view  ·  T land"
             : $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
-        if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + 1.2;
+        if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + FlyHighlightSeconds;
     }
 
     /// <summary>The Flight toggle: shown in Places only, pressed while flying.</summary>
@@ -749,6 +786,7 @@ public partial class Hud : CanvasLayer
     public bool FlightButtonPressed => _flightButton.ButtonPressed;
     public Rect2 FlightButtonRect => _flightButton.GetGlobalRect();
 
+    /// <summary>A short message above the bottom edge for <paramref name="seconds"/> (default 4.5 s); a new toast replaces the current one.</summary>
     public void Toast(string text, Color? color = null, double seconds = 4.5)
     {
         _toast.Text = text;

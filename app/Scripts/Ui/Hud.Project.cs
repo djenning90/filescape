@@ -72,6 +72,7 @@ public partial class Hud
     /// <summary>Test and probe access: the README text as shown (BBCode stripped by the label).</summary>
     public string ReadmeShownText => _readmeText.GetParsedText();
 
+    /// <summary>The README viewer: a nearly full-window opaque panel (inset 120 at the sides, below the top bar), hidden until <see cref="ShowReadme"/>.</summary>
     private void BuildReadmeViewer()
     {
         _readmePanel = new PanelContainer { Visible = false };
@@ -118,6 +119,7 @@ public partial class Hud
         };
     }
 
+    /// <summary>Shows a README Main has already read and converted to BBCode (<paramref name="footer"/>: what was shown, e.g. a truncation note), from the top, above other panels.</summary>
     public void ShowReadme(string title, string bbcode, string footer)
     {
         _readmeTitle.Text = title;
@@ -128,6 +130,7 @@ public partial class Hud
         _readmePanel.MoveToFront();
     }
 
+    /// <summary>Closes the viewer (Esc or Close); the text stays until the next <see cref="ShowReadme"/>.</summary>
     public void HideReadme()
     {
         _readmePanel.Visible = false;

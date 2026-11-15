@@ -101,6 +101,10 @@ public sealed record Preferences
 
     // ------------------------------------------------------------------ persistence (JSON)
 
+    /// <summary>
+    /// The preferences file's text. The keys and <c>version</c> are the file format: renaming one silently resets that
+    /// preference for everyone (<see cref="FromJson"/> ignores unknown keys). Speeds are rounded to centimetres per second.
+    /// </summary>
     public string ToJson()
     {
         var o = new JsonObject
@@ -176,6 +180,7 @@ public sealed record Preferences
         File.Move(tmp, path, overwrite: true);
     }
 
+    /// <summary>A one-line summary for the log and probes (keep its wording: probes may read it).</summary>
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
         $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned");
 }

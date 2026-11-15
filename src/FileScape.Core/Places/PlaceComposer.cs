@@ -16,7 +16,10 @@ public sealed record PlaceParams
 {
     /// <summary>Centre spacing of file towers; with the footprint this leaves ≈ 1.15 m alleys a walker fits through (WALK-05).</summary>
     public float FileCell { get; init; } = 2.4f;
+    /// <summary>Width and depth of a file tower (square).</summary>
     public float FileFootprint { get; init; } = 1.25f;
+
+    /// <summary>The innermost file row's radius from the landmark (pushed out when many types need wider wedges).</summary>
     public float FileInnerRadius { get; init; } = 8f;
 
     /// <summary>File quarters fill south ± this angle (the near half, around the arrival point).</summary>
@@ -25,8 +28,13 @@ public sealed record PlaceParams
     /// <summary>Half-width of the clear corridor from the landmark south to the parent gate.</summary>
     public float CorridorHalfWidth { get; init; } = 2.4f;
 
+    /// <summary>Gate width (outer pillar faces); the walkable opening is this minus two 0.55 m pillars.</summary>
     public float GateWidth { get; init; } = 5f;
+
+    /// <summary>Gate depth along its outward direction (the pillars' depth).</summary>
     public float GateDepth { get; init; } = 0.9f;
+
+    /// <summary>Gate height: crossing counts below it (the lintel is above any head).</summary>
     public float GateHeight { get; init; } = 7f;
 
     /// <summary>The minimum distance between neighbouring gates on a ring, centre to centre.</summary>
@@ -38,22 +46,33 @@ public sealed record PlaceParams
     /// <summary>The largest angular gap between gates when there are only a few, so they spread but stay in view together.</summary>
     public float MaxGateGapDeg { get; init; } = 40f;
 
+    /// <summary>The smallest single-ring gate radius; a ring is widened beyond it only when <see cref="GateSpacing"/> needs it.</summary>
     public float MinGateRadius { get; init; } = 24f;
 
     /// <summary>Up to this many children sit on one ring with vistas; more are arranged on tiers (PLACE-05).</summary>
     public int MaxSingleRingGates { get; init; } = 24;
 
+    /// <summary>A wide folder's innermost tier radius.</summary>
     public float FirstTierRadius { get; init; } = 40f;
+
+    /// <summary>Radial distance between consecutive tiers (and the width of their terrace rings, at least 7 m).</summary>
     public float TierGap { get; init; } = 13f;
+
     /// <summary>Each outer tier stands on a terrace this much higher, so it can be seen over the inner ones.</summary>
     public float TierRise { get; init; } = 0.42f; // below the step height, so tiers are walked up without jumping
 
     /// <summary>The symbolic distance from a gate to the vista of the place behind it (AD-14: not true geography).</summary>
     public float VistaDistance { get; init; } = 70f;
+    /// <summary>The same for the parent's vista beyond the ▲ gate, measured from the gate.</summary>
     public float ParentVistaDistance { get; init; } = 58f;
+
+    /// <summary>A vista's skyline shows at most this many of the folder's largest files.</summary>
     public int VistaMaxTowers { get; init; } = 28;
+
+    /// <summary>A vista shows at most this many beacons for the folder's own children (the rest are counted).</summary>
     public int VistaMaxBeacons { get; init; } = 16;
 
+    /// <summary>Half the width of the landmark's square column.</summary>
     public float LandmarkRadius { get; init; } = 0.85f;
 
     /// <summary>
@@ -81,7 +100,9 @@ public sealed record PlaceParams
     /// <summary>Half-width of the terrace; it must stay inside the clear corridor south of the landmark.</summary>
     public float TerraceHalfWidth { get; init; } = 2.3f;
 
+    /// <summary>Half-depth (north–south) of the arrival terrace's top.</summary>
     public float TerraceHalfDepth { get; init; } = 2.5f;
+
     /// <summary>Looking slightly down from the terrace, so the avenue, landmark and gates all fit the arrival view.</summary>
     public Degrees ArrivalLookPitch { get; init; } = Degrees.Of(-6f);
 
@@ -91,14 +112,25 @@ public sealed record PlaceParams
     /// <summary>The overlook (JUMP-02): in the free sector between the file quarters and the gates.</summary>
     public float OverlookAngleDeg { get; init; } = 261f;
 
+    /// <summary>Distance of the overlook platform's centre from the landmark.</summary>
     public float OverlookRadius { get; init; } = 16f;
+
+    /// <summary>The overlook platform's floor height (reached by the ramp, or by the jump blocks at a third and two thirds of it).</summary>
     public float OverlookTop { get; init; } = 2.4f;
+
+    /// <summary>Half the side of the square overlook platform.</summary>
     public float OverlookHalfSize { get; init; } = 2.5f;
 
     /// <summary>Length of the overlook's walking ramp (it runs inward from the platform, so it must end clear of the landmark).</summary>
     public float OverlookRampLength { get; init; } = 7.5f;
+
+    /// <summary>Coming back up from a child, you stand this far in front of its gate, facing into the place (PLACE-07).</summary>
     public float ReturnStandOff { get; init; } = 7f;
+
+    /// <summary>Choosing a destination, you stand this far in front of its gate, facing it (PLACE-06).</summary>
     public float ApproachStandOff { get; init; } = 9f;
+
+    /// <summary>File tower heights (a visual encoding of bytes, VIS-03).</summary>
     public SizeScale Scale { get; init; } = SizeScale.Place;
 
     /// <summary>
@@ -140,6 +172,7 @@ public sealed record PlaceParams
         ApproachStandOff = 6.5f,
     };
 
+    /// <summary>The layout used unless <c>--layout=spacious</c> is given.</summary>
     public static readonly PlaceParams Default = Compact;
 }
 
@@ -147,12 +180,70 @@ public sealed record PlaceParams
 /// Composes one folder as a local place (PLACE-02..05, PLACE-09, AD-14). The result depends only on the folder, its
 /// children and grandchildren, and the parent's name and largest files, so it is deterministic and cheap: the whole
 /// tree is never laid out. Every immediate child directory or directory link gets exactly one gate.
+/// <para>
+/// The layout, in the place's own frame (north = −Z, landmark at the origin): file towers fill wedges of the southern
+/// half either side of a clear avenue that runs south from the landmark to the ▲ gate; the arrival terrace stands in
+/// that avenue looking north; child gates stand on a ring (or, past <see cref="PlaceParams.MaxSingleRingGates"/>, on
+/// rising tiers) across the north; each single-ring gate has a vista beyond it; the overlook stands in the free sector
+/// west of north. <see cref="PlaceRoutes"/> and the walk tests rely on the avenue and the gaps between towers staying
+/// clear, so changes to the clearances below must keep every route open.
+/// </para>
 /// </summary>
 public static class PlaceComposer
 {
     /// <summary>Gates, file rows and beacons in natural name order (ORD-01): "Folder 2" before "Folder 10".</summary>
     private static readonly IComparer<string> NameOrder = NaturalNameOrder.Instance;
 
+    // ---- a project's core (IDENT-04): README and manifests beside the avenue, the first things passed on the way in
+    /// <summary>
+    /// Place angles of the core files, in pairs mirrored about south (180 ∓ 32°, ∓ 44°, ∓ 56°): south-east first, then
+    /// south-west, then further out on each side. The first (READMEs) are nearest the avenue.
+    /// </summary>
+    private static readonly float[] CoreAnglesDeg = [148, 212, 136, 224, 124, 236];
+
+    /// <summary>The nearest core angle's offset from south, degrees: the core ring is sized so files there clear the corridor.</summary>
+    private const float CoreNearestOffsetDeg = 32f;
+
+    /// <summary>The core ring's smallest radius, metres (its value at the spacious corridor), so it never moves in closer.</summary>
+    private const float MinCoreRadius = 6.2f;
+
+    /// <summary>The clear gap kept between a core file's tower and the corridor's edge, metres.</summary>
+    private const float CoreCorridorClearance = 0.25f;
+
+    // ---- vistas and avenues
+    /// <summary>
+    /// A vista's radius as a fraction of the arc between neighbouring gates at the vista's distance: two radii are 0.84
+    /// of the arc, leaving ≈ 16 % between neighbouring vistas (a little less along the chord), so they never overlap.
+    /// </summary>
+    private const float VistaRadiusPerSpacing = 0.42f;
+
+    /// <summary>The smallest and largest vista radius, metres (rationale for the values not recorded).</summary>
+    private const float MinVistaRadius = 4f;
+
+    private const float MaxVistaRadius = 14f;
+
+    /// <summary>The parent's vista (beyond the ▲ gate) has a fixed radius, metres: there is only one, so no neighbour limits it.</summary>
+    private const float ParentVistaRadius = 12f;
+
+    /// <summary>An avenue's drawn line starts this far beyond the landmark's edge, metres.</summary>
+    private const float AvenueStartClearance = 1.6f;
+
+    // ---- the plaza and the ▲ gate
+    /// <summary>In the spacious layout the ▲ gate stands at least this far beyond the outermost file row, metres.</summary>
+    private const float ParentGateBeyondFiles = 5f;
+
+    /// <summary>The plaza floor reaches this far beyond the ▲ gate and the outermost files, metres.</summary>
+    private const float PlazaMargin = 2f;
+
+    /// <summary>The plaza floor reaches this far beyond the first gate ring, metres.</summary>
+    private const float PlazaMarginBeyondGates = 4f;
+
+    /// <summary>
+    /// Composes the place of <paramref name="folderId"/>. Deterministic for the same tree, parameters, filter and kind;
+    /// reads only the folder, its children and grandchildren and the parent (never lists anything).
+    /// </summary>
+    /// <param name="visible">The visibility filter (VISI-04): entries it rejects are left out of the place and counted in <see cref="PlaceComposition.HiddenCount"/>.</param>
+    /// <param name="kind">The folder's identity (<see cref="PlaceKinds.Classify"/>); a project gets its core by the avenue.</param>
     public static PlaceComposition Compose(FsTree tree, int folderId, PlaceParams? parameters = null, Func<FsNode, bool>? visible = null, PlaceKindInfo? kind = null)
     {
         var p = parameters ?? PlaceParams.Default;
@@ -186,12 +277,12 @@ public static class PlaceComposer
         // A project's README and manifests form its "core" by the avenue, the first thing you walk past (IDENT-04).
         var core = kind?.Kind == PlaceKind.Project ? kind.CoreFiles.Where(fileIds.Contains).ToList() : [];
         var (files, quarters, fileRadius) = ComposeFiles(tree, fileIds.Where(id => !core.Contains(id)).ToList(), p);
-        float[] coreAngles = [148, 212, 136, 224, 124, 236];
-        for (var i = 0; i < core.Count && i < coreAngles.Length; i++)
+        for (var i = 0; i < core.Count && i < CoreAnglesDeg.Length; i++)
         {
-            // Beside the avenue, clear of the corridor whatever its width (6.2 m out at the spacious corridor).
-            var coreRadius = MathF.Max(6.2f, (p.CorridorHalfWidth + p.FileFootprint / 2 + 0.25f) / MathF.Sin(32f * MathF.PI / 180f));
-            var c = PlaceGeometry.Direction(coreAngles[i]) * coreRadius;
+            // Beside the avenue, clear of the corridor whatever its width (6.2 m out at the spacious corridor): at
+            // radius r and 32° off south a tower's centre is r·sin 32° from the avenue's axis.
+            var coreRadius = MathF.Max(MinCoreRadius, (p.CorridorHalfWidth + p.FileFootprint / 2 + CoreCorridorClearance) / MathF.Sin(CoreNearestOffsetDeg * MathF.PI / 180f));
+            var c = PlaceGeometry.Direction(CoreAnglesDeg[i]) * coreRadius;
             files.Add(new PlacedFile(core[i], Box.FromBase(c, p.FileFootprint, p.Scale.Height(tree[core[i]].Size), p.FileFootprint), FileCategories.Of(tree[core[i]].Name), Core: true));
         }
         var (gates, tiers) = ComposeGates(tree, childIds, p);
@@ -213,28 +304,29 @@ public static class PlaceComposer
                 }
 
                 var dist = g.Position.Length() + p.VistaDistance;
-                var radius = Math.Clamp(0.42f * gap * dist, 4f, 14f);
+                var radius = Math.Clamp(VistaRadiusPerSpacing * gap * dist, MinVistaRadius, MaxVistaRadius);
                 var center = g.Outward * dist;
                 vistas.Add(ComposeVista(tree, previewId, center, g.AngleDeg, radius, p));
-                var start = g.Outward * (p.LandmarkRadius + 1.6f);
+                var start = g.Outward * (p.LandmarkRadius + AvenueStartClearance);
                 avenues.Add(new Avenue(g.TargetId, [start, g.Position, center - g.Outward * radius]));
             }
         }
 
         Gate? parentGate = null;
         Vista? parentVista = null;
-        var southReach = p.ParentGateOnRing ? p.MinGateRadius : MathF.Max(fileRadius + 5f, p.MinGateRadius);
+        // How far south the ▲ gate stands; the arrival terrace is set back from it.
+        var southReach = p.ParentGateOnRing ? p.MinGateRadius : MathF.Max(fileRadius + ParentGateBeyondFiles, p.MinGateRadius);
         if (!folder.IsRoot)
         {
             var pos = PlaceGeometry.Direction(180) * southReach;
             parentGate = new Gate(folder.ParentId, pos, 180, p.GateWidth, p.GateHeight, -1, ListingState.Open, 0,
                 PlaceGeometry.RotatedBounds(pos, 180, p.GateWidth, p.GateDepth, p.GateHeight), IsParent: true);
             var center = PlaceGeometry.Direction(180) * (southReach + p.ParentVistaDistance);
-            parentVista = ComposeVista(tree, folder.ParentId, center, 180, 12f, p, excludeChild: folderId);
-            avenues.Add(new Avenue(folder.ParentId, [PlaceGeometry.Direction(180) * (p.LandmarkRadius + 1.6f), pos, center - PlaceGeometry.Direction(180) * 12f]));
+            parentVista = ComposeVista(tree, folder.ParentId, center, 180, ParentVistaRadius, p, excludeChild: folderId);
+            avenues.Add(new Avenue(folder.ParentId, [PlaceGeometry.Direction(180) * (p.LandmarkRadius + AvenueStartClearance), pos, center - PlaceGeometry.Direction(180) * ParentVistaRadius]));
         }
 
-        var plazaRadius = MathF.Max(southReach + 2f, MathF.Max(fileRadius + 2f, (tiers.Count > 0 ? tiers[0].Radius : p.MinGateRadius) + 4f));
+        var plazaRadius = MathF.Max(southReach + PlazaMargin, MathF.Max(fileRadius + PlazaMargin, (tiers.Count > 0 ? tiers[0].Radius : p.MinGateRadius) + PlazaMarginBeyondGates));
         var bounds = landmark.Bounds;
         foreach (var f in files) bounds = bounds.Union(f.Box);
         foreach (var g in gates) bounds = bounds.Union(g.Bounds);
@@ -282,6 +374,7 @@ public static class PlaceComposer
         var f = tree[folderId];
         unchecked
         {
+            // 64-bit FNV-1a (standard offset basis and prime), mixing whole values rather than bytes.
             long h = 1469598103934665603L;
             void Mix(long v) { h ^= v; h *= 1099511628211L; }
             Mix(f.Children.Count);
@@ -312,7 +405,17 @@ public static class PlaceComposer
         }
     }
 
-    public static float LandmarkHeight(FsNode folder) => MathF.Min(7f + 1.5f * MathF.Log10(1 + folder.SubtreeFileCount + folder.SubtreeDirCount), 16f);
+    // ---- landmark height: base + per tenfold more entries in the subtree, capped (metres)
+    /// <summary>An empty folder's landmark height, metres (rationale not recorded).</summary>
+    private const float LandmarkBaseHeight = 7f;
+
+    private const float LandmarkHeightPerDecade = 1.5f;
+
+    /// <summary>The tallest landmark, metres (reached at ≈ 10⁶ entries below it).</summary>
+    private const float MaxLandmarkHeight = 16f;
+
+    /// <summary>The landmark's height from the folder's subtree size (folders and files): log scale, so huge trees stay comparable.</summary>
+    public static float LandmarkHeight(FsNode folder) => MathF.Min(LandmarkBaseHeight + LandmarkHeightPerDecade * MathF.Log10(1 + folder.SubtreeFileCount + folder.SubtreeDirCount), MaxLandmarkHeight);
 
     /// <summary>
     /// The number of single-child levels below a folder: a/b/c/d where each has exactly one child folder (and nothing
@@ -339,6 +442,20 @@ public static class PlaceComposer
     /// </summary>
     private const float FileWedgeCells = 1.15f;
 
+    /// <summary>The extra clearance, metres, between the avenue's corridor and the nearest tower's edge when the types are split west and east.</summary>
+    private const float AvenueSplitClearance = 0.1f;
+
+    /// <summary>A quarter's sign stands this far beyond its outermost row, metres.</summary>
+    private const float QuarterSignSetback = 1.6f;
+
+    /// <summary>A sign that would fall in the avenue is moved sideways to this far beyond the corridor's edge, metres.</summary>
+    private const float SignAvenueClearance = 1.2f;
+
+    /// <summary>
+    /// The file towers: grouped by type (category order), each type a wedge of rows across the southern span, rows
+    /// <see cref="PlaceParams.FileCell"/> apart and cells along each row about a cell apart, skipping the avenue.
+    /// Returns the towers, the labelled quarters and the radius they reach (outermost row + one footprint).
+    /// </summary>
     private static (List<PlacedFile> Files, List<FileQuarter> Quarters, float Radius) ComposeFiles(FsTree tree, List<int> fileIds, PlaceParams p)
     {
         var files = new List<PlacedFile>(fileIds.Count);
@@ -358,7 +475,7 @@ public static class PlaceComposer
         // into a west and an east side of it (in type order, balanced by count), so no type's wedge straddles the
         // avenue: a narrow wedge there lost its inner cells and was pushed outward a row at a time (30 files once
         // reached 44 m, putting the arrival point 43 m from the landmark). A single type keeps the whole span.
-        var clear = p.CorridorHalfWidth + p.FileFootprint / 2 + 0.1f;
+        var clear = p.CorridorHalfWidth + p.FileFootprint / 2 + AvenueSplitClearance;
         var sides = new List<(float From, float To, List<(FileCategory Category, List<int> Ids)> Groups)>();
         float inner;
         if (groups.Count == 1)
@@ -383,6 +500,8 @@ public static class PlaceComposer
             var most = Math.Max(west.Count, east.Count);
             inner = p.FileInnerRadius;
             var gapDeg = 0f;
+            // The avenue's half-gap (degrees) shrinks as the inner radius grows, and the radius needed for the busier
+            // side's wedges depends on the span left: four rounds of updating each from the other.
             for (var iter = 0; iter < 4; iter++)
             {
                 gapDeg = MathF.Asin(MathF.Min(1, clear / inner)) * 180f / MathF.PI;
@@ -415,6 +534,7 @@ public static class PlaceComposer
                 {
                     var r = inner + row * p.FileCell;
                     var step = p.FileCell / r * 180f / MathF.PI;
+                    // Cells are centred in the wedge's row; 1e-3° lets a row that fits exactly keep its last cell.
                     for (var theta = a + step / 2; theta + step / 2 <= b + 1e-3f && placed < ids.Count; theta += step)
                     {
                         var c = PlaceGeometry.Direction(theta) * r;
@@ -438,8 +558,8 @@ public static class PlaceComposer
 
                 // The sign stands at the quarter's outer edge, the side that faces the arrival terrace — never in the
                 // avenue to the ▲ gate, where it stood in front of the gate for anyone arriving from below.
-                var sign = PlaceGeometry.Direction((a + b) / 2) * (outer + 1.6f);
-                var avenue = p.CorridorHalfWidth + 1.2f;
+                var sign = PlaceGeometry.Direction((a + b) / 2) * (outer + QuarterSignSetback);
+                var avenue = p.CorridorHalfWidth + SignAvenueClearance;
                 if (sign.Z > 0 && MathF.Abs(sign.X) < avenue) sign = sign with { X = (sign.X < 0 || (sign.X == 0 && (a + b) / 2 > 180) ? -avenue : avenue) };
                 quarters.Add(new FileQuarter(category, ids.Count, a, b, sign));
             }
@@ -450,6 +570,17 @@ public static class PlaceComposer
 
     // ------------------------------------------------------------------ gates
 
+    /// <summary>
+    /// A partly filled last tier spreads its gates at most this × the full tier's spacing, so a few gates stay a group
+    /// rather than spanning the whole arc.
+    /// </summary>
+    private const float PartialTierSpreadFactor = 1.6f;
+
+    /// <summary>
+    /// The gates across the north: one ring (spacing and radius chosen so neighbours are at least
+    /// <see cref="PlaceParams.GateSpacing"/> apart and few gates stay within <see cref="PlaceParams.MaxGateGapDeg"/>),
+    /// or, for wide folders, tiers further out and higher, each holding as many as the spacing allows, in name order.
+    /// </summary>
     private static (List<Gate> Gates, List<GateTier> Tiers) ComposeGates(FsTree tree, List<int> childIds, PlaceParams p)
     {
         var gates = new List<Gate>(childIds.Count);
@@ -489,6 +620,8 @@ public static class PlaceComposer
             var rise = t * p.TierRise;
             // Chord spacing must reach GateSpacing: m gates over the span leave (m-1) gaps.
             var minGapRad = 2 * MathF.Asin(MathF.Min(1, p.GateSpacing / (2 * radius)));
+            // (× 0.999 errs towards one gate fewer when the span holds a whole number of gaps exactly, so float rounding
+            // can never squeeze neighbours below GateSpacing; the check below would throw.)
             var capacity = Math.Max(2, (int)MathF.Floor(spanRad / minGapRad * 0.999f) + 1);
             var m = Math.Min(capacity, n - index);
             var gapDeg = m == 1 ? 0 : 2 * p.GateHalfSpanDeg / (m - 1);
@@ -500,7 +633,7 @@ public static class PlaceComposer
             // The last tier may be partly filled; centre it so it reads as a deliberate group.
             if (m < capacity && m > 1)
             {
-                gapDeg = MathF.Min(gapDeg, 2 * p.GateHalfSpanDeg / (capacity - 1) * 1.6f);
+                gapDeg = MathF.Min(gapDeg, 2 * p.GateHalfSpanDeg / (capacity - 1) * PartialTierSpreadFactor);
             }
 
             var first = -gapDeg * (m - 1) / 2;
@@ -516,6 +649,7 @@ public static class PlaceComposer
         return (gates, tiers);
     }
 
+    /// <summary>One gate facing outward at a place angle on a ring (raised by the tier's rise), with its listing state and chain length.</summary>
     private static Gate MakeGate(FsTree tree, int childId, float angleDeg, float radius, int tier, float rise, PlaceParams p)
     {
         var child = tree[childId];
@@ -549,8 +683,8 @@ public static class PlaceComposer
 
         boxes.Add(new TerrainBox(Xz(landmark.Base), new Vector2(landmark.Radius, landmark.Radius), 0, 0, landmark.Height, TerrainKind.Landmark));
 
-        // Gate pillars: the opening between them is walkable; the lintel is above any head.
-        const float pillar = 0.55f;
+        // Gate pillars: the opening between them is walkable; the lintel is above any head (it is not in the terrain).
+        const float pillar = 0.55f; // pillar width, metres: a compact 4.4 m gate leaves a 3.3 m opening
         foreach (var g in parentGate is null ? gates : gates.Append(parentGate))
         {
             foreach (var side in new[] { -1f, 1f })
@@ -564,6 +698,8 @@ public static class PlaceComposer
         var t = p.TerraceTop;
         var tc = Xz(arrivalGround);
         boxes.Add(new TerrainBox(tc, new Vector2(p.TerraceHalfWidth, p.TerraceHalfDepth), 0, 0, t, TerrainKind.Platform));
+        // Four steps down the front (and the back, towards a ▲ gate). Step i stands at (4 − i)/5 of the terrace height
+        // (0.32 m rises for a 1.6 m terrace, under the walker's 0.45 m step height), each 0.62 m deep, on a 3.2 m wide stair.
         const int stepsCount = 4;
         const float stepDepth = 0.62f, stairHalf = 1.6f;
         for (var i = 0; i < stepsCount; i++)
@@ -585,25 +721,37 @@ public static class PlaceComposer
         var oc = oDir * p.OverlookRadius;
         var h = p.OverlookHalfSize;
         var top0 = p.OverlookTop;
+        const float railHalfThickness = 0.08f; // metres: a 16 cm rail just inside the platform's edge
+        const float railHeight = 1.0f; // metres above the platform floor: well above the 0.45 m step height, so it blocks walking
+        const float rampHalfWidth = 1.25f; // metres: a 2.5 m wide walking ramp
+        // The jump blocks: 1.4 m squares at a third and two thirds of the platform height (0.8 m and 1.6 m at 2.4 m),
+        // each 0.8 m above the one below (a held jump peaks ≈ 1.22 m); 2.35 m south of the ramp's line, clear of its 1.25 m half-width.
+        const float jumpBlockHalf = 0.7f;
+        const float jumpBlockSideOffset = 2.35f;
+        const float lowBlockInward = 4.2f, middleBlockInward = 1.6f; // metres inward of the platform's inner edge
         boxes.Add(new TerrainBox(Xz(oc), new Vector2(h, h), p.OverlookAngleDeg, 0, top0, TerrainKind.Platform));
-        boxes.Add(new TerrainBox(Xz(oc + oDir * (h - 0.08f)), new Vector2(h, 0.08f), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
-        boxes.Add(new TerrainBox(Xz(oc + oTan * (h - 0.08f)), new Vector2(0.08f, h), p.OverlookAngleDeg, top0, top0 + 1.0f, TerrainKind.Rail));
+        boxes.Add(new TerrainBox(Xz(oc + oDir * (h - railHalfThickness)), new Vector2(h, railHalfThickness), p.OverlookAngleDeg, top0, top0 + railHeight, TerrainKind.Rail));
+        boxes.Add(new TerrainBox(Xz(oc + oTan * (h - railHalfThickness)), new Vector2(railHalfThickness, h), p.OverlookAngleDeg, top0, top0 + railHeight, TerrainKind.Rail));
         var rampStart = oc - oDir * (h + p.OverlookRampLength);
         var rampEnd = oc - oDir * h;
-        ramps.Add(new TerrainRamp(Xz(rampStart), Xz(rampEnd), 1.25f, 0, top0));
-        var b1 = oc - oDir * (h + 4.2f) - oTan * 2.35f; // low block, further in
-        var b2 = oc - oDir * (h + 1.6f) - oTan * 2.35f; // middle block, by the platform's corner
-        boxes.Add(new TerrainBox(Xz(b1), new Vector2(0.7f, 0.7f), p.OverlookAngleDeg, 0, top0 / 3, TerrainKind.JumpBlock));
-        boxes.Add(new TerrainBox(Xz(b2), new Vector2(0.7f, 0.7f), p.OverlookAngleDeg, 0, top0 * 2 / 3, TerrainKind.JumpBlock));
+        ramps.Add(new TerrainRamp(Xz(rampStart), Xz(rampEnd), rampHalfWidth, 0, top0));
+        var b1 = oc - oDir * (h + lowBlockInward) - oTan * jumpBlockSideOffset; // low block, further in
+        var b2 = oc - oDir * (h + middleBlockInward) - oTan * jumpBlockSideOffset; // middle block, by the platform's corner
+        boxes.Add(new TerrainBox(Xz(b1), new Vector2(jumpBlockHalf, jumpBlockHalf), p.OverlookAngleDeg, 0, top0 / 3, TerrainKind.JumpBlock));
+        boxes.Add(new TerrainBox(Xz(b2), new Vector2(jumpBlockHalf, jumpBlockHalf), p.OverlookAngleDeg, 0, top0 * 2 / 3, TerrainKind.JumpBlock));
         var overlook = new Overlook(oc with { Y = top0 }, p.OverlookAngleDeg, h, Xz(rampStart), [Xz(b1), Xz(b2)]);
 
         foreach (var tier in tiers.Where(x => x.Rise > 0))
         {
             // Rings meet their neighbours (half the tier gap each way), so every tier is a step up from the one inside
             // it; narrower rings left ground-level gaps that a third tier could not be climbed from (found 2026-11-06).
+            // (At least 3.5 m each way; the arc runs 4° past the outermost gates' centres, rationale not recorded.)
             var half = MathF.Max(3.5f, p.TierGap / 2);
             rings.Add(new TerrainRing(tier.Radius - half, tier.Radius + half, tier.Rise, tier.StartDeg - 4, tier.EndDeg + 4));
         }
+
+        // The boundary: beyond the farthest gate, the overlook (2 m past its edge) and the files (1 m past a tower's
+        // centre), plus 2.5 m, so everything walkable is inside and nobody falls off (WALK-05).
 
         var reach = MathF.Max(p.MinGateRadius, p.OverlookRadius + h + 2);
         foreach (var g in gates) reach = MathF.Max(reach, g.Position.Length());
@@ -614,6 +762,12 @@ public static class PlaceComposer
 
     // ------------------------------------------------------------------ vistas
 
+    /// <summary>
+    /// A vista of <paramref name="folderId"/> centred at <paramref name="center"/>: its landmark, a skyline of its largest
+    /// files and an arc of beacons for its child folders beyond it (facing away from the viewer along
+    /// <paramref name="facingDeg"/>). <paramref name="excludeChild"/> leaves out one child: the parent's vista does not
+    /// show a beacon for the place you are in.
+    /// </summary>
     private static Vista ComposeVista(FsTree tree, int folderId, Vector3 center, float facingDeg, float radius, PlaceParams p, int excludeChild = -1)
     {
         var folder = tree[folderId];
@@ -631,10 +785,12 @@ public static class PlaceComposer
 
         // Skyline: the largest files (ties by name), placed on a sunflower spiral so the cluster is compact and stable.
         var largest = fileIds.OrderByDescending(id => tree[id].Size).ThenBy(id => tree[id].Name, NameOrder).Take(p.VistaMaxTowers).ToList();
-        var golden = MathF.PI * (3 - MathF.Sqrt(5));
-        var footprint = 1.1f;
+        var golden = MathF.PI * (3 - MathF.Sqrt(5)); // the golden angle, radians (≈ 137.5°): a sunflower spiral, no spokes
+        var footprint = 1.1f; // metres: a little narrower than a place's 1.25 m towers
         for (var i = 0; i < largest.Count; i++)
         {
+            // Tower i at 2.2 m + 1.45 m × √(i + 1) from the centre (clear of the vista's landmark, area per tower roughly
+            // constant), never beyond the vista's own radius.
             var r = MathF.Min(radius - footprint, 2.2f + 1.45f * MathF.Sqrt(i + 1));
             var a = (i + 1) * golden;
             var offset = new Vector3(MathF.Cos(a) * r, 0, MathF.Sin(a) * r);
@@ -648,6 +804,8 @@ public static class PlaceComposer
         var outward = PlaceGeometry.Direction(facingDeg);
         for (var i = 0; i < shown.Count; i++)
         {
+            // Spread evenly over ±50° of the facing direction, 9 m beyond the vista's edge and pushed 4 m further away;
+            // 4 m + 1.2 m per tenfold more files below (log10(2 + n): even an empty folder's beacon is ≈ 4.4 m).
             var spread = shown.Count == 1 ? 0 : -50f + 100f * i / (shown.Count - 1);
             var pos = center + PlaceGeometry.Direction(facingDeg + spread) * (radius + 9f) + outward * 4f;
             beacons.Add(new VistaBeacon(shown[i], pos, 4f + 1.2f * MathF.Log10(2 + tree[shown[i]].SubtreeFileCount), Listing.Of(tree[shown[i]])));

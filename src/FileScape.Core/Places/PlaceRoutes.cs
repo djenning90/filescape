@@ -21,6 +21,11 @@ public readonly record struct UpwardRoute(PlacePose Pose, bool Verified, float S
 /// <summary>
 /// Routes through a place, checked with the real walker (PLACE-16, WALK-10). Going up arrives facing the next way up,
 /// so holding W walks straight through one ▲ gate after another: no turning round, no circling the landmark.
+/// <para>
+/// The checks run the same <see cref="Walker"/> over the same <see cref="PlaceTerrain"/> as the app, at a fixed 60 Hz
+/// frame, so "verified" means the real collision response touched nothing, not a geometric estimate. Tests and probes
+/// also use <see cref="FollowWaypoints"/> to time walks.
+/// </para>
 /// </summary>
 public static class PlaceRoutes
 {
@@ -29,6 +34,26 @@ public static class PlaceRoutes
 
     /// <summary>The gaze on arrival after going up: a little down, so the avenue and the ▲ gate ahead are both in view.</summary>
     public static readonly Degrees ArrivalLookPitch = Degrees.Of(-4);
+
+    /// <summary>The candidate spot beside the landmark is this far north of the landmark's edge beyond the walker's radius (metres).</summary>
+    private const float BesideLandmarkClearance = 2f;
+
+    /// <summary>The route aims at a point this far beyond the ▲ gate (metres): the heading then runs through the opening, not just up to it.</summary>
+    private const float AimBeyondGate = 3f;
+
+    /// <summary>The aim point is this far towards the lane's side of the ▲ gate's centre (metres): off-centre, still well inside the opening.</summary>
+    private const float AimLaneOffset = 0.8f;
+
+    /// <summary>A simulated walk gives up after its straight-line time × this, plus <see cref="WalkTimeSlackSeconds"/>.</summary>
+    private const double WalkTimeAllowance = 1.5;
+
+    private const double WalkTimeSlackSeconds = 1.5;
+
+    /// <summary>The simulated frame rate, frames per second (the walker sub-steps inside each frame as in the app).</summary>
+    private const double SimulatedFramesPerSecond = 60.0;
+
+    /// <summary>The autopilot moves on to the next waypoint within this distance of the current one (metres).</summary>
+    private const float WaypointReachRadius = 1.2f;
 
     /// <summary>A verified route never pushes the walker further than this off its straight line (metres): it touches nothing.</summary>
     public const float MaxDeviation = 0.05f;
@@ -50,11 +75,13 @@ public static class PlaceRoutes
         var gate = place.GateFor(childId);
         var from = gate == null ? (Vector3?)null : gate.Position - gate.Outward * p.ReturnStandOff;
         var side = from is { X: < -0.01f } ? -1f : 1f;
-        var beside = new Vector3(side * LaneOffset, 0, -(p.LandmarkRadius + w.Radius.Value + 2f));
+        var beside = new Vector3(side * LaneOffset, 0, -(p.LandmarkRadius + w.Radius.Value + BesideLandmarkClearance));
         // Through the ▲ gate's opening on the lane's side (the ▲ gate always faces south, outward = +Z).
-        var through = up.Position + up.Outward * 3f;
-        var aim = new Vector3(through.X + side * 0.8f, 0, through.Z);
+        var through = up.Position + up.Outward * AimBeyondGate;
+        var aim = new Vector3(through.X + side * AimLaneOffset, 0, through.Z);
 
+        // With a child gate, eleven candidates, from the usual return spot (i = 0) to beside the landmark (i = 10): the first that verifies
+        // is the closest to the child's gate, so you arrive as near as possible to where you came from.
         var candidates = new List<Vector3>();
         if (from is { } f)
         {
@@ -99,9 +126,9 @@ public static class PlaceRoutes
         var along = Vector2.Normalize(new Vector2(heading.X, heading.Z));
         var speed = (run ? w.RunSpeed : w.WalkSpeed).Value;
         var distance = Vector2.Distance(origin, new Vector2(target.Position.X, target.Position.Z));
-        var max = limit ?? Durations.FromSeconds(distance / speed * 1.5 + 1.5);
-        var frame = Durations.FromSeconds(1 / 60.0);
-        var input = new WalkInput(1, 0, 0, run, false);
+        var max = limit ?? Durations.FromSeconds(distance / speed * WalkTimeAllowance + WalkTimeSlackSeconds);
+        var frame = Durations.FromSeconds(1 / SimulatedFramesPerSecond);
+        var input = new WalkInput(1, 0, 0, run, false); // W held (and Shift when running), nothing else
         var t = TimeSpan.Zero;
         var deviation = 0f;
         var walked = 0f;
@@ -112,7 +139,7 @@ public static class PlaceRoutes
             t += frame;
             var eye = walker.Eye;
             var p = new Vector2(eye.X, eye.Z) - origin;
-            deviation = MathF.Max(deviation, MathF.Abs(p.X * along.Y - p.Y * along.X));
+            deviation = MathF.Max(deviation, MathF.Abs(p.X * along.Y - p.Y * along.X)); // |2D cross product|: distance off the line
             walked += Vector2.Distance(new Vector2(last.X, last.Z), new Vector2(eye.X, eye.Z));
             if (ThresholdTracker.Crosses(target, last, eye) && Vector3.Dot(heading, target.Outward) >= ThresholdTracker.MinFacingCosine)
             {
@@ -134,8 +161,8 @@ public static class PlaceRoutes
     {
         var walker = new Walker(w);
         walker.TeleportToEye(place.Terrain, start.Eye, start.Yaw, start.LookPitch);
-        var frame = Durations.FromSeconds(1 / 60.0);
-        var max = limit ?? TimeSpan.FromSeconds(120);
+        var frame = Durations.FromSeconds(1 / SimulatedFramesPerSecond);
+        var max = limit ?? TimeSpan.FromSeconds(120); // a generous cap: no route in a place takes minutes
         var t = TimeSpan.Zero;
         var next = 0;
         var walked = 0f;
@@ -143,7 +170,7 @@ public static class PlaceRoutes
         while (t < max)
         {
             var feet = new Vector2(walker.Feet.X, walker.Feet.Z);
-            while (next < waypoints.Count - 1 && Vector2.Distance(feet, waypoints[next]) < 1.2f) next++;
+            while (next < waypoints.Count - 1 && Vector2.Distance(feet, waypoints[next]) < WaypointReachRadius) next++;
             var to = waypoints[next] - feet;
             if (to.LengthSquared() > 1e-4f) walker.SetGaze(PlaceGeometry.YawFor(PlaceTerrain.PlaceAngle(to)), walker.LookPitch);
             walker.Update(place.Terrain, new WalkInput(1, 0, 0, run, false), frame);
@@ -163,7 +190,9 @@ public static class PlaceRoutes
 
     /// <summary>
     /// A walking route from the arrival terrace to a child gate: down the front stairs, past the landmark on the gate's
-    /// side, and through the gate (ground waypoints, metres).
+    /// side, and through the gate (ground waypoints, metres). The offsets suit the composed terrace and landmark: 6 m is
+    /// just past the foot of the front stairs (≈ 5 m in front of the terrace centre), and 2.6 m off the axis passes clear
+    /// of the landmark (≤ 0.85 m radius) with the walker's radius to spare.
     /// </summary>
     public static IReadOnlyList<Vector2> ArrivalToGate(PlaceComposition place, Gate gate)
     {

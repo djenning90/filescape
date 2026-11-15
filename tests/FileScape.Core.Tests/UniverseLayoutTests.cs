@@ -6,8 +6,15 @@ using Xunit;
 
 namespace FileScape.Core.Tests;
 
+/// <summary>
+/// The overview's layout (PLANET-22, AD-46): every known folder is one world, its subfolders on one ring round it, and no
+/// two worlds overlap; listed and unknown folders are told apart; the overview stays within its budget
+/// (<see cref="UniverseLayout.MaxChildren"/> per system), counts what it leaves out and never hides the way to where
+/// you stand. The exact positions are guarded by the opt-in behaviour baseline, not here.
+/// </summary>
 public class UniverseLayoutTests
 {
+    /// <summary>Six folders with 0, 3, 6 … subfolders (each holding a few files), so ring sizes differ, plus one unlisted folder.</summary>
     private static FsTree Sample()
     {
         var spec = new Spec("root");
@@ -40,6 +47,7 @@ public class UniverseLayoutTests
         foreach (var b in bodies.Where(b => b.ParentId >= 0))
         {
             var p = byId[b.ParentId];
+            // 0.01 (layout units) is float slack on positions computed with sin/cos, not a tuning value.
             Vector3.Distance(b.Position, p.Position).Should().BeApproximately(p.OrbitRadius, 0.01f, "on its parent's ring");
             MathF.Abs(Vector3.Dot(Vector3.Normalize(b.Position - p.Position), p.OrbitNormal)).Should().BeLessThan(0.01f, "in the ring's plane");
             b.Depth.Should().Be(p.Depth + 1);

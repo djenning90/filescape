@@ -15,34 +15,101 @@ namespace FileScape.App.Planets;
 /// at the release (so the folder is listed while you fly); a change that comes from elsewhere (Backspace, the
 /// breadcrumb, Destinations, a path) starts the same launch from where you stand. A destination that is not a
 /// neighbour in the sky is reached by a warp: a rise into a streak of light and a descent onto the new world.
+/// <para>
+/// The phases (<see cref="Phase"/>): <b>WindUp</b> (crouch, camera turns to the target; at its end the release asks the
+/// session to travel) → <b>AwaitNav</b> only if the session has not answered yet (a link resolving: hover on the pad) →
+/// <b>Flying</b> (a quadratic Bézier arc into the target's placement, ending in <c>Land</c>) or <b>Warping</b> (rise,
+/// build the new world at the brightest moment, descend) → <b>Walking</b>. One transfer at a time
+/// (<see cref="Busy"/>); a navigator change that arrives mid-flight is picked up at the landing and launches on.
+/// </para>
 /// </summary>
 public partial class PlanetWorld
 {
+    /// <summary>Where the planetary world is in a place change (Walking when none is in progress; hops are separate).</summary>
     private enum Phase { Walking, WindUp, AwaitNav, Flying, Warping }
 
     /// <summary>The wind-up before release (research E2: a visible, physical beginning).</summary>
     public const float WindUpSeconds = 0.4f;
 
+    /// <summary>The wind-up may stretch or shrink by up to this, seconds, so the release lands on the music's sixteenth
+    /// grid (AD-42: ≥ half a sixteenth at every tempo, so it always can).</summary>
+    private const float WindUpBeatShiftSeconds = 0.09f;
+
+    /// <summary>On a pad, the wind-up draws the traveller to the pad's centre at this rate, per second (≈ 0.07 s: quick, but not a snap).</summary>
+    private const float PadCaptureRatePerSecond = 14f;
+
+    /// <summary>The wind-up turns the camera towards the destination at this rate, per second (≈ 0.11 s).</summary>
+    private const float WindUpTurnRatePerSecond = 9f;
+
+    /// <summary>
+    /// Waiting for the session after a release: if nothing is pending after this long, seconds, the session refused or
+    /// already answered (and said why), so the launch is cancelled quietly.
+    /// </summary>
+    private const float AwaitAnswerGraceSeconds = 0.25f;
+
+    /// <summary>A link that has not answered in this long, seconds, cancels the launch with a message (the link may still open later).</summary>
+    private const float AwaitLinkTimeoutSeconds = 8f;
+
+    // ---- the flight arc (PLANET-12: a brisk arc of 1.5–2.5 s; PLANET-03: ≤ 2.7 s)
+    /// <summary>
+    /// The arc's control point is raised this fraction of the straight-line distance away from both worlds (the Bézier's
+    /// peak is half that). The remembered-route beads trace the same curve (<see cref="UpdateRouteBeads"/>), so the two
+    /// must use the same value.
+    /// </summary>
+    private const float ArcLiftFraction = 0.38f;
+
+    /// <summary>A flight takes 1 s plus a second per 75 m of straight-line distance, within 1.5–2.5 s (PLANET-12).</summary>
+    private const float FlightBaseSeconds = 1.0f, FlightMetresPerExtraSecond = 75f, MinFlightSeconds = 1.5f, MaxFlightSeconds = 2.5f;
+
+    /// <summary>The landing's impact, as a downward speed in m/s: it sets the landing sound (a flight lands firmly, a warp
+    /// a little harder; a hop softly at 4).</summary>
+    private const float FlightLandingImpact = 8f, WarpLandingImpact = 9f;
+
     private Phase _phase = Phase.Walking;
 
+    /// <summary>One place change in progress, from the wind-up to the landing. Seconds are float seconds; positions are in
+    /// the current planet's frame.</summary>
     private sealed class Transfer
     {
+        /// <summary>The folder the wind-up is for (what the release will ask the session for).</summary>
         public int LaunchTarget = -1;
+
+        /// <summary>The folder actually flown to (the navigator's answer, set at the start of the flight).</summary>
         public int TargetId = -1;
+
+        /// <summary>The navigator's change, once it has answered (null while winding up for a launch from a pad).</summary>
         public PlaceChange? Change;
+
+        /// <summary>The body flown into (null for a warp).</summary>
         public Body? Target;
         public bool FromPad;
         public NVector3 PadDirection;
+
+        /// <summary>Seconds into the current phase.</summary>
         public float T;
         public float WindUp = WindUpSeconds;
         public float Flight = 2f;
+
+        /// <summary>The arc: start, Bézier control point and end; up at each end.</summary>
         public Godot.Vector3 From, Control, To, FromUp, ToUp;
+
+        /// <summary>The target's drawn scale: the traveller ends the flight at it.</summary>
         public float EndScale = 1f;
         public NVector3 LandUp, LandFacing;
+
+        /// <summary>The folder to arrive beside on landing (−1: the arrival meadow); see <see cref="ArrivalFrom"/>.</summary>
         public int ArriveFrom = -1;
+
+        /// <summary>The wind-up has finished and the session has been asked.</summary>
         public bool Released;
+
+        /// <summary>Warp: the new world has been built (the descent has begun).</summary>
         public bool Built;
+
+        /// <summary>Seconds spent waiting for the session (AwaitNav).</summary>
         public float Await;
+
+        /// <summary>The fastest the traveller has moved in this flight, world units per second (probes).</summary>
         public float MaxSpeed;
     }
 
@@ -51,6 +118,9 @@ public partial class PlanetWorld
     /// <summary>Launch log for probes: (phase, app seconds).</summary>
     public readonly List<(string Phase, double AtSeconds)> LaunchLog = [];
 
+    // ---- measurements for probes (the PLANET-12 journey checks): flights and warps started, the last flight's and
+    // wind-up's length (seconds), the landing's camera jump (always 0 here: the probe measures it across the frame), the angle between the flight's up and the
+    // landing's up (degrees, E5: < 2°), and the largest camera step in one flight frame (in units of the traveller's scale).
     public int Transfers { get; private set; }
     public double LastFlightSeconds { get; private set; }
     public double LastWindUpSeconds { get; private set; }
@@ -58,6 +128,7 @@ public partial class PlanetWorld
     public float LastLandingUpError { get; private set; }
     public float MaxFrameCameraStepInFlight { get; private set; }
 
+    /// <summary>Logs a phase change for probes (the names are read by probes: keep them as they are).</summary>
     private void Mark(string phase) => LaunchLog.Add((phase, _s.Now.TotalSeconds));
 
     /// <summary>Space on a launcher pad: wind up towards its world, then release.</summary>
@@ -66,7 +137,7 @@ public partial class PlanetWorld
         if (Busy || _current == null || _s.Tree == null) return;
         _hop = null;
         _transfer = new Transfer { LaunchTarget = targetId, FromPad = fromPad, PadDirection = padDirection };
-        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: 0.09f);
+        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
         _phase = Phase.WindUp;
         _audio.WindUp(_transfer.WindUp);
         _current.Visual?.ChargeLauncher(targetId, _transfer.WindUp);
@@ -74,7 +145,12 @@ public partial class PlanetWorld
         Mark("windup");
     }
 
-    /// <summary>The navigator changed: the launch we wound up for, or a change made elsewhere (then launch from here).</summary>
+    /// <summary>
+    /// The navigator changed: the launch we wound up for, or a change made elsewhere (then launch from here). From the
+    /// overview (or <c>_arriveFromSky</c>), the change is a warp that starts at the top of its rise: the light is already
+    /// up, so the new world is built at once and you come down onto it. During a flight or warp it is ignored here and
+    /// picked up at the landing.
+    /// </summary>
     public void OnNavChanged(PlaceChange change)
     {
         if (!_active) return;
@@ -90,6 +166,7 @@ public partial class PlanetWorld
         {
             _arriveFromSky = false;
             _hop = null;
+            // T = the whole rise: the warp builds the new world on its first frame and descends (no rise from the overview).
             _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = true, From = Gd(_walker.Feet), FromUp = Gd(_walker.Up), T = WarpRiseSeconds };
             _transfer.ArriveFrom = _s.Tree is { } t ? ArrivalFrom(t, change, _current?.FolderId ?? -1) : -1;
             _phase = Phase.Warping;
@@ -115,13 +192,14 @@ public partial class PlanetWorld
         _hop = null;
         _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = false };
         Prepare(change.To); // build it now, at the start of the wind-up (the camera is still), not in the release frame
-        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: 0.09f);
+        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
         _phase = Phase.WindUp;
         _audio.WindUp(_transfer.WindUp);
         CloseOverlays();
         Mark("windup");
     }
 
+    /// <summary>One frame of a place change (any phase but Walking); the overlook view fades out meanwhile.</summary>
     private void UpdateTravel(float dt, bool blockedKeys)
     {
         var tr = _transfer;
@@ -132,7 +210,7 @@ public partial class PlanetWorld
         }
 
         tr.T += dt;
-        _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * 1.6f);
+        _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * OverlookBlendPerSecond);
         switch (_phase)
         {
             case Phase.WindUp:
@@ -141,13 +219,13 @@ public partial class PlanetWorld
                 // Drawn to the pad's centre, crouching; the camera turns to show where you are going.
                 if (tr.FromPad && _current != null)
                 {
-                    var target = NVector3.Normalize(NVector3.Lerp(_walker.Up, tr.PadDirection, 1 - MathF.Exp(-14 * dt)));
+                    var target = NVector3.Normalize(NVector3.Lerp(_walker.Up, tr.PadDirection, 1 - MathF.Exp(-PadCaptureRatePerSecond * dt)));
                     _walker.Teleport(_current.Comp.Surface, target, _walker.Facing);
                 }
 
                 PoseAvatar(dt, windUp: k);
                 TurnCameraTowards(TargetCentreForCamera(tr), dt);
-                UpdateCamera(dt, lookAt: TargetCentreForCamera(tr), extraBack: 1.5f * k, extraUp: 0.6f * k);
+                UpdateCamera(dt, lookAt: TargetCentreForCamera(tr), extraBack: WindUpPullBackMetres * k, extraUp: WindUpRiseMetres * k);
                 if (k >= 1 && !tr.Released)
                 {
                     tr.Released = true;
@@ -174,8 +252,8 @@ public partial class PlanetWorld
                 tr.Await += dt;
                 PoseAvatar(dt, windUp: 1, hover: true);
                 UpdateCamera(dt, lookAt: TargetCentreForCamera(tr));
-                if (tr.Await > 0.25f && _s.PendingRequests == 0) CancelLaunch(null); // the session refused or already answered (it said why)
-                else if (tr.Await > 8f) CancelLaunch("The link has not answered yet; you are still here (it may still open later).");
+                if (tr.Await > AwaitAnswerGraceSeconds && _s.PendingRequests == 0) CancelLaunch(null); // the session refused or already answered (it said why)
+                else if (tr.Await > AwaitLinkTimeoutSeconds) CancelLaunch("The link has not answered yet; you are still here (it may still open later).");
                 break;
             case Phase.Flying:
                 UpdateFlight(tree, tr, dt);
@@ -199,7 +277,7 @@ public partial class PlanetWorld
         if (to.LengthSquared() < 1e-4f) return;
         to = to.Normalized();
         var ang = _camFwd.SignedAngleTo(to, up);
-        _camFwd = _camFwd.Rotated(up, ang * (1 - MathF.Exp(-9f * dt))).Normalized();
+        _camFwd = _camFwd.Rotated(up, ang * (1 - MathF.Exp(-WindUpTurnRatePerSecond * dt))).Normalized();
         _sinceOrbitSeconds = 0;
     }
 
@@ -227,6 +305,7 @@ public partial class PlanetWorld
         return -1;
     }
 
+    /// <summary>True when <paramref name="ancestor"/> is a proper ancestor of <paramref name="id"/>.</summary>
     private static bool IsAncestor(FsTree tree, int ancestor, int id)
     {
         for (var p = tree[id].ParentId; p >= 0; p = tree[p].ParentId)
@@ -237,8 +316,10 @@ public partial class PlanetWorld
         return false;
     }
 
+    /// <summary>The launch goes up to the current folder's parent (the release then asks the session to go up, not into).</summary>
     private bool IsParentTarget(FsTree tree, int id) => _current != null && tree.Contains(_current.FolderId) && tree[_current.FolderId].ParentId == id;
 
+    /// <summary>Back to walking where you stand, with the refusal sound and, if given, a message saying why.</summary>
     private void CancelLaunch(string? why)
     {
         _audio.Deny();
@@ -248,6 +329,7 @@ public partial class PlanetWorld
         Mark("cancel");
     }
 
+    /// <summary>Where the destination hangs in the sky (for the wind-up's camera), or null when it is not in view (a warp).</summary>
     private Godot.Vector3? TargetCentreForCamera(Transfer tr)
     {
         var id = tr.Change?.To ?? tr.LaunchTarget;
@@ -256,7 +338,10 @@ public partial class PlanetWorld
         return null;
     }
 
-    /// <summary>Release: fly into a neighbour in the sky, or warp to a world that is not in view.</summary>
+    /// <summary>
+    /// Release: fly into a neighbour in the sky, or warp to a world that is not in view. The flight's end is the target's
+    /// landing point as it hangs now (its placement transform applied), so the arc ends exactly where the world is drawn.
+    /// </summary>
     private void StartFlight()
     {
         var tr = _transfer!;
@@ -300,10 +385,10 @@ public partial class PlanetWorld
         tr.FromUp = Gd(_walker.Up);
         var dist = tr.From.DistanceTo(tr.To);
         var lift = (tr.FromUp + tr.ToUp).Normalized();
-        if (!lift.IsFinite() || lift.LengthSquared() < 0.1f) lift = tr.FromUp;
+        if (!lift.IsFinite() || lift.LengthSquared() < 0.1f) lift = tr.FromUp; // the two ups (nearly) opposite: lift along the departure's up
         // Raised away from both worlds; parametrised linearly, the arc is fastest leaving and arriving, slowest at the top.
-        tr.Control = (tr.From + tr.To) / 2 + lift * dist * 0.38f;
-        tr.Flight = Mathf.Clamp(1.0f + dist / 75f, 1.5f, 2.5f);
+        tr.Control = (tr.From + tr.To) / 2 + lift * dist * ArcLiftFraction;
+        tr.Flight = Mathf.Clamp(FlightBaseSeconds + dist / FlightMetresPerExtraSecond, MinFlightSeconds, MaxFlightSeconds);
         tr.MaxSpeed = 0;
         MaxFrameCameraStepInFlight = 0;
         _phase = Phase.Flying;
@@ -312,8 +397,13 @@ public partial class PlanetWorld
         Mark("flight");
     }
 
+    /// <summary>The camera's position last flight frame (for the probe's largest per-frame step).</summary>
     private Godot.Vector3 _lastFlightCam;
 
+    /// <summary>
+    /// One flight frame: the point on the quadratic Bézier at u = t / flight (two nested lerps; its velocity is
+    /// 2(b − a) / flight), the traveller's scale and up, the trail, the sound and the camera; touchdown at u = 1.
+    /// </summary>
     private void UpdateFlight(FsTree tree, Transfer tr, float dt)
     {
         var u = Mathf.Clamp(tr.T / tr.Flight, 0, 1);
@@ -322,9 +412,11 @@ public partial class PlanetWorld
         var pos = a.Lerp(b, u);
         var vel = (b - a) * 2 / tr.Flight;
         tr.MaxSpeed = MathF.Max(tr.MaxSpeed, vel.Length());
-        // The traveller shrinks (or grows) into the target's scale on the way, so it lands at walking size there.
+        // The traveller shrinks (or grows) into the target's scale on the way, so it lands at walking size there. The scale
+        // is interpolated in log space (geometric), so a 1/10 shrink looks as steady as a 10× growth.
         var s = MathF.Exp(Mathf.Lerp(0, MathF.Log(tr.EndScale), Smooth(u)));
-        // Up turns from where you left to where you land over the second half (feet first for the landing).
+        // Up turns from where you left to where you land over the last 65 % of the flight (from u = 0.35; feet first for the
+        // landing; research E5 asks for at least the last 0.3 s).
         var up = tr.FromUp.Slerp(tr.ToUp, Smooth(Mathf.Clamp((u - 0.35f) / 0.65f, 0, 1)));
         var fwd = vel.LengthSquared() > 1e-6f ? vel.Normalized() : tr.ToUp;
         _avatar.SetFlying(pos, up, fwd, u, s);
@@ -332,14 +424,25 @@ public partial class PlanetWorld
         _audio.Fly(u);
         FlightCamera(pos, up, fwd, s, u, tr, dt);
         var step = _camera.GlobalPosition.DistanceTo(_lastFlightCam);
+        // Measured relative to the traveller's scale (floored at 0.05), and not in the first 2 % (the take-off frame's step
+        // from the walking camera is not a flight step).
         if (u > 0.02f) MaxFrameCameraStepInFlight = MathF.Max(MaxFrameCameraStepInFlight, step / MathF.Max(s, 0.05f));
         _lastFlightCam = _camera.GlobalPosition;
         if (u >= 1) Land(tree, tr);
     }
 
+    /// <summary>Smoothstep: 0 → 1 with zero slope at both ends (an ease in and out).</summary>
     private static float Smooth(float x) => x * x * (3 - 2 * x);
 
-    /// <summary>Touchdown: re-express everything in the target's frame (no visible jump), make it the current planet.</summary>
+    /// <summary>
+    /// Touchdown: re-express everything in the target's frame (no visible jump), make it the current planet.
+    /// <para>
+    /// Multiplying by the inverse of the target's placement turns the target's frame into the world frame (AD-41): the
+    /// camera, its smoothing state and the planet you left are all moved by it, so on screen nothing changes. Anything
+    /// new that holds a position across a landing must be moved here too, or it will jump. The walker then stands where
+    /// the flight ended, facing where the camera looks, and the camera blends into its walking pose (E5: ≤ 0.6 s).
+    /// </para>
+    /// </summary>
     private void Land(FsTree tree, Transfer tr)
     {
         var body = tr.Target!;
@@ -366,18 +469,18 @@ public partial class PlanetWorld
         facing = facing.LengthSquared() > 0.01f ? NVector3.Normalize(facing) : tr.LandFacing;
         _walker.Teleport(body.Comp.Surface, up, facing);
         _avatar.Scale = Godot.Vector3.One;
-        _avatar.Land(impact: 8f);
+        _avatar.Land(impact: FlightLandingImpact);
         var flightUp = (inv.Basis * tr.ToUp).Normalized();
         PoseAvatar(0); // the traveller stands where it touched down in this same frame (no stale pose: no cut)
         LastLandingUpError = Mathf.RadToDeg(Gd(up).AngleTo(flightUp));
         _overlook01 = 0;
         _flightTrail.End();
-        _audio.Land(8f);
+        _audio.Land(FlightLandingImpact);
         _audio.Arrive();
         _landFx.Burst(Gd(_walker.Feet), Gd(up), PlanetArt.Palette(body.Comp.Theme).Accent);
         _phase = Phase.Walking;
         _transfer = null;
-        _camBlend = _camBlendTotal = 0.6f;
+        _camBlend = _camBlendTotal = LandingBlendSeconds;
         _camBlendFrom = _camera.GlobalTransform;
         LastLandingCameraJump = 0; // measured by the probe across the frame (camera position before vs after)
         Mark("land");
@@ -391,15 +494,24 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ warp (a destination that is not in the sky)
 
+    /// <summary>A warp's rise into the light and its descent onto the new world, seconds.</summary>
     private const float WarpRiseSeconds = 0.55f, WarpDescentSeconds = 1.0f;
 
+    /// <summary>The rise climbs this high, metres (accelerating: k² of it); the descent starts this high above the landing point.</summary>
+    private const float WarpRiseMetres = 60f, WarpDescentStartMetres = 70f;
+
+    /// <summary>
+    /// One warp frame. The rise and the descent each drive half of the flight progress (0–0.5, then 0.5–1) for the sound,
+    /// the pose and the camera, and the flash follows them: up to full on the rise, down to none on the descent. The
+    /// new world is built at the top, behind the brightest flash, so the swap is never seen.
+    /// </summary>
     private void UpdateWarp(FsTree tree, Transfer tr, float dt)
     {
         if (!tr.Built)
         {
             // Rise into the streak: up and away fast, the screen brightening.
             var k = Mathf.Clamp(tr.T / WarpRiseSeconds, 0, 1);
-            var pos = tr.From + tr.FromUp * (k * k * 60f);
+            var pos = tr.From + tr.FromUp * (k * k * WarpRiseMetres);
             _avatar.SetFlying(pos, tr.FromUp, tr.FromUp, k * 0.5f);
             _flightTrail.Add(pos, 1f);
             _audio.Fly(k * 0.5f);
@@ -415,11 +527,14 @@ public partial class PlanetWorld
                 tr.LandFacing = pose.Facing;
                 tr.To = Gd(_current.Comp.Surface.PointAt(tr.LandUp));
                 tr.ToUp = Gd(tr.LandUp);
-                tr.From = tr.To + tr.ToUp * 70f;
+                tr.From = tr.To + tr.ToUp * WarpDescentStartMetres;
                 tr.Built = true;
                 tr.T = 0;
                 _flightTrail.End();
                 _flightTrail.Begin(tr.From);
+                // The camera is placed afresh in the new world's frame (the old frame is gone): 8 m above and 10 m ahead of
+                // you. The descent's shot looks down, nearly along the local up, so its up is a horizontal (−facing)
+                // instead; the local up would leave LookAt without a roll. Distances by eye.
                 _camPos = tr.From + tr.ToUp * 8f + Gd(tr.LandFacing) * 10f;
                 _camUp = Gd(tr.LandFacing) * -1f;
                 Mark("warp-built");
@@ -440,17 +555,17 @@ public partial class PlanetWorld
         {
             LastFlightSeconds = WarpRiseSeconds + tr.T;
             _walker.Teleport(_current!.Comp.Surface, tr.LandUp, tr.LandFacing);
-            _avatar.Land(impact: 9f);
+            _avatar.Land(impact: WarpLandingImpact);
             PoseAvatar(0);
             _overlook01 = 0;
             _flightTrail.End();
-            _audio.Land(9f);
+            _audio.Land(WarpLandingImpact);
             _audio.Arrive();
             _landFx.Burst(Gd(_walker.Feet), Gd(tr.LandUp), PlanetArt.Palette(_current.Comp.Theme).Accent);
             _phase = Phase.Walking;
             _transfer = null;
             _warpFlash = 0;
-            _camBlend = _camBlendTotal = 0.6f;
+            _camBlend = _camBlendTotal = LandingBlendSeconds;
             _camBlendFrom = _camera.GlobalTransform;
             Mark("land");
             ShowTitleCard(tree, _current.FolderId, null);

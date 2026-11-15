@@ -13,6 +13,13 @@ namespace FileScape.App;
 /// Scripted runs for repeatable evidence: screenshots, journey checks, and frame-time CSVs (docs/evidence.md).
 /// Enabled only by --automate=journey|perf|scanperf|live. Results are written to --out. Every check prints
 /// PASS/FAIL, so a reviewer can see what was asserted rather than trusting a summary.
+/// <para>
+/// This is the older harness, written for the overview visualizations (Classic and District) and the scanner: it drives
+/// the app mostly by direct calls (Select, SetVisualization, the camera rig) rather than injected input, and keeps its
+/// own small copies of the frame-wait, screenshot and check helpers. The walking, places and planets journeys are
+/// <see cref="ProbeBase"/> probes instead, which inject input through Godot's pipeline. The flicker diagnosis lives in
+/// Automation.Flicker.cs.
+/// </para>
 /// </summary>
 public partial class Automation : Node
 {
@@ -65,9 +72,21 @@ public partial class Automation : Node
 
     // ------------------------------------------------------------ scripts
 
+    /// <summary>
+    /// How long a scan may run before a script goes ahead anyway: 120 s for the synthetic data, 300 s where a large real
+    /// tree may be scanned (perf, live). A late scan then shows in the log's scan state rather than hanging the run.
+    /// </summary>
+    private static readonly TimeSpan SyntheticScanTimeout = TimeSpan.FromSeconds(120), LargeScanTimeout = TimeSpan.FromSeconds(300);
+
+    /// <summary>
+    /// --automate=journey: the overview visualizations on synthetic data. Proves selection survives a visualization
+    /// switch (same node id), reset view recovers from disorientation (the root pedestal on screen and pickable), parent
+    /// and back navigation, picking accuracy in both visualizations, the synthetic edge cases are reachable, and Open on
+    /// synthetic data is reported as a mock. Screenshots are the evidence set.
+    /// </summary>
     private async Task Journey()
     {
-        await WaitForScan(TimeSpan.FromSeconds(120));
+        await WaitForScan(SyntheticScanTimeout);
         await Frames(20);
         await Settle();
         await Shot("01-classic-home");
@@ -164,9 +183,13 @@ public partial class Automation : Node
         await Shot("10-district-low-quality");
     }
 
+    /// <summary>
+    /// --automate=perf: frame and GPU times along the same scripted camera path for each visualization × quality, with
+    /// vsync off so the times are the work, not the display rate. Writes one CSV per run and perf-summary.csv.
+    /// </summary>
     private async Task PerfRuns()
     {
-        await WaitForScan(TimeSpan.FromSeconds(300));
+        await WaitForScan(LargeScanTimeout);
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         var summary = new StringBuilder("visualization,quality,frames,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,gpu_mean_ms,gpu_p95_ms,nodes,instances\n");
         foreach (var vis in new[] { 0, 1 })
@@ -176,7 +199,7 @@ public partial class Automation : Node
                 _main.SetVisualization(vis);
                 _main.SetQuality(q);
                 _main.ResetView(snap: true);
-                await Frames(90);
+                await Frames(90); // warm-up before recording, so the first frames after a switch are not measured
                 _main.Perf.StartRecording();
                 await CameraPath(20);
                 var samples = _main.Perf.StopRecording();
@@ -194,24 +217,29 @@ public partial class Automation : Node
         LogMemory();
     }
 
+    /// <summary>
+    /// --automate=scanperf: frame times while a scan is running (the camera slowly orbits the growing layout), relayout
+    /// times, and frames after it finishes; the recording stops after <see cref="ScanPerfLimitMsec"/> at the latest.
+    /// </summary>
     private async Task ScanPerf()
     {
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         _main.Perf.StartRecording();
         var started = Time.GetTicksMsec();
-        while (_main.Session is { IsFinished: false } && Time.GetTicksMsec() - started < 300_000)
+        while (_main.Session is { IsFinished: false } && Time.GetTicksMsec() - started < ScanPerfLimitMsec)
         {
             var t = (Time.GetTicksMsec() - started) / 1000.0;
             if (_main.Layout != null)
             {
                 var b = _main.Layout.Bounds;
+                // Framed to the layout so far, turning 18° a second (a full turn in 20 s) at a 30° pitch.
                 _main.Rig.SetDesired(Visual.Visualization.Gd(b.Center) with { Y = 0 }, Mathf.Max(b.Size.X, -b.Min.Z) * 0.8f + 30, Degrees.Of((float)(t * 18)), Degrees.Of(30));
             }
 
             await Frames(1);
         }
 
-        await Frames(30);
+        await Frames(30); // a few frames after the scan, so "after-scan" is not empty
         var samples = _main.Perf.StopRecording();
         WriteSamples("scanperf", samples);
         var during = samples.Where(s => s.Scanning).Select(s => s.FrameMs).ToList();
@@ -226,10 +254,13 @@ public partial class Automation : Node
         LogMemory();
     }
 
+    /// <summary>The longest the scan-time recording runs, milliseconds of wall clock (five minutes).</summary>
+    private const int ScanPerfLimitMsec = 300_000;
+
     /// <summary>A live run on a real directory: scan time, screenshots, cancellation timing, and an optional real Open.</summary>
     private async Task Live()
     {
-        await WaitForScan(TimeSpan.FromSeconds(300));
+        await WaitForScan(LargeScanTimeout);
         var p = _main.Session!.Snapshot();
         Check(_main.Tree!.Source.IsLive, $"live source: {_main.Tree.Source.RootDisplayPath}");
         Log($"live scan state={p.State} nodes={p.Nodes} dirs={p.Directories} files={p.Files} links={p.Links} bytes={p.LogicalBytes} problems={p.Problems} elapsed={p.Elapsed.TotalMilliseconds:0}ms");
@@ -274,6 +305,7 @@ public partial class Automation : Node
         var requestedAt = Time.GetTicksUsec();
         _main.CancelScan();
         var uiReturnUs = Time.GetTicksUsec() - requestedAt;
+        // Up to 600 frames (≈ 10 s at 60 fps) for the source to stop; the log reports the state it reached either way.
         var waited = 0;
         while (_main.Session is { IsFinished: false } && waited++ < 600)
         {
@@ -294,12 +326,14 @@ public partial class Automation : Node
     /// </summary>
     private async Task QualityStress()
     {
-        await WaitForScan(TimeSpan.FromSeconds(120));
+        await WaitForScan(SyntheticScanTimeout);
         if (_args.NoVsync)
         {
             DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         }
 
+        // 40 rounds, 20 frames apart: visualization flips every two rounds and quality every round, so each pairing
+        // of visualization and quality change is exercised many times (the round count's rationale is not recorded).
         var toggles = 0;
         for (var round = 0; round < 40; round++)
         {
@@ -323,6 +357,12 @@ public partial class Automation : Node
 
     // ------------------------------------------------------------ helpers
 
+    /// <summary>
+    /// Picking accuracy from the current view: clicks (by <see cref="Main.PickAt"/>) the top-face centre of up to
+    /// <see cref="PickTargets"/> nodes in a seeded random order (the same order every run) and requires every
+    /// unoccluded, on-screen, not-under-the-HUD target to resolve to itself. A view with fewer than
+    /// <see cref="MinPickTargets"/> such targets fails: too few targets would prove nothing.
+    /// </summary>
     private async Task PickingAccuracy(string label)
     {
         await Frames(3);
@@ -331,19 +371,21 @@ public partial class Automation : Node
         var cam = _main.Rig.Camera;
         var vp = _main.GetViewport().GetVisibleRect();
         var blocked = _main.Hud.BlockingRects.ToList();
-        var rng = new Random(42);
+        var rng = new Random(PickSeed);
         int tested = 0, hits = 0, zeroTested = 0, zeroHits = 0;
         var candidates = Enumerable.Range(0, tree.Count).OrderBy(_ => rng.Next()).ToList();
         foreach (var id in candidates)
         {
-            if (tested >= 40) break;
+            if (tested >= PickTargets) break;
             var box = layout.NodeBoxes[id];
-            // Aim at the top face centre, the part most likely to be unoccluded.
+            // Aim at the top face centre, the part most likely to be unoccluded (1 cm below the top, so the ray lands
+            // on the face rather than grazing its edge).
             var top = new Vector3(box.Center.X, box.Max.Y - 0.01f, box.Center.Z);
             if (cam.IsPositionBehind(top)) continue;
             var screen = cam.UnprojectPosition(top);
             if (!vp.HasPoint(screen) || blocked.Any(r => r.HasPoint(screen))) continue;
-            // Only count targets whose top centre is not covered by another node from this viewpoint.
+            // Only count targets whose top centre is not covered by another node from this viewpoint (another box hit
+            // more than 5 cm nearer than the target counts as covering it; closer than that is a shared face).
             var picked = _main.PickAt(screen);
             var occluded = picked >= 0 && picked != id && layout.NodeBoxes[picked].Intersect(Visual.Visualization.Num(cam.GlobalPosition), Visual.Visualization.Num((top - cam.GlobalPosition).Normalized())) is { } t && t < (top - cam.GlobalPosition).Length() - 0.05f;
             if (occluded) continue;
@@ -354,10 +396,17 @@ public partial class Automation : Node
         }
 
         Log($"picking[{label}]: {hits}/{tested} unoccluded on-screen targets resolved to the intended node (zero-byte: {zeroHits}/{zeroTested})");
-        Check(tested >= 10, $"picking[{label}] had enough on-screen targets ({tested})");
+        Check(tested >= MinPickTargets, $"picking[{label}] had enough on-screen targets ({tested})");
         Check(tested == 0 || hits == tested, $"picking[{label}] accuracy {hits}/{tested}");
     }
 
+    /// <summary>Picking sample size, the fewest targets that make a meaningful sample, and the shuffle seed.</summary>
+    private const int PickTargets = 40, MinPickTargets = 10, PickSeed = 42;
+
+    /// <summary>
+    /// True when any point of a grid (3 % steps) over the view hits a node. The grid covers 5…75 % across and 15…90 %
+    /// down rather than the whole view (the margins' rationale is not recorded).
+    /// </summary>
     private bool PickedAtCenterOfAnyNode()
     {
         var size = _main.GetViewport().GetVisibleRect().Size;
@@ -372,6 +421,11 @@ public partial class Automation : Node
         return false;
     }
 
+    /// <summary>
+    /// The perf runs' camera path, the same every run: an orbit at the overview distance for the first half, then a
+    /// dolly in to street level (25 m, pitch 34° → 14°) while still orbiting; one and a half turns (540°) in all. The rig is
+    /// snapped every frame, so smoothing does not vary the path. Wall clock (perf is never recorded as a movie).
+    /// </summary>
     private async Task CameraPath(double seconds)
     {
         var b = _main.Layout!.Bounds;
@@ -390,6 +444,7 @@ public partial class Automation : Node
         }
     }
 
+    /// <summary>One CSV of per-frame samples in --out (invariant culture, so tools parse it anywhere).</summary>
     private void WriteSamples(string name, List<PerfRecorder.Sample> samples)
     {
         var sb = new StringBuilder("time_s,frame_ms,gpu_ms,scanning,relayout_ms,nodes\n");
@@ -401,6 +456,7 @@ public partial class Automation : Node
         System.IO.File.WriteAllText(System.IO.Path.Combine(_out, name + ".csv"), sb.ToString());
     }
 
+    /// <summary>Logs managed (after a full collection), process and video memory, MiB.</summary>
     private void LogMemory()
     {
         using var proc = System.Diagnostics.Process.GetCurrentProcess();
@@ -408,6 +464,10 @@ public partial class Automation : Node
         Log($"memory: managed_after_gc={GC.GetTotalMemory(true) / 1048576.0:0.0} MB private={proc.PrivateMemorySize64 / 1048576.0:0.0} MB working_set={proc.WorkingSet64 / 1048576.0:0.0} MB video={Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:0.0} MB nodes={_main.Tree?.Count} instances={_main.InstanceCount}");
     }
 
+    /// <summary>
+    /// Waits for the scan to finish (or the timeout), then up to 600 frames for the main thread to apply the last
+    /// batches and lay out the final tree, so the first screenshot shows the whole tree.
+    /// </summary>
     private async Task WaitForScan(TimeSpan timeout)
     {
         var start = Time.GetTicksMsec();
@@ -426,6 +486,10 @@ public partial class Automation : Node
         Log($"scan finished state={p.State} nodes={p.Nodes} elapsed={p.Elapsed.TotalMilliseconds:0}ms layout_ms={_main.LastLayoutMs:0.0} build_ms={_main.LastBuildMs:0.0} instances={_main.InstanceCount}");
     }
 
+    /// <summary>
+    /// Waits for the camera rig to settle (at most 240 frames, ≈ 4 s at 60 fps, so a rig that never settles cannot hang
+    /// the run), then 8 frames more so the settled view is drawn before a screenshot (the count's rationale is not recorded).
+    /// </summary>
     private async Task Settle()
     {
         for (var i = 0; i < 240 && !_main.Rig.IsSettled; i++)

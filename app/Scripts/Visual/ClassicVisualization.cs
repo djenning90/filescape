@@ -17,6 +17,9 @@ public sealed class ClassicVisualization : Visualization
     private static readonly Color RootPedestalColor = new(0.62f, 0.68f, 0.82f);
     private static readonly Color WireColor = new(0.75f, 0.88f, 1f);
 
+    /// <summary>A wire's cross-section, layout units: 0.08 wide, 0.05 tall (thin beside the pedestals; rationale for the exact size not recorded).</summary>
+    private const float WireWidth = 0.08f, WireHeight = 0.05f;
+
     private readonly BoxMesh _box = new() { Size = Vector3.One };
     private readonly ShaderMaterial _blockMaterial;
     private readonly ShaderMaterial _pedestalMaterial;
@@ -38,7 +41,7 @@ public sealed class ClassicVisualization : Visualization
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             VertexColorUseAsAlbedo = true,
-            AlbedoColor = new Color(1.6f, 1.7f, 2.0f),
+            AlbedoColor = new Color(1.6f, 1.7f, 2.0f), // above 1: unshaded and past the glow threshold, so the wires bloom
         };
         _markerMaterial = new StandardMaterial3D
         {
@@ -64,6 +67,11 @@ public sealed class ClassicVisualization : Visualization
         _ => Palette.Age[AgeBands.Band(node.ModifiedUtc, tree.Source.AgeReferenceUtc)],
     };
 
+    /// <summary>
+    /// The dusk look: an indigo sky, distance fog with aerial perspective, a cool sun with soft shadows (wider on High),
+    /// and the grid ground. Distances here are layout units, not metres (docs/units.md). The values are an art direction
+    /// tuned by eye (rationale not recorded).
+    /// </summary>
     public override void ConfigureEnvironment(WorldEnvironment world, DirectionalLight3D sun, MeshInstance3D ground, Quality quality)
     {
         var sky = new ProceduralSkyMaterial
@@ -111,6 +119,7 @@ public sealed class ClassicVisualization : Visualization
         ground.MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/ground_grid.gdshader") };
     }
 
+    /// <summary>Directories as pedestals, files as blocks (one box each, from the layout), state markers, and a wire along every connector.</summary>
     protected override int Build(FsTree tree, LayoutResult layout, List<int> order)
     {
         var pedestals = new InstanceBatch();
@@ -141,7 +150,7 @@ public sealed class ClassicVisualization : Visualization
         {
             for (var i = 1; i < c.Points.Length; i++)
             {
-                wires.AddSegment(Gd(c.Points[i - 1]), Gd(c.Points[i]), 0.08f, 0.05f, WireColor, 0);
+                wires.AddSegment(Gd(c.Points[i - 1]), Gd(c.Points[i]), WireWidth, WireHeight, WireColor, 0);
             }
         }
 

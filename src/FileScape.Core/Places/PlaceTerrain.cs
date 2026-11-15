@@ -7,6 +7,8 @@ public enum TerrainKind
 {
     /// <summary>A file tower (solid; low files can be stepped onto).</summary>
     Tower,
+
+    /// <summary>The folder's landmark at the centre (solid).</summary>
     Landmark,
 
     /// <summary>A gate pillar (the opening between pillars is walkable).</summary>
@@ -33,6 +35,7 @@ public enum TerrainKind
 /// </summary>
 public readonly record struct TerrainBox(Vector2 Center, Vector2 HalfExtents, float AngleDeg, float Bottom, float Top, TerrainKind Kind, int NodeId = -1)
 {
+    /// <summary>The box's own unit axes in the ground plane, from <see cref="AngleDeg"/>.</summary>
     private (Vector2 U, Vector2 V) Axes()
     {
         var a = AngleDeg * MathF.PI / 180f;
@@ -83,6 +86,7 @@ public readonly record struct TerrainBox(Vector2 Center, Vector2 HalfExtents, fl
         return n * (radius - dist);
     }
 
+    /// <summary>True when a disc at <paramref name="p"/> overlaps the footprint (touching exactly does not count).</summary>
     public bool Overlaps(Vector2 p, float radius) => Closest(p).Distance < radius;
 }
 
@@ -109,6 +113,7 @@ public readonly record struct TerrainRamp(Vector2 Start, Vector2 End, float Half
         return StartHeight + (EndHeight - StartHeight) * high / len;
     }
 
+    /// <summary>The ramp's incline, degrees from level (tests check walking ramps stay under 35°, WALK-05).</summary>
     public float SlopeDeg => MathF.Atan2(MathF.Abs(EndHeight - StartHeight), Vector2.Distance(Start, End)) * 180f / MathF.PI;
 }
 
@@ -116,16 +121,32 @@ public readonly record struct TerrainRamp(Vector2 Start, Vector2 End, float Half
 public readonly record struct TerrainRing(float Inner, float Outer, float Top, float StartDeg, float EndDeg);
 
 /// <summary>
-/// Units (docs/units.md): Places world space, metres, Y up; a footprint's (x, z) is a <see cref="Vector2"/> whose Y
-/// component is world Z. Angles named "…Deg" are place angles, clockwise from north (−Z). Geometry stays in plain floats
-/// here because every value is a length in the same space and the inner loops run per walker sub-step.
 /// The walkable ground of one place (AD-16, WALK-05): the plaza floor at height 0 inside <see cref="BoundaryRadius"/>,
 /// plus boxes (structures, platforms, steps), ramps and tier rings. Only structures that matter for walking are here;
 /// signs, beacons, floor lines and lintels are deliberately absent, so they never snag anyone.
+/// <para>
+/// Units (docs/units.md): Places world space, metres, Y up; a footprint's (x, z) is a <see cref="Vector2"/> whose Y
+/// component is world Z. Angles named "…Deg" are place angles, clockwise from north (−Z). Geometry stays in plain floats
+/// here because every value is a length in the same space and the inner loops run per walker sub-step.
+/// </para>
+/// Built by <see cref="PlaceComposer"/> with the composition and immutable afterwards; the <see cref="Walker"/> queries it
+/// every sub-step, so box lookups go through a uniform grid instead of scanning every box.
 /// </summary>
 public sealed class PlaceTerrain
 {
+    /// <summary>
+    /// The lookup grid's cell size, metres: a box is listed in every cell its bounding circle touches. About a tower
+    /// cell or two (2.4 m), so a walker's query touches only a few cells (rationale for the exact value not recorded).
+    /// </summary>
     private const float CellSize = 4f;
+
+    /// <summary>
+    /// A solid whose top is at most this far above the feet does not make a spot unclear (metres): the support being stood
+    /// on (top = feet) and anything within 5 cm of it is ground, not an obstacle.
+    /// </summary>
+    private const float ClearanceTolerance = 0.05f;
+
+    /// <summary>Grid cell (x, z) → indices into <see cref="Boxes"/> of the boxes that may reach it.</summary>
     private readonly Dictionary<(int, int), List<int>> _grid = [];
 
     public PlaceTerrain(IReadOnlyList<TerrainBox> boxes, IReadOnlyList<TerrainRamp> ramps, IReadOnlyList<TerrainRing> rings, float boundaryRadius)
@@ -154,6 +175,7 @@ public sealed class PlaceTerrain
     /// <summary>Walkers stay inside this radius (WALK-05: nobody falls off the world).</summary>
     public float BoundaryRadius { get; }
 
+    /// <summary>Open ground with no structures, 60 m to the boundary: used while no place is composed (and by tests).</summary>
     public static readonly PlaceTerrain Flat = new([], [], [], 60f);
 
     private static int Cell(float v) => (int)MathF.Floor(v / CellSize);
@@ -212,7 +234,7 @@ public sealed class PlaceTerrain
         foreach (var i in BoxesNear(p, radius))
         {
             var b = Boxes[i];
-            if (b.Overlaps(p, radius) && b.Top > feet + 0.05f && b.Bottom < feet + height) return false;
+            if (b.Overlaps(p, radius) && b.Top > feet + ClearanceTolerance && b.Bottom < feet + height) return false;
         }
 
         return true;

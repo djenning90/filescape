@@ -56,7 +56,7 @@ public class SyntheticAndModelTests
         tree.Find("cloud-folder").ScanState.Should().Be(DirScanState.NotTraversed);
         tree.Find("hidden-settings.ini").Flags.Should().HaveFlag(NodeFlags.Hidden);
         var longFile = tree.Find("deeply-nested-file-whose-full-path-exceeds-the-classic-260-character-windows-limit.txt");
-        tree.FullPath(longFile.Id).Length.Should().BeGreaterThan(260);
+        tree.FullPath(longFile.Id).Length.Should().BeGreaterThan(260); // past Windows' classic MAX_PATH
     }
 
     [Fact]
@@ -110,6 +110,8 @@ public class SyntheticAndModelTests
         var progress = session.Snapshot();
         progress.State.Should().Be(ScanState.Cancelled);
         progress.CancelAcknowledgedAfter.Should().NotBeNull();
+        // FS-09: "immediately" is checked as under 250 ms (live cancels measure ≈ 0.2 ms; the bound's exact value is not
+        // recorded). Fewer than the 50,000 targeted nodes shows the scan stopped rather than finishing.
         progress.CancelAcknowledgedAfter!.Value.Should().BeLessThan(TimeSpan.FromMilliseconds(250));
         tree.Count.Should().BeLessThan(50_000);
         tree.Nodes.Should().Contain(n => n.ScanState == DirScanState.Cancelled);

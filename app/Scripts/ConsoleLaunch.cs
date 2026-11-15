@@ -16,14 +16,22 @@ public static class ConsoleLaunch
     /// <summary>True when stdout is an interactive console that did not wait for us (not the wrapper, not a pipe or file).</summary>
     public static bool DetachedConsole { get; private set; }
 
+    /// <summary>A one-line description of stdout and the parent process, for the start-up log.</summary>
     public static string Describe { get; private set; } = "unknown";
 
+    /// <summary>Win32 STD_OUTPUT_HANDLE.</summary>
+    private const int StdOutputHandle = -11;
+
+    /// <summary>
+    /// Works out once, at start-up, whether stdout is a console that did not wait for us (sets <see cref="DetachedConsole"/>
+    /// and prints the two "[console]" hints if so). Off Windows, or if the Win32 calls fail, it only records why.
+    /// </summary>
     public static void Detect()
     {
         if (!OperatingSystem.IsWindows()) { Describe = "not Windows"; return; }
         try
         {
-            var type = GetFileType(GetStdHandle(-11));
+            var type = GetFileType(GetStdHandle(StdOutputHandle)); // FILE_TYPE_DISK = 1, CHAR (a console) = 2, PIPE = 3
             var parent = ParentName();
             var wrapper = parent?.EndsWith(".console", StringComparison.OrdinalIgnoreCase) == true;
             Describe = $"stdout {(type switch { 2 => "console", 3 => "pipe", 1 => "file", _ => "none" })}, parent {parent ?? "?"}";
@@ -47,10 +55,11 @@ public static class ConsoleLaunch
         if (DetachedConsole) GD.Print("[exit] This terminal was already free: press Enter for a fresh prompt.");
     }
 
+    /// <summary>The parent process's name (the console wrapper is "FileScape.console"), or null if it cannot be found.</summary>
     private static string? ParentName()
     {
         var info = new ProcessBasicInformation();
-        if (NtQueryInformationProcess(Process.GetCurrentProcess().Handle, 0, ref info, Marshal.SizeOf(info), out _) != 0) return null;
+        if (NtQueryInformationProcess(Process.GetCurrentProcess().Handle, 0 /* ProcessBasicInformation */, ref info, Marshal.SizeOf(info), out _) != 0) return null;
         try
         {
             return Process.GetProcessById((int)info.InheritedFromUniqueProcessId.ToInt64()).ProcessName;
@@ -61,6 +70,7 @@ public static class ConsoleLaunch
         }
     }
 
+    /// <summary>The Win32 PROCESS_BASIC_INFORMATION layout; only the parent's process id is read.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct ProcessBasicInformation
     {

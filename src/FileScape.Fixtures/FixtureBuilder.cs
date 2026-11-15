@@ -5,9 +5,15 @@ using Microsoft.Win32.SafeHandles;
 
 namespace FileScape.Fixtures;
 
-/// <summary>What the fixture contains, so tests and people can check a scan against it.</summary>
+/// <summary>
+/// What the fixture contains, so tests and people can check a scan against it. The builders count every directory,
+/// file, link and logical byte as they create it (<see cref="FixtureBuilder.MakeDir"/>, <see cref="FixtureBuilder.WriteFile"/>),
+/// and each case the platform could not create is listed in <see cref="Skipped"/> instead, so expectations always
+/// match what is really on disk. The scanner tests compare a scan with these counts.
+/// </summary>
 public sealed class FixtureManifest
 {
+    /// <summary>The fixture's own directory (holds the marker; counted as the first expected directory).</summary>
     public required string Root { get; init; }
 
     /// <summary>Counts as the scanner should see them: entries inside the access-denied directory are excluded, the marker file included.</summary>
@@ -16,6 +22,7 @@ public sealed class FixtureManifest
     public int ExpectedLinks { get; set; }
     public long ExpectedLogicalBytes { get; set; }
 
+    /// <summary>The last junction created (in the edge-case fixture, the loop back to the root); null when none could be made.</summary>
     public string? JunctionLoop { get; set; }
     public string? DirectorySymlink { get; set; }
     public string? FileSymlink { get; set; }
@@ -27,6 +34,8 @@ public sealed class FixtureManifest
     public string? LongPathFile { get; set; }
     public List<string> UnicodeNames { get; } = [];
     public List<string> HiddenOrSystem { get; } = [];
+
+    /// <summary>Cases not created on this machine (not Windows, no privilege, a failed tool), with the reason.</summary>
     public List<string> Skipped { get; } = [];
 
     public override string ToString() =>
@@ -43,7 +52,11 @@ public sealed class FixtureManifest
 /// </summary>
 public static class FixtureBuilder
 {
+    /// <summary>The marker file every fixture directory carries; <see cref="Delete"/> refuses a directory without it.</summary>
     public const string MarkerName = ".filescape-fixture";
+
+    /// <summary>How long to wait for a helper process (mklink, icacls), milliseconds: they finish at once; a hung one must not hang a test run.</summary>
+    private const int ToolTimeoutMilliseconds = 10_000;
 
     public static readonly string[] UnicodeFileNames =
     [
@@ -51,8 +64,15 @@ public static class FixtureBuilder
         "combining-éclair.txt", "кириллица-отчёт.docx", "한국어-문서.pdf", "mixed-Ꮳℌℰℛ🜲.dat",
     ];
 
+    /// <summary>Where fixtures live by default: %TEMP%\FileScape-fixtures (the only place <see cref="DeleteAllUnderDefaultParent"/> looks).</summary>
     public static string DefaultParent => Path.Combine(Path.GetTempPath(), "FileScape-fixtures");
 
+    /// <summary>
+    /// Creates the edge-case fixture (wide, deep, zero-byte, Unicode, a path over 300 characters, size outliers including a
+    /// 10 GiB sparse file and a hard link, hidden/system/read-only files, a junction loop, symlinks, an access-denied
+    /// folder) in a new, uniquely named, marked directory under <paramref name="parent"/>, and returns what it holds.
+    /// </summary>
+    /// <param name="includeVanishing">Also creates a "vanishing" folder, for tests that delete it during a scan.</param>
     public static FixtureManifest Create(string? parent = null, bool includeVanishing = true)
     {
         parent ??= DefaultParent;
@@ -89,7 +109,7 @@ public static class FixtureBuilder
             m.UnicodeNames.Add(name);
         }
 
-        // Long path: more than 300 characters overall.
+        // Long path: more than 300 characters overall (past Windows' classic MAX_PATH of 260, so long-path handling is exercised).
         cursor = MakeDir(m, root, "long-path");
         for (var i = 0; cursor.Length < 320; i++)
         {
@@ -270,6 +290,7 @@ public static class FixtureBuilder
         return n;
     }
 
+    /// <summary>Creates a directory and counts it in the manifest.</summary>
     internal static string MakeDir(FixtureManifest m, string parent, string name)
     {
         var path = Path.Combine(parent, name);
@@ -278,6 +299,7 @@ public static class FixtureBuilder
         return path;
     }
 
+    /// <summary>Writes a file and counts it (and its bytes) in the manifest.</summary>
     internal static void WriteFile(FixtureManifest m, string path, byte[] content)
     {
         File.WriteAllBytes(path, content);
@@ -285,6 +307,7 @@ public static class FixtureBuilder
         m.ExpectedLogicalBytes += content.Length;
     }
 
+    /// <summary>Creates a directory junction (Windows); a failure is recorded in <see cref="FixtureManifest.Skipped"/>.</summary>
     internal static void CreateJunction(FixtureManifest m, string link, string target)
     {
         // mklink /J needs no elevation or Developer Mode.
@@ -295,7 +318,7 @@ public static class FixtureBuilder
         psi.ArgumentList.Add(link);
         psi.ArgumentList.Add(target);
         using var p = Process.Start(psi)!;
-        p.WaitForExit(10_000);
+        p.WaitForExit(ToolTimeoutMilliseconds);
         if (p.ExitCode == 0 && Directory.Exists(link))
         {
             m.JunctionLoop = link;
@@ -307,6 +330,11 @@ public static class FixtureBuilder
         }
     }
 
+    /// <summary>
+    /// Creates a folder holding one file and denies the current user read/execute on it (a deny ACE, inherited by its
+    /// contents), so the scanner meets an access-denied folder. This is the fixture's only permission change, on its own
+    /// folder; <see cref="Delete"/> removes the ACE first. If icacls fails, the file counts as visible.
+    /// </summary>
     internal static void CreateDenied(FixtureManifest m, string path)
     {
         Directory.CreateDirectory(path);
@@ -334,10 +362,14 @@ public static class FixtureBuilder
         psi.ArgumentList.Add(op);
         psi.ArgumentList.Add(arg);
         using var p = Process.Start(psi)!;
-        p.WaitForExit(10_000);
+        p.WaitForExit(ToolTimeoutMilliseconds);
         return p.ExitCode == 0;
     }
 
+    /// <summary>
+    /// Creates a file of logical size <paramref name="length"/> that takes almost no disk space (NTFS sparse: the length is
+    /// set, nothing is written). Windows only; elsewhere, or if the sparse flag is refused, the case is recorded as skipped.
+    /// </summary>
     internal static void CreateSparse(FixtureManifest m, string path, long length)
     {
         if (!OperatingSystem.IsWindows())
@@ -361,7 +393,7 @@ public static class FixtureBuilder
         m.ExpectedLogicalBytes += length;
     }
 
-    private const uint FsctlSetSparse = 0x000900C4;
+    private const uint FsctlSetSparse = 0x000900C4; // FSCTL_SET_SPARSE (winioctl.h)
 
 #pragma warning disable SYSLIB1054
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]

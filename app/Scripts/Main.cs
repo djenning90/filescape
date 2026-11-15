@@ -15,9 +15,39 @@ using GVector3 = Godot.Vector3;
 namespace FileScape.App;
 
 /// <summary>
-/// The application controller. It owns the current tree, scan session, layout, active visualization, and the
-/// selection, and it routes input and HUD intents. The data flow is one-way: scan → tree → layout → visualization.
-/// The selection refers only to node ids (docs/architecture.md).
+/// The application controller: the one node that owns the shared session — the current tree and its scan session,
+/// the navigator (current folder and history), the selection, the shell actions, the HUD and the probes' state file —
+/// and routes input and HUD intents to whichever experience is active (AD-15). The data flow is one-way: scan → tree →
+/// layout or composition → scene; the selection refers only to node ids, so it survives re-layout, recomposition and a
+/// change of experience (docs/architecture.md).
+/// <para>
+/// FileScape needs one owner for this because every experience (Places, the Classic and District maps, Planets) shows
+/// the same tree and the same "where you are": switching (Tab, M, V) must keep the folder, the selection and the
+/// history. Scan batches are applied only here, on the main thread, within a per-frame budget (AD-04).
+/// </para>
+/// <para>
+/// The partial files, by concern:
+/// <list type="bullet">
+/// <item><c>Main.cs</c>: start-up and command line, the scene, scanning, the frame loop, the maps' camera and picking,
+/// input routing (<see cref="_Input"/> sees releases first; <see cref="_UnhandledInput"/> takes presses no control
+/// consumed, AD-12), deliberate shell actions, HUD content, shutdown (SHUT-01).</item>
+/// <item><c>Main.Places.cs</c>: the Places experience — switching experiences, composing a place, travel through
+/// gates and the threshold transition between places, signs and the gate chip.</item>
+/// <item><c>Main.Walk.cs</c>: locomotion in Places — walking via the Core <see cref="Walker"/>, flight, landing,
+/// guided glides and mouse look.</item>
+/// <item><c>Main.Aerial.cs</c>: the aerial world seen when flying high, and travel between places from the air.</item>
+/// <item><c>Main.World.cs</c>: the connected world — the live <see cref="WorldExplorer"/>, following links, Go to path
+/// and Locations, the hidden/system filter.</item>
+/// <item><c>Main.Projects.cs</c>: prominence (pins, known folders, projects), README and editor actions.</item>
+/// <item><c>Main.Planets.cs</c>: the planetary world on the shared session (<see cref="IWorldSession"/>).</item>
+/// <item><c>Main.Settings.cs</c>: the user's preferences.</item>
+/// </list>
+/// </para>
+/// <para>
+/// Assumptions to keep: only this class mutates the tree (single writer, AD-04); nothing here may block on the
+/// filesystem (listings and README reads run off the main thread); and a held key or captured mouse must always be
+/// released on focus loss, dialogs and lost releases (<see cref="ReleaseAllInput"/>).
+/// </para>
 /// </summary>
 public partial class Main : Node3D
 {
@@ -63,7 +93,26 @@ public partial class Main : Node3D
     /// Map re-layout during a scan is throttled to this interval, adapted to about 8× the last layout+build cost
     /// (0.25–3 s), so re-layout takes at most ≈ 1/8 of the frame time (AD-04).
     /// </summary>
-    private TimeSpan _layoutInterval = TimeSpan.FromSeconds(0.25);
+    private TimeSpan _layoutInterval = TimeSpan.FromSeconds(MinRelayoutSeconds);
+
+    /// <summary>
+    /// The adaptive re-layout cadence (AD-04): wait this many times the last layout+build cost between re-layouts while
+    /// scanning, so re-layout takes about 1/8 of the time. Higher: steadier frames, a map that fills in more jerkily.
+    /// </summary>
+    private const int RelayoutCostMultiple = 8;
+
+    /// <summary>The re-layout cadence's limits, seconds: no faster than 4 a second, never stale for longer than 3 s.</summary>
+    private const double MinRelayoutSeconds = 0.25, MaxRelayoutSeconds = 3.0;
+
+    /// <summary>A frame gap longer than this, milliseconds, is recorded as a hitch for outside probes (TEST-03).</summary>
+    private const int HitchThresholdMs = 50;
+
+    /// <summary>The planets' breadcrumb and counts follow the listing at most this often.</summary>
+    private static readonly TimeSpan PlanetHudRefreshInterval = TimeSpan.FromSeconds(0.5);
+
+    /// <summary>A listing that has taken longer than this, seconds, is named in the status line ("waiting on Windows").</summary>
+    private const double SlowListingNoticeSeconds = 1.0;
+
     private bool _needsInitialFrame;
     private bool _scanFinishedReported;
 
@@ -110,11 +159,17 @@ public partial class Main : Node3D
     /// <summary>True when an isolated experiment runs instead of FileScape (nothing else is built).</summary>
     private bool _experimentOnly;
 
+    /// <summary>
+    /// Start-up: reads the command line, builds the scene, loads preferences, picks the experience and the starting
+    /// data (hub, Starter Sky, a folder, or the synthetic sample) and attaches the probe or automation the command line
+    /// names. An isolated experiment (<c>--experiment</c>) builds only itself and returns early.
+    /// </summary>
     public override void _Ready()
     {
         ConsoleLaunch.Detect();
         InputBindings.Register();
         var args = CommandLine.Parse(OS.GetCmdlineUserArgs());
+        // 96 dpi is Windows' 100 % scale; the UI follows the screen's scaling between 100 % and 300 % unless --ui-scale says otherwise.
         var dpiScale = Mathf.Clamp(DisplayServer.ScreenGetDpi() / 96f, 1f, 3f);
         GetWindow().ContentScaleFactor = args.UiScale ?? dpiScale;
         GetWindow().Title = "FileScape";
@@ -196,6 +251,7 @@ public partial class Main : Node3D
             AddChild(automation);
         }
 
+        // SHUT-01 instrument: 4 s lets the start-up finish and the first place appear before the held state begins.
         if (args.TestHold is { } hold) GetTree().CreateTimer(4.0).Timeout += () => EnterTestHold(hold);
     }
 
@@ -240,6 +296,11 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Builds the nodes every experience shares: environment, sun, ground, the two maps' roots, the camera rig, the
+    /// maps' selection and hover highlights, the label and sign layers and the HUD (wired to its intents), then each
+    /// experience's own scene. Dialogs are added deferred, once the HUD's UI root is in the tree.
+    /// </summary>
     private void BuildScene()
     {
         _world = new WorldEnvironment();
@@ -247,6 +308,8 @@ public partial class Main : Node3D
         _sun = new DirectionalLight3D { ShadowEnabled = true };
         _sun.DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits;
         AddChild(_sun);
+        // A 40 km ground plane, far wider than any layout, so its edge is never in view; set 1 mm below y = 0 so it never
+        // z-fights with bases and tiles that sit exactly on the ground.
         _ground = new MeshInstance3D
         {
             Mesh = new PlaneMesh { Size = new Vector2(40_000, 40_000) },
@@ -267,8 +330,11 @@ public partial class Main : Node3D
         var highlight = GD.Load<Shader>("res://Shaders/highlight.gdshader");
         _selectionBox = new MeshInstance3D { Mesh = new BoxMesh(), MaterialOverride = new ShaderMaterial { Shader = highlight }, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         _hoverBox = new MeshInstance3D { Mesh = new BoxMesh(), MaterialOverride = new ShaderMaterial { Shader = highlight }, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        // Hover is the quieter of the two highlights: no pulse, and faces only faintly tinted (3 %), so the edges carry it.
         ((ShaderMaterial)_hoverBox.MaterialOverride).SetShaderParameter("pulse", 0f);
         ((ShaderMaterial)_hoverBox.MaterialOverride).SetShaderParameter("face_alpha", 0.03f);
+        // The maps' selection marker from afar: a thin (0.12 m radius) unit-high light column scaled to height in
+        // UpdateHighlights, and an unshadowed spot from above (34 m reach, 20° cone) that lights the selected box.
         _beam = new MeshInstance3D
         {
             Mesh = new CylinderMesh { TopRadius = 0.12f, BottomRadius = 0.12f, Height = 1, RadialSegments = 12, Rings = 1 },
@@ -418,13 +484,18 @@ public partial class Main : Node3D
 
     // ---------------------------------------------------------------- frame loop
 
+    /// <summary>
+    /// The frame loop: applies scan batches within <see cref="BatchBudget"/>, then runs the active experience — Planets
+    /// hands the frame to <see cref="PlanetWorld"/>; Places recomposes, advances any transition, moves the user and checks
+    /// gate crossings; the maps re-layout (throttled while scanning). The shared bookkeeping runs last (<see cref="FinishFrame"/>).
+    /// </summary>
     public override void _Process(double delta)
     {
         if (_closing) return; // SHUT-01: no new work once closing has begun
         if (_experimentOnly) return;
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
-        if (_now > TimeSpan.Zero && (now - _now).TotalMilliseconds > 50)
+        if (_now > TimeSpan.Zero && (now - _now).TotalMilliseconds > HitchThresholdMs)
         {
             // TEST-03 diagnostics: the last long frame (the gap since the previous frame began), for outside probes.
             _lastHitchMs = (now - _now).TotalMilliseconds;
@@ -441,7 +512,7 @@ public partial class Main : Node3D
             _planets.Tick(delta, blockedKeys, pointerBlocked);
             // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
             // "You are in" empty, because the HUD was set before the root was listed). At most twice a second.
-            if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= TimeSpan.FromSeconds(0.5))
+            if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= PlanetHudRefreshInterval)
             {
                 _planetHudTreeVersion = _tree.Version;
                 _planetHudAt = _now;
@@ -528,6 +599,10 @@ public partial class Main : Node3D
     private long _planetHudTreeVersion = -1;
     private TimeSpan _planetHudAt = TimeSpan.Zero;
 
+    /// <summary>
+    /// Applies queued scan batches to the tree, oldest first, until the frame's <see cref="BatchBudget"/> is spent (the
+    /// rest wait for the next frame), and hands each batch's explorer replies on. Only here does the tree change (AD-04).
+    /// </summary>
     private void DrainBatches()
     {
         if (_session == null || _tree == null)
@@ -543,6 +618,7 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>Maps only: re-layout when the tree changed, but during a scan no more often than <see cref="_layoutInterval"/>.</summary>
     private void MaybeRelayout(TimeSpan now)
     {
         if (_tree == null || _tree.Count == 0 || _tree.Version == _layoutTreeVersion)
@@ -582,7 +658,7 @@ public partial class Main : Node3D
         Perf.MarkRelayout(LastLayoutMs + LastBuildMs);
 
         // Adaptive cadence: re-layout costs at most about 1/8 of the time during a scan.
-        _layoutInterval = TimeSpan.FromSeconds(Math.Clamp((LastLayoutMs + LastBuildMs) * 8 / 1000.0, 0.25, 3.0));
+        _layoutInterval = TimeSpan.FromSeconds(Math.Clamp((LastLayoutMs + LastBuildMs) * RelayoutCostMultiple / 1000.0, MinRelayoutSeconds, MaxRelayoutSeconds));
 
         if (_needsInitialFrame && _experience != Experience.Places)
         {
@@ -599,12 +675,14 @@ public partial class Main : Node3D
 
     // ---------------------------------------------------------------- visualization
 
+    /// <summary>Switches between High and Low quality (the toolbar button and its key).</summary>
     public void ToggleQuality()
     {
         _quality = _quality == Quality.High ? Quality.Low : Quality.High;
         SetQuality(_quality);
     }
 
+    /// <summary>Applies a quality level to the active experience's lighting and atmosphere and to the viewport's anti-aliasing.</summary>
     public void SetQuality(Quality q)
     {
         _quality = q;
@@ -615,6 +693,7 @@ public partial class Main : Node3D
         _hud.SetQuality(_quality.ToString());
     }
 
+    /// <summary>High: 4× MSAA; Low: the cheaper FXAA post-pass instead.</summary>
     private void ApplyQualityToViewport()
     {
         var vp = GetViewport();
@@ -623,6 +702,26 @@ public partial class Main : Node3D
     }
 
     // ---------------------------------------------------------------- camera / navigation
+    // Map framing (Classic and District). Distances are in file cells (LayoutParams.FileCell) so the two maps, whose
+    // cells differ in size, frame alike; the padding is the share of the box's size the view leaves around it.
+
+    /// <summary>Home: FSN's oblique view from the front, 30° above the horizon, with a 5 % margin.</summary>
+    private static readonly Degrees HomeElevation = Degrees.Of(30);
+
+    private const float HomePadding = 1.05f;
+
+    /// <summary>Home frames at most 60 cells either side of the root, so a root with hundreds of children stays readable.</summary>
+    private const float HomeMaxHalfWidthCells = 60f;
+
+    /// <summary>Overview (NAV-05): steeply from above (62°), the whole tree with a 2 % margin.</summary>
+    private static readonly Degrees OverviewElevation = Degrees.Of(62);
+
+    private const float OverviewPadding = 1.02f;
+
+    /// <summary>Framing a selection: never tighter than 9 cells square, from 25…55° above (the current pitch, clamped), 15 % margin.</summary>
+    private const float SelectionMinSizeCells = 9f, SelectionPadding = 1.15f;
+
+    private static readonly Degrees SelectionMinElevation = Degrees.Of(25), SelectionMaxElevation = Degrees.Of(55);
 
     /// <summary>
     /// The recovery view (Home, NAV-04): the root pedestal and the first row of its children, seen from the front at
@@ -655,13 +754,13 @@ public partial class Main : Node3D
         }
 
         // Keep the home view a readable size even when the root has hundreds of children.
-        var maxHalfWidth = 60f * ActiveVisualization.LayoutParams.FileCell;
+        var maxHalfWidth = HomeMaxHalfWidthCells * ActiveVisualization.LayoutParams.FileCell;
         if (box.Size.X > maxHalfWidth * 2)
         {
             box = new Box(box.Min with { X = MathF.Max(box.Min.X, -maxHalfWidth) }, box.Max with { X = MathF.Min(box.Max.X, maxHalfWidth) });
         }
 
-        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: Degrees.Of(30), yaw: Degrees.Zero, padding: 1.05f);
+        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: HomeElevation, yaw: Degrees.Zero, padding: HomePadding);
         if (snap)
         {
             _rig.Snap();
@@ -684,15 +783,20 @@ public partial class Main : Node3D
         }
 
         var b = _layout.Bounds;
-        _rig.Frame(new Aabb(Visualization.Gd(b.Min), Visualization.Gd(b.Size)), elevation: Degrees.Of(62), yaw: Degrees.Zero, padding: 1.02f);
+        _rig.Frame(new Aabb(Visualization.Gd(b.Min), Visualization.Gd(b.Size)), elevation: OverviewElevation, yaw: Degrees.Zero, padding: OverviewPadding);
         if (snap)
         {
             _rig.Snap();
         }
     }
 
+    /// <summary>F / double-click: frame the selection (eased). See <see cref="FlyToSelection(bool)"/>.</summary>
     public void FlyToSelection() => FlyToSelection(false);
 
+    /// <summary>
+    /// Frames the selection: in Places, within the place (<see cref="FrameInPlace"/>); on a map, a folder with its files
+    /// or a file with a little of its neighbourhood, never tighter than <see cref="SelectionMinSizeCells"/>.
+    /// </summary>
     public void FlyToSelection(bool snap)
     {
         if (_experience == Experience.Places)
@@ -724,23 +828,24 @@ public partial class Main : Node3D
         }
         else
         {
-            // Frame a file with some of its neighbourhood, so it stays in context.
+            // Frame a file with some of its neighbourhood, so it stays in context (2.5 u each side, 0.5 u above and below).
             var grow = new System.Numerics.Vector3(2.5f, 0.5f, 2.5f);
             box = new Box(box.Min - grow, box.Max + grow);
         }
 
         // Never frame tighter than a small neighbourhood, so an empty directory or a tiny file stays in context.
-        var minSize = 9f * ActiveVisualization.LayoutParams.FileCell;
+        var minSize = SelectionMinSizeCells * ActiveVisualization.LayoutParams.FileCell;
         var centre = box.Center;
         var half = System.Numerics.Vector3.Max(box.Size * 0.5f, new System.Numerics.Vector3(minSize * 0.5f, 0, minSize * 0.5f));
         box = new Box(centre - half, centre + half);
-        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: _rig.Pitch.Clamp(Degrees.Of(25), Degrees.Of(55)), padding: 1.15f);
+        _rig.Frame(new Aabb(Visualization.Gd(box.Min), Visualization.Gd(box.Size)), elevation: _rig.Pitch.Clamp(SelectionMinElevation, SelectionMaxElevation), padding: SelectionPadding);
         if (snap)
         {
             _rig.Snap();
         }
     }
 
+    /// <summary>Selects a node by id (ignored if the tree does not hold it), and frames it when <paramref name="fly"/>.</summary>
     public void Select(int id, bool fly = false)
     {
         if (_tree == null || !_tree.Contains(id))
@@ -755,6 +860,7 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>Re-picks what is under the pointer (after it moved); nothing is hovered over a HUD panel.</summary>
     private void UpdateHover()
     {
         var mouse = GetViewport().GetMousePosition();
@@ -767,6 +873,7 @@ public partial class Main : Node3D
         _selection.Hovered = PickAt(mouse);
     }
 
+    /// <summary>The node under a screen point (viewport units) in the active experience, or −1.</summary>
     public int PickAt(Vector2 screen)
     {
         if (_experience == Experience.Places)
@@ -784,6 +891,10 @@ public partial class Main : Node3D
         return Picker.Pick(_tree, _layout, Visualization.Num(origin), Visualization.Num(dir));
     }
 
+    /// <summary>
+    /// The maps' selection and hover boxes, and the selection's beam and spot. The beam is shown only from beyond 18 cells
+    /// (up close it would obstruct); it is 80 u tall in District, whose buildings are taller, and 40 u in Classic.
+    /// </summary>
     private void UpdateHighlights()
     {
         PlaceHighlight(_selectionBox, _selection.Selected, 1.0f);
@@ -800,10 +911,14 @@ public partial class Main : Node3D
             var height = ActiveVisualization is DistrictVisualization ? 80f : 40f;
             _beam.Position = top + new GVector3(0, height / 2, 0);
             _beam.Scale = new GVector3(1, height, 1);
-            _spot.Position = top + new GVector3(0, 14, 0);
+            _spot.Position = top + new GVector3(0, 14, 0); // 14 u above the top, well inside the spot's 34 u reach
         }
     }
 
+    /// <summary>
+    /// Fits a highlight box around a node: 4 % larger than its box plus a margin of 0.12 u × <paramref name="grow"/>
+    /// (1 for the selection, 0.6 for hover), so the outline sits just outside the node's faces.
+    /// </summary>
     private void PlaceHighlight(MeshInstance3D mesh, int id, float grow)
     {
         if (id < 0 || _layout == null || id >= _layout.Count)
@@ -838,6 +953,15 @@ public partial class Main : Node3D
     private Vector2 _flyStartMouse;
     private int _consumedEscapes;
 
+    /// <summary>A press becomes a drag (orbit, pan or look) once the pointer has moved this far, viewport units; less is a click.</summary>
+    private const int DragThreshold = 4;
+
+    /// <summary>One wheel notch on a map: in multiplies the camera distance by 0.87, out by 1.15 (≈ 1/0.87, so in-then-out comes back).</summary>
+    private const float MapWheelZoomIn = 0.87f, MapWheelZoomOut = 1.15f;
+
+    /// <summary>A left-button drag in a place turns 1.4× as far per pixel as right-button look capture (rationale not recorded).</summary>
+    private const float PlaceDragLookMultiplier = 1.4f;
+
     /// <summary>True while a modal dialog is open; scene navigation is paused and held keys are cleared.</summary>
     public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
 
@@ -845,6 +969,12 @@ public partial class Main : Node3D
     public bool IsDragging => _pressButton != MouseButton.None;
     public IEnumerable<string> HeldActionNames => InputBindings.MovementActions.Where(_held.IsHeld);
 
+    /// <summary>
+    /// Sees every event before the GUI. Here go the things no control may swallow: button and key releases (so nothing
+    /// stays held), and, while the scene owns the mouse (map flight or Places look capture), motion, the wheel and the
+    /// Escape that ends it. Planets routes everything to <see cref="PlanetWorld.Input"/>. Presses are left for
+    /// <see cref="_UnhandledInput"/>.
+    /// </summary>
     public override void _Input(InputEvent @event)
     {
         if (_closing) return;
@@ -931,6 +1061,11 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Presses that no UI control consumed (AD-12): mouse buttons and drags for the scene, held movement keys, and
+    /// one-shot commands (<see cref="HandleCommand"/>). On the planets the world sees them first and the shared commands
+    /// get what it leaves.
+    /// </summary>
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_experimentOnly) return;
@@ -966,6 +1101,11 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Mouse buttons in the scene: the wheel (map zoom, or flight speed in Places), right-button flight or look capture,
+    /// double-click (fly to, or travel in Places), and the start and end of a left/middle drag; a left press released
+    /// without dragging selects what is under it.
+    /// </summary>
     private void HandleMouseButton(InputEventMouseButton mb)
     {
         if (mb.Pressed)
@@ -983,7 +1123,7 @@ public partial class Main : Node3D
                 return;
             }
 
-            if (mb.Pressed && !_rig.IsFlying) _rig.Zoom(Mathf.Pow(mb.ButtonIndex == MouseButton.WheelUp ? 0.87f : 1.15f, WheelNotches(mb)));
+            if (mb.Pressed && !_rig.IsFlying) _rig.Zoom(Mathf.Pow(mb.ButtonIndex == MouseButton.WheelUp ? MapWheelZoomIn : MapWheelZoomOut, WheelNotches(mb)));
             return;
         }
 
@@ -1040,6 +1180,7 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>Pointer motion: marks hover for re-picking, and once past <see cref="DragThreshold"/> orbits or pans a map, or looks in a place.</summary>
     private void HandleMouseMotion(InputEventMouseMotion mm)
     {
         _hoverDirty = true;
@@ -1048,7 +1189,7 @@ public partial class Main : Node3D
             return;
         }
 
-        if (!_dragged && mm.Position.DistanceTo(_pressPosition) > 4)
+        if (!_dragged && mm.Position.DistanceTo(_pressPosition) > DragThreshold)
         {
             _dragged = true;
         }
@@ -1061,7 +1202,7 @@ public partial class Main : Node3D
         if (_experience == Experience.Places)
         {
             // In a place you stand somewhere: dragging turns your head (no orbit, no pan).
-            if (_pressButton == MouseButton.Left) PlaceLook(mm.ScreenRelative, CameraRig.LookDegreesPerPixel * 1.4f);
+            if (_pressButton == MouseButton.Left) PlaceLook(mm.ScreenRelative, CameraRig.LookDegreesPerPixel * PlaceDragLookMultiplier);
             return;
         }
 
@@ -1075,6 +1216,11 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// One-shot key commands, by action (never raw keycodes). While a place change or a planet launch is in progress only
+    /// Help works, so travel happens one step at a time. On the planets some keys mean something else first
+    /// (<see cref="HandlePlanetCommand"/>).
+    /// </summary>
     private void HandleCommand(InputEventKey key)
     {
         var planets = _experience == Experience.Planets;
@@ -1135,7 +1281,10 @@ public partial class Main : Node3D
         if (_tree != null && _selection.Parent(_tree)) FlyToSelection();
     }
 
-    /// <summary>Godot reports 0 for ordinary single-notch events from some devices, so 0 counts as one notch.</summary>
+    /// <summary>
+    /// The notches in one wheel event. Godot reports 0 for ordinary single-notch events from some devices, so 0 counts as
+    /// one notch; otherwise the factor is kept within 0.05…10 notches per event.
+    /// </summary>
     private static float WheelNotches(InputEventMouseButton e) => e.Factor > 0 ? Mathf.Clamp(e.Factor, 0.05f, 10f) : 1f;
 
     private void BeginFly(Vector2 mousePosition)
@@ -1172,7 +1321,11 @@ public partial class Main : Node3D
         RepivotOnView();
     }
 
-    /// <summary>After flight, orbit around whatever is under the screen centre: the picked surface, else the ground ahead.</summary>
+    /// <summary>
+    /// After flight, orbit around whatever is under the screen centre: the picked surface, else the ground ahead (only if
+    /// the view points at least slightly down, so a near-horizontal ray does not pivot kilometres away). A pivot nearer
+    /// than 2 u or beyond 3000 u is ignored and the rig keeps its own.
+    /// </summary>
     private void RepivotOnView()
     {
         var cam = _rig.Camera;
@@ -1246,6 +1399,12 @@ public partial class Main : Node3D
         if (_experience == Experience.Places && _pressButton == MouseButton.Left && _dragged) LevelAfterLook();
     }
 
+    /// <summary>
+    /// Per frame: turns held movement keys into motion — the Places walker or flight, else map flight or ground moves.
+    /// When the keyboard belongs elsewhere (focus lost, a dialog, a focused control) every held state is released; during
+    /// a place transition movement pauses but held keys are kept, so walking resumes on arrival (PLACE-16). Also catches
+    /// button releases the OS never delivered.
+    /// </summary>
     private void HandleKeyboardMovement(TimeSpan dt)
     {
         // A focused UI control (or an open dialog) owns the keyboard; navigation resumes when it lets go.
@@ -1339,6 +1498,7 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>Shows the selection in Windows Explorer (or the mock shell's simulation for sample data).</summary>
     public void RequestReveal()
     {
         if (_tree == null || _selection.Selected < 0)
@@ -1360,6 +1520,7 @@ public partial class Main : Node3D
         _hud.Toast("Path copied to the clipboard.");
     }
 
+    /// <summary>Logs a shell action's outcome and toasts it for 6 s: amber when simulated (sample data), green on success, red on failure.</summary>
     private void ReportShell(ShellResult r)
     {
         LastShellMessage = r.Message;
@@ -1377,12 +1538,13 @@ public partial class Main : Node3D
         _confirm.Hide();
     }
 
+    /// <summary>Asks before a consequential action; <paramref name="onOk"/> runs only on Continue. Held input is released first.</summary>
     public void Confirm(string text, Action onOk)
     {
         ReleaseAllInput();
         _pendingConfirm = onOk;
         _confirm.DialogText = text;
-        _confirm.PopupCentered(new Vector2I(560, 200));
+        _confirm.PopupCentered(new Vector2I(560, 200)); // minimum size, viewport units
     }
 
     // ---------------------------------------------------------------- HUD content
@@ -1402,6 +1564,10 @@ public partial class Main : Node3D
         return $"{PlaceText.CategoryName(FileCategories.Of(node.Name)).TrimEnd('s')} file · {SizeFormat.Short(node.Size)}{modified}";
     }
 
+    /// <summary>
+    /// Refreshes the inspector for the selection: in the walking worlds a compact card (or none when nothing is
+    /// selected), on a map the full panel; and which actions (open, reveal, parent, go inside, retry) apply.
+    /// </summary>
     private void UpdateInspector()
     {
         var worldCard = _experience is Experience.Places or Experience.Planets;
@@ -1450,6 +1616,10 @@ public partial class Main : Node3D
         (n.Kind == NodeKind.Directory && (n.ScanState is DirScanState.Failed or DirScanState.Cancelled || (n.Flags & (NodeFlags.AccessDenied | NodeFlags.Unavailable | NodeFlags.EnumerationError)) != 0)) ||
         (n.Kind == NodeKind.Link && n.Link is { Status: LinkStatus.Broken or LinkStatus.Denied or LinkStatus.Unavailable });
 
+    /// <summary>
+    /// The status line from the scan session's snapshot: on-demand exploration (what is being listed, and what Windows is
+    /// slow on), or a bounded scan's progress and outcome. The <c>[scan]</c> log line is printed once per scan (probes parse it).
+    /// </summary>
     private void UpdateStatus()
     {
         if (_session == null || _tree == null)
@@ -1463,7 +1633,7 @@ public partial class Main : Node3D
             // On-demand exploration (AD-17): the source never "completes"; say what it is doing.
             var listed = $"{p.Nodes:N0} entries listed · {p.Directories:N0} folders · {p.Files:N0} files · {p.Links:N0} links · {SizeFormat.Short(p.LogicalBytes)}";
             var bg = p.BackgroundActive ? $" · listing the arrival folder in the background ({p.PendingDirectories:N0} queued)" : "";
-            var waiting = p.CurrentPath != null && p.CurrentOperationDuration.TotalSeconds > 1.0
+            var waiting = p.CurrentPath != null && p.CurrentOperationDuration.TotalSeconds > SlowListingNoticeSeconds
                 ? $" · waiting on Windows for {p.CurrentOperationDuration.TotalSeconds:0.0}s: {p.CurrentPath}"
                 : "";
             var problemsText = p.Problems > 0 ? $" · {p.Problems:N0} folders could not be listed" : "";
@@ -1481,7 +1651,7 @@ public partial class Main : Node3D
         switch (p.State)
         {
             case ScanState.Running:
-                var op = p.CurrentPath != null && p.CurrentOperationDuration.TotalSeconds > 1.0
+                var op = p.CurrentPath != null && p.CurrentOperationDuration.TotalSeconds > SlowListingNoticeSeconds
                     ? $"  ·  waiting on Windows for {p.CurrentOperationDuration.TotalSeconds:0.0}s: {p.CurrentPath}"
                     : "";
                 _hud.SetStatus($"{source}Scanning… {counts}{problems} · {p.PendingDirectories:N0} dirs queued · {p.Elapsed.TotalSeconds:0.0}s{op}", frac, true);
@@ -1510,6 +1680,7 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>The stats overlay (when shown): frame times over the last 120 frames, scene and layout costs, memory and GPU.</summary>
     private void UpdateStats(TimeSpan now)
     {
         if (!_hud.StatsVisible)
@@ -1537,6 +1708,7 @@ public partial class Main : Node3D
             true);
     }
 
+    /// <summary>Window close and quit begin the orderly shutdown; losing focus releases every held input (so Alt-Tab leaves nothing stuck).</summary>
     public override void _Notification(int what)
     {
         if (what == NotificationWMCloseRequest)

@@ -26,6 +26,11 @@ public enum WorldKind
 /// A world's character: its <see cref="Kind"/>, its depth below the root it belongs to, the depth band (1–4) that sets an
 /// ordinary folder's feel, and the repository it is inside (if any), so a repository's child folders can keep a quiet echo
 /// of it. Names only: nothing is read from files (FS-01).
+/// <para>
+/// It sits beside <see cref="PlanetTheme"/> (what the folder holds): the theme keeps the ground, palette and props, and
+/// the character adds the sky, the sun, one arrival prop and the music (AD-48, AD-49; <c>PlanetArt.Character.cs</c>,
+/// <c>SkySynth</c>). A repository also turns the overlook into the workbench (<see cref="PlanetComposer.Compose"/>, AD-50).
+/// </para>
 /// </summary>
 /// <param name="Kind">What the place is.</param>
 /// <param name="Depth">Levels below the root it belongs to (a location root, or the starting folder): 0 at that root.</param>
@@ -60,6 +65,7 @@ public readonly record struct WorldCharacter(WorldKind Kind, int Depth, int Band
     };
 
     /// <summary>The band for a depth below the root: 1 → 1, 2–3 → 2, 4–5 → 3, 6+ → 4 (0 for the root itself).</summary>
+    /// <remarks>The bands widen with depth (one level, two, two, then the rest), so the feel changes less often the deeper you go; the bands are AD-48's.</remarks>
     public static int BandOf(int depth) => depth <= 0 ? 0 : depth == 1 ? 1 : depth <= 3 ? 2 : depth <= 5 ? 3 : MaxBand;
 
     /// <summary>

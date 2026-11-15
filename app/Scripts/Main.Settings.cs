@@ -16,6 +16,10 @@ public partial class Main
     public Preferences Preferences => _prefs;
     public string? PreferencesPath => _prefsPath;
 
+    /// <summary>
+    /// Finds the preferences file (--prefs, else %APPDATA%\FileScape\preferences.json, else none under automation), loads
+    /// it (falling back to defaults with a logged reason) and applies it without saving. Prints the <c>[prefs]</c> line.
+    /// </summary>
     private void LoadPreferences(CommandLine args)
     {
         _prefsPath = args.PreferencesFile is { Length: > 0 } explicitPath
@@ -32,7 +36,8 @@ public partial class Main
         GD.Print($"[prefs] {_prefs.Describe()} ({_prefsPath ?? "not saved: automation"})");
         if (_prefsPath != null && System.IO.File.Exists(_prefsPath) && _prefs.WalkSpeed.Value == WalkParams.PreviousDefaultSpeeds.Walk && _prefs.RunSpeed.Value == WalkParams.PreviousDefaultSpeeds.Run)
         {
-            // KD-28: saved speeds are never overwritten; the saved pair is the old default, so say what changed, once per start.
+            // KD-28: saved speeds are never overwritten; the saved pair is the old default, so say what changed, once per start
+            // (a toast 3 s after start, shown for 10 s).
             GetTree().CreateTimer(3.0).Timeout += () => _hud.Toast(
                 "Places are more compact now. Your saved speeds (walk 8, run 16 m/s) were the old defaults; Settings (F4) → Suggested speeds sets walk 5.5, run 11 m/s.",
                 new Color(1f, 0.9f, 0.6f), 10);
@@ -55,6 +60,7 @@ public partial class Main
     /// <summary>Applies and saves new preferences (the Settings panel; probes use it only to set up a case).</summary>
     public void SetPreferences(Preferences p) => ApplyPreferences(p, save: true);
 
+    /// <summary>Normalises and applies preferences (walker speeds, HUD), and saves them when asked and a file is in use; a failed save is toasted, not fatal.</summary>
     private void ApplyPreferences(Preferences p, bool save)
     {
         _prefs = p.Normalized();

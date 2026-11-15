@@ -14,7 +14,12 @@ for base in paths:
     for f in sorted(base.rglob('*.cs')):
         if any(part.startswith('obj') or part.startswith('bin') for part in f.parts) or '.claude' in f.parts: continue
         lines = f.read_text(encoding='utf-8', errors='replace').split('\n')
+        in_raw = False  # inside a C# raw string literal (""" … """): sample file contents, not code
         for i, line in enumerate(lines):
+            if line.count('\"\"\"') % 2 == 1:
+                in_raw = not in_raw
+                continue
+            if in_raw: continue
             m = DECL.match(line)
             if not m or line.strip().startswith('//'): continue
             if '(' in line.split(m.group(2))[0]: continue  # a local function or expression, not a declaration

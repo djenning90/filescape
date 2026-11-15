@@ -7,6 +7,7 @@ namespace FileScape.Core.Places;
 /// <summary>Why a destination stands out (PROM-01). <see cref="None"/> is the ordinary case.</summary>
 public enum ProminenceKind
 {
+    /// <summary>No stated reason: shown like any other destination.</summary>
     None,
 
     /// <summary>The user pinned it (PROM-03): the strongest, and always the user's own choice.</summary>
@@ -28,14 +29,19 @@ public enum ProminenceKind
 /// <summary>A destination's prominence: what it is, how strongly to show it (0–2), a short mark, and the reason in words.</summary>
 public sealed record ProminenceInfo(ProminenceKind Kind, int Level, string Mark, string Reason)
 {
+    /// <summary>Not prominent: level 0, no mark, no reason.</summary>
     public static readonly ProminenceInfo None = new(ProminenceKind.None, 0, "", "");
 
     public bool IsProminent => Kind != ProminenceKind.None;
 }
 
-/// <summary>What the platform and the user say about places (nothing here comes from file contents).</summary>
+/// <summary>
+/// What the platform and the user say about places (nothing here comes from file contents). The app builds it from the
+/// saved pins, the session's not-a-project overrides and, for a live tree, the OS's known folders; Core tests pass their own.
+/// </summary>
 public sealed class ProminenceContext
 {
+    /// <summary>No pins, known folders or overrides: only homes and project evidence can make a place prominent.</summary>
     public static readonly ProminenceContext Empty = new();
 
     /// <summary>Full paths the user pinned.</summary>
@@ -59,6 +65,11 @@ public sealed class ProminenceContext
 /// </summary>
 public static class Prominence
 {
+    /// <summary>
+    /// A folder's prominence. Path reasons come first, in order of strength (a pin, then a known folder, then a home),
+    /// so the user's own choice always wins; project evidence is checked only when no path reason applies. The hub and
+    /// files are never prominent.
+    /// </summary>
     public static ProminenceInfo For(FsTree tree, int id, ProminenceContext ctx)
     {
         var n = tree[id];
@@ -81,6 +92,7 @@ public static class Prominence
         if (ListAhead.LinuxPath(path) is { } linux)
         {
             if (linux == "/home") return new(ProminenceKind.Home, 2, "⌂", "Home folders of this Linux system's users.");
+            // /root, or /home/<name> itself (exactly two separators): a user's home, not a folder inside it.
             if (linux == "/root" || (linux.StartsWith("/home/", StringComparison.Ordinal) && linux.Count(c => c == '/') == 2))
             {
                 return new(ProminenceKind.Home, 2, "⌂", "A Linux user's home folder.");
@@ -112,6 +124,7 @@ public static class Prominence
             if (projects.Count > 0)
             {
                 projects.Sort(NaturalNameOrder.Instance);
+                // At most three names in the reason; the rest are counted.
                 var shown = string.Join(", ", projects.Take(3)) + (projects.Count > 3 ? $" and {projects.Count - 3} more" : "");
                 return new(ProminenceKind.Projects, 1, "⚙", $"Contains software projects: {shown}.");
             }

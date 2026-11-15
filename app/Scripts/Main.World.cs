@@ -10,17 +10,23 @@ namespace FileScape.App;
 /// The connected world (AD-17/18/19/20): live data comes from a <see cref="WorldExplorer"/> (one namespace from
 /// "This computer" down), places are listed when visited, links are followed on purpose, typed or pasted paths and
 /// the Locations hub reach drives and WSL distributions, and hidden/system entries are filtered from places.
+/// <para>
+/// Requests to the explorer are asynchronous: following a link or going to a path returns a ticket, and the answer
+/// comes back as an <see cref="ExplorerReply"/> inside a scan batch, on the main thread (<see cref="OnExplorerReply"/>).
+/// Until then the HUD shows a "Following…"/"Finding…" note; nothing waits on the filesystem. The bounded whole-tree
+/// scan (<see cref="StartBoundedTree"/>) is the other live mode, kept for the maps.
+/// </para>
 /// </summary>
 public partial class Main
 {
     private WorldExplorer? _explorer;
     private readonly Dictionary<int, int> _pendingFollow = []; // ticket → link id
     private readonly Dictionary<int, string> _pendingGoTo = []; // ticket → typed path
-    private readonly HashSet<int> _ordinaryOverride = [];
+    private readonly HashSet<int> _ordinaryOverride = []; // folders the user said are not projects (IDENT-03)
     private bool _showHidden;
     private bool _awaitingArrival;
     private string? _followCaption;
-    private int _pendingNewRoot = -1;
+    private int _pendingNewRoot = -1; // the Go-to ticket whose answer becomes the new arrival root (Open folder… while live), or −1
 
     public WorldExplorer? Explorer => _explorer;
     public bool ShowHidden => _showHidden;
@@ -63,6 +69,7 @@ public partial class Main
     /// <summary>The current mode, as named in the UI and docs.</summary>
     public string ModeName => _explorer != null ? "Connected world (explore on demand)" : _tree?.Source.IsLive == true ? "Bounded tree scan (whole-tree reference)" : "Sample data";
 
+    /// <summary>Locations › Start fresh here: restart the connected world with the current folder as the arrival root (e.g. after the entry limit).</summary>
     private void StartFreshHere()
     {
         _hud.HideLocations();
@@ -72,6 +79,7 @@ public partial class Main
         StartLive(path);
     }
 
+    /// <summary>Locations › Scan this folder as a tree: the bounded whole-tree scan of the current folder, for the maps.</summary>
     private void ScanHereAsTree()
     {
         _hud.HideLocations();
@@ -86,6 +94,7 @@ public partial class Main
         StartBoundedTree(path);
     }
 
+    /// <summary>A typed path scanned as a bounded tree; the hub is not a folder and cannot be.</summary>
     private void OnScanPathAsTree(string text)
     {
         _hud.HideLocations();
@@ -111,11 +120,17 @@ public partial class Main
         _hud.SetMode(ModeName, _tree?.Source.IsLive == true);
     }
 
+    /// <summary>Called for every applied batch (<see cref="DrainBatches"/>), after the tree holds its nodes.</summary>
     private void HandleReplies(ScanBatch batch)
     {
         foreach (var r in batch.Replies) OnExplorerReply(r);
     }
 
+    /// <summary>
+    /// An explorer request answered: the arrival folder found (or not: start at the hub), a link resolved (travel
+    /// through it, or say why not), or a typed path reached (go there; a file goes to its folder with it selected).
+    /// Replies to tickets no longer pending (a new scan started since) are ignored.
+    /// </summary>
     private void OnExplorerReply(ExplorerReply r)
     {
         if (_tree == null) return;
@@ -235,18 +250,21 @@ public partial class Main
 
     // ------------------------------------------------------------------ Go to path and Locations (LOC-01)
 
+    /// <summary>Ctrl+L: the Locations panel with the path box focused.</summary>
     private void ShowGoToPath()
     {
         ReleaseAllInput();
         _hud.ShowLocations(LocationRows(), focusPath: true);
     }
 
+    /// <summary>L / Ctrl+O: the in-app Locations chooser (LOC-06); its Browse… opens the system folder picker.</summary>
     private void ShowLocations()
     {
         ReleaseAllInput();
         _hud.ShowLocations(LocationRows(), focusPath: false);
     }
 
+    /// <summary>The Locations rows: the hub, the arrival root, and every location root (drive, WSL, network) with its listing state.</summary>
     private List<(int Id, string Text, string Tooltip)> LocationRows()
     {
         var rows = new List<(int, string, string)>();
@@ -295,6 +313,7 @@ public partial class Main
         else _nav.GoTo(_tree, 0);
     }
 
+    /// <summary>A Locations row chosen: travel there (switching to Places from a map), or to the hub.</summary>
     private void OnLocationChosen(int id)
     {
         if (id == HubRow || id == 0)
@@ -310,6 +329,10 @@ public partial class Main
         else _nav.GoTo(_tree, id);
     }
 
+    /// <summary>
+    /// A typed or pasted path: in the connected world ask the explorer to reach it (answered in <see cref="OnExplorerReply"/>);
+    /// from sample data or a bounded tree, start the connected world there.
+    /// </summary>
     private void OnPathSubmitted(string text)
     {
         _hud.HideLocations();
@@ -393,6 +416,7 @@ public partial class Main
 
     // ------------------------------------------------------------------ visibility (VISI-04, AD-19)
 
+    /// <summary>H: show or hide Windows hidden/system entries in the walking worlds (totals always include them).</summary>
     private void ToggleHiddenVisibility()
     {
         _showHidden = !_showHidden;
@@ -407,6 +431,7 @@ public partial class Main
 
     // ------------------------------------------------------------------ identity override (IDENT-03)
 
+    /// <summary>"Not a project" on the card (IDENT-03): the current folder is treated as ordinary, or no longer; prominence and the place update.</summary>
     private void ToggleOrdinaryOverride()
     {
         if (_tree == null) return;
@@ -417,5 +442,6 @@ public partial class Main
         UpdateInspector();
     }
 
+    /// <summary>What kind of place a folder is (project, …) from its listed evidence, unless the user overrode it.</summary>
     private PlaceKindInfo KindOf(int folderId) => _tree == null ? PlaceKindInfo.Ordinary : PlaceKinds.Classify(_tree, folderId, _ordinaryOverride.Contains(folderId));
 }
