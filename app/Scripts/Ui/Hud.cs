@@ -63,12 +63,22 @@ public partial class Hud : CanvasLayer
     private double _toastUntil;
     private PanelContainer _help = null!;
 
+    private readonly List<Control> _extraBlocking = [];
+
+    /// <summary>Adds a panel built elsewhere (the walkthrough's card, the welcome dialog) to <see cref="BlockingRects"/>, so clicks on it reach the GUI, not the world.</summary>
+    public void AddBlocking(Control c) => _extraBlocking.Add(c);
+
     /// <summary>The screen rectangles occupied by the UI, so 3D input and labels can avoid them.</summary>
     public IEnumerable<Rect2> BlockingRects
     {
         get
         {
-            foreach (var c in new Control[] { _topBar, _inspector, _legendPanel, _statusPanel, _help, _settingsPanel, _placePanel, _destPanel, _locPanel, _problemPanel, _notePanel, _flyPanel, _ascentPanel, _hintPanel, _gateChip })
+            foreach (var c in _extraBlocking)
+            {
+                if (c.Visible) yield return c.GetGlobalRect();
+            }
+
+            foreach (var c in new Control[] { _topBar, _legacyPanel, _inspector, _legendPanel, _statusPanel, _help, _settingsPanel, _placePanel, _destPanel, _locPanel, _problemPanel, _notePanel, _flyPanel, _ascentPanel, _hintPanel, _gateChip })
             {
                 if (c.Visible)
                 {
@@ -192,49 +202,31 @@ public partial class Hud : CanvasLayer
         row.AddChild(title);
         row.AddChild(new VSeparator());
         row.AddChild(MakeButton("Open…", () => OpenLocationRequested?.Invoke(), "Open a location (Ctrl+O): This computer (all drives and WSL distributions), a drive, a path, or browse for a folder."));
-        row.AddChild(MakeButton("Sample data", () => DemoRequested?.Invoke(), "Load the deterministic synthetic tree (not your files)."));
+        row.AddChild(MakeButton("Sample world", () => DemoRequested?.Invoke(), "Open the Starter Sky: a small bundled world of sample files (not yours), where the walkthrough happens."));
         _cancel = MakeButton("Cancel scan", () => CancelRequested?.Invoke(), "Stop scanning. The part scanned so far stays explorable.");
         _cancel.Disabled = true;
         _cancel.Visible = false; // shown only while a scan runs: the top bar must fit at 125 % UI scale
         row.AddChild(_cancel);
         row.AddChild(new VSeparator());
         var group = new ButtonGroup();
-        // The planetary world (AD-39) comes first: it is the new experience, easy to find; Places stays beside it to compare.
+        // Planets is FileScape (AD-51): it has the toolbar's place of honour. The older experiences — the flat Places world
+        // and the two whole-tree maps — stay launchable from the Legacy views menu next to it, so they keep working and can
+        // be revisited, without competing for a newcomer's attention.
         _visButtons[3] = new Button
         {
-            Text = "✦ Planets (V)",
+            Text = "✦ Planets",
             ToggleMode = true,
             ButtonGroup = group,
-            TooltipText = "Planets: each folder is a small world you can run round. Its folders hang in the sky above launchers; files stand in groves. Same folder, selection and history as Places (V switches).",
+            TooltipText = "Planets: each folder is a small world you can run round. Its folders hang in the sky above launchers; files stand in groves.",
             FocusMode = Control.FocusModeEnum.None,
         };
         _visButtons[3].AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.55f));
         _visButtons[3].AddThemeColorOverride("font_pressed_color", new Color(1f, 0.93f, 0.7f));
         _visButtons[3].Pressed += () => ExperienceRequested?.Invoke(3);
         row.AddChild(_visButtons[3]);
-        string[] names = ["Places", "Classic FSN", "District"];
-        string[] tips =
-        [
-            "Places: be inside a folder — files around you, child folders as gates you can walk through (Tab / M).",
-            "Classic FSN: whole-tree reference map, FSN-inspired (Tab). The selection is preserved.",
-            "District: whole-tree reference map, futuristic city (Tab). The selection is preserved.",
-        ];
-        for (var i = 0; i < 3; i++)
-        {
-            var index = i;
-            _visButtons[index] = new Button
-            {
-                Text = names[i],
-                ToggleMode = true,
-                ButtonGroup = group,
-                TooltipText = tips[i],
-                FocusMode = Control.FocusModeEnum.None,
-            };
-            _visButtons[i].Pressed += () => ExperienceRequested?.Invoke(index);
-            row.AddChild(_visButtons[i]);
-            if (i == 0) row.AddChild(new Label { Text = " maps:", VerticalAlignment = VerticalAlignment.Center });
-        }
-
+        _legacyButton = MakeButton("Legacy views ▾", ToggleLegacyMenu, "The earlier ways of seeing your files: the flat Places world (folders as doors you walk through) and two whole-tree maps. Same folder, selection and history.");
+        row.AddChild(_legacyButton);
+        BuildLegacyMenu(group);
         row.AddChild(new VSeparator());
         _homeButton = MakeButton("Home", () => ResetRequested?.Invoke(), "Back to the arrival point (Home).");
         row.AddChild(_homeButton);
@@ -401,6 +393,51 @@ public partial class Hud : CanvasLayer
         _legendPanel.AddChild(_legendBox);
     }
 
+    private Button _legacyButton = null!;
+    private PanelContainer _legacyPanel = null!;
+
+    /// <summary>The Legacy views drop-down: Places and the two maps, as ordinary buttons (probes click them by rectangle).</summary>
+    private void BuildLegacyMenu(ButtonGroup group)
+    {
+        _legacyPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
+        _root.AddChild(_legacyPanel);
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 4);
+        _legacyPanel.AddChild(col);
+        string[] names = ["Places — walk through folder doors (V)", "Classic FSN map (Tab)", "District map (Tab)"];
+        string[] tips =
+        [
+            "Places: be inside a folder — files around you, child folders as gates you can walk through. V switches between Planets and Places.",
+            "Classic FSN: whole-tree reference map, FSN-inspired (Tab cycles the maps). The selection is preserved.",
+            "District: whole-tree reference map, futuristic city (Tab cycles the maps). The selection is preserved.",
+        ];
+        for (var i = 0; i < 3; i++)
+        {
+            var index = i;
+            _visButtons[index] = new Button { Text = names[i], ToggleMode = true, ButtonGroup = group, TooltipText = tips[i], FocusMode = Control.FocusModeEnum.None, Alignment = HorizontalAlignment.Left };
+            _visButtons[index].Pressed += () =>
+            {
+                _legacyPanel.Visible = false;
+                ExperienceRequested?.Invoke(index);
+            };
+            col.AddChild(_visButtons[index]);
+        }
+    }
+
+    private void ToggleLegacyMenu()
+    {
+        _legacyPanel.Visible = !_legacyPanel.Visible;
+        if (!_legacyPanel.Visible) return;
+        var r = _legacyButton.GetGlobalRect();
+        _legacyPanel.Position = new Vector2(r.Position.X, r.End.Y + 4);
+        _legacyPanel.ResetSize();
+    }
+
+    /// <summary>The Legacy views button (probes open the menu with it before clicking a view).</summary>
+    public Rect2 LegacyMenuButtonRect => _legacyButton.GetGlobalRect();
+
+    public bool LegacyMenuOpen => _legacyPanel.Visible;
+
     private void BuildHelp()
     {
         _help = new PanelContainer { Visible = false };
@@ -411,15 +448,19 @@ public partial class Hud : CanvasLayer
         var text = new RichTextLabel
         {
             BbcodeEnabled = true,
-            FitContent = true,
-            CustomMinimumSize = new Vector2(560, 0),
+            // A fixed, scrolling area (2026-11-15): the sheet is taller than a 720-pixel window, and with the Learn to play
+            // button above it, a self-sizing label pushed the button off the top of the screen.
+            FitContent = false,
+            ScrollActive = true,
+            CustomMinimumSize = new Vector2(1100, 540),
             Text =
-                "[b]✦ Planets[/b] (V switches with Places; same folder, selection and history)\n" +
+                "[b]✦ Planets[/b]  FileScape's main view. New here? Press [b]Learn to play[/b] above for a few minutes of guided play.\n" +
                 "  Each folder is a small world; its folders hang in the sky above flower launchers; files stand in groves.\n" +
                 "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
                 "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
                 "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n\n" +
+                "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +
                 "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
                 "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
@@ -457,11 +498,31 @@ public partial class Hud : CanvasLayer
                 "Right-drag used to pan; pan is now on the middle button.\n" +
                 "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
         };
-        _help.AddChild(text);
+        // The walkthrough is one click away from Help (PLANET-33), above the control sheet nobody has to read.
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 8);
+        var learn = new Button { Text = "▶ Learn to play (a few minutes of guided play in the sample world)", FocusMode = Control.FocusModeEnum.None };
+        learn.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.45f));
+        learn.Pressed += () =>
+        {
+            _help.Visible = false;
+            LearnToPlayRequested?.Invoke();
+        };
+        column.AddChild(learn);
+        column.AddChild(text);
+        _help.AddChild(column);
         _helpText = text;
+        _learnButton = learn;
     }
 
     private RichTextLabel _helpText = null!;
+    private Button _learnButton = null!;
+
+    /// <summary>Help's Learn to play button (starts the walkthrough).</summary>
+    public event Action? LearnToPlayRequested;
+
+    /// <summary>Help's Learn to play button (probes click it).</summary>
+    public Rect2 LearnToPlayButtonRect => _learnButton.GetGlobalRect();
 
     /// <summary>Shows which build is running at the end of Help (delivery traceability).</summary>
     public void SetBuildIdentifier(string id) => _helpText.Text += $"\n\n[color=#7f8fab]Build: {id}[/color]";

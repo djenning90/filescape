@@ -195,16 +195,21 @@ public partial class Main : Node3D
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
         BuildScene();
         LoadPreferences(args);
+        BuildTutorialUi();
         _quality = args.Quality ?? Quality.High;
         _visIndex = args.Visualization is 1 ? 1 : 0;
         // The reference-view evidence scripts predate Places and expect a map unless --vis says otherwise (AD-15).
         var legacyScript = args.Automation is "journey" or "perf" or "scanperf" or "live" or "qualitystress" or "flicker" or "navigation";
-        _experience = args.Experience ?? (legacyScript ? Experience.Classic : Experience.Places);
+        // A person's launch (no automation) opens Planets at This computer (AD-51, PLANET-32) unless they chose a mode or a
+        // folder; explicit --vis and --root always win. Automated journeys keep their historical defaults (Places on a
+        // synthetic tree, maps for the evidence scripts) so their expectations stay valid.
+        var personLaunch = args.Automation == null;
+        _experience = args.Experience ?? (legacyScript ? Experience.Classic : personLaunch ? Experience.Planets : Experience.Places);
         if (_experience != Experience.Places) _visIndex = _experience == Experience.Classic ? 0 : 1;
         ApplyExperience(frame: false);
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
 
-        if (LocationRequest.Parse(args.Root) is { IsHub: true } && !args.BoundedTree)
+        if ((LocationRequest.Parse(args.Root) is { IsHub: true } || (args.Root == null && personLaunch && args.SyntheticNodes == null)) && !args.BoundedTree)
         {
             StartLive(null); // --root=hub or --root="This PC": start at the hub (LOC-06)
         }
@@ -223,6 +228,7 @@ public partial class Main : Node3D
             StartScan(new SyntheticTreeSource { TargetNodes = args.SyntheticNodes ?? 12_000, NodesPerSecond = args.SyntheticRate ?? 0 });
         }
 
+        MaybeOfferWelcome(args);
         GD.Print($"[build] {BuildInfo.Identifier}");
         _hud.SetBuildIdentifier(BuildInfo.Identifier);
         if (args.Automation == "smoke")
@@ -257,6 +263,26 @@ public partial class Main : Node3D
 
     private int _testListDelayMs;
     private bool _recordShell;
+
+    /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>
+    public void OpenStarterSky()
+    {
+        if (_experience != Experience.Planets && (_tree == null || !_tree.Source.IsLive))
+        {
+            SetExperience(Experience.Planets); // from a synthetic tree, switching to Planets opens the Starter Sky itself
+            return;
+        }
+
+        if (TryStarterSky() is { } sky)
+        {
+            if (_experience != Experience.Planets) SetExperience(Experience.Planets);
+            StartLive(sky);
+        }
+        else
+        {
+            StartScan(new SyntheticTreeSource());
+        }
+    }
 
     /// <summary>What the recording test shell was asked to do (probes; empty with the real shell).</summary>
     public IReadOnlyList<string> ShellLog => (_shell as FileScape.Core.Shell.RecordingShellActions)?.Log ?? [];
@@ -362,7 +388,9 @@ public partial class Main : Node3D
         _hud.PinToggled += TogglePin;
         _hud.ReadmeRequested += ShowReadme;
         _hud.EditorRequested += RequestEditor;
-        _hud.DemoRequested += () => StartScan(new SyntheticTreeSource());
+        // "Sample world" opens the bundled Starter Sky (real sample files FileScape writes for itself) in Planets; the
+        // synthetic tree remains for the legacy maps and automation (--synthetic=N).
+        _hud.DemoRequested += OpenStarterSky;
         _hud.CancelRequested += CancelScan;
         _hud.ExperienceRequested += i => SetExperience((Experience)i);
         _hud.ResetRequested += () => ResetView();
@@ -510,6 +538,7 @@ public partial class Main : Node3D
             var pointerBlocked = !_windowFocused || ModalOpen;
             var blockedKeys = pointerBlocked || GetViewport().GuiGetFocusOwner() != null;
             _planets.Tick(delta, blockedKeys, pointerBlocked);
+            TickTutorial((float)delta);
             // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
             // "You are in" empty, because the HUD was set before the root was listed). At most twice a second.
             if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= PlanetHudRefreshInterval)
@@ -963,7 +992,7 @@ public partial class Main : Node3D
     private const float PlaceDragLookMultiplier = 1.4f;
 
     /// <summary>True while a modal dialog is open; scene navigation is paused and held keys are cleared.</summary>
-    public bool ModalOpen => (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
+    public bool ModalOpen => _welcomeOpen || (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
 
     public bool WindowFocused => _windowFocused;
     public bool IsDragging => _pressButton != MouseButton.None;

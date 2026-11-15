@@ -266,6 +266,7 @@ public partial class PlanetWorld : Node3D
         UpdateOverlay(dt);
         UpdateSigns(tree);
         UpdateThumbnails();
+        AnimateBeacon(dt);
         AnimateScene(dt);
     }
 

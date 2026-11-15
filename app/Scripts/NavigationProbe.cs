@@ -227,12 +227,18 @@ public partial class NavigationProbe : Node
         Check(Rig.Camera.GlobalTransform.Basis.Z.Dot(-toSel.Normalized()) > 0.9f, "F frames the selection again");
 
         // ---------------------------------------------------- toolbar click, then keyboard
+        // The maps live in the Legacy views menu (AD-51): open it, then click the map.
+        var menu = _main.Hud.LegacyMenuButtonRect;
+        Mouse(MouseButton.Left, true, menu.GetCenter());
+        await Frames(2);
+        Mouse(MouseButton.Left, false, menu.GetCenter());
+        await Frames(3);
         var btn = _main.Hud.VisualizationButtonRect(0);
         Mouse(MouseButton.Left, true, btn.GetCenter());
         await Frames(2);
         Mouse(MouseButton.Left, false, btn.GetCenter());
         await Settle();
-        Check(_main.VisualizationIndex == 0, "clicking the Classic FSN toolbar button switches visualization");
+        Check(_main.VisualizationIndex == 0, "clicking Classic FSN in the Legacy views menu switches visualization");
         var afterToolbar = await GroundMove([Key.Up], 0.3);
         Check(afterToolbar.Speed > 1, "arrow keys still move the view right after a toolbar click");
 

@@ -100,6 +100,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-route") await Route();
         else if (Mode == "planets-route-hub") await HubRoute();
         else if (Mode == "planets-camera-trace") await CameraTraceRun();
+        else if (Mode == "planets-tutorial") await TutorialRun();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

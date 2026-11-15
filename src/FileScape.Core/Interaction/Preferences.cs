@@ -43,7 +43,7 @@ public sealed record Preferences
     public bool Equals(Preferences? other) =>
         other is not null && ReverseLookHorizontal == other.ReverseLookHorizontal && ReverseLookVertical == other.ReverseLookVertical
         && LevelViewOnRelease == other.LevelViewOnRelease && FlyAlongGaze == other.FlyAlongGaze && WalkSpeed == other.WalkSpeed
-        && RunSpeed == other.RunSpeed && Pins.SequenceEqual(other.Pins);
+        && RunSpeed == other.RunSpeed && ShowWelcome == other.ShowWelcome && Pins.SequenceEqual(other.Pins);
 
     public override int GetHashCode() => HashCode.Combine(ReverseLookHorizontal, ReverseLookVertical, LevelViewOnRelease, FlyAlongGaze, WalkSpeed, RunSpeed, Pins.Count);
 
@@ -63,6 +63,12 @@ public sealed record Preferences
     public bool IsPinned(string path) => Pins.Contains(path, PathIdentity.Comparer);
 
     /// <summary>Walking speed on foot (W). The default is <see cref="WalkParams.Default"/>'s.</summary>
+    /// <summary>
+    /// Offer the welcome dialog (Learn to play / Explore on my own / Don't show this again) at launch (PLANET-33). "Don't
+    /// show this again" turns it off; the walkthrough stays one click away in Help.
+    /// </summary>
+    public bool ShowWelcome { get; init; } = true;
+
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
 
     /// <summary>Running speed on foot (Shift held). Never below the walking speed.</summary>
@@ -114,6 +120,7 @@ public sealed record Preferences
             ["reverseLookVertical"] = ReverseLookVertical,
             ["levelViewOnRelease"] = LevelViewOnRelease,
             ["flyAlongGaze"] = FlyAlongGaze,
+            ["showWelcome"] = ShowWelcome,
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
             ["pins"] = new JsonArray([.. Pins.Select(x => (JsonNode)JsonValue.Create(x)!)]),
@@ -140,6 +147,7 @@ public sealed record Preferences
             if (Bool("reverseLookVertical") is { } vv) p = p with { ReverseLookVertical = vv };
             if (Bool("levelViewOnRelease") is { } lv) p = p with { LevelViewOnRelease = lv };
             if (Bool("flyAlongGaze") is { } fg) p = p with { FlyAlongGaze = fg };
+            if (Bool("showWelcome") is { } sw) p = p with { ShowWelcome = sw };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
             if (o["pins"] is JsonArray pins)
