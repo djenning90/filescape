@@ -220,14 +220,34 @@ public readonly record struct SurfaceObstacle(Vector3 Direction, float Radius, f
 /// </summary>
 public sealed class PlanetSurface
 {
-    public PlanetSurface(PlanetShape shape, IReadOnlyList<SurfaceObstacle> obstacles)
+    /// <summary>
+    /// The height <see cref="SupportAt"/> reports over a hole in a <see cref="Shell"/>, metres: no ground at all. Far below
+    /// anything a fall reaches before the app takes over (17 m/s² for 3 s is ≈ 77 m), and finite, so the walker's
+    /// arithmetic stays ordinary.
+    /// </summary>
+    public const float NoGroundMetres = -1000f;
+
+    /// <summary>
+    /// On a broken shell, feet this far below the ground (metres) have fallen past the rim: there is no ground for them
+    /// anywhere (see <see cref="SupportAt"/>), and the app treats the fall as committed. 0.6 m takes ≈ 0.27 s to fall at
+    /// 17 m/s², so the coyote time (0.12 s) and a twirl just after stepping off can still save you.
+    /// </summary>
+    public const float FallThroughMetres = 0.6f;
+
+    public PlanetSurface(PlanetShape shape, IReadOnlyList<SurfaceObstacle> obstacles, BrokenShell? shell = null)
     {
         Shape = shape;
         Obstacles = obstacles;
+        Shell = shell is { Holes.Count: > 0 } ? shell : null;
     }
 
     public PlanetShape Shape { get; }
     public IReadOnlyList<SurfaceObstacle> Obstacles { get; }
+
+    /// <summary>A hazard world's broken shell (PLANET-34): where there is no ground. Null for a whole planet.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public BrokenShell? Shell { get; }
+
     public float Radius => Shape.Radius;
 
     /// <summary>Distance along the surface between two unit directions, metres (at the base radius).</summary>
@@ -246,8 +266,14 @@ public sealed class PlanetSurface
     /// The height above the local ground a walker of <paramref name="bodyRadius"/> stands at: the highest top under its
     /// disc that is no higher than <paramref name="feetHeight"/> + <paramref name="allowance"/> (0 = the ground).
     /// </summary>
+    /// <remarks>Over a hole in the <see cref="Shell"/> (the walker's centre past the edge) the ground is
+    /// <see cref="NoGroundMetres"/>: walking on, the walker leaves the ground and falls, with nothing to land on.</remarks>
     public float SupportAt(Vector3 up, float bodyRadius, float feetHeight, float allowance)
     {
+        // Fallen more than FallThroughMetres below the rim, the walker is inside the crust's thickness: drifting back over
+        // solid ground it must not pop up through it (2026-11-15: a fall that skimmed back under the rim landed on top).
+        // Above that it may still land: skimming a tooth's tip, or a quick jump back, is a near miss, not a fall.
+        if (Shell != null && (feetHeight < -FallThroughMetres || Shell.OverHole(up))) return NoGroundMetres;
         var best = 0f;
         // A top holds the walker while its footprint reaches within 0.6 body radii of the walker's centre: you stand on
         // a ledge until most of your disc is past its edge, then step or fall off (rationale for 0.6 not recorded).

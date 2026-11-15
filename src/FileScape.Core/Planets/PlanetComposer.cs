@@ -497,6 +497,9 @@ public static class PlanetComposer
         var radius = theme == PlanetTheme.Quiet ? QuietPlanetRadius
             : theme == PlanetTheme.Veiled && nothingShown ? VeiledEmptyPlanetRadius
             : Math.Clamp(PlanetRadiusBase + PlanetRadiusPerSqrtShown * MathF.Sqrt(itemCount + LauncherWeight * launched.Count), MinPlanetRadius, MaxPlanetRadius);
+        // A hazard world (PLANET-34) is never small: its holes need room beyond the route's margins.
+        var hazard = HazardRules.Classify(tree, folderId);
+        if (hazard != null) radius = MathF.Max(radius, HazardMinPlanetRadius);
         var seed = NameSeed(name);
         // Frac's salts (1 here, 4 for the belt) pick independent "random" fractions from the one name seed.
         var hillAmplitude = theme is PlanetTheme.Quiet or PlanetTheme.Veiled ? QuietHillAmplitude : HillAmplitudeMin + HillAmplitudeSpread * Frac(seed, 1);
@@ -636,6 +639,13 @@ public static class PlanetComposer
         };
         foreach (var l in launchers) keepOut.Add(new Solid(l.Direction, p.LauncherClearRadius));
 
+        // ---- a hazard world's broken shell (PLANET-34, AD-53): holes off the route, then nothing stands near them
+        var shell = hazard != null ? CarveShell(radius, seed, rings, launchers, paths, landmarkDir, overlookDir, complexRadius, p) : null;
+        if (shell != null)
+        {
+            foreach (var h in shell.Holes) keepOut.Add(new Solid(h.Centre, h.MaxRadiusRadians * radius + BrokenShell.SafeMarginMetres));
+        }
+
         var solids = new List<Solid>();
         var segments = new List<(Vector3 A, Vector3 B, Vector3 Normal)>();
         foreach (var path in paths)
@@ -688,6 +698,16 @@ public static class PlanetComposer
                 if (PlanetShape.Angle(d, s.Direction) * radius < s.Radius + r + gap) return false;
             }
 
+            if (shell != null)
+            {
+                // Nothing in a hole's shadow seen from the arrival: the straight way from the meadow to anything placed
+                // passes no edge closer than HazardShadowClearanceMetres, so a hop routed through the meadow is always safe.
+                foreach (var h in shell.Holes)
+                {
+                    if (PlanetFrame.DistanceToArc(h.Centre, pole, d, radius) < h.MaxRadiusRadians * radius + HazardShadowClearanceMetres) return false;
+                }
+            }
+
             return true;
         }
 
@@ -734,7 +754,8 @@ public static class PlanetComposer
             Name = name,
             Theme = theme,
             Shape = shape,
-            Surface = new PlanetSurface(shape, obstacles),
+            Surface = new PlanetSurface(shape, obstacles, shell),
+            Hazard = hazard,
             State = state,
             Summary = FolderSummary.Place(folder, state),
             Arrival = new PlanetPose(pole, -Vector3.UnitZ),
@@ -756,6 +777,34 @@ public static class PlanetComposer
     }
 
     private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
+
+    /// <summary>A hazard world's smallest radius, metres: room for a main breach and side breaches beyond the route's margins (rationale for 18 m: by trial on the sample, where 16 m left the side breaches too small to read).</summary>
+    private const float HazardMinPlanetRadius = 18f;
+
+    /// <summary>On a hazard world, the straight way from the arrival to anything placed stays this far from every hole's farthest tooth, metres (a body, 0.7 m, and room to spare).</summary>
+    private const float HazardShadowClearanceMetres = 1.5f;
+
+    /// <summary>
+    /// The broken shell for a hazard world (<see cref="BrokenShell.Carve"/>), clear of the route: the arrival meadow, the
+    /// landmark, the overlook with its stones, every launcher's clear area, every drawn route, the walk to the way back
+    /// (pole to the parent pad: it has no drawn path, but it is the first walk anyone takes) and every launcher ring.
+    /// </summary>
+    private static BrokenShell CarveShell(float radius, int seed, List<RingSlot> rings, List<PlanetLauncher> launchers, List<PlanetPath> paths,
+        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, PlanetParams p)
+    {
+        var pole = Vector3.UnitY;
+        var discs = new List<(Vector3, float)> { (pole, p.ArrivalRadius), (landmarkDir, p.LandmarkRadius), (overlookDir, complexRadius) };
+        foreach (var l in launchers) discs.Add((l.Direction, p.LauncherClearRadius));
+        var routes = new List<(Vector3, Vector3, float)>();
+        foreach (var path in paths)
+        {
+            for (var k = 1; k < path.Points.Count; k++) routes.Add((path.Points[k - 1], path.Points[k], p.PathHalfWidth));
+        }
+
+        foreach (var l in launchers.Where(l => l.IsParent)) routes.Add((pole, l.Direction, p.PathHalfWidth));
+        var bands = rings.Select(r => PlanetFrame.PolarOf(r.Direction)).Distinct().Select(polar => (polar, p.PathHalfWidth)).ToList();
+        return BrokenShell.Carve(radius, seed, discs, routes, bands);
+    }
 
     /// <summary>A child world's radius from the entries below it: log scale from SkyRadiusMin (empty) to SkyRadiusMax (≈ 10,000).</summary>
     private static float SkyRadius(long size, PlanetParams p) =>

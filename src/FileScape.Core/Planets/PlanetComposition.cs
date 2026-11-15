@@ -240,6 +240,13 @@ public sealed class PlanetComposition
     public required IReadOnlyList<PlanetPath> Paths { get; init; }
     public required PlanetChildCounts Counts { get; init; }
 
+    /// <summary>
+    /// Why this is a hazard world (PLANET-34, AD-53; <see cref="HazardRules"/>), or null for an ordinary one. A hazard
+    /// world's <see cref="Surface"/> carries its broken shell (<see cref="PlanetSurface.Shell"/>).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public HazardReason? Hazard { get; init; }
+
     /// <summary>The tree version this was made from.</summary>
     public required int TreeVersion { get; init; }
 
