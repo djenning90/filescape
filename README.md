@@ -3,9 +3,12 @@
 **Explore your files as little worlds you can run around.** Every folder is a small planet. Its subfolders hang in the
 sky above flower launchers: stand on one, press Space, and you fly there, landing on the next world. Files stand in
 groves you can walk up to and look at. Software projects have a workbench that shows where to start; This computer is
-the hub where your drives and Linux distributions wait. Each kind of place has its own music and sky.
+the hub where your drives and Linux distributions wait. Each kind of place has its own music and sky; system folders that are best left alone are broken worlds
+over a spinning black hole (step off an edge and you spiral down and back up to where you came from).
 
 ![A walk in the Starter Sky sample world](docs/media/planets-starter-sky.png)
+
+![Falling off the edge of a broken world, round its black hole](docs/media/planets-black-hole.png)
 
 FileScape only reads names, sizes and dates. It never changes, moves or deletes your files, and it opens a file with
 Windows only when you press Enter (or Open) yourself.
