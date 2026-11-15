@@ -26,7 +26,7 @@ namespace FileScape.App.Planets;
 public partial class PlanetWorld
 {
     /// <summary>Where the planetary world is in a place change (Walking when none is in progress; hops are separate).</summary>
-    private enum Phase { Walking, WindUp, AwaitNav, Flying, Warping }
+    private enum Phase { Walking, WindUp, AwaitNav, Flying, Warping, Falling }
 
     /// <summary>The wind-up before release (research E2: a visible, physical beginning).</summary>
     public const float WindUpSeconds = 0.4f;
@@ -154,6 +154,7 @@ public partial class PlanetWorld
     public void OnNavChanged(PlaceChange change)
     {
         if (!_active) return;
+        if (_phase == Phase.Falling) OnNavChangedWhileFalling(); // a fall's way back (PlanetWorld.Hazard): out of the light, as below
         if (_universe != null)
         {
             // A navigation change from the overview (Backspace, the list, a path): come down onto it out of the light.
@@ -202,6 +203,12 @@ public partial class PlanetWorld
     /// <summary>One frame of a place change (any phase but Walking); the overlook view fades out meanwhile.</summary>
     private void UpdateTravel(float dt, bool blockedKeys)
     {
+        if (_phase == Phase.Falling)
+        {
+            UpdateFall(dt); // off a broken world's edge (PlanetWorld.Hazard): no transfer until the way back is asked for
+            return;
+        }
+
         var tr = _transfer;
         if (tr == null || _s.Tree is not { } tree)
         {

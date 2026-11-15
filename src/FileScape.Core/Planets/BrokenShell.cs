@@ -136,16 +136,18 @@ public sealed record BrokenShell(IReadOnlyList<ShellHole> Holes, float Radius)
 
     /// <summary>
     /// The main breach: centred this far from the arrival pole, degrees (near the antipode, so it is the farthest thing from
-    /// where you land), turned about the pole by the world's seed, with this base radius, radians (≈ 36°: about a tenth of
+    /// where you land), turned about the pole by the world's seed, with this base radius, radians (≈ 32°: about 7 % of
     /// the sphere before the teeth).
     /// </summary>
-    private const float MainBreachPolarDeg = 168f, MainBreachRadians = 0.62f;
+    private const float MainBreachPolarDeg = 168f, MainBreachRadians = 0.55f;
 
     /// <summary>
-    /// Side breaches: up to <see cref="MaxSideBreaches"/>, centred this far from the pole, degrees (past the equator,
-    /// below the launcher rings), with this base radius, radians (≈ 17°).
+    /// Side breaches: up to <see cref="MaxSideBreaches"/>, centred this far from the pole, degrees (just past the equator,
+    /// below the launcher rings), with this base radius, radians (≈ 18°). 2026-11-15, first screenshots: at 100° and a
+    /// main breach of 0.62 rad the side breaches shrank to 4–5 m and were hard to see; a smaller main breach and side
+    /// breaches nearer the equator keep about the same open area with side breaches you notice.
     /// </summary>
-    private const float SideBreachPolarDeg = 100f, SideBreachRadians = 0.3f;
+    private const float SideBreachPolarDeg = 92f, SideBreachRadians = 0.32f;
 
     private const int MaxSideBreaches = 3;
 

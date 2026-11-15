@@ -55,6 +55,9 @@ public static partial class PlanetArt
         WorldKind.WindowsRoot => new(C(0.25f, 0.5f, 0.95f), 0.32f, C(0.85f, 0.93f, 1f), C(0.45f, 0.8f, 1f), C(0.35f, 0.75f, 1f), C(0.55f, 0.5f, 1f), Dawn: 0, Aurora: 0.8f, Lattice: 0.9f, Scan: 0, Graph: 0, Stars: 1.1f),
         WorldKind.WslRoot => new(C(0.55f, 0.18f, 0.32f), 0.32f, C(1f, 0.84f, 0.66f), C(1f, 0.58f, 0.25f), C(1f, 0.55f, 0.2f), C(0.85f, 0.3f, 0.55f), Dawn: 0, Aurora: 0.8f, Lattice: 0, Scan: 1f, Graph: 0, Stars: 1.1f),
         WorldKind.Repository => new(C(0.1f, 0.42f, 0.4f), 0.3f, C(0.9f, 1f, 0.92f), RepositoryTeal, C(0.35f, 1f, 0.75f), C(0.4f, 0.6f, 1f), Dawn: 0, Aurora: 0.15f, Lattice: 0, Scan: 0, Graph: 1f, Stars: 1.2f),
+        // A broken world (PLANET-34): a bruised violet sky with an ember-orange glow low on the horizon (the disc's light)
+        // and a warm caution-amber light: dramatic, but no alarm red. By eye (2026-11-15).
+        WorldKind.Hazard => new(C(0.16f, 0.03f, 0.22f), 0.6f, C(1f, 0.6f, 0.35f), C(1f, 0.55f, 0.25f), C(1f, 0.45f, 0.2f), C(0.75f, 0.3f, 1f), Dawn: 0.85f, Aurora: 0.3f, Lattice: 0, Scan: 0, Graph: 0, Stars: 1.25f),
         _ => BandLook(c.Band, c.InsideRepository),
     };
 

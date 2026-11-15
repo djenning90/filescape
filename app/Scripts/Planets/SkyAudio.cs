@@ -255,4 +255,27 @@ public partial class SkyAudio : Node
         ChimeCount++;
         _synth.Chime(index);
     }
+
+    // ---- hazard cues (PLANET-34/35). Placeholders so the hazard world compiles on its own: the music work supplies the
+    // real sounds behind these exact signatures, and a merge keeps those.
+
+    /// <summary>How near the nearest broken edge is, 0 (far) to 1 (at it); called every walking frame on a hazard world.</summary>
+    public void HazardWarning(float nearness01)
+    {
+    }
+
+    /// <summary>Stepping off an edge: the fall begins.</summary>
+    public void FallStart()
+    {
+    }
+
+    /// <summary>The fall's progress 0..1 (the spiral tightens towards 1); called every frame of the fall.</summary>
+    public void Fall(float progress01)
+    {
+    }
+
+    /// <summary>Set down on the parent after a fall.</summary>
+    public void FallReturn()
+    {
+    }
 }

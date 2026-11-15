@@ -240,6 +240,7 @@ public partial class PlanetWorld
                 break;
         }
 
+        if (BeginFallIfThrough()) return; // through a broken world's rim: the fall takes over (PlanetWorld.Hazard)
         UpdateBench(dt, ev.Kind);
         if (_walker.Footsteps != _lastFootsteps)
         {
@@ -263,6 +264,7 @@ public partial class PlanetWorld
         _overlook01 = Mathf.MoveToward(_overlook01, wantOverlook ? 1 : 0, dt * OverlookBlendPerSecond);
         UpdateCamera(dt, lookAt: null, moving: _walker.Velocity.Length() > 0.8f); // above 0.8 m/s counts as moving (the camera may swing in)
         UpdateFocus();
+        UpdateEdgeWarning(dt);
     }
 
     /// <summary>The overlook's hint has been shown (once per PlanetWorld, i.e. once per run: it is never reset).</summary>
@@ -353,10 +355,13 @@ public partial class PlanetWorld
             if (dt > 0) _maxRollRateDegreesPerSecond = MathF.Max(_maxRollRateDegreesPerSecond, Mathf.RadToDeg(step) / dt);
         }
 
-        var pitch = Mathf.DegToRad(Mathf.Lerp(_camPitchDegrees, OverlookPitchDegrees, _overlook01));
-        var dist = Mathf.Lerp(_camDistance, OverlookDistanceMetres, _overlook01) + extraBack;
+        // Near a broken edge (PlanetWorld.Hazard) the camera rises and looks ahead, so you see down into the hole before
+        // you step off it; elsewhere _edgeNearness is 0 and this adds nothing.
+        var peek = _edgeNearness;
+        var pitch = Mathf.DegToRad(Mathf.Lerp(_camPitchDegrees, OverlookPitchDegrees, _overlook01) + EdgePeekPitchDegrees * peek);
+        var dist = Mathf.Lerp(_camDistance, OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek;
         // The aim point rises by half the wind-up's lift (the eye rises by all of it), so the view tilts down a little.
-        var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * LookAheadMetres;
+        var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * (LookAheadMetres + EdgePeekAheadMetres * peek);
         var desired = target - f * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist + extraUp);
         // Never under the ground: keep the eye at least 0.9 m above the surface below it (the planet's centre is the origin,
         // so pushing the eye out along its own direction lifts it straight up).
@@ -486,6 +491,12 @@ public partial class PlanetWorld
         public NVector3 FromUp, ToUp, Facing;
         public float T, Seconds, Height;
         public int Inspect = -1;
+
+        /// <summary>On a broken world, a point the hop passes over to go round a hole rather than across it (<see cref="HopVia"/>), else null.</summary>
+        public NVector3? Via;
+
+        /// <summary>With <see cref="Via"/>: the first leg's share of the whole way (0..1).</summary>
+        public float FirstLeg;
     }
 
     private Hop? _hop;
@@ -499,13 +510,18 @@ public partial class PlanetWorld
     private void StartHop(NVector3 up, NVector3 facing, int inspect)
     {
         if (_current == null) return;
-        var dist = PlanetShape.Angle(_walker.Up, up) * _current.Comp.Shape.Radius;
+        var via = HopVia(_walker.Up, up);
+        var first = via is { } v ? PlanetShape.Angle(_walker.Up, v) : 0f;
+        var angle = via is { } w ? first + PlanetShape.Angle(w, up) : PlanetShape.Angle(_walker.Up, up);
+        var dist = angle * _current.Comp.Shape.Radius;
         _hop = new Hop
         {
             FromUp = _walker.Up, ToUp = up, Facing = facing,
             Seconds = Mathf.Clamp(HopBaseSeconds + dist / HopMetresPerSecond, HopBaseSeconds, HopMaxSeconds),
             Height = Mathf.Clamp(dist * HopHeightPerMetre, HopMinHeightMetres, HopMaxHeightMetres),
             Inspect = inspect,
+            Via = via,
+            FirstLeg = angle > 1e-6f ? first / angle : 0f,
         };
         _audio.Jump();
         _avatar.Jump();
@@ -520,7 +536,10 @@ public partial class PlanetWorld
         var h = _hop!;
         h.T += dt;
         var u = Mathf.Clamp(h.T / h.Seconds, 0, 1);
-        var dir = Slerp(h.FromUp, h.ToUp, Smooth(u));
+        var s = Smooth(u);
+        // Round a hole: two great-circle legs through Via, at the same pace as one straight arc.
+        var dir = h.Via is not { } via ? Slerp(h.FromUp, h.ToUp, s)
+            : s < h.FirstLeg ? Slerp(h.FromUp, via, s / h.FirstLeg) : Slerp(via, h.ToUp, (s - h.FirstLeg) / MathF.Max(1e-6f, 1 - h.FirstLeg));
         var surf = _current!.Comp.Surface;
         var height = 4 * h.Height * u * (1 - u); // 4u(1 − u): 0 at both ends, 1 at u = ½
         var facing = h.ToUp - dir * NVector3.Dot(h.ToUp, dir);

@@ -168,6 +168,7 @@ public partial class PlanetWorld : Node3D
         _transfer = null;
         _hop = null;
         _warpFlash = 0;
+        EndHazard();
         _s.Signs.Clear();
         _overlay.Visible = false;
         if (_worldEnv != null && _savedEnvironment != null) _worldEnv.Environment = _savedEnvironment;
@@ -264,6 +265,7 @@ public partial class PlanetWorld : Node3D
         }
 
         UpdateOverlay(dt);
+        UpdateHazardScreen(dt);
         UpdateSigns(tree);
         UpdateThumbnails();
         AnimateScene(dt);
@@ -305,6 +307,7 @@ public partial class PlanetWorld : Node3D
         _transfer = null;
         _hop = null;
         _signature = "";
+        EndHazard();
         CloseOverlays();
     }
 
@@ -406,6 +409,7 @@ public partial class PlanetWorld : Node3D
 
         UpdateDestinations();
         ResetBench(tree, recompose: arriveFrom == -2);
+        OnHazardWorldBuilt(arriveFrom);
     }
 
     /// <summary>Built planet visuals kept for a while after you leave (going back and forth reuses them; LRU, keyed by what they show).</summary>
@@ -455,7 +459,7 @@ public partial class PlanetWorld : Node3D
         // A preview's ground is small (subdivision 3): made right here rather than queued behind full-size prefetches.
         var ground = full ? GroundAsync(body.Comp, full) : null;
         var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
-        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), PreviewSubdivisions);
+        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), PreviewSubdivisions, body.Comp.Surface.Shell);
         var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key, CacheKey = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
         if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
@@ -477,7 +481,8 @@ public partial class PlanetWorld : Node3D
         var shape = comp.Shape;
         var palette = PlanetArt.Palette(comp.Theme);
         var subdivisions = full ? PlanetArt.SubdivisionsFor(shape.Radius) : PreviewSubdivisions;
-        task = Task.Run(() => PlanetArt.PlanetMeshArrays(shape, palette, subdivisions));
+        var shell = comp.Surface.Shell; // immutable: safe to read on the worker
+        task = Task.Run(() => PlanetArt.PlanetMeshArrays(shape, palette, subdivisions, shell));
         _groundTasks[key] = task;
         _groundOrder.Enqueue(key);
         while (_groundOrder.Count > GroundTaskCacheSize) _groundTasks.Remove(_groundOrder.Dequeue());
