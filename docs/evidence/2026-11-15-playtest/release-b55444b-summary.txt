@@ -1,0 +1,68 @@
+FileScape check release  2026-11-15T02:25:57Z  commit b55444bf9e3b
+out: C:\Users\David\AppData\Local\FileScape\evidence\checks\release-20261115-022557
+build                            9.2s  exit 0
+tests-windows                   95.8s  exit 0
+tests-wsl                       88.9s  exit 0
+    Passed!  - Failed:     0, Passed:   437, Skipped:    21, Total:   458, Duration: 1 m 22 s - FileScape.Core.Tests.dll (net10.0)
+    Passed!  - Failed:     0, Passed:   439, Skipped:    19, Total:   458, Duration: 1 m 22 s - FileScape.Core.Tests.dll (net10.0)
+stage                           23.3s  exit 0
+build: b55444bf9e3b 2026-11-15T02:29:31Z  (C:\Users\David\AppData\Local\FileScape\staging-20261115-022911-307068\FileScape.exe)
+explore-ui1.0                   48.6s  ok     journey         29 PASS  0 FAIL  0 SKIP
+project-ui1.0                    7.5s  ok     journey         19 PASS  0 FAIL  0 SKIP
+planets-ui1.0                   37.4s  ok     journey         41 PASS  0 FAIL  0 SKIP
+planets-flows                   29.8s  ok     journey         30 PASS  0 FAIL  0 SKIP
+planets-route                   51.4s  ok     journey         63 PASS  0 FAIL  0 SKIP
+planets-tutorial                65.0s  ok     journey         30 PASS  0 FAIL  0 SKIP
+planets-hazard                  25.6s  ok     journey         39 PASS  0 FAIL  0 SKIP
+walk-ui1.0                      92.4s  ok     journey        101 PASS  0 FAIL  1 SKIP
+places-connected                68.7s  ok     journey         53 PASS  0 FAIL  0 SKIP
+places-tree                     49.6s  ok     journey         52 PASS  0 FAIL  4 SKIP
+places-scan                      8.5s  ok     journey          8 PASS  0 FAIL  0 SKIP
+navigation                      42.4s  ok     journey         56 PASS  0 FAIL  0 SKIP
+map-journey                     15.4s  ok     journey         15 PASS  0 FAIL  0 SKIP
+planetoids                      12.5s  ok     journey          9 PASS  0 FAIL  0 SKIP
+aerial-limit-24                 16.3s  ok     journey         10 PASS  0 FAIL  0 SKIP
+aerial-limit-8                  13.2s  ok     journey         11 PASS  0 FAIL  0 SKIP
+explore-ui1.25                  46.3s  ok     journey         29 PASS  0 FAIL  1 SKIP
+places-ui1.25                   51.1s  ok     journey         53 PASS  0 FAIL  4 SKIP
+planets-fixture                 19.4s  ok     journey         15 PASS  0 FAIL  2 SKIP
+planets-discover-wsl-root       10.1s  ok     journey          5 PASS  0 FAIL  1 SKIP
+planets-ui1.25                  37.6s  ok     journey         39 PASS  0 FAIL  2 SKIP
+planets-route-hub               29.8s  ok     journey         17 PASS  0 FAIL  0 SKIP
+walk-ui1.25                     86.0s  ok     journey        101 PASS  0 FAIL  2 SKIP
+walk-perf                       30.7s  FAILED journey          0 PASS  0 FAIL  0 SKIP  (no assertions in result file)
+    [18:44:02.539] walk-perf probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+    [18:44:06.969] perf arrival-eye-3.35 High: mean=6.88 p95=7.60 gpu=6.10 ms
+    [18:44:10.077] perf plaza-eye-1.75 High: mean=6.95 p95=7.51 gpu=6.07 ms
+    [18:44:13.187] perf plaza-eye-4.6 High: mean=6.91 p95=7.64 gpu=6.24 ms
+    [18:44:16.292] perf eye-1.75-no-ssr High: mean=5.78 p95=6.34 gpu=4.99 ms
+    [18:44:19.399] perf eye-1.75-no-volfog High: mean=6.28 p95=6.87 gpu=5.56 ms
+    [18:44:22.503] perf eye-1.75-no-glow High: mean=6.29 p95=6.98 gpu=5.61 ms
+    [18:44:25.607] perf eye-1.75-no-ssao High: mean=6.59 p95=7.44 gpu=5.79 ms
+    [18:44:28.718] perf eye-1.75-no-place-geometry High: mean=5.57 p95=6.08 gpu=4.90 ms
+    [18:44:31.829] perf eye-1.75-low Low: mean=2.28 p95=2.74 gpu=1.74 ms
+os-ui1                         101.2s  FAILED real OS input   10 PASS 18 FAIL  0 SKIP  (exit 18; 18 failing assertion(s))
+    FAIL OS Up arrow walks off the terrace and down the stairs (0 m, feetY 0)
+    FAIL OS Left arrow turns in place (turned 0 deg)
+    FAIL OS Up+Right walks a curve (turned 0 deg, moved 0 m)
+    FAIL OS Space jumps and lands (jumps 0 -> 0)
+    FAIL OS A steps sideways without turning
+os-ui1.25                      103.6s  FAILED real OS input   10 PASS 18 FAIL  0 SKIP  (exit 18; 18 failing assertion(s))
+    FAIL OS Up arrow walks off the terrace and down the stairs (0 m, feetY 0)
+    FAIL OS Left arrow turns in place (turned 0 deg)
+    FAIL OS Up+Right walks a curve (turned 0 deg, moved 0 m)
+    FAIL OS Space jumps and lands (jumps 0 -> 0)
+    FAIL OS A steps sideways without turning
+os-planets-Controls             52.2s  ok     real OS input   24 PASS  0 FAIL  0 SKIP
+os-planets-Route                44.1s  ok     real OS input   10 PASS  0 FAIL  0 SKIP
+os-planets-Tutorial            216.6s  FAILED real OS input   16 PASS  9 FAIL  0 SKIP  (exit 9; 9 failing assertion(s))
+    FAIL OS jumped onto the workbench (3 · A software project)
+    FAIL OS E read the README (3 · A software project)
+    FAIL OS U went up (3 · A software project)
+    FAIL OS J, typed 'music', Enter: straight to Music Box (3 · A software project)
+    FAIL OS U: up to the Starter Sky (3 · A software project)
+os-planets-Hazard               54.9s  ok     real OS input    8 PASS  0 FAIL  0 SKIP
+planets-recording               23.2s  ok     recording      99856472 bytes
+recording                       51.3s  ok     recording      202538510 bytes
+TOTAL                           1761s  failing steps: 4
+note: %APPDATA%\FileScape exists (your preferences; probes never read or write it)

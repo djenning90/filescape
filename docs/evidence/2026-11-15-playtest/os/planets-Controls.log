@@ -1,0 +1,26 @@
+PASS OS arrives on the Starter Sky on foot (phase=Walking)
+PASS OS right-drag at arrival: a right-drag of 360 px turns the camera 90 deg (at least 30)
+after the toolbar click: guiFocus=
+PASS OS right-drag after a toolbar click: a right-drag of 360 px turns the camera 90 deg (at least 30)
+PASS OS left-drag on the sky: a left-drag of 360 px turns the camera 93.5 deg (at least 30)
+PASS OS a left-drag leaves the selection alone (selected=-1)
+a world on screen: 13 at (82, 167)
+PASS OS a left-drag that starts on world 13 turns the camera (74deg) and selects nothing (selected=-1)
+PASS OS a click on world 15 selects it on release (selected=15)
+PASS OS a double-click on a world launches there (phase=Flying, transfers 0 -> 1)
+PASS OS left-drag after a toolbar click: a left-drag of 360 px turns the camera 93.2 deg (at least 30)
+PASS OS J opens the planet's list (its filter takes keyboard focus)
+PASS OS Esc dismisses the list
+PASS OS left-drag after dismissing the list: a left-drag of 360 px turns the camera 93.5 deg (at least 30)
+PASS OS T opens the overview
+PASS OS a left-drag orbits the overview (yaw 0.6 -> -0.875 rad)
+PASS OS the overview drag selects nothing (selected 15 -> 15)
+PASS OS back down on the surface
+PASS OS left-drag after the overview round trip: a left-drag of 360 px turns the camera 93 deg (at least 30)
+PASS OS focus moved to the probe's own window (FileScape focused=False, read while it was away)
+PASS OS left-drag after focus left and came back: a left-drag of 360 px turns the camera 93.5 deg (at least 30)
+PASS OS right-drag after focus left and came back: a right-drag of 360 px turns the camera 90 deg (at least 30)
+PASS OS left-drag with the list open (its filter has focus): a left-drag of 360 px turns the camera 93.2 deg (at least 30)
+PASS OS right-drag with the list open (its filter has focus): a right-drag of 360 px turns the camera 90 deg (at least 30)
+PASS OS Left arrow standing still turns the camera 100.8deg and the traveller stays put (0 m)
+PASS OS W + Right arrow walks and turns together (43.8deg, 5.1 m)

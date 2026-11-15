@@ -1,0 +1,25 @@
+PASS OS arrives on the Starter Sky on foot (phase=Walking)
+PASS OS a plain launch opens Planets at This computer (experience=Planets, atHub=True, at This computer)
+PASS OS the welcome dialog is offered on the first launch
+PASS OS Don't show this again closes it and turns it off
+PASS OS the choice is saved in the settings file (showWelcome=False)
+PASS OS normal shutdown by closing the window (exit code 0)
+PASS OS the second launch honours it: no dialog, straight into Planets
+PASS OS Help -> Learn to play opens the sample world and the first lesson (1 · Look around, in Starter Sky)
+PASS OS left-drag look: lesson passes (1 · Walk to the tower)
+PASS OS walked to the tower with the keyboard (2 · Jump)
+PASS OS jumped (2 · Fly to a folder)
+PASS OS stood on the launcher and flew to Lantern Workshop (3 · A software project)
+PASS OS jumped onto the workbench (3 · Read the README)
+PASS OS E read the README (4 · Up a level)
+PASS OS U went up (4 · Straight to a folder)
+PASS OS J, typed 'music', Enter: straight to Music Box (4 · Up is the parent)
+PASS OS U: up to the Starter Sky (4 · Back is your history)
+PASS OS Backspace: back to Music Box, not up (5 · The overview)
+PASS OS T opened the overview (5 · Look round it)
+PASS OS left-drag orbited the overview (5 · Back where you stood)
+PASS OS Esc back where you stood: walkthrough complete
+PASS OS Leave exits mid-lesson (step was 0)
+PASS OS Legacy views -> Places opens the flat world (Places)
+PASS OS V returns to Planets
+PASS OS normal shutdown again (exit code 0)
