@@ -4,8 +4,9 @@ config_version=5
 [application]
 
 config/name="FileScape"
-config/description="Explore a real filesystem as a 3D place."
+config/description="Explore your files as little worlds you can run around."
 run/main_scene="res://Main.tscn"
+config/icon="res://icon.svg"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
 [display]

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- FileScape's icon (original, 2026-11-15): a little world with a flower launcher and a moon, on the night sky. -->
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#3a2a6e"/><stop offset="1" stop-color="#140f2e"/></radialGradient>
+    <radialGradient id="world" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#ffd3a8"/><stop offset="0.6" stop-color="#f08aa8"/><stop offset="1" stop-color="#7d4bb0"/></radialGradient>
+    <radialGradient id="moon" cx="35%" cy="35%" r="70%"><stop offset="0" stop-color="#d9f4ff"/><stop offset="1" stop-color="#6aa7e8"/></radialGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#sky)"/>
+  <g fill="#fff" opacity="0.8"><circle cx="24" cy="26" r="1.6"/><circle cx="102" cy="20" r="1.2"/><circle cx="110" cy="58" r="1.4"/><circle cx="18" cy="70" r="1.1"/><circle cx="60" cy="16" r="1"/></g>
+  <circle cx="92" cy="38" r="12" fill="url(#moon)"/>
+  <circle cx="58" cy="78" r="38" fill="url(#world)"/>
+  <ellipse cx="58" cy="80" rx="54" ry="12" fill="none" stroke="#ffe08a" stroke-width="4" opacity="0.85" transform="rotate(-14 58 80)"/>
+  <g transform="translate(56 42)">
+    <ellipse cx="0" cy="4" rx="11" ry="3.5" fill="#b77ad8"/>
+    <path d="M0 2 C-6 -6 -12 -4 -11 2 Z M0 2 C6 -6 12 -4 11 2 Z M0 2 C-3 -10 3 -10 0 2 Z" fill="#ff9ec8"/>
+    <circle cx="0" cy="0" r="2.6" fill="#fff3b0"/>
+  </g>
+  <path d="M60 42 Q74 22 90 30" fill="none" stroke="#ffe08a" stroke-width="2.4" stroke-dasharray="3 4" stroke-linecap="round"/>
+</svg>
