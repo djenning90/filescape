@@ -573,3 +573,85 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   read-only promise, and Reveal gets you to the same place); recognising Downloads from the mix alone (it would be
   wrong too often).
 - **Revisit if:** DJ ranks the Gallery first, or wants these worlds as themes rather than identities.
+
+## AD-66 The orchestra a little quicker; two second themes for the folder bands (amends AD-52) (2026-11-17)
+
+- **Problem:** DJ (PLANET-64, PLANET-65): "Keep the musical character. The track I heard in
+  `\\wsl.localhost\Ubuntu-24.04\home\david\src\possibility-engine\src` was beautiful and expressive. Identify which
+  arrangement that location uses and try a modest tempo lift while keeping what made it feel that way. I'm happy with the
+  recent arrangements overall. Try a few additional original melodies or secondary themes if they give revisits and
+  different worlds more variety … keep the existing music available, including Abyss."
+- **Which arrangement (from the code alone; nothing under that folder was listed or opened):**
+  - `WorldCharacter.Of` counts levels up to the nearest location root. `\\wsl.localhost\Ubuntu-24.04` is a WSL location
+    (depth 0, the WSL root's own score), so `home` 1, `david` 2, `src` 3, `possibility-engine` 4, **`src` 5**.
+    `BandOf(5)` = **band 3, the deep woods**: `IdentityOf` gives `MusicIdentity.DeepWoods`, **the orchestral arrangement**
+    (AD-52, with AD-60's general pause and climax): dorian, the theme at half time over the strings' spiccato pulse. The
+    hub above (This computer, where a normal launch starts) does not change the count: the WSL root is found first.
+  - **The key** comes from the folder's `PlanetTheme` (what it holds), the mode from the orchestra (dorian always). A
+    source folder is most likely a **Workshop** (code files at least 45 % of its files, or a manifest): **G dorian**
+    (G3 = MIDI 55; the theme opens B♭ D G'). If `src` held only folders it would be a Hearth (F dorian); a mix, Wild (G
+    dorian again).
+  - **Inside a project or not.** If `possibility-engine` lists a `.git` (folder or file), it is a repository world (the
+    clockwork, 126 BPM) and `src` is "the deep woods · in a project": the same orchestra plus the repository's quiet echo
+    (`ProjectEcho`: a tick-tock on the pulse's eighths, soft stabs every 4 bars, the commit call high and quiet every 8)
+    and its own music memory (the repository id is part of the world key). If not, the plain orchestra. **Likely: in a
+    project** (DJ calls it a project; a `src` folder inside a named folder is the usual layout). Either way the
+    arrangement is the orchestra; the tempo lift applies to both.
+  - **On a revisit** (the arrivals count): the second visit adds the slow counter-line under the cellos' motif and starts
+    a forgotten world on its second cycle (a varied return: clarinet for a syncopated or inverted one, oboe for the octave
+    or augmented one); the third on its third cycle; a world left recently (8 remembered) resumes on its next half-cycle
+    without the harp fanfare. From AD-66, the bars 8–11 of odd cycles (and of a fresh revisit's first free section) play
+    the lantern song instead of the cellos' band motif.
+- **Decision — the lift (PLANET-64):** the orchestra **144 → 156 BPM** (the theme **72 → 78**, +8.3 %; a bar 3.33 → 3.08 s,
+  a cycle 53.3 → 49.2 s). Everything in the score is in sixteenths, so the phrasing, half time, harmonic rhythm (a chord
+  per bar), dynamics, general pause and climax move together. The long tails that were written in seconds at 144 (the
+  sections', basses' and horns' releases over the chord change, the harp's ring, the bar-5 cymbal) scale by 144/156
+  (`OrchestraTails`), so they last as many beats as before and the chords overlap as they did; attacks (the strings'
+  swell) and the percussion's own decays stay in seconds (they are the instruments, not the phrasing). The reverb is
+  shared by every world and unchanged, so its tail is ≈ 8 % longer relative to the beat (not measurable in the per-bar
+  loudness). 156 keeps the bands' ascent (126 → 156 → 172) and leaves the hazard world's theme (152) the most urgent.
+- **Decision — second themes (PLANET-65):** two original 4-bar melodies, written relative to each bar's chord and voice-led
+  (each note the nearest of its tone above or below the one before, within a sixth; pentatonic keys fold the tones as the
+  theme's degrees fold), so every key and progression gets its own version of the same shape:
+  - **The lantern song** (the outskirts and the deep woods): "sol fa mi re | sol fa mi | mi fa mi do ti | mi … re": two
+    sighs falling through the chord, a turn and a fall, an open end. Orchestra: the clarinet (bars 8–9), then the first
+    violins over the cellos an octave below (10–11), into the horn call. Outskirts: the marimba, a soft triangle under its
+    long notes. In G dorian (DJ's folder): D C B♭ A | F E D | A B♭ A F E | E D.
+  - **The trail call** (the trails and the underglow): "do sol la sol mi | mi sol do' ti" in a 3 + 3 + 2 lilt, the call
+    again a chord higher with a lift, an answer climbing back to the fifth (open, into the festival's build or the drum
+    and bass build). Festival: the breakdown's pluck. Drum and bass: the liquid lead with its dotted echo.
+  - **When:** bars 8–11 (the band motif keeps 12–15; every arrangement's breaks, builds, drops and climaxes untouched) of
+    **every odd cycle** of a world's music, and of **the first free section of a revisit that starts afresh**; not in the
+    first cycle of a first visit (the arrival and its first 16 bars as DJ knows them), not straight after a resumed
+    return (it continues where it was, AD-49), not when an augmented ending holds bar 8. A world's music runs on across
+    returns, so the more you come back, the sooner its second theme comes round.
+  - **Kept music:** the hub, the roots, the repository, the hazard world and **the abyss** play exactly as before (whole-cycle
+    hashes, below; the abyss test is the AD-52 render, sample for sample). Every first visit's first cycle in the
+    outskirts, trails and underglow is unchanged.
+- **Tried and dropped:** a resumed return opening on the second theme (built first: it broke AD-49's "picks up where it
+  was" and changed the abyss sample's script, which returns to the outskirts); a fallback that let the voice-leading leap
+  a seventh at the range's edge (the singable test caught it in four keys). **Considered, not built:** a counter-melody
+  over the theme's raised motif on the third visit (the octave counter-line and the third visit's doubling already
+  thicken it, and it would change the theme's bars, which DJ likes as they are); second themes in the roots and the
+  repository (their own material is their identity, AD-49).
+- **Measured (SkySynthTests, Linux, 2026-11-17):** whole-cycle hashes (`SKYSYNTH_CYCLE_HASHES_OUT`, every score, visits 1–3,
+  one cycle + 2 s, Library key): the lift changes **DeepWoods visits 1–3 only**; the second themes add **Outskirts,
+  Trails, Underglow visits 2–3** (DeepWoods' already changed). The behaviour baseline (`FILESCAPE_BASELINE_OUT`) is
+  identical: none of its six audio hashes changed (its windows are the first 6 s of a first visit, and it has no band 3).
+  Orchestra loudness −27.4 LUFS (AD-60: −27.2), peak 0.228; the src arrival clip −26.9 LUFS (−26.7 before); per bar of
+  the first cycle within 0.6 dB of before (the climax bar 14 −26.8 both); the general pause and the climax tests pass.
+  Spectrum per octave (63 Hz–8 kHz) of the arrival clip within 0.4 dB of before; the climax clip's 63–125 Hz 1.0–1.2 dB
+  lower (the basses' tails are shorter in seconds), the rest within 0.1 dB. The orchestra revisit with the lantern song:
+  250 Hz −3.2 dB, 1–4 kHz +0.7…+1.4 dB against the cellos' motif it replaces (it sits higher).
+  Edge warning over the orchestra +8.0 dB, fall +10.4, return +8.5; at the bar-14 climax fall +11.8, return +9.5 (bound 4).
+  Tempo-locked cues: the 32nd at 156 is 48.1 ms, worst wait 48.1 ms (bound 80); a grid-aligned wind-up launches 0.4
+  frames off the sixteenth; the theme's first note 114 ms after the arrival (a beat is 385 ms), plain, every note.
+  Second themes (revisit, Library key): their bars 2.0 (outskirts), 2.4 (orchestra), 4.0 (trails, the breakdown),
+  4.0 dB (underglow, breakdown and build) below the theme's bars of the same cycle; peaks ≤ 0.37; the edge warning
+  +10.8 … +15.1 dB over them; render cost with cues 19–32 ms per second of audio (bound 60); the existing cost test
+  34 ms for the orchestra.
+- **Unknown:** nobody has listened. The melodies were judged by reading their notes back in every key and by the
+  measurements above; whether the lift keeps the expressiveness DJ heard, and whether the second themes are good, is
+  DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
+- **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
+  less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.

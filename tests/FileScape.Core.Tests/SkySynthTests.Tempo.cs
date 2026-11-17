@@ -124,6 +124,34 @@ public partial class SkySynthTests
         Revisit("revisit-trails-festival", PlanetTheme.Library, Band(2), 6, 14);
         Revisit("revisit-orchestra-src", PlanetTheme.Workshop, PossibilityEngineSrc, 7, 12);
         Revisit("revisit-underglow-dnb", PlanetTheme.Crystal, Band(4), 7, 12);
+
+        // The spectra, clip for clip: where both renders are in the folder (the "before" set made on the previous build),
+        // the level per octave band, so a change of colour (not only of notes) would show.
+        foreach (var after in Directory.GetFiles(dir, "*-after.wav").OrderBy(f => f))
+        {
+            var before = after.Replace("-after.wav", "-before.wav");
+            if (!File.Exists(before)) continue;
+            output.WriteLine($"{Path.GetFileName(after)[..^10]} octave bands (dBFS, before → after):");
+            var a = ReadWav(before);
+            var b = ReadWav(after);
+            var line = new List<string>();
+            foreach (var hz in new[] { 63, 125, 250, 500, 1000, 2000, 4000, 8000 })
+            {
+                double Level(float[] x) { var y = Band(x, hz / Math.Sqrt(2), hz * Math.Sqrt(2)); return Db(Rms(y, 0, y.Length)); }
+                line.Add($"{hz} Hz {Level(a):0.0} → {Level(b):0.0}");
+            }
+
+            output.WriteLine("  " + string.Join(", ", line) + $"; {Lufs(a):0.0} → {Lufs(b):0.0} LUFS");
+        }
+    }
+
+    /// <summary>A 16-bit stereo WAV written by <see cref="WriteWav"/>, as interleaved floats.</summary>
+    private static float[] ReadWav(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var data = new float[(bytes.Length - 44) / 2];
+        for (var i = 0; i < data.Length; i++) data[i] = BitConverter.ToInt16(bytes, 44 + 2 * i) / 32767f;
+        return data;
     }
 
     /// <summary>Logs the melodic notes (theme, motif, second theme) between two frames as note names: the listen-proxy.</summary>
