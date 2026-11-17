@@ -57,7 +57,7 @@ public sealed class RecordingShellActions : IShellActions
 
     public ShellResult Start(string program, IReadOnlyList<string> args)
     {
-        _log.Add("start " + program);
+        _log.Add($"start {program} {WindowsShellActions.CommandLine(args)}".TrimEnd()); // with its arguments, so a probe can check where a terminal would start
         return new(true, false, $"TEST — would start {program} {string.Join(' ', args)}");
     }
 }
@@ -125,7 +125,7 @@ public sealed class WindowsShellActions : IShellActions
             cbSize = Marshal.SizeOf<ShellExecuteInfo>(),
             fMask = SeeMaskNoAsync | SeeMaskFlagNoUi,
             lpFile = program,
-            lpParameters = string.Join(' ', args.Select(Quote)),
+            lpParameters = CommandLine(args),
             nShow = SwShowNormal,
         };
         _ = CoInitializeEx(IntPtr.Zero, CoinitApartmentThreaded | CoinitDisableOle1Dde);
@@ -133,6 +133,10 @@ public sealed class WindowsShellActions : IShellActions
         var error = Marshal.GetLastWin32Error();
         return new ShellResult(false, false, $"Could not start {Path.GetFileName(program)} (error {error}: {new Win32Exception(error).Message}).");
     }
+
+    /// <summary>The arguments as one Windows command line, each quoted by <see cref="Quote"/>: what <see cref="Start"/> passes
+    /// (the terminal tests start programs with exactly this string, PLANET-45).</summary>
+    public static string CommandLine(IEnumerable<string> args) => string.Join(' ', args.Select(Quote));
 
     /// <summary>
     /// Windows command-line quoting for one argument (CommandLineToArgvW rules): backslashes are literal except before a
