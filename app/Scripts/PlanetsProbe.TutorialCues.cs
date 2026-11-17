@@ -268,11 +268,26 @@ public partial class PlanetsProbe
     private async Task TurnUntil(NVector3 dir, Func<float, bool> done, Godot.Key preferred, double timeoutSeconds = 8)
     {
         var start = Time.GetTicksMsec();
+        // The camera's turn eases on after a key is let go, so a stop inside the window can drift out of it: wait for it
+        // to settle and aim again (up to three passes; full-tier run 2026-11-17 overshot from −99° to past +60°).
+        for (var pass = 0; pass < 3; pass++)
+        {
+            await TurnPass(dir, done, preferred, start, timeoutSeconds);
+            await Frames(20);
+            if (done(P.CameraTurnTo(dir))) break;
+        }
+    }
+
+    private async Task TurnPass(NVector3 dir, Func<float, bool> done, Godot.Key preferred, ulong start, double timeoutSeconds)
+    {
         while (!done(P.CameraTurnTo(dir)) && (Time.GetTicksMsec() - start) / 1000.0 < timeoutSeconds)
         {
             var b = P.CameraTurnTo(dir);
             // Fine aim: towards the bearing; otherwise keep turning the preferred way.
-            var key = MathF.Abs(b) < 30f && done(0) ? (b > 0 ? Godot.Key.Right : Godot.Key.Left) : preferred;
+            // Facing a target (done at bearing 0): always turn towards it, so an overshoot is corrected rather than carried
+            // round the whole circle the preferred way; other goals (turn it behind, to a side) keep the preferred way.
+            var key = done(0) ? (b > 0 ? Godot.Key.Right : Godot.Key.Left) : preferred;
+            Log(F($"    turn: bearing {b:0.#}°, {key}"));
             await AwaitFocus();
             HoldKey(key, true);
             await Frames(1);

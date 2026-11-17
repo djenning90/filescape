@@ -870,7 +870,11 @@ public partial class PlanetsProbe : ProbeBase
                 var a = P.Camera.UnprojectPosition(anchor);
                 var vp = App.GetViewport().GetVisibleRect();
                 var clamped = rect.Position.X <= vp.Position.X + 3 || rect.End.X >= vp.End.X - 3 || rect.Position.Y <= vp.Position.Y + 3;
-                if (!clamped) maxOffset = MathF.Max(maxOffset, MathF.Max(MathF.Abs(rect.GetCenter().X - a.X), MathF.Abs(rect.End.Y + 16 - a.Y)));
+                // A pinned name may be raised one slot (its height + 4) on a longer stem when another name holds its place
+                // (SignLayer.PinnedSlots, 2026-11-17): either height counts as on its pad.
+                var dy = rect.End.Y + 16 - a.Y;
+                var gapY = MathF.Min(MathF.Abs(dy), MathF.Abs(dy + rect.Size.Y + 4));
+                if (!clamped) maxOffset = MathF.Max(maxOffset, MathF.Max(MathF.Abs(rect.GetCenter().X - a.X), gapY));
             }
 
             var rects = App.Signs.ShownRects;

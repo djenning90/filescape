@@ -272,6 +272,7 @@ public partial class NavigationProbe : Node
         Check(afterDialog.Speed > 1, "movement works again once the dialog is closed");
 
         // ---------------------------------------------------- focus loss while flying with W held (simulated notification)
+        _main.HonourFocusLoss = true; // under --automate the app ignores focus loss unless told otherwise (KD-31)
         Mouse(MouseButton.Right, true, centre);
         await Frames(2);
         Key1(Key.W, true);
@@ -292,6 +293,7 @@ public partial class NavigationProbe : Node
         Check(_main.IsDragging, "instrument: the drag is active before focus is lost");
         GetTree().Root.PropagateNotification((int)NotificationApplicationFocusOut);
         GetTree().Root.PropagateNotification((int)NotificationApplicationFocusIn);
+        _main.HonourFocusLoss = false;
         await Settle(); // let the orbit easing from the short drag finish before taking the reference pose
         var t0 = Rig.Camera.GlobalTransform;
         Motion(new Vector2(200, 0), 0, centre + new Vector2(230, 0));

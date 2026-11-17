@@ -136,6 +136,7 @@ public abstract partial class ProbeBase : Node
     private double _simSeconds;
 
     private bool _lastFocused = true;
+    private bool _lossIgnored;
 
     public override void _Process(double delta)
     {
@@ -149,7 +150,9 @@ public abstract partial class ProbeBase : Node
         {
             _lastFocused = App.OsWindowFocused;
             Log(_lastFocused ? "window focus regained" : App.WindowFocused ? "window focus lost (input continues under automation)" : "window focus LOST (injected input is ignored until it returns)");
-            RepressHeldKeys();
+            // Only a loss the app ignored: a probe that tests focus loss itself (HonourFocusLoss) expects keys forgotten.
+            if (!_lastFocused) _lossIgnored = App.WindowFocused;
+            if (_lossIgnored) RepressHeldKeys();
         }
     }
 

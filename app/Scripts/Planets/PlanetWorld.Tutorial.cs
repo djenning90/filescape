@@ -251,8 +251,9 @@ public partial class PlanetWorld
         var top = CueTopInset;
         foreach (var r in _s.Hud.BlockingRects)
         {
-            // Keep clear under a panel that spans the top centre (the lesson card): 40 units below it.
-            if (r.Position.Y < view.Y * 0.4f && r.Position.X < view.X * 0.5f && r.End.X > view.X * 0.5f) top = MathF.Max(top, r.End.Y + 40f);
+            // Keep clear under a panel that spans the top centre (the lesson card): 64 units below it, room for the
+            // chevron's distance label above it (40 clipped the label once the chevron waited at the top, 2026-11-17).
+            if (r.Position.Y < view.Y * 0.4f && r.Position.X < view.X * 0.5f && r.End.X > view.X * 0.5f) top = MathF.Max(top, r.End.Y + 64f);
         }
 
         var inner = new Rect2(CueSideInset, top, view.X - 2 * CueSideInset, view.Y - CueBottomInset - top);
@@ -274,6 +275,10 @@ public partial class PlanetWorld
         {
             var p = _camera.UnprojectPosition(marker);
             if (inner.HasPoint(p)) return new TutorialCueState(TutorialCueMode.OnScreen, p, 90, distance, bearing, phase, t.Action, spotHidden && phase == TutorialCuePhase.Far);
+            // In view but above the area the lesson card leaves free (a tall target seen from the higher arrival camera,
+            // PLANET-42): the chevron waits at the top of that area straight below it (2026-11-17).
+            if (p.X >= inner.Position.X && p.X <= inner.End.X && p.Y >= 0 && p.Y < inner.Position.Y)
+                return new TutorialCueState(TutorialCueMode.Horizon, new Vector2(p.X, inner.Position.Y), 90, distance, bearing, phase, t.Action, spotHidden && phase == TutorialCuePhase.Far);
         }
 
         if (MathF.Abs(bearing) < BehindKeepSideDegrees) _edgeSide = bearing >= 0 ? 1 : -1;
@@ -289,6 +294,10 @@ public partial class PlanetWorld
                 if (!_camera.IsPositionBehind(pin))
                 {
                     var p = _camera.UnprojectPosition(pin);
+                    // From a camera that looks well down (the arrival framing, PLANET-42, or the Hazard World view) the
+                    // horizon is above the area left free by the lesson card: the chevron then waits at the top of that
+                    // area, in the target's direction, rather than turning into a side arrow while you face it (2026-11-17).
+                    if (p.X >= inner.Position.X && p.X <= inner.End.X && p.Y < inner.Position.Y) p.Y = inner.Position.Y;
                     if (inner.HasPoint(p)) return new TutorialCueState(TutorialCueMode.Horizon, p, 90, distance, bearing, phase, t.Action, true);
                 }
             }

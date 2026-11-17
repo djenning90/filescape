@@ -7,7 +7,7 @@ namespace FileScape.App.Ui;
 /// <param name="Anchor">The world point the sign names (it is drawn just above where this projects).</param>
 /// <param name="Focus">Approached, selected or hovered: placed first, larger, with its detail line.</param>
 /// <param name="Boost">Priority, world units: the sign ranks as if this much nearer than it is.</param>
-/// <param name="FixedAnchor">Pinned straight above its anchor with a stem (planets); never moved to another slot.</param>
+/// <param name="FixedAnchor">Pinned straight above its anchor with a stem (planets); only ever raised one slot higher on a longer stem.</param>
 public readonly record struct SignCandidate(
     int Id,
     Vector3 Anchor,
@@ -17,7 +17,7 @@ public readonly record struct SignCandidate(
     IconKind Icon,
     bool Focus,
     float Boost = 0f,
-    bool FixedAnchor = false); // pinned straight above its anchor with a stem (planets); never moved to another slot
+    bool FixedAnchor = false); // pinned straight above its anchor with a stem (planets); at most raised one slot
 
 /// <summary>
 /// Glanceable destination names (LABEL-01, AD-25): screen-space signs for every gate (or aerial place) in view, so a
@@ -41,6 +41,9 @@ public partial class SignLayer : Control
 
     /// <summary>Anchors this far outside the window (viewport units) are still considered: their sign may fit inside it.</summary>
     private const int OffscreenMargin = 40;
+
+    /// <summary>Slots a pinned sign may take: straight above its anchor, or stacked one sign higher on a longer stem.</summary>
+    private const int PinnedSlots = 2;
 
     /// <summary>
     /// Distance bands, world units (metres in Places and the aerial world): within 25 a sign is 17 px and keeps 26
@@ -171,7 +174,10 @@ public partial class SignLayer : Control
             new(-w * 0.55f, -(h + 4) * 0.5f), new(w * 0.55f, -(h + 4) * 0.5f), new(0, -3 * (h + 4)), new(0, 3 * h + 22),
             new(-w * 0.6f, -1.5f * (h + 4)), new(w * 0.6f, -1.5f * (h + 4)),
         ];
-        for (var i = 0; i < (c.FixedAnchor ? 1 : offsets.Length); i++)
+        // A pinned sign may also stack one slot higher on a longer stem: from the higher arrival camera (PLANET-42) a near
+        // pad and a far pad on the same bearing line up, and the second name used to vanish (2026-11-17). The stem still
+        // runs to the pad, so which pad it names stays plain.
+        for (var i = 0; i < (c.FixedAnchor ? PinnedSlots : offsets.Length); i++)
         {
             // The sign's bottom sits 6 units above the anchor (16 for a pinned sign, leaving room for its stem and dot).
             var r = new Rect2(anchor.X - w / 2 + offsets[i].X, anchor.Y - h - (c.FixedAnchor ? 16 : 6) + offsets[i].Y, w, h);

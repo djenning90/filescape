@@ -1013,6 +1013,9 @@ public partial class Main : Node3D
 
     public bool WindowFocused => _windowFocused;
     public bool OsWindowFocused => _osFocused;
+
+    /// <summary>Test instrument: a probe that checks what focus loss does sets this, so the app honours it under --automate.</summary>
+    public bool HonourFocusLoss { get; set; }
     public bool IsDragging => _pressButton != MouseButton.None;
     public IEnumerable<string> HeldActionNames => InputBindings.MovementActions.Where(_held.IsHeld);
 
@@ -1777,7 +1780,7 @@ public partial class Main : Node3D
         {
             // Alt-Tab and similar: release capture and forget held keys, so nothing is stuck on return.
             _osFocused = false;
-            if (_automationIgnoresFocus) return;
+            if (_automationIgnoresFocus && !HonourFocusLoss) return;
             _windowFocused = false;
             if (_rig != null) ReleaseAllInput();
         }
