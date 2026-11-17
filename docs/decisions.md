@@ -446,3 +446,27 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Why these lessons:** they are the moves every later session needs, in the order you need them; the up-versus-back pair is staged where they differ (after a direct jump with J, up and back lead to different places).
 - **Alternatives:** a video or a control sheet (DJ: learn by playing); a modal step-by-step overlay (hides the world).
 - **Revisit if:** playtesters stall on a step (the probe and the real-input probe record every step's completion), or the sample world changes.
+
+## AD-61 Next worlds: photos and videos, documents, Downloads (proposed, 2026-11-16)
+
+- **Status:** proposed. Nothing is built yet. The full sketch is in [`next-worlds.md`](next-worlds.md).
+- **Problem:** DJ asked how photos and videos, documents and Downloads could become distinct places. For each one he
+  wants to know how FileScape would recognise it, what would make it feel different, and one useful thing to do there.
+  He also asked about mixed folders and whether users could override the classification.
+- **Proposal:** three new kinds of place, each in the `WorldCharacter` layer, above the existing `PlanetTheme`:
+  - the **Gallery**: a date-ordered gallery path and a contact sheet for each month;
+  - the **Reading Room**: a reading nook of recent documents, with version stacks;
+  - the **Arrivals Port**: parcels in age rings and an arrivals board with Reveal in Explorer.
+- **How they are recognised:** by known-folder path, by names, and by the extension mix plus sizes. Names and metadata
+  only, never inside a repository, and never over a hazard or a root.
+- **Mixed folders and overrides:** a mixed folder gets one identity per world, and its large groves become districts.
+  The person can override the classification for each folder. The choice is saved in Preferences, and a name-only
+  marker file can come later; FileScape never creates a marker itself.
+- **First prototype:** the **Arrivals Port** (Downloads). It is useful, has almost no false positives, and needs only
+  names, sizes and dates. The draft acceptance criteria are NW-1..NW-6 in the sketch.
+- **Open decision for DJ:** the Gallery has to read your pictures while you walk, so it needs a per-folder yes.
+  Thumbnails would stay in memory only. Today pictures are read only when you preview one (FILE-02).
+- **Alternatives considered:** a "Move to Recycle Bin" action for old downloads (rejected for now: it would break the
+  read-only promise, and Reveal gets you to the same place); recognising Downloads from the mix alone (it would be
+  wrong too often).
+- **Revisit if:** DJ ranks the Gallery first, or wants these worlds as themes rather than identities.
