@@ -125,3 +125,10 @@ to listen for).
    own uneasy theme, a warning as you near an edge and a falling whoosh. Samples to compare:
    `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt says what to listen for).
 5. **Legacy views.** The toolbar's *Legacy views* menu opens Places and the two maps; V returns to Planets.
+
+## Root landmarks (2026-11-16): the gateway and the monolith do something
+
+1. From This computer, fly to your Linux distribution (Ubuntu). Its terminal monolith stands near the arrival, a faint amber ring of light round its foot. (On a root with many folders it stands a little further out, between the first two rings of launchers, so that no straight walk to a launcher runs into it.)
+2. Walk up to it: the ring brightens, a warm light comes up on its face and the prompt says **E · terminal here · copy path · places**. Walk into it: it is solid; you slide off round it as round any pillar.
+3. Press **E**: a small panel. **1** opens a shell of that distribution in `/`; **2** copies `/`; **3** copies `\\wsl.localhost\Ubuntu-24.04\`; then places: **~ home**, **/tmp**, **/mnt/c** (the Windows C: drive, opened as `C:\`). Choosing a place travels there. E or Esc closes the panel; walking away closes it too. Nothing starts until you press a number or click a row.
+4. On a Windows drive the pane gateway does the same in blue: **1** opens Windows Terminal (or PowerShell if Windows Terminal is not installed) in that drive's root, **2** copies `D:\`, **3** copies `/mnt/d`, and the places are the drive's root, Home, Desktop, Documents and Downloads.
