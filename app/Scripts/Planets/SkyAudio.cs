@@ -444,6 +444,9 @@ public partial class SkyAudio : Node
     /// <summary>An air jump: a sparkly upward flourish. Immediate.</summary>
     public void AirJump() { lock (_gate) _synth.AirJump(); }
 
+    /// <summary>The bell tower rung (PLANET-56): a big bell's strike and its answer in the world's key. Tempo-locked.</summary>
+    public void BellToll() { lock (_gate) _synth.BellToll(); }
+
     /// <summary>A landing; <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown. Immediate.</summary>
     public void Land(float impactMetersPerSecond) { lock (_gate) _synth.Land(impactMetersPerSecond); }
 

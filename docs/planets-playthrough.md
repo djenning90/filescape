@@ -196,7 +196,7 @@ Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh 
 2. **Step 2 (the tower):** a lime column rises from the tower, with a lime ring round its base. Turn away until the tower is behind you: a big lime arrow appears at the screen's edge, pointing the way to turn, with "behind you · 20 m" under it. The card's line says the same. Keep turning: the arrow swaps sides. Face the tower from across the planet and the chevron waits at the horizon. Walk on and it pins over the tower's top. Within 6 m it grows and a lime pill says "Walk into the ring".
 3. **Step 4 (the launcher):** the cue moves to the Lantern Workshop pad when the step begins. Walk away until the pad is behind the curve ("over the horizon"), then come back: on the pad the pill says "Stand here · press Space to fly" and the column fades so it doesn't fill the view.
 4. **Steps 5 and 6 (the bench):** after the flight the cue is the workbench on the new world. On the deck the pill says "Press E to read the README".
-5. **Steps 7 to 13:** key caps only (U, J ↓ Enter, U, Backspace, T, drag, Esc).
+5. **Steps 7 to 14:** key caps only (U, J ↓ Enter, U, Backspace, T, drag, wheel ↓ (since 2026-11-17), Esc).
 6. **Leave** at any time: the column, the ring and the arrow disappear.
 
 ## Hazard Worlds (2026-11-16, PLANET-46, AD-59)
@@ -249,3 +249,32 @@ with a README, or the fixture `tools/make-wsl-fixture.sh --readme` prints (`tool
    why. The app that opens it should come to the front (Windows decides); Alt+Tab returns to FileScape.
 8. **Judge:** whether typing after J ever does anything else on your keyboard; the Expand button's place and look; the
    reading view's feel with the wheel; whether the opened app comes forward on your machine.
+
+## Landmarks you can use, and the wheel (2026-11-17, PLANET-54..57, AD-63)
+
+On the sample world (Sample world in the toolbar, or `--root=sample`):
+
+1. **The telescope.** From the arrival, walk towards the lookout platform beside the tower (the Starter Sky's is next to
+   the stack of books). About 7 m from it a sign comes up on the platform's wall: **E · Telescope — this world's files
+   and destinations**, a cyan light comes on at the telescope, and the prompt says *Up the steps to the telescope*.
+   Climb the stones (or jump and twirl straight up): on top the sign stands over the telescope and **E** opens the
+   world's list. From the arrival nothing is shown.
+2. **The bell tower.** Fly to **Music Box** (J, type "music", Enter). Its landmark is the bell tower. Walk straight in
+   between two pillars: you step up onto the round stone base and stand under the bell (only the four pillars stop
+   you). The prompt says *Space, Space · jump and twirl to ring the bell*. Jump: nothing. **Jump and twirl**: the bell
+   swings and tolls — a big low bell in Music Box's key, on the beat, answered a beat later as it swings back. Twirl
+   again to ring it again. A twirl beside the tower (off the base) is just a twirl. Walk on out the far side.
+3. **The wheel.** Learn to play now has 14 steps. After **T** and the orbit drag, step 13 says *Scroll the mouse wheel
+   down to zoom out*, with a `wheel ↓` key cap. A few notches show the next world along and the card says *Keep
+   scrolling ↓ · N worlds in view*; at about 12 notches from Music Box the Starter Sky's neighbouring systems come in
+   and the step is done. Scrolling up zooms back in. Then **Esc** puts you back where you stood. The arrival title no
+   longer hangs over the map.
+4. **The root landmarks.** On a Windows drive or a WSL distribution (from This computer), walk up to the gateway or the
+   monolith: the prompt now says **E · Show location actions**, and its second line offers the twirl. **E** opens the
+   panel; every row says what it does underneath: **1** Open terminal here, **2** Show in Explorer (new), **3** Copy
+   path, **4** Copy the other form, then the places. **The quick route:** instead of E, jump and twirl at the mark — the
+   panel opens with *Open terminal here* armed (lime border, "Enter"), and the prompt says *Enter · Open terminal here ·
+   twirl again · Show in Explorer*. Twirl again to arm Show in Explorer. **Enter** runs the armed one; nothing starts
+   from the twirl itself. A plain jump at the mark does nothing; a few steps away a twirl is only a twirl.
+5. **Judge by feel and ear:** the bell's toll and swing, whether twelve wheel notches feel long, and whether the twirl
+   then Enter at a root is quicker than E then 1.

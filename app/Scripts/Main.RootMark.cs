@@ -5,7 +5,8 @@ using Godot;
 namespace FileScape.App;
 
 /// <summary>
-/// The session side of a root landmark's panel (PLANET-45, AD-58): start a terminal through the shell actions (so
+/// The session side of a root landmark's panel (PLANET-45, AD-58; PLANET-57): start a terminal and show the folder in File
+/// Explorer through the shell actions (so
 /// <c>--test-shell=record</c> records it and starts nothing), copy text to the clipboard (recorded, not copied, under the
 /// test shell: a probe must never overwrite the person's clipboard), travel to a path as Ctrl+L does, and the known
 /// folders and Windows Terminal this computer has. Every action here is an explicit player command from the panel.
@@ -54,4 +55,16 @@ public partial class Main : IDeveloperSession
     }
 
     void IDeveloperSession.GoToPath(string path) => OnPathSubmitted(path);
+
+    /// <summary>
+    /// PLANET-57: the folder opened with Windows (a folder's default verb shows it in File Explorer, or in whatever the
+    /// person has made their file manager). ShellExecute rather than <c>explorer.exe path</c>: Explorer parses commas in
+    /// its arguments as switches, a folder name may hold one. Recorded, not opened, under <c>--test-shell=record</c>.
+    /// </summary>
+    bool IDeveloperSession.ShowInExplorer(string folder)
+    {
+        var r = _shell.Open(folder);
+        ReportShell(r.Succeeded && !r.WasMock && !_recordShell ? r with { Message = $"Explorer opened at {folder}" } : r);
+        return r.Succeeded;
+    }
 }

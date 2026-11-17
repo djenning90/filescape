@@ -903,6 +903,59 @@ public sealed partial class SkySynth
         Enqueue(NextGridFrame(), NoteSpec.Bell(PitchHz(degree, 1), ratio: 1.4f, index: 2f, indexDecay: 0.4f) with { Attack = 0.003f, Decay = 1.8f, Gain = 0.06f, Pan = pan, Send = 0.45f });
     }
 
+    // ---------------------------------------------------------------- the bell tower (PLANET-56)
+
+    /// <summary>The bell tower's partials as (scale degree, octave, gain, decay seconds) of its strike: a hum an octave below
+    /// the tonic, the tonic, the third and fifth of the scale above it, and the octave (a church bell's hum, prime, tierce,
+    /// quint and nominal, in the world's own scale). Gains and decays by ear, 2026-11-17.</summary>
+    private static readonly (int Degree, int Octave, float Gain, float Decay)[] BellPartials =
+    [
+        (0, -1, 0.075f, 5.5f), (0, 0, 0.085f, 4.5f), (2, 0, 0.035f, 2.6f), (4, 0, 0.03f, 2.2f), (0, 1, 0.045f, 1.6f),
+    ];
+
+    /// <summary>The answering strike (the bell swinging back) is this much quieter than the first.</summary>
+    private const float BellAnswerGain = 0.55f;
+
+    /// <summary>The music ducks this deep (fraction kept) for this long under the toll, seconds: the bell is the event.</summary>
+    private const float BellDuckDepth = 0.5f, BellDuckSeconds = 1.4f;
+
+    /// <summary>The last toll's first strike (frame) and every note it struck (MIDI), for tests; (−1, empty) before any.</summary>
+    public (long Frame, IReadOnlyList<int> MidiNotes) LastBellToll { get; private set; } = (-1, []);
+
+    /// <summary>
+    /// The bell tower rung (PLANET-56, a jump and twirl under the bell): a big bell's strike on the music's next 32nd note,
+    /// in the world's key, and its answer a beat later a fifth up as the bell swings back — then both ring on for seconds
+    /// while the music ducks a little. Each partial is an FM bell (inharmonic, so it sounds struck, not played) with a
+    /// short bright clang at the strike. Call it once per ring; a ring while the last still sounds simply strikes again.
+    /// </summary>
+    public void BellToll()
+    {
+        var at = NextGridFrame();
+        var beat = GridStepFrames(at) * 8; // a beat: eight 32nd notes
+        DuckMusic(BellDuckDepth, BellDuckSeconds);
+        var profile = ClockAt(at).Profile;
+        var notes = new List<int>();
+        void Strike(long frame, int shift, float level, float pan)
+        {
+            foreach (var (degree, octave, gain, decay) in BellPartials)
+            {
+                var midi = profile.Root + 12 * octave + ScaleNote(profile.Scale, degree + shift);
+                notes.Add(midi);
+                Enqueue(frame, NoteSpec.Bell(MidiHz(midi), ratio: 1.41f, index: 1.4f, indexDecay: 0.5f) with
+                {
+                    Attack = 0.002f, Decay = decay, Gain = gain * level, Pan = pan, Send = 0.55f, ToneHz = 6000,
+                });
+            }
+
+            // The clang: a short bright burst at the strike.
+            Enqueue(frame, NoteSpec.Noise(2500, 5000, 0.04f, q: 2.5f) with { Attack = 0.0005f, Decay = 0.06f, Gain = 0.05f * level, Pan = pan, Send = 0.3f });
+        }
+
+        Strike(at, 0, 1f, -0.1f);
+        Strike(at + beat, 4, BellAnswerGain, 0.15f);
+        LastBellToll = (at, notes);
+    }
+
     // ---------------------------------------------------------------- rendering
 
     /// <summary>Renders the next <paramref name="frames"/> frames as interleaved stereo (L, R, L, R, …), each |x| &lt; 1.</summary>

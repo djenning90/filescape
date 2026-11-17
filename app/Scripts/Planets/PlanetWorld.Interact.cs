@@ -52,6 +52,9 @@ public partial class PlanetWorld
     public int FocusNodeId => _focusItem?.NodeId ?? _focusLauncher?.TargetId ?? -1;
     public string PromptText => _prompt.Text;
 
+    /// <summary>The prompt's quieter second line (probes).</summary>
+    public string PromptDetail => _promptDetail.Text;
+
     // ------------------------------------------------------------------ input
 
     /// <summary>A left press on the world, not yet a click or a drag (PLANET-24): it becomes a drag after
@@ -367,6 +370,7 @@ public partial class PlanetWorld
         _focusItem = null;
         _focusTelescope = false;
         UpdateRootMarkGlow(); // PLANET-45: a root landmark's cue brightens as you come near (PlanetWorld.RootMark.cs)
+        UpdateTelescopeCue(); // PLANET-55: the telescope's sign on approach (PlanetWorld.Bell.cs)
         if (_focusLauncher == null)
         {
             var best = FocusReachMetres;
@@ -417,11 +421,15 @@ public partial class PlanetWorld
         }
         else if (_focusTelescope)
         {
-            SetPrompt("E · the telescope: list every world and file here", "the inspection station");
+            SetPrompt("E · Telescope: this world's files and destinations", "the overlook");
         }
         else if (UpdateRootMarkFocus())
         {
             // PLANET-45: within reach of a root landmark; it set its own prompt (PlanetWorld.RootMark.cs)
+        }
+        else if (UpdateLandmarkApproachPrompt())
+        {
+            // PLANET-55/56: walking up to the telescope, or at the bell tower (PlanetWorld.Bell.cs)
         }
         else
         {
@@ -656,7 +664,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

@@ -577,7 +577,14 @@ public static class PlanetComposer
         }
 
         var overlook = new PlanetOverlook(overlookDir, p.OverlookTop, p.OverlookRadius, steps);
-        var landmark = new PlanetLandmark(landmarkDir, p.LandmarkRadius, p.LandmarkTop);
+        // The Chime world's bell tower (PLANET-56) is a walkable base with four pillars, not one solid: its footprint is the
+        // base (2.3 m, wider than the 1.6 m it stood on as a cylinder); it stays where the cylinder stood.
+        var bellTower = theme == PlanetTheme.Chime;
+        var landmark = new PlanetLandmark(landmarkDir, bellTower ? BellTower.BaseRadiusMetres : p.LandmarkRadius, p.LandmarkTop)
+        {
+            Solids = bellTower ? BellTower.Solids(landmarkDir, radius, folderId) : null,
+            Bell = bellTower,
+        };
         var complexRadius = p.OverlookRadius + 2 * p.StepRadius; // the overlook with its ring of stones
 
         // ---- launcher directions
@@ -664,13 +671,13 @@ public static class PlanetComposer
 
         // ---- a filesystem root's landmark (PLANET-45, AD-58): solid, so it stands clear of every walking route
         var markKind = rootMarkKind ?? RootMarkLayout.KindOf(tree, folder);
-        var rootMark = markKind is WorldKind.WindowsRoot or WorldKind.WslRoot ? PlaceRootMark(markKind.Value, radius, rings, launchers, paths, landmarkDir, overlookDir, complexRadius, p) : null;
+        var rootMark = markKind is WorldKind.WindowsRoot or WorldKind.WslRoot ? PlaceRootMark(markKind.Value, radius, rings, launchers, paths, landmarkDir, landmark.Radius, overlookDir, complexRadius, p) : null;
 
         // ---- exclusion zones (no items or solid scenery)
         var keepOut = new List<Solid>
         {
             new(pole, p.ArrivalRadius),
-            new(landmarkDir, p.LandmarkRadius + p.SolidGap),
+            new(landmarkDir, landmark.Radius + p.SolidGap),
             new(overlookDir, complexRadius + p.SolidGap),
         };
         foreach (var l in launchers) keepOut.Add(new Solid(l.Direction, p.LauncherClearRadius));
@@ -684,7 +691,7 @@ public static class PlanetComposer
         {
             var overlookRoute = paths[^1].Points; // pole, the stand-off before the first stone, the stone; or pole, the step before the bench
             var routeFoot = overlookRoute.Count > 2 ? overlookRoute[^2] : overlookRoute[^1];
-            (shell, plateaus) = DesignShell(radius, seed, launchers, landmarkDir, overlookDir, complexRadius, routeFoot, groups, budget, p);
+            (shell, plateaus) = DesignShell(radius, seed, launchers, landmarkDir, landmark.Radius, overlookDir, complexRadius, routeFoot, groups, budget, p);
             paths.Clear();
             foreach (var l in launchers)
             {
@@ -773,17 +780,18 @@ public static class PlanetComposer
         foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + PadFlatMargin));
         foreach (var g in groves) flats.Add((g.CentreDirection, GroveFlatRadius));
         if (rootMark != null) flats.Add((rootMark.Direction, RootMarkLayout.Footprint(rootMark.Kind) + PadFlatMargin)); // its round base sits level
+        // The bell tower's base is a step you stand on: level ground under it, so its drawn top and its solid's top agree all round.
+        if (landmark.Bell) flats.Add((landmarkDir, landmark.Radius + PadFlatMargin));
         var shape = new PlanetShape(radius, seed, hillAmplitude, flats);
 
         // ---- decorations
         var decorations = Decorate(theme, radius, seed, groves, Free, solids, p);
 
         // ---- obstacles
-        var obstacles = new List<SurfaceObstacle>
-        {
-            new(landmarkDir, p.LandmarkRadius, p.LandmarkTop, folderId),
-            new(overlookDir, p.OverlookRadius, p.OverlookTop),
-        };
+        var obstacles = new List<SurfaceObstacle>();
+        if (landmark.Solids is { } landmarkSolids) obstacles.AddRange(landmarkSolids); // the bell tower: its base and four pillars
+        else obstacles.Add(new SurfaceObstacle(landmarkDir, p.LandmarkRadius, p.LandmarkTop, folderId));
+        obstacles.Add(new SurfaceObstacle(overlookDir, p.OverlookRadius, p.OverlookTop));
         obstacles.AddRange(steps);
         if (rootMark != null) obstacles.AddRange(rootMark.Solids);
         foreach (var l in launchers) obstacles.Add(new SurfaceObstacle(l.Direction, l.PadRadius, l.PadTop, l.TargetId));
@@ -830,7 +838,7 @@ public static class PlanetComposer
     /// between rings and half a ring gap beyond the last.
     /// </summary>
     private static PlanetRootMark PlaceRootMark(WorldKind kind, float radius, List<RingSlot> rings, List<PlanetLauncher> launchers, List<PlanetPath> paths,
-        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, PlanetParams p)
+        Vector3 landmarkDir, float landmarkRadius, Vector3 overlookDir, float complexRadius, PlanetParams p)
     {
         var pole = Vector3.UnitY;
         var routes = new List<(Vector3, Vector3)>();
@@ -843,7 +851,7 @@ public static class PlanetComposer
         routes.Add((pole, landmarkDir));
         var zones = new List<RootMarkLayout.Zone>
         {
-            new(landmarkDir, p.LandmarkRadius + p.SolidGap),
+            new(landmarkDir, landmarkRadius + p.SolidGap),
             new(overlookDir, complexRadius + p.SolidGap),
         };
         foreach (var l in launchers) zones.Add(new RootMarkLayout.Zone(l.Direction, p.LauncherClearRadius));
@@ -896,7 +904,7 @@ public static class PlanetComposer
     /// foot before the overlook) — and one plateau per grove, sized for the files it shows.
     /// </summary>
     private static (BrokenShell Shell, IReadOnlyList<Vector3> Plateaus) DesignShell(float radius, int seed, List<PlanetLauncher> launchers,
-        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, Vector3 routeFoot, List<(FileCategory Category, List<int> Ids)> groups,
+        Vector3 landmarkDir, float landmarkRadius, Vector3 overlookDir, float complexRadius, Vector3 routeFoot, List<(FileCategory Category, List<int> Ids)> groups,
         int[] budget, PlanetParams p)
     {
         var pole = Vector3.UnitY;
@@ -904,7 +912,7 @@ public static class PlanetComposer
         foreach (var l in launchers) sites.Add(new HazardSite(l.Direction, l.Direction, LauncherContentMetres(p), l.IsParent ? HazardSiteKind.WayBack : HazardSiteKind.Launcher));
         var mid = Vector3.Normalize(landmarkDir + overlookDir);
         var complex = MathF.Max(
-            MathF.Max(PlanetShape.Angle(mid, landmarkDir) * radius + p.LandmarkRadius, PlanetShape.Angle(mid, overlookDir) * radius + complexRadius),
+            MathF.Max(PlanetShape.Angle(mid, landmarkDir) * radius + landmarkRadius, PlanetShape.Angle(mid, overlookDir) * radius + complexRadius),
             PlanetShape.Angle(mid, routeFoot) * radius + HazardWaypointClearMetres);
         sites.Add(new HazardSite(routeFoot, mid, complex, HazardSiteKind.Landmark));
         var plateauContent = new List<float>();

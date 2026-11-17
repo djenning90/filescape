@@ -71,6 +71,31 @@ public partial class Main
     /// <summary>How close to the spot you left counts as "back where you stood" after the overview, metres.</summary>
     private const float BackWhereYouStoodMetres = 1.5f;
 
+    /// <summary>
+    /// The zoom step (PLANET-54): the overview camera must be at least this many times as far out as when the step began,
+    /// and must have eased most of the way there (so you see it), and at least <see cref="ZoomMoreWorlds"/> more worlds
+    /// must be in view than at the start. Measured on the sample from Music Box at 1600 × 900 (2026-11-17): it opens 30 m
+    /// out with 2 worlds in view; each wheel notch is ×1.18; 4 worlds until ≈ 130 m, then the Starter Sky's neighbouring
+    /// systems come in — 14 worlds at 150 m (12 notches), 41 at 210 m. Fewer notches only showed the next world along.
+    /// </summary>
+    private const float ZoomOutFactor = 3f, ZoomSettledShare = 0.85f;
+
+    /// <summary>How many more worlds the zoom step must bring into view (enough that it is the system, not a neighbour).</summary>
+    private const int ZoomMoreWorlds = 10;
+
+    /// <summary>The zoom step's "keep scrolling" line shows once the wheel has pulled back this much (one notch is ×1.18).</summary>
+    private const float ZoomProgressFrom = 1.1f;
+
+    private float _tutZoom0;
+    private int _tutWorlds0;
+
+    /// <summary>The zoom step's test: well out, settled, and more worlds in view.</summary>
+    private bool ZoomedOutEnough()
+    {
+        var (now, target) = _planets.UniverseZoom;
+        return target >= _tutZoom0 * ZoomOutFactor && now >= target * ZoomSettledShare && _planets.UniverseWorldsInView >= _tutWorlds0 + ZoomMoreWorlds;
+    }
+
     private PanelContainer _lessonCard = null!;
     private Label _lessonTitle = null!, _lessonText = null!, _lessonFeedback = null!;
     private HBoxContainer _lessonKeys = null!;
@@ -302,6 +327,11 @@ public partial class Main
             new("5 · Look round it", "Drag with the left mouse button to orbit. Click a world to select it if you like.", ["drag"], () => musicBox, () => null,
                 () => _planets.UniverseOpen && MathF.Abs(_planets.UniverseYaw - _tutYaw0) >= OverviewOrbitRadians,
                 () => _tutYaw0 = _planets.UniverseYaw),
+            // PLANET-54 (DJ 2026-11-17: "When Overview opens zoomed in, I don't know I can see more. Prompt me to scroll down
+            // to zoom out"): done once the wheel has pulled the camera well back and you can see more worlds than before.
+            new("5 · Zoom out", "Scroll the mouse wheel down to zoom out until you see the Starter Sky's worlds around you. (Scroll up zooms back in.)", ["wheel ↓"], () => musicBox, () => null,
+                () => _planets.UniverseOpen && ZoomedOutEnough(),
+                () => { var z = _planets.UniverseZoom; _tutZoom0 = MathF.Max(z.Now, z.Target); _tutWorlds0 = _planets.UniverseWorldsInView; }),
             new("5 · Back where you stood", "Press Esc to come back down to the exact spot you left.", ["Esc"], () => musicBox, () => null,
                 () => !_planets.UniverseOpen && !_planets.Busy && NVector3.Distance(_planets.Walker.Feet, _tutFeetBeforeOverview) <= BackWhereYouStoodMetres),
         ];
@@ -338,10 +368,10 @@ public partial class Main
             return;
         }
 
-        // The overview was closed early: back to "open it".
-        if (lesson.Title.StartsWith("5 · Look round", StringComparison.Ordinal) && !_planets.UniverseOpen)
+        // The overview was closed early (looking round it or zooming out): back to "open it".
+        if ((lesson.Title.StartsWith("5 · Look round", StringComparison.Ordinal) || lesson.Title.StartsWith("5 · Zoom out", StringComparison.Ordinal)) && !_planets.UniverseOpen)
         {
-            _lesson--;
+            _lesson = _lessons.FindIndex(l => l.Title.StartsWith("5 · The overview", StringComparison.Ordinal));
             EnterLesson();
             return;
         }
@@ -358,6 +388,15 @@ public partial class Main
             _lessonFeedback.Text = MathF.Abs(bearing) <= TurnHintDegrees ? ""
                 : bearing > 0 ? (behind ? "The green beacon is behind you: turn right →  (drag, or press →)" : "The green beacon is to your right →  (drag, or press →)")
                 : (behind ? "←  The green beacon is behind you: turn left  (drag, or press ←)" : "←  The green beacon is to your left  (drag, or press ←)");
+            _lessonFeedback.Visible = _lessonFeedback.Text.Length > 0;
+        }
+
+        // The zoom step's progress (PLANET-54): once the wheel has started to pull back, say how many worlds you see, so a
+        // few notches that only show the next world along read as "keep going", not as nothing happening.
+        if (lesson.Title.StartsWith("5 · Zoom out", StringComparison.Ordinal) && _planets.UniverseOpen && _lessonDoneFor <= 0)
+        {
+            var (_, zoomTarget) = _planets.UniverseZoom;
+            _lessonFeedback.Text = zoomTarget > _tutZoom0 * ZoomProgressFrom ? $"Keep scrolling ↓ · {_planets.UniverseWorldsInView} worlds in view" : "";
             _lessonFeedback.Visible = _lessonFeedback.Text.Length > 0;
         }
 
@@ -479,6 +518,6 @@ public partial class Main
 
         return System.FormattableString.Invariant(
             $"\"welcome\":{(_welcomeOpen ? "true" : "false")},\"showWelcomePref\":{(_prefs.ShowWelcome ? "true" : "false")},\"atHub\":{(atHub ? "true" : "false")},\"tutorialActive\":{(TutorialActive ? "true" : "false")},\"tutorialStep\":{_lesson},\"tutorialTitle\":\"{JsonEscape(TutorialTitle)}\",\"offRoute\":{(TutorialOffRoute ? "true" : "false")},\"helpOpen\":{(_hud.HelpVisible ? "true" : "false")},\"targetBearing\":{bearing:0.#},\"targetDistance\":{distance:0.##},") + cueJson +
-            $"\"welcomeLearn\":{At(WelcomeButtonRect(0))},\"welcomeOwn\":{At(WelcomeButtonRect(1))},\"welcomeNever\":{At(WelcomeButtonRect(2))},\"helpLearn\":{At(_hud.LearnToPlayButtonRect)},\"lessonLeave\":{At(LessonButtonRect("leave"))},\"lessonBack\":{At(LessonButtonRect("back"))},\"legacyMenu\":{At(_hud.LegacyMenuButtonRect)},\"legacyItem0\":{At(_hud.VisualizationButtonRect(-1))},";
+            $"\"welcomeLearn\":{At(WelcomeButtonRect(0))},\"welcomeOwn\":{At(WelcomeButtonRect(1))},\"welcomeNever\":{At(WelcomeButtonRect(2))},\"helpLearn\":{At(_hud.LearnToPlayButtonRect)},\"lessonLeave\":{At(LessonButtonRect("leave"))},\"lessonSkip\":{At(LessonButtonRect("skip"))},\"lessonBack\":{At(LessonButtonRect("back"))},\"legacyMenu\":{At(_hud.LegacyMenuButtonRect)},\"legacyItem0\":{At(_hud.VisualizationButtonRect(-1))},";
     }
 }

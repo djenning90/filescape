@@ -706,3 +706,62 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
+
+## AD-63 Landmarks you use by playing: the bell rings on a twirl; a root's twirl arms, Enter commits (2026-11-17)
+
+- **Problem:** DJ's notes after completing Learn to play (PLANET-54..57). The bell tower's platform looked walkable but
+  one solid cylinder blocked the whole structure; "use this as the landmark interaction … jump and twirl under it to ring
+  it … it can simply be fun". At the Windows and WSL root landmarks the prompt "E · terminal here · copy path · places"
+  was compressed; "explore whether a twirl at the landmark could give me a quick route to Terminal here or Show in
+  Explorer. If you make the gesture open an external app directly, give it a clear target and cue before I commit.
+  Ordinary jumping nearby should feel like ordinary jumping." At the overlook, nothing said that E at the telescope
+  opens the list. In the overview, nothing taught the mouse wheel.
+- **The bell tower (decided):** its collision is its drawing (Core `BellTower`, the one set of measurements the art draws
+  from): a 2.3 m base you step onto (0.30 m), four pillars solid at their 0.28 m collars, nothing over the axis; level
+  ground under the base. The bell was made smaller and higher (mouth 1.2 m, rim 4.65 m): a twirl from the base peaks at
+  ≈ 2.9 m and the traveller is ≈ 1.45 m tall with its antenna, so its head stayed in the old 4.15 m bell. **A twirl (the
+  air jump) while under the bell's mouth rings it**: the bell swings across your view (≈ 14°, dying away over ≈ 3 s) and
+  `SkySynth.BellToll` strikes a big bell — hum, prime, third, fifth and octave of the world's scale as FM bells — on the
+  music's next 32nd note, answered one beat later a fifth up (the swing back), ringing for seconds while the music
+  ducks to half. An ordinary jump under it, or a twirl beside the tower, is only a jump; ringing opens nothing. Why the
+  twirl and not a jump: a jump is how you move; the twirl is the deliberate move FileScape already gives meaning to
+  (the bench's spin, a file's preview), and "jump and twirl" is what DJ asked for.
+- **The root landmarks (decided):** the prompt is **"E · Show location actions"**; its second line names the mark and the
+  path and offers the twirl. The panel's rows each say what they do on a line under them ("Opens Windows Terminal in …
+  (a new window)", "Opens File Explorer at …", "Puts … on the clipboard"; the places share "choosing one flies you
+  there"). **Show in Explorer** is added as row 2 (it was only on the folder's card): the folder opened with Windows
+  (ShellExecute's default verb on a folder), not `explorer.exe <path>`, whose argument parser treats commas as switches.
+- **The twirl's quick route — options:**
+  1. *Twirl at the mark starts the terminal directly.* Fastest, but an external program would start from movement
+     (AD-57 forbids it), and a playful twirl beside a monolith — the very thing the bell teaches — would open windows.
+  2. *Two launch pads in front of the mark ("Terminal", "Explorer"), a twirl on one launches it, the pad's sign the
+     cue.* A clear target, but still a commit by movement; two more solids and signs to place clear of routes on every
+     root; and a twirl is easy to do by accident while playing near a pad.
+  3. *Twirl arms, a key commits (chosen).* Within reach of the mark (2.2 m of its face, where the prompt already shows),
+     a twirl opens the panel with **Open terminal here** armed — a lime border and "▶ … · Enter" on the row, and the
+     prompt reads "Enter · Open terminal here · twirl again · Show in Explorer · E · close"; another twirl arms Show in
+     Explorer (and round again); **Enter** runs the armed row. The target and what Enter will do are on screen before
+     you commit; the commit is a key, never movement; an ordinary jump does nothing; beyond reach a twirl is only a
+     twirl; walking away, E or Esc disarms. It saves the reading (twirl, Enter) without making movement launch anything.
+  4. *No twirl at the mark.* Simplest; but DJ asked for the quick route and the panel alone is already E.
+- **Telescope (decided):** walking towards the overlook (from ≈ 7 m off its edge) a pinned sign in the sign layer reads
+  "E · Telescope / this world's files and destinations" and a soft light comes up on the telescope; the prompt says
+  "Up the steps to the telescope: E there lists this world's files and destinations". Walking up, the chase camera puts
+  the platform's top near the top of the view, where the HUD is (a sign over the telescope was dropped for want of
+  room), so the sign is pinned to the platform's wall on your side; on the platform it stands over the telescope. A
+  3D label was tried first: it sat under the breadcrumb bar. At the bell tower (which stands beside the overlook) the
+  bell's prompt is the one cue.
+- **The overview's wheel (decided):** a 14th walkthrough step, "5 · Zoom out", with the wheel's key cap, between looking
+  round the overview and Esc. It completes when the camera is ≥ 3× as far out as at its start, has eased there, and
+  ≥ 10 more worlds are in view: from Music Box at 1600 × 900 that is 12 notches (30 → 151 m, 2 → 16 worlds), where the
+  Starter Sky's neighbouring systems come in; fewer notches showed only the next world along. Part way the card says
+  "Keep scrolling ↓ · N worlds in view". The wheel's step (×1.18 a notch) is unchanged.
+- **Evidence:** Core (`PlanetComposerTests` bell tower: walked under, standing at 0.30 m, twirl clear of the mouth, each
+  pillar solid and no wider, everything reachable, other landmarks unchanged; `SkySynthTests.Bell`: grid, key, answer,
+  tail, ≥ 4 dB over each world's music, 20 tolls within budget); behaviour baseline identical (no Chime world in it).
+  `planets-lookouts` 28/0, `planets-landmarks` 69/0, `planets-tutorial` 36/0, `planets-tutorial-cues` 55/0.
+- **Known limits:** twelve notches is a fair amount of scrolling; the toll is judged by measurement, not yet by ear;
+  only the bell tower has an interaction of its own (the other landmarks are still silhouettes); real input not run
+  here (`os-planets-probe.ps1 -Landmarks` is ready).
+- **Revisit if:** DJ finds the zoom step long (raise the wheel's step, or let the step finish on fewer worlds), wants
+  the twirl to launch directly (option 2, with pads), or wants landmark interactions on the other themes.

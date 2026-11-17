@@ -29,16 +29,22 @@ public interface IDeveloperSession
 
     /// <summary>Travels to a full path, as a typed Ctrl+L path does.</summary>
     void GoToPath(string path);
+
+    /// <summary>Opens File Explorer at a folder (an explicit command; recorded under the test shell); reports the outcome. True when it opened (or was recorded).</summary>
+    bool ShowInExplorer(string folder);
 }
 
 /// <summary>
 /// A filesystem root's landmark as a developer's entry point (PLANET-45, AD-58). The Windows volume's pane gateway and the
 /// WSL distribution's terminal monolith are solid (the composer's <see cref="PlanetComposition.RootMark"/>); walking up
-/// to one brightens its cue (<see cref="PlanetVisual.RootMarkGlowTarget"/>) and the prompt says "E · terminal here · copy
-/// path · places". E opens a small panel: <b>1</b> open a terminal in this folder (Windows Terminal or PowerShell; for WSL
-/// the distribution's own shell), <b>2</b>/<b>3</b> copy the path in its native form and the other side's, then a few
-/// useful places on that filesystem (number keys or click; choosing one travels there). Nothing runs on walking up or
-/// on opening the panel: only a button or its key does anything.
+/// to one brightens its cue (<see cref="PlanetVisual.RootMarkGlowTarget"/>) and the prompt says "E · Show location
+/// actions" (PLANET-57; it was "E · terminal here · copy path · places", which DJ found compressed). E opens a small
+/// panel whose rows each say what they do: <b>1</b> open a terminal in this folder (Windows Terminal or PowerShell; for
+/// WSL the distribution's own shell), <b>2</b> show it in File Explorer, <b>3</b>/<b>4</b> copy the path in its native
+/// form and the other side's, then a few useful places on that filesystem (number keys or click; choosing one travels
+/// there). A twirl within reach is the quick route (AD-63): it opens the panel with the terminal armed, another twirl arms
+/// Explorer, Enter runs the armed one. Nothing runs on walking up, on jumping or twirling, or on opening the panel: only
+/// Enter on an armed row, a button or its number key does anything.
 /// <para>
 /// The panel acts on the current folder (on a real root, the root; probes may show a root's look on a fixture folder).
 /// It is rebuilt each time it opens, so it always describes where you stand.
@@ -105,7 +111,7 @@ public partial class PlanetWorld
         _rootPath = MakeLabel(13, new Color(0.78f, 0.84f, 0.98f), HorizontalAlignment.Left, outline: 0);
         _rootRows = new VBoxContainer();
         _rootRows.AddThemeConstantOverride("separation", 3);
-        var hint = new Label { Text = "Press a number or click · E or Esc closes · nothing runs until you choose it", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        var hint = new Label { Text = "Press a number or click (Enter runs a row a twirl armed) · E or Esc closes · nothing runs until you choose it", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         hint.AddThemeFontSizeOverride("font_size", 12);
         hint.AddThemeColorOverride("font_color", new Color(0.7f, 0.76f, 0.9f));
         v.AddChild(_rootTitle);
@@ -128,6 +134,7 @@ public partial class PlanetWorld
         var face = RootMarkFaceDistance(m);
         visual.RootMarkGlowTarget = _rootPanel.Visible ? 1 : Mathf.Clamp((RootMarkGlowFromMetres - face) / (RootMarkGlowFromMetres - RootMarkReachMetres), 0, 1);
         if (_rootPanel.Visible && face > RootMarkReachMetres + RootPanelCloseBeyondMetres) _rootPanel.Visible = false;
+        if (!_rootPanel.Visible) _rootArmed = -1; // closed (walked away, E, Esc): nothing stays armed
     }
 
     /// <summary>
@@ -139,10 +146,27 @@ public partial class PlanetWorld
         if (RootMark is not { } m || _current == null || _s.Tree is not { } tree || RootMarkFaceDistance(m) > RootMarkReachMetres) return false;
         _focusRootMark = true;
         var wsl = m.Kind == WorldKind.WslRoot;
-        SetPrompt(_rootPanel.Visible ? "number keys · choose   ·   E · close" : "E · terminal here · copy path · places",
-            $"{(wsl ? "the terminal monolith" : "the pane gateway")} · {PathForms.For(tree.FullPath(_current.FolderId))[0].Text}");
+        var what = $"{(wsl ? "the terminal monolith" : "the pane gateway")} · {PathForms.For(tree.FullPath(_current.FolderId))[0].Text}";
+        if (!_rootPanel.Visible)
+        {
+            // PLANET-57 (DJ: "replace the compressed text with a clear instruction such as E · Show location actions").
+            SetPrompt(RootMarkPromptText, $"{what}   ·   or twirl (Space, Space): a terminal or Explorer, then Enter");
+        }
+        else if (_rootArmed >= 0)
+        {
+            var next = _rootQuick.Count > 1 ? _rootActions[_rootQuick[(_rootQuick.IndexOf(_rootArmed) + 1) % _rootQuick.Count]].Label : "";
+            SetPrompt($"Enter · {RootMarkArmed}" + (next.Length > 0 ? $"   ·   twirl again · {next}" : "") + "   ·   E · close", what);
+        }
+        else
+        {
+            SetPrompt("number keys or click · choose   ·   E · close", what);
+        }
+
         return true;
     }
+
+    /// <summary>The prompt within reach of the mark with its panel closed (probes check it).</summary>
+    public const string RootMarkPromptText = "E · Show location actions";
 
     /// <summary>E at the mark: opens (or closes) its panel. Nothing runs here.</summary>
     private void ToggleRootMarkPanel()
@@ -159,6 +183,9 @@ public partial class PlanetWorld
     private void FillRootMarkPanel(Core.Model.FsTree tree, PlanetRootMark m)
     {
         foreach (var c in _rootRows.GetChildren()) c.QueueFree();
+        _rootButtons.Clear();
+        _rootDoes.Clear();
+        _rootArmed = -1;
         _rootActions.Clear();
         var path = tree.FullPath(_current!.FolderId);
         var wsl = m.Kind == WorldKind.WslRoot;
@@ -168,46 +195,145 @@ public partial class PlanetWorld
         _rootPath.Text = forms[0].Text;
         _rootPath.TooltipText = string.Join("\n", forms.Select(f => $"{f.Label}: {f.Text}"));
 
+        // Each action says what it does under its name (PLANET-57: "the panel can then show what each action does").
+        _rootQuick.Clear();
         if (_s.IsLive && dev != null && TerminalLaunch.For(path, dev.WindowsTerminal) is { } term)
         {
-            var where = term.Program == TerminalLaunch.WslExe ? $"{Distro(path)} shell" : term.Program.EndsWith("wt.exe", StringComparison.OrdinalIgnoreCase) ? "Windows Terminal" : "PowerShell";
-            AddRootAction("Open terminal here", $"{where} · {term.StartsIn}", term.Explanation, () => dev.StartTerminal(term));
+            var where = term.Program == TerminalLaunch.WslExe ? $"{Distro(path)}'s shell" : term.Program.EndsWith("wt.exe", StringComparison.OrdinalIgnoreCase) ? "Windows Terminal" : "PowerShell";
+            _rootQuick.Add(_rootActions.Count);
+            AddRootAction(TerminalLabel, $"Opens {where} in {term.StartsIn} (a new window)", term.Explanation, () => dev.StartTerminal(term));
         }
         else
         {
             AddRootNote("No terminal for sample data: open a real folder (Ctrl+O) to start one here.");
         }
 
+        if (_s.IsLive && dev != null)
+        {
+            _rootQuick.Add(_rootActions.Count);
+            AddRootAction(ExplorerLabel, $"Opens File Explorer at {path} (a new window)", path, () => dev.ShowInExplorer(path)); // Windows' form, as Explorer shows it
+        }
+
         foreach (var f in forms)
         {
             var form = f;
-            AddRootAction(form == forms[0] ? "Copy path" : $"Copy {form.Label}", form.Text, $"Copies {form.Text}",
+            AddRootAction(form == forms[0] ? "Copy path" : $"Copy {form.Label}", $"Puts {form.Text} on the clipboard", $"Copies {form.Text}",
                 () => { if (dev != null) dev.CopyText(form.Text, form.Label); else DisplayServer.ClipboardSet(form.Text); });
         }
 
         var places = !_s.IsLive || dev == null ? []
             : wsl && Distro(path) is { } distro ? RootPlaces.ForWsl(distro, ListAhead.LinuxPath(path) ?? "/")
             : RootPlaces.ForWindows(path, dev.KnownFolders);
-        if (places.Count > 0) AddRootNote("Places on this filesystem");
+        if (places.Count > 0) AddRootNote("Places on this filesystem · choosing one flies you there");
         foreach (var p in places)
         {
             var place = p;
-            AddRootAction(place.Label, place.Detail, place.Path == RootPlaces.WslHomeMarker ? "your home (looked up when you choose it)" : place.Path, () => TravelToPlace(place, path));
+            AddRootAction(place.Label, null, place.Path == RootPlaces.WslHomeMarker ? "your home (looked up when you choose it)" : place.Path, () => TravelToPlace(place, path), place.Detail);
         }
+
+        ShowRootQuick();
     }
+
+    /// <summary>The panel's two outward actions (the twirl's quick route can arm them, AD-63).</summary>
+    public const string TerminalLabel = "Open terminal here", ExplorerLabel = "Show in Explorer";
 
     /// <summary>The distribution of a WSL path, or null.</summary>
     private static string? Distro(string path) => EditorLaunch.Distribution(path);
 
-    /// <summary>One numbered row: the key, the action and a detail on the right; clicking does what the key does.</summary>
-    private void AddRootAction(string label, string detail, string tooltip, Action act)
+    /// <summary>
+    /// One numbered row: the key and the action, with what it does on a quieter line under it (<paramref name="does"/>),
+    /// or a short detail on the same line (a place's path); clicking does what the key does.
+    /// </summary>
+    private void AddRootAction(string label, string? does, string tooltip, Action act, string? detail = null)
     {
         var index = _rootActions.Count;
         _rootActions.Add((label, act));
-        var b = new Button { Text = $"{index + 1}   {label}    ·  {detail}", FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip, Alignment = HorizontalAlignment.Left, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
+        _rootDoes.Add(does ?? detail ?? "");
+        var b = new Button { Text = detail != null ? $"{index + 1}   {label}    ·  {detail}" : $"{index + 1}   {label}", FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip, Alignment = HorizontalAlignment.Left, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         b.AddThemeFontSizeOverride("font_size", 14);
         b.Pressed += () => ChooseRootAction(index);
         _rootRows.AddChild(b);
+        _rootButtons.Add(b);
+        if (does == null) return;
+        var l = MakeLabel(12, new Color(0.72f, 0.78f, 0.92f), HorizontalAlignment.Left, outline: 0);
+        l.Text = "      " + does; // under the label, past the key number
+        l.ClipText = true;
+        l.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        _rootRows.AddChild(l);
+    }
+
+    // ---- the twirl's quick route (AD-63)
+    /// <summary>The rows a twirl at the mark can arm, in the order it cycles through them (the terminal, Explorer).</summary>
+    private readonly List<int> _rootQuick = [];
+
+    /// <summary>The row the twirl has armed (Enter runs it), or −1.</summary>
+    private int _rootArmed = -1;
+
+    private readonly List<Button> _rootButtons = [];
+    private readonly List<string> _rootDoes = [];
+
+    /// <summary>Twirls at the mark that armed a row (probes).</summary>
+    public int RootQuickArms { get; private set; }
+
+    /// <summary>The armed row's label, or "" (probes).</summary>
+    public string RootMarkArmed => _rootArmed >= 0 && _rootArmed < _rootActions.Count ? _rootActions[_rootArmed].Label : "";
+
+    /// <summary>What each row says it does, in key order (probes).</summary>
+    public IReadOnlyList<string> RootMarkDescriptions => _rootDoes;
+
+    /// <summary>The armed row's highlight: a lime border and a "▶" before its key (the walkthrough's colour: "this one").</summary>
+    private static readonly Color ArmedColor = Planets.TutorialCue.CueColor;
+
+    /// <summary>
+    /// A twirl within reach of the mark (AD-63): the quick route. The first twirl opens the panel (if it is closed) with
+    /// "Open terminal here" armed — highlighted, and the prompt says Enter runs it; another twirl moves to "Show in
+    /// Explorer", and round again. Nothing starts from the twirl itself: an external program starts only from Enter, a
+    /// number key or a click (as AD-57 requires of movement). Away from the mark (or with nothing to arm, as on sample
+    /// data) a twirl is only a twirl. True when the twirl was the mark's.
+    /// </summary>
+    private bool TwirlAtRootMark()
+    {
+        if (!_focusRootMark || RootMark is not { } m || _s.Tree is not { } tree || _current == null) return false;
+        if (!_rootPanel.Visible)
+        {
+            FillRootMarkPanel(tree, m);
+            _rootPanel.Visible = true;
+        }
+
+        if (_rootQuick.Count == 0) return true; // the panel opened; nothing to arm
+        var at = _rootQuick.IndexOf(_rootArmed);
+        _rootArmed = _rootQuick[(at + 1) % _rootQuick.Count];
+        RootQuickArms++;
+        _audio.Select();
+        ShowRootQuick();
+        GD.Print($"[planets] root mark: twirl armed {_rootArmed + 1} {RootMarkArmed} (Enter runs it)");
+        return true;
+    }
+
+    /// <summary>Shows which row is armed (none when the panel was opened with E, or after a choice).</summary>
+    private void ShowRootQuick()
+    {
+        for (var i = 0; i < _rootButtons.Count; i++)
+        {
+            var b = _rootButtons[i];
+            if (!GodotObject.IsInstanceValid(b)) continue;
+            var armed = i == _rootArmed;
+            if (armed)
+            {
+                var box = new StyleBoxFlat { BgColor = new Color(0.1f, 0.16f, 0.08f), BorderColor = ArmedColor, ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 3, ContentMarginBottom = 3 };
+                box.SetBorderWidthAll(2);
+                box.SetCornerRadiusAll(4);
+                b.AddThemeStyleboxOverride("normal", box);
+                b.AddThemeColorOverride("font_color", ArmedColor);
+                b.Text = $"▶ {i + 1}   {_rootActions[i].Label}   ·   Enter";
+            }
+            else if (b.HasThemeStyleboxOverride("normal"))
+            {
+                b.RemoveThemeStyleboxOverride("normal");
+                b.RemoveThemeColorOverride("font_color");
+                b.Text = $"{i + 1}   {_rootActions[i].Label}";
+            }
+        }
     }
 
     private void AddRootNote(string text)
@@ -224,6 +350,8 @@ public partial class PlanetWorld
         var (label, act) = _rootActions[index];
         GD.Print($"[planets] root mark: {index + 1} {label}");
         _audio.Select();
+        _rootArmed = -1; // chosen: the quick route starts again from the terminal
+        ShowRootQuick();
         act();
     }
 
@@ -236,11 +364,20 @@ public partial class PlanetWorld
         dev.GoToPath(target);
     }
 
-    /// <summary>Number keys while the panel is open choose its rows (1–9, top row or keypad); true when consumed.</summary>
+    /// <summary>
+    /// Number keys while the panel is open choose its rows (1–9, top row or keypad); Enter runs the row a twirl armed
+    /// (AD-63; without one Enter keeps its usual meaning); true when consumed.
+    /// </summary>
     private bool RootMarkKey(InputEvent e)
     {
         if (!_rootPanel.Visible || e is not InputEventKey { Pressed: true, Echo: false } k) return false;
         var code = k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode;
+        if (code is Key.Enter or Key.KpEnter && _rootArmed >= 0)
+        {
+            ChooseRootAction(_rootArmed);
+            return true;
+        }
+
         var n = code is >= Key.Key1 and <= Key.Key9 ? (int)(code - Key.Key1) : code is >= Key.Kp1 and <= Key.Kp9 ? (int)(code - Key.Kp1) : -1;
         if (n < 0) return false;
         ChooseRootAction(n);
@@ -252,7 +389,7 @@ public partial class PlanetWorld
     {
         if (RootMark is not { } m) return "\"rootMark\":null,";
         var (deg, metres) = RootMarkBearing();
-        return System.FormattableString.Invariant($"\"rootMark\":{{\"kind\":\"{m.Kind}\",\"bearing\":{deg:0.#},\"face\":{metres:0.##},\"clearance\":{m.ClearanceMetres:0.##},\"focused\":{(_focusRootMark ? "true" : "false")},\"panel\":{(_rootPanel.Visible ? "true" : "false")},\"glow\":{RootMarkGlow:0.##}}},");
+        return System.FormattableString.Invariant($"\"rootMark\":{{\"kind\":\"{m.Kind}\",\"bearing\":{deg:0.#},\"face\":{metres:0.##},\"clearance\":{m.ClearanceMetres:0.##},\"focused\":{(_focusRootMark ? "true" : "false")},\"panel\":{(_rootPanel.Visible ? "true" : "false")},\"glow\":{RootMarkGlow:0.##},\"armed\":\"{RootMarkArmed}\",\"quickArms\":{RootQuickArms}}},");
     }
 
     /// <summary>The screen centre of the panel's row <paramref name="index"/> (0-based), or null (probes click it).</summary>

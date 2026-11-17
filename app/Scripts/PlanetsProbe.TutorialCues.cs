@@ -157,7 +157,7 @@ public partial class PlanetsProbe
         await AwaitFocus();
         await Fly(Godot.Key.Space, workshop, "Lantern Workshop");
         await Until(() => App.TutorialStep == 4, 4);
-        Check(App.TutorialStep == 4, $"step 5 of 13 reached (the first four done) → {App.TutorialTitle}");
+        Check(App.TutorialStep == 4, $"step 5 of 14 reached (the first four done) → {App.TutorialTitle}");
 
         // ---- step 5: the bench; the cue moved to this world.
         var ov = P.Composition!.Overlook;
@@ -188,7 +188,7 @@ public partial class PlanetsProbe
         await Key(Godot.Key.Escape);
         await Frames(5);
 
-        // ---- steps 7–13: no place to go; key caps, no beacon.
+        // ---- steps 7–14: no place to go; key caps, no beacon.
         async Task KeyStep(int step, string keys, Func<Task> act, Func<bool> after, string what)
         {
             await Until(() => App.TutorialStep == step, 4);
@@ -231,9 +231,14 @@ public partial class PlanetsProbe
                 Log(F($"  orbit drag {i + 1}: overview yaw moved {P.UniverseYaw - yaw0:0.00} rad"));
             }
         }, () => true, "orbited");
-        await KeyStep(12, "Esc", () => Key(Godot.Key.Escape), () => !P.UniverseOpen && !P.Busy, "Esc back where you stood");
+        await KeyStep(12, "wheel ↓", async () =>
+        {
+            await Seconds(1.2); // the opening pull-back settles
+            for (var i = 0; i < 30 && App.TutorialStep == 12 && !App.LessonHint.StartsWith('✓'); i++) { await Wheel(up: false, 1); await Seconds(0.35); }
+        }, () => true, "zoomed out with the wheel");
+        await KeyStep(13, "Esc", () => Key(Godot.Key.Escape), () => !P.UniverseOpen && !P.Busy, "Esc back where you stood");
         await Until(() => App.TutorialTitle == "done", 8);
-        Check(App.TutorialTitle == "done" && Cue.Mode == TutorialCueMode.None, $"all 13 steps done; no cue left behind ({Cue.Mode})");
+        Check(App.TutorialTitle == "done" && Cue.Mode == TutorialCueMode.None, $"all 14 steps done; no cue left behind ({Cue.Mode})");
         await Shot("cues-15-done");
 
         // ---- Leave clears the cue mid-lesson.

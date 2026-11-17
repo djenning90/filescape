@@ -13,9 +13,12 @@ namespace FileScape.App;
 /// (PLANET-45, AD-58): the root landmarks as a developer's entry point. On the Windows fixture shown with a Windows
 /// root's look (a probe-only override: evidence runs never enter C:\), and on the WSL fixture shown with a WSL root's
 /// look: the cue is faint from the arrival and brightens on the walk up (real keys); the mark is solid (holding W into
-/// it stops at its face); E opens the panel (nothing started yet); 1 records the terminal command for this folder, 2 and
-/// 3 the two path forms (recorded, never copied: the person's clipboard is untouched); the filesystem's places are
-/// offered. Then the WSL panel's "/ the root" travels to the distribution's real root, whose own monolith opens a
+/// it stops at its face); the prompt is "E · Show location actions" (PLANET-57); E opens the panel (nothing started yet),
+/// every row saying what it does; 1 records the terminal command for this folder, 2 Show in Explorer (the folder opened
+/// with Windows), 3 and 4 the two path forms (recorded, never copied: the person's clipboard is untouched); the
+/// filesystem's places are offered. On the Windows look, the twirl's quick route (AD-63): a jump does nothing, a twirl
+/// opens the panel with the terminal armed and starts nothing, another arms Explorer, Enter runs the armed row; 5.5 m
+/// away a twirl is only a twirl. Then the WSL panel's "/ the root" travels to the distribution's real root, whose own monolith opens a
 /// terminal at /. The test shell records every start; nothing is started.
 /// </summary>
 public partial class PlanetsProbe
@@ -36,6 +39,7 @@ public partial class PlanetsProbe
         await MarkVisit("windows", expectTerminal: $"start {winTerm.Program} {WindowsShellActions.CommandLine(winTerm.Args)}",
             expectCopies: [winDir, PathForms.MountPath(winDir)!], expectPlaces: ["Home", "Documents"]);
         Log($"the Windows terminal would be: {winTerm.Program} {WindowsShellActions.CommandLine(winTerm.Args)}");
+        await QuickRoute("windows", $"start {winTerm.Program} {WindowsShellActions.CommandLine(winTerm.Args)}"); // AD-63
         await Key(Godot.Key.Escape);
         await Frames(3);
         Check(!P.RootMarkPanelOpen, "Esc closes the panel");
@@ -77,9 +81,9 @@ public partial class PlanetsProbe
         await MarkVisit("wsl-root", expectTerminal: $"start wsl.exe -d {distro} --cd /", expectCopies: ["/", Locations.WslPrefix + distro + "\\"], expectPlaces: ["/tmp", "/mnt/c"], copies: false);
         // A click on a row does what its key does (the row's button; the click does not take the keyboard from walking).
         var clip0 = App.ClipboardLog.Count;
-        if (P.RootMarkRowCentre(1) is { } row) await Click(row);
+        if (P.RootMarkRowCentre(2) is { } row) await Click(row);
         Check(App.ClipboardLog.Count == clip0 + 1 && App.ClipboardLog[^1] == "/" && App.GetViewport().GuiGetFocusOwner() == null,
-            $"a click on row 2 copies the path: {(App.ClipboardLog.Count > clip0 ? App.ClipboardLog[^1] : "(nothing)")}; keyboard focus stays with the world");
+            $"a click on row 3 (Copy path) copies the path: {(App.ClipboardLog.Count > clip0 ? App.ClipboardLog[^1] : "(nothing)")}; keyboard focus stays with the world");
         await Key(Godot.Key.E);
         await Frames(3);
         Check(!P.RootMarkPanelOpen, "E again closes the panel");
@@ -167,7 +171,7 @@ public partial class PlanetsProbe
         var (_, standFace) = P.RootMarkBearing();
         var onFront = NVector3.Dot(P.Walker.Up - m.Direction, m.Facing) > 0;
         Check(closest > 0.2f && onFront, F($"{tag}: the mark is solid: W towards it, then 0.5 s more into it, stops {closest:0.00} m from its face (the walker is 0.35 m round), still in front of it"));
-        Check(P.RootMarkFocused && P.PromptText.StartsWith("E · terminal here", StringComparison.Ordinal), F($"{tag}: within reach ({standFace:0.0} m) the prompt offers it: \"{P.PromptText}\""));
+        Check(P.RootMarkFocused && P.PromptText == PlanetWorld.RootMarkPromptText, F($"{tag}: within reach ({standFace:0.0} m) the prompt offers it: \"{P.PromptText}\""));
         Check(P.RootMarkGlow > 0.8f && P.RootMarkGlow > farGlow + 0.5f, F($"{tag}: the cue brightened from {farGlow:0.00} to {P.RootMarkGlow:0.00}"));
         Check(App.ShellLog.Count == shell0, $"{tag}: walking up to it and into it started nothing");
 
@@ -176,7 +180,12 @@ public partial class PlanetsProbe
         await Frames(4);
         var actions = P.RootMarkActions;
         Check(P.RootMarkPanelOpen && App.ShellLog.Count == shell0, $"{tag}: E opens the panel and starts nothing: {string.Join(" | ", actions.Select((a, i) => $"{i + 1} {a}"))}");
-        Check(actions.Count > 0 && actions[0] == "Open terminal here", $"{tag}: the first row opens a terminal here");
+        Check(actions.Count > 1 && actions[0] == PlanetWorld.TerminalLabel && actions[1] == PlanetWorld.ExplorerLabel, $"{tag}: the first rows open a terminal here and show it in Explorer");
+        // PLANET-57: every action says what it does (the places share one line: "choosing one flies you there").
+        var does = P.RootMarkDescriptions;
+        Check(does.Count == actions.Count && does.Count > 2 && does[0].StartsWith("Opens ", StringComparison.Ordinal) && does[1].StartsWith("Opens File Explorer at ", StringComparison.Ordinal) && does[2].StartsWith("Puts ", StringComparison.Ordinal),
+            $"{tag}: each row says what it does: {string.Join(" | ", does.Take(4))}");
+        Check(P.RootMarkArmed == "", $"{tag}: opened with E, no row is armed (Enter has its usual meaning)");
         foreach (var p in expectPlaces) Check(actions.Contains(p), $"{tag}: the panel offers {p.Trim()}");
         await Seconds(0.5);
         await Shot($"landmarks-{tag}-panel");
@@ -186,15 +195,81 @@ public partial class PlanetsProbe
         await Frames(3);
         var last = App.ShellLog.Count > shell0 ? App.ShellLog[^1] : "(nothing)";
         Check(App.ShellLog.Count == shell0 + 1 && last == expectTerminal, $"{tag}: 1 asks for the terminal in this folder: {last}");
+        // 2: Show in Explorer (the folder opened with Windows; recorded, nothing opened).
+        await Key(Godot.Key.Key2);
+        await Frames(3);
+        var folder = Tree.FullPath(App.Navigator.Current);
+        last = App.ShellLog.Count > shell0 + 1 ? App.ShellLog[^1] : "(nothing)";
+        Check(App.ShellLog.Count == shell0 + 2 && last == $"open {folder}", $"{tag}: 2 asks Explorer to show this folder: {last}");
         if (!copies) return;
 
-        // 2 and 3: the two forms of the path (recorded, never put on the clipboard).
+        // 3 and 4: the two forms of the path (recorded, never put on the clipboard).
         var clip0 = App.ClipboardLog.Count;
-        await Key(Godot.Key.Key2);
-        await Frames(2);
         await Key(Godot.Key.Key3);
         await Frames(2);
+        await Key(Godot.Key.Key4);
+        await Frames(2);
         var copied = App.ClipboardLog.Skip(clip0).ToList();
-        Check(copied.SequenceEqual(expectCopies), $"{tag}: 2 and 3 copy the path's two forms: [{string.Join(" | ", copied)}]");
+        Check(copied.SequenceEqual(expectCopies), $"{tag}: 3 and 4 copy the path's two forms: [{string.Join(" | ", copied)}]");
+    }
+
+    /// <summary>
+    /// The twirl's quick route (AD-63), at the mark with its panel closed: an ordinary jump does nothing; a twirl opens the
+    /// panel with the terminal armed and starts nothing; another arms Explorer; Enter runs it (recorded); a twirl away from
+    /// the mark is only a twirl.
+    /// </summary>
+    private async Task QuickRoute(string tag, string expectTerminal)
+    {
+        if (P.RootMarkPanelOpen) { await Key(Godot.Key.Escape); await Frames(3); }
+        var shell0 = App.ShellLog.Count;
+        Check(P.RootMarkFocused && !P.RootMarkPanelOpen, $"{tag}: at the mark, panel closed: \"{P.PromptText}\" / \"{P.PromptDetail}\"");
+        Check(P.PromptDetail.Contains("twirl", StringComparison.Ordinal), $"{tag}: the prompt's second line offers the twirl: \"{P.PromptDetail}\"");
+
+        // An ordinary jump: nothing.
+        await Key(Godot.Key.Space);
+        await Until(() => P.Walker.Grounded, 3);
+        await Seconds(0.4);
+        Check(!P.RootMarkPanelOpen && P.RootMarkArmed == "" && App.ShellLog.Count == shell0, $"{tag}: an ordinary jump at the mark opens nothing and starts nothing");
+
+        // A twirl: the panel, the terminal armed, nothing started.
+        await JumpAndTwirl();
+        await Frames(3);
+        Check(P.RootMarkPanelOpen && P.RootMarkArmed == PlanetWorld.TerminalLabel && App.ShellLog.Count == shell0,
+            $"{tag}: a twirl opens the panel with \"{P.RootMarkArmed}\" armed and starts nothing (prompt \"{P.PromptText}\")");
+        Check(P.PromptText.StartsWith($"Enter · {PlanetWorld.TerminalLabel}", StringComparison.Ordinal) && P.PromptText.Contains($"twirl again · {PlanetWorld.ExplorerLabel}"), $"{tag}: the cue says what Enter will do before you commit: \"{P.PromptText}\"");
+        await Seconds(0.4);
+        await Shot($"landmarks-{tag}-quick-terminal");
+
+        // Another twirl: Explorer armed.
+        await JumpAndTwirl();
+        await Frames(3);
+        Check(P.RootMarkArmed == PlanetWorld.ExplorerLabel && App.ShellLog.Count == shell0, $"{tag}: another twirl arms \"{P.RootMarkArmed}\", still nothing started");
+        await Shot($"landmarks-{tag}-quick-explorer");
+
+        // Enter runs it (recorded).
+        await Key(Godot.Key.Enter);
+        await Frames(3);
+        var last = App.ShellLog.Count > shell0 ? App.ShellLog[^1] : "(nothing)";
+        Check(App.ShellLog.Count == shell0 + 1 && last == $"open {Tree.FullPath(App.Navigator.Current)}" && P.RootMarkArmed == "", $"{tag}: Enter runs the armed row: {last}");
+
+        // And the terminal by twirl and Enter.
+        await JumpAndTwirl();
+        await Frames(3);
+        await Key(Godot.Key.Enter);
+        await Frames(3);
+        last = App.ShellLog.Count > shell0 + 1 ? App.ShellLog[^1] : "(nothing)";
+        Check(App.ShellLog.Count == shell0 + 2 && last == expectTerminal, $"{tag}: twirl, Enter: the terminal here: {last}");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+
+        // Away from the mark (5 m out) a twirl is only a twirl.
+        if (P.RootMarkFront(5.5f) is { } away && P.Composition is { } c)
+        {
+            P.Walker.Teleport(c.Surface, away, -c.RootMark!.Facing); // [direct] a few steps back
+            await Seconds(0.5);
+            await JumpAndTwirl();
+            await Frames(3);
+            Check(!P.RootMarkPanelOpen && App.ShellLog.Count == shell0 + 2, $"{tag}: 5.5 m out a twirl is only a twirl (panel {P.RootMarkPanelOpen})");
+        }
     }
 }
