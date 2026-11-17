@@ -105,6 +105,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-actions") await ActionsTour(); // PlanetsProbe.Actions.cs
         else if (Mode == "planets-arrival") await ArrivalTour(); // PlanetsProbe.Actions.cs
         else if (Mode == "planets-reading") await ReadingTour(); // PlanetsProbe.Actions.cs
+
+        else if (Mode == "planets-sound") await SoundRun(); // PlanetsProbe.Sound.cs (PLANET-47)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

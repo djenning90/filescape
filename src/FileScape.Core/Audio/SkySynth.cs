@@ -103,21 +103,34 @@ public enum MusicIdentity
     Underglow,
 
     /// <summary>
-    /// A hazard world (<see cref="WorldKind.Hazard"/>, AD-52): ominous and unstable but still the theme, in phrygian at half
-    /// time over a beating drone, a heartbeat and ticking metal; with its own warning and fall cues (<see cref="SkySynth.HazardWarning"/>).
+    /// A hazard world (<see cref="WorldKind.Hazard"/>): AD-60's frenetic "get out of here" score in the same phrygian
+    /// tonality, the theme at full tempo (152 BPM) over a racing heartbeat, a ♭2 bass ostinato, ticking metal and the
+    /// beating drone, with a break and a build before each return; with its own warning and fall cues
+    /// (<see cref="SkySynth.HazardWarning"/>). The AD-52 score it replaced is kept as <see cref="Abyss"/>.
     /// </summary>
     Hazard,
+
+    /// <summary>
+    /// The AD-52 hazard score, kept unchanged (AD-60) for a future world type (proposed: a sealed world, a folder FileScape
+    /// cannot list): ominous and unstable but still the theme, in phrygian at half time (70 over a 140 pulse) over a beating
+    /// drone, a heartbeat and ticking metal. No world kind maps to it yet; it is heard through
+    /// <see cref="SkySynth.SetWorld(PlanetTheme, WorldCharacter, int, MusicIdentity)"/>. Appended last, so the other
+    /// identities keep their numbers (and the behaviour baseline its audio).
+    /// </summary>
+    Abyss,
 }
 
 /// <summary>
 /// The Planets experience's original procedural audio ("Lantern Cosmos"): generative music and pitched sound effects,
 /// synthesised from scratch in plain C# (no engine types, no samples), so it can be rendered offline and tested.
 /// <para>
-/// <b>Worlds (AD-49, AD-52).</b> The music has a family of nine identities (<see cref="MusicIdentity"/>), chosen from a world's
-/// <see cref="WorldCharacter"/> by <see cref="IdentityOf"/>, each with its own tempo (<see cref="TempoFor"/>: the hub 94 BPM,
-/// roots 112–116, the repository 126, folder bands 120 → 172, the hazard world 140), groove, instruments and motif. Three
-/// folder bands and the hazard world are AD-52's arrangements (SkySynth.Arrangements.cs): the trails a festival drop and
-/// build, the deep woods an orchestra, the underglow drum and bass, the hazard world an uneasy half-time drone; three of them
+/// <b>Worlds (AD-49, AD-52, AD-60).</b> The music has a family of ten identities (<see cref="MusicIdentity"/>), nine chosen from
+/// a world's <see cref="WorldCharacter"/> by <see cref="IdentityOf"/> (the tenth, the abyss, is AD-52's hazard score kept for a
+/// future world type), each with its own tempo (<see cref="TempoFor"/>: the hub 94 BPM, roots 112–116, the repository 126,
+/// folder bands 120 → 172, the hazard world 152), groove, instruments and motif. Three folder bands are AD-52's arrangements
+/// (SkySynth.Arrangements.cs, with AD-60's breaks, builds, drops and climaxes): the trails a festival drop and build, the deep
+/// woods an orchestra, the underglow drum and bass; the hazard world plays AD-60's frenetic phrygian score
+/// (SkySynth.Escape.cs); the orchestra, drum and bass and the abyss
 /// play the theme at half their pulse (<see cref="ThemeTempoFor"/>). The key's root comes from the
 /// world's <see cref="PlanetTheme"/> and the mode from the theme or the identity (<see cref="KeyFor(PlanetTheme, WorldCharacter)"/>).
 /// <see cref="SetWorld"/> is called on every arrival. A new world starts on the next beat of the music playing (its own
@@ -342,8 +355,8 @@ public sealed partial class SkySynth
         var start = character ?? HubCharacter;
         _decks[0] = new Deck(0) { Fade = 1, FadeTarget = 1 };
         _decks[1] = new Deck(1);
-        Configure(_decks[0], theme, start, visits: 1, origin: 0, quickHop: false);
-        Configure(_decks[1], theme, start, visits: 1, origin: 0, quickHop: false);
+        Configure(_decks[0], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
+        Configure(_decks[1], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
         _decks[1].Live = false;
         _masterGain = _masterVolume;
     }

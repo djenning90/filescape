@@ -7,7 +7,8 @@ using FileScape.Core.Units;
 namespace FileScape.Core.Interaction;
 
 /// <summary>
-/// The user's saved preferences (CTRL-01..03): how mouse look turns in Places and how fast walking and running are.
+/// The user's saved preferences (CTRL-01..03): how mouse look turns in Places and how fast walking and running are, the
+/// pins, the welcome dialog and whether the sound is off (PLANET-47).
 /// Immutable; the app holds the current value and saves it whenever it changes. Unknown or out-of-range values in the
 /// file are ignored or clamped, never fatal.
 /// </summary>
@@ -43,7 +44,7 @@ public sealed record Preferences
     public bool Equals(Preferences? other) =>
         other is not null && ReverseLookHorizontal == other.ReverseLookHorizontal && ReverseLookVertical == other.ReverseLookVertical
         && LevelViewOnRelease == other.LevelViewOnRelease && FlyAlongGaze == other.FlyAlongGaze && WalkSpeed == other.WalkSpeed
-        && RunSpeed == other.RunSpeed && ShowWelcome == other.ShowWelcome && Pins.SequenceEqual(other.Pins);
+        && RunSpeed == other.RunSpeed && ShowWelcome == other.ShowWelcome && SoundMuted == other.SoundMuted && Pins.SequenceEqual(other.Pins);
 
     public override int GetHashCode() => HashCode.Combine(ReverseLookHorizontal, ReverseLookVertical, LevelViewOnRelease, FlyAlongGaze, WalkSpeed, RunSpeed, Pins.Count);
 
@@ -70,6 +71,13 @@ public sealed record Preferences
     public bool ShowWelcome { get; init; } = true;
 
     public MetersPerSecond WalkSpeed { get; init; } = Places.WalkParams.Default.WalkSpeed;
+
+    /// <summary>
+    /// The sound is off (PLANET-47, AD-60): the toolbar's speaker button or N. Saved, so someone who silenced FileScape (at
+    /// work, late at night) is not surprised by music at the next launch; the app makes a restored mute obvious (the
+    /// toolbar's amber "Sound off" button and a toast at start). Off by default.
+    /// </summary>
+    public bool SoundMuted { get; init; }
 
     /// <summary>Running speed on foot (Shift held). Never below the walking speed.</summary>
     public MetersPerSecond RunSpeed { get; init; } = Places.WalkParams.Default.RunSpeed;
@@ -121,6 +129,7 @@ public sealed record Preferences
             ["levelViewOnRelease"] = LevelViewOnRelease,
             ["flyAlongGaze"] = FlyAlongGaze,
             ["showWelcome"] = ShowWelcome,
+            ["soundMuted"] = SoundMuted,
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
             ["pins"] = new JsonArray([.. Pins.Select(x => (JsonNode)JsonValue.Create(x)!)]),
@@ -148,6 +157,7 @@ public sealed record Preferences
             if (Bool("levelViewOnRelease") is { } lv) p = p with { LevelViewOnRelease = lv };
             if (Bool("flyAlongGaze") is { } fg) p = p with { FlyAlongGaze = fg };
             if (Bool("showWelcome") is { } sw) p = p with { ShowWelcome = sw };
+            if (Bool("soundMuted") is { } sm) p = p with { SoundMuted = sm };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
             if (o["pins"] is JsonArray pins)
@@ -190,5 +200,5 @@ public sealed record Preferences
 
     /// <summary>A one-line summary for the log and probes (keep its wording: probes may read it).</summary>
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned");
+        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned{(SoundMuted ? "; sound off" : "")}");
 }
