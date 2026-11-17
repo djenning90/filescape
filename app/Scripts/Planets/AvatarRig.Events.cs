@@ -8,13 +8,16 @@ namespace FileScape.App.Planets;
 /// </summary>
 public partial class AvatarRig
 {
-    private bool _pendingJump, _pendingTwirl, _pendingLand, _pendingLaunch;
+    private bool _pendingJump, _pendingTwirl, _pendingLand, _pendingLaunch, _pendingFlail;
 
     /// <summary>Left the ground: a stretch on the next <see cref="Drive"/>.</summary>
     public void Jump() => _pendingJump = true;
 
     /// <summary>An air jump: the twirl.</summary>
     public void Twirl() => _pendingTwirl = true;
+
+    /// <summary>A last effort on a Hazard World (PLANET-62): a flail on the next frame, on foot or falling.</summary>
+    public void Flail() => _pendingFlail = true;
 
     /// <summary>Touched down: a squash. <paramref name="impact"/> is not used; the squash's strength comes from the
     /// smoothed vertical speed <see cref="Drive"/> has been given.</summary>
@@ -26,8 +29,8 @@ public partial class AvatarRig
     /// <summary>One frame of the traveller on foot (or hopping): its motion, and any events since the last frame.</summary>
     public void Drive(float dt, float speed, bool grounded, float verticalSpeed, float windUp01 = 0)
     {
-        Animate(dt, new AvatarState(speed, grounded, verticalSpeed, _pendingJump, _pendingTwirl, _pendingLand, windUp01, Flying: false, Twirl: false));
-        _pendingJump = _pendingTwirl = _pendingLand = _pendingLaunch = false;
+        Animate(dt, new AvatarState(speed, grounded, verticalSpeed, _pendingJump, _pendingTwirl, _pendingLand, windUp01, Flying: false, Twirl: false, Flail: _pendingFlail));
+        _pendingJump = _pendingTwirl = _pendingLand = _pendingLaunch = _pendingFlail = false;
     }
 
     /// <summary>One frame in flight: streamlined along the direction of travel.</summary>
@@ -39,7 +42,7 @@ public partial class AvatarRig
         SetPose(position, up, f.Normalized());
         Scale = new Vector3(scale, scale, scale); // after SetPose, which sets the whole transform (it used to undo the flight's scale)
         // The speed (9 m/s) only matters to the running amount, which flight zeroes; the dt default assumes 60 Hz.
-        Animate(dt, new AvatarState(9f, false, 0f, false, false, false, 0f, Flying: true, Twirl: _pendingLaunch));
-        _pendingLaunch = false;
+        Animate(dt, new AvatarState(9f, false, 0f, false, false, false, 0f, Flying: true, Twirl: _pendingLaunch, Flail: _pendingFlail));
+        _pendingLaunch = _pendingFlail = false;
     }
 }

@@ -136,6 +136,9 @@ public partial class PlanetWorld
         /// <summary>The black hole's frame (planet frame columns; Y its spin axis): the spiral is computed in it.</summary>
         public Basis Frame = Basis.Identity;
 
+        /// <summary>A last effort was made in this fall (on the way off the edge, or Space pressed early in the fall): only one.</summary>
+        public bool Effort;
+
         /// <summary>Set once the session has been asked to go up.</summary>
         public bool Asked;
         public float AskedFor;
@@ -163,6 +166,20 @@ public partial class PlanetWorld
 
     public int FallsStarted { get; private set; }
     public int FallReturns { get; private set; }
+
+    /// <summary>Space pressed in the first <see cref="LateEffortSeconds"/> of a fall: a last effort too late to save you (PLANET-62).</summary>
+    public int LateEfforts { get; private set; }
+
+    /// <summary>
+    /// Space within this long of a fall's start still reads as a last effort, seconds (a flail and its sound; the fall goes on):
+    /// a press just after the walker's recovery window closed belongs to that moment, not to nothing (by eye).
+    /// </summary>
+    private const float LateEffortSeconds = 0.6f;
+
+    /// <summary>The recovery tip is shown after a fall until a recovery has been made, at most this many times per run.</summary>
+    private const int RecoveryTipShows = 2;
+
+    private int _recoveryTipsShown;
 
     /// <summary>The nearest the last fall came to the centre, metres, and how far round it turned, in turns (probes: it is a spiral).</summary>
     public float LastFallClosestMetres { get; private set; }
@@ -227,7 +244,10 @@ public partial class PlanetWorld
             Mark("fall-landed");
             if (_s.Tree is { } tree && tree.Contains(_fallReturnFrom) && _current != null)
             {
-                ShowHint($"Back in {tree.DisplayName(_current.FolderId)}, beside {tree.DisplayName(_fallReturnFrom)}'s launcher: step on and press Space to try again.");
+                // Until a recovery has been made, the first falls also teach it (PLANET-62).
+                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? " Tip: slip off an edge? Press Space as you drop and a twirl can catch the rim." : "";
+                if (tip.Length > 0) _recoveryTipsShown++;
+                ShowHint($"Back in {tree.DisplayName(_current.FolderId)}, beside {tree.DisplayName(_fallReturnFrom)}'s launcher: step on and press Space to try again.{tip}");
             }
         }
 
@@ -322,7 +342,9 @@ public partial class PlanetWorld
             V0 = v0,
             DEnd = _current.Comp.Shape.Radius * BrokenShell.HorizonRadiusFraction * FallEndCoreRadii,
             Frame = frame,
+            Effort = _walker.LastEvent.Kind == Core.Movement.JumpEventKind.LastEffort,
         };
+        _jumpQueued = false; // a press on the step that committed the fall is that step's, not the fall's
         _phase = Phase.Falling;
         _hop = null;
         _transfer = null;
@@ -369,6 +391,20 @@ public partial class PlanetWorld
         }
 
         f.T += dt;
+        // Space early in the fall: too late to catch the rim, so a last effort (a flail and a cry), and the fall goes on.
+        if (_jumpQueued)
+        {
+            _jumpQueued = false;
+            if (!f.Effort && f.T < LateEffortSeconds)
+            {
+                f.Effort = true;
+                LateEfforts++;
+                _audio.LastEffort();
+                _avatar.Flail();
+                Mark("last-effort-late");
+            }
+        }
+
         if (f.Asked)
         {
             // Waiting for the session's answer under the full flash (it normally answers at once, as a warp).

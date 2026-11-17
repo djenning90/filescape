@@ -196,10 +196,16 @@ public partial class PlanetWorld
         var (sb, sd) = sel != null ? To(sel.Direction) : (0f, -1f);
         var edge = EdgeMetresHere;
         return System.FormattableString.Invariant(
-            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"routeBearing\":{rb:0.#},\"routeDistance\":{rd:0.##},\"routeJump\":{(step?.Jump == true ? "true" : "false")},\"routeLeft\":{step?.RemainingMetres ?? -1:0.##},\"gapAheadMetres\":{GapAheadMetres():0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
+            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"recoveries\":{_walker.Recoveries},\"lastEfforts\":{_walker.LastEfforts + LateEfforts},\"apexTwirls\":{_walker.ApexTwirls},\"belowRimSeconds\":{_walker.BelowRimSeconds:0.###},\"recoveryOpen\":{(_walker.RecoveryOpen ? "true" : "false")},\"gapClassAhead\":\"{GapClassAhead()}\",\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"routeBearing\":{rb:0.#},\"routeDistance\":{rd:0.##},\"routeJump\":{(step?.Jump == true ? "true" : "false")},\"routeLeft\":{step?.RemainingMetres ?? -1:0.##},\"gapAheadMetres\":{GapAheadMetres():0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
     }
 
-    /// <summary>On a Hazard World, the nearest point over open sky (searched in rings out to 20 m), or null.</summary>
+    /// <summary>
+    /// A real drop is open sky that goes on at least this far beyond its edge along the same bearing, metres: since AD-65
+    /// the nearest open sky is often a crack you hop (or skim across walking), not somewhere you fall.
+    /// </summary>
+    private const float DropBeyondMetres = 3f;
+
+    /// <summary>On a Hazard World, the nearest point over open sky with a real drop beyond it (<see cref="DropBeyondMetres"/>; searched in rings out to 20 m), or null.</summary>
     public NVector3? NearestOpenSky()
     {
         if (Shell is not { } shell || _current == null) return null;
@@ -211,8 +217,12 @@ public partial class PlanetWorld
             for (var k = 0; k < 32; k++)
             {
                 var th = Mathf.Tau * k / 32;
-                var p = PlanetFrame.Move(_walker.Up, a * MathF.Cos(th) + b * MathF.Sin(th), d, r);
-                if (shell.OverHole(p)) return p;
+                var dir = a * MathF.Cos(th) + b * MathF.Sin(th);
+                var p = PlanetFrame.Move(_walker.Up, dir, d, r);
+                if (!shell.OverHole(p)) continue;
+                var drop = true;
+                for (var e = 0.5f; e <= DropBeyondMetres && drop; e += 0.5f) drop = shell.OverHole(PlanetFrame.Move(_walker.Up, dir, d + e, r));
+                if (drop) return p;
             }
         }
 
@@ -269,6 +279,39 @@ public partial class PlanetWorld
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// On a Hazard World, what the open sky ahead along the camera's heading is (AD-65): "step" or "leap" (a bridge's own
+    /// gap of that class), "hop" (other ground within <see cref="HazardTerrain.HopMaxMetres"/>), "chasm" (no ground for
+    /// <see cref="HazardTerrain.SteeringMinMetres"/>), "gap" (other ground in between: what AD-65 removes where it misleads),
+    /// or "" (no edge within 6 m, or a whole world). For probes and the state file.
+    /// </summary>
+    public string GapClassAhead()
+    {
+        if (Shell is not { } shell || _current == null) return "";
+        var edge = GapAheadMetres();
+        if (edge < 0) return "";
+        var up = Gd(_walker.Up);
+        var f = -_camera.GlobalBasis.Z;
+        f -= up * f.Dot(up);
+        var fwd = new NVector3(f.X, f.Y, f.Z) / f.Length();
+        var r = _current.Comp.Shape.Radius;
+        var start = PlanetFrame.Move(_walker.Up, fwd, edge, r);
+        foreach (var s in shell.Spans)
+        {
+            if (s.Gaps.Count == 0) continue;
+            var (along, side) = s.Measure(start);
+            var (g0, g1) = s.Gaps[0];
+            if (MathF.Abs(side) < s.HalfWidthMetres + ShellSpan.AdvancedLedgeMetres && along > g0 - 1f && along < g1 + 1f) return s.GapClass == ShellGapClass.Advanced ? "leap" : "step";
+        }
+
+        for (var d = 0.1f; d <= HazardTerrain.SteeringMinMetres; d += 0.1f)
+        {
+            if (!shell.OverHole(PlanetFrame.Move(start, fwd, d, r))) return d <= HazardTerrain.HopMaxMetres ? "hop" : "gap";
+        }
+
+        return "chasm";
     }
 
     public void ProbeStandOn(NVector3 up, float top)

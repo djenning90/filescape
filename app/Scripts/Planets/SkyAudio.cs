@@ -447,6 +447,12 @@ public partial class SkyAudio : Node
     /// <summary>The bell tower rung (PLANET-56): a big bell's strike and its answer in the world's key. Tempo-locked.</summary>
     public void BellToll() { lock (_gate) _synth.BellToll(); }
 
+    /// <summary>A Hazard World's recovery twirl: the twirl's bells, higher and quicker, with a rising whoosh (PLANET-62). Immediate.</summary>
+    public void RecoveryTwirl() { lock (_gate) _synth.RecoveryTwirl(); }
+
+    /// <summary>A Hazard World's last effort: a broken-off twirl and a strained glide down, before the fall (PLANET-62). Immediate.</summary>
+    public void LastEffort() { lock (_gate) _synth.LastEffort(); }
+
     /// <summary>A landing; <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown. Immediate.</summary>
     public void Land(float impactMetersPerSecond) { lock (_gate) _synth.Land(impactMetersPerSecond); }
 

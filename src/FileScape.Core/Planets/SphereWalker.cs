@@ -53,6 +53,9 @@ public sealed record SphereWalkParams
     /// <summary>Take-off, arc, double jump and landing (the flat walker's defaults).</summary>
     public JumpParams Jump { get; init; } = JumpParams.Default;
 
+    /// <summary>The twirl's timing, the recovery twirl and the last effort on a broken shell (PLANET-62, AD-65); nothing else reads them.</summary>
+    public HazardMoveParams Hazard { get; init; } = HazardMoveParams.Default;
+
     public static readonly SphereWalkParams Default = new();
 
     /// <summary>Rejects values that would break the integration (non-finite, non-positive sizes or rates).</summary>
@@ -82,6 +85,90 @@ public sealed record SphereWalkParams
         NonNegative(AirLedgeTolerance.Value, nameof(AirLedgeTolerance));
         if (MaxFrame <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(MaxFrame));
         Jump.Validate();
+        Hazard.Validate();
+        return this;
+    }
+}
+
+/// <summary>
+/// How the twirl works over a Hazard World's open sky (PLANET-62, AD-65). DJ (2026-11-17): "When I barely miss an edge and
+/// start to fall, let a well-timed twirl give me a brief lift and a chance to catch the rim. If I'm too late or too far
+/// away, let the attempt read as a last effort before the fall. Give the move a short, bounded window so it rewards
+/// timing. Also try a deliberate double jump or improved jump-and-twirl timing that lets a skilled player cross a somewhat
+/// wider gap." So, over open sky only:
+/// <list type="bullet">
+/// <item>a twirl at the top of the jump (vertical speed within ±<see cref="ApexSpeed"/>) leans forward harder
+/// (<see cref="ApexNudge"/> instead of the twirl's usual 1 m/s, up to the run speed): the timed twirl that carries a leap;</item>
+/// <item>a twirl once falling (faster than <see cref="LateSpeed"/>, or with the feet below a rim's level) is the catch: with
+/// the twirl still unused, in time (within <see cref="Window"/> of dropping below the rim, no deeper than
+/// <see cref="MaxDepth"/>) and ground within <see cref="Reach"/>, it is the recovery — a lift to just above the rim
+/// (<see cref="Clearance"/>, at least <see cref="MinLift"/>) and a carry towards that ground (<see cref="Inset"/> inside
+/// it, over about <see cref="CatchTime"/>); otherwise it is a last effort: no lift.</item>
+/// </list>
+/// One recovery or last effort per airtime, and no twirl after it. Only a <see cref="SphereWalker"/> on a
+/// <see cref="BrokenShell"/> uses these, and only over open sky: whole planets and solid ground keep the twirl as it was
+/// (the behaviour baseline's trajectories are unchanged). Values by trial against the real walker (HazardMovementTests),
+/// 2026-11-17.
+/// </summary>
+public sealed record HazardMoveParams
+{
+    /// <summary>A twirl with the vertical speed within ± this, m/s, is "at the top": ≈ 0.17 s either side of it (the held jump's apex hang is ±1.2 m/s).</summary>
+    public MetersPerSecond ApexSpeed { get; init; } = MetersPerSecond.Of(3.0f);
+
+    /// <summary>A twirl at the top leans forward by up to this, m/s (along the input, never beyond the run speed).</summary>
+    public MetersPerSecond ApexNudge { get; init; } = MetersPerSecond.Of(2.2f);
+
+    /// <summary>Falling faster than this, m/s, a twirl over open sky is the catch (the recovery or a last effort), not a fresh jump (≈ 0.2 s past the top of a held jump).</summary>
+    public MetersPerSecond LateSpeed { get; init; } = MetersPerSecond.Of(4.0f);
+
+    /// <summary>The recovery lifts at least this fast, m/s (from above the rim's level the lift would otherwise be nothing).</summary>
+    public MetersPerSecond MinLift { get; init; } = MetersPerSecond.Of(3.0f);
+
+    /// <summary>
+    /// The press must come within this long of the feet passing below the rim's level, seconds: from walking off, the feet
+    /// are then ≈ 0.6 m down (and from a jump that fell short, deeper, so <see cref="MaxDepth"/> closes it first).
+    /// </summary>
+    public TimeSpan Window { get; init; } = TimeSpan.FromSeconds(0.3);
+
+    /// <summary>No deeper than this below the rim's level, metres (deeper, the lift needed is no longer "brief").</summary>
+    public Meters MaxDepth { get; init; } = Meters.Of(1.1f);
+
+    /// <summary>Ground must be within this of the walker's centre, measured along the surface, metres ("close enough").</summary>
+    public Meters Reach { get; init; } = Meters.Of(1.1f);
+
+    /// <summary>The lift takes the feet this far above the rim's level at its top, metres (just enough to step back on).</summary>
+    public Meters Clearance { get; init; } = Meters.Of(0.35f);
+
+    /// <summary>The carry aims this far inside the ground found, metres, so the walker lands on it rather than on its edge.</summary>
+    public Meters Inset { get; init; } = Meters.Of(0.7f);
+
+    /// <summary>The carry covers the way to its aim in about this long, seconds (well inside the lift's air time, ≈ 0.5 s).</summary>
+    public TimeSpan CatchTime { get; init; } = TimeSpan.FromSeconds(0.4);
+
+    /// <summary>The carry is never faster than this, metres per second (a lunge, not a dash: the run speed is 11).</summary>
+    public MetersPerSecond MaxCarrySpeed { get; init; } = MetersPerSecond.Of(6.5f);
+
+    public static readonly HazardMoveParams Default = new();
+
+    /// <summary>Rejects values that would break the move (non-finite or negative).</summary>
+    public HazardMoveParams Validate()
+    {
+        static void NonNegative(float v, string name)
+        {
+            if (!float.IsFinite(v) || v < 0) throw new ArgumentOutOfRangeException(name, v, "must be finite and not negative");
+        }
+
+        if (Window < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(Window));
+        if (CatchTime <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(CatchTime));
+        NonNegative(MaxDepth.Value, nameof(MaxDepth));
+        NonNegative(Reach.Value, nameof(Reach));
+        NonNegative(Clearance.Value, nameof(Clearance));
+        NonNegative(Inset.Value, nameof(Inset));
+        NonNegative(MaxCarrySpeed.Value, nameof(MaxCarrySpeed));
+        NonNegative(ApexSpeed.Value, nameof(ApexSpeed));
+        NonNegative(ApexNudge.Value, nameof(ApexNudge));
+        NonNegative(LateSpeed.Value, nameof(LateSpeed));
+        NonNegative(MinLift.Value, nameof(MinLift));
         return this;
     }
 }
@@ -144,6 +231,7 @@ public sealed class SphereWalker
         _p = (parameters ?? SphereWalkParams.Default).Validate();
         _jump = new JumpModel(_p.Jump);
         _stepSeconds = 1f / _p.SubStepsPerSecond;
+        _recoveryWindowSeconds = _p.Hazard.Window.ToSecondsF();
         _maxFrameSeconds = _p.MaxFrame.ToSecondsF();
     }
 
@@ -175,6 +263,36 @@ public sealed class SphereWalker
     public int Jumps => _jump.Jumps;
     public int AirJumps => _jump.AirJumps;
     public int Landings => _jump.Landings;
+
+    // ---- the recovery twirl on a broken shell (PLANET-62, AD-65; HazardMoveParams). On a whole planet none of this runs.
+
+    /// <summary>Recovery twirls made (Space below a rim, in time and in reach: a lift back towards the ground).</summary>
+    public int Recoveries { get; private set; }
+
+    /// <summary>Twirls at the top of a jump over a broken shell's open sky (the timed twirl that leans harder).</summary>
+    public int ApexTwirls { get; private set; }
+
+    /// <summary>Last efforts made (Space below a rim, too late or too far from any ground: no lift).</summary>
+    public int LastEfforts { get; private set; }
+
+    /// <summary>Seconds since the feet went below a rim's level over open sky in this airtime, or −1 when they are not below one.</summary>
+    public float BelowRimSeconds => _belowRimSeconds;
+
+    /// <summary>A press now could still be a recovery: below a rim, within its window and depth, and none made yet this airtime (ground in reach is checked on the press).</summary>
+    public bool RecoveryOpen => !_recoverySpent && _belowRimSeconds >= 0 && _belowRimSeconds <= _recoveryWindowSeconds
+        && -Height.Value <= _p.Hazard.MaxDepth.Value;
+
+    /// <summary>
+    /// On a broken shell, the walker has fallen past saving: more than <see cref="PlanetSurface.FallThroughMetres"/> below
+    /// the rim, no recovery still open and no recovery lift still rising. The app starts the fall here (PlanetWorld.Hazard);
+    /// before the recovery twirl it started at the depth alone. Never true on a whole planet.
+    /// </summary>
+    public bool FallCommitted => _surface?.Shell != null && !Grounded && Height.Value < -PlanetSurface.FallThroughMetres
+        && !RecoveryOpen && !(_recoverySpent && _jump.VerticalVelocity.Value > 0);
+
+    private float _belowRimSeconds = -1;
+    private bool _recoverySpent;
+    private readonly float _recoveryWindowSeconds;
 
     /// <summary>Footfalls: one every <see cref="SphereWalkParams.Stride"/> walked on the ground (for footstep sounds).</summary>
     public int Footsteps { get; private set; }
@@ -214,6 +332,8 @@ public sealed class SphereWalker
         LastEvent = JumpEvent.None;
         _accumulatorSeconds = 0;
         _strideMeters = 0;
+        _belowRimSeconds = -1;
+        _recoverySpent = false;
     }
 
     /// <summary>Integrates one frame of <paramref name="frame"/> length in fixed sub-steps.</summary>
@@ -258,12 +378,21 @@ public sealed class SphereWalker
         if (grounded && wish.LengthSquared() < 1e-8f && velocity.LengthSquared() < RestSpeedSquared) velocity = Vector3.Zero;
 
         // Jump along the local up; airborne, the one boost (with the twirl's small lean along the input).
+        // On a broken shell, a press below a rim is the recovery twirl or a last effort instead of a twirl.
+        var special = surface.Shell is { } shell ? RecoveryPress(shell, up, ref velocity, heightMeters, dtSeconds) : JumpEvent.None;
+        var verticalBeforeMetersPerSecond = _jump.VerticalVelocity.Value;
         var e = _jump.BeginStep(dtSeconds, heightMeters - Support.Value);
+        if (special.Kind != JumpEventKind.None) e = special;
         if (e.Kind == JumpEventKind.AirJump && wish.LengthSquared() > 1e-8f)
         {
             var dir = Vector3.Normalize(wish);
-            var add = MathF.Min(_p.Jump.AirJumpNudge.Value, MathF.Max(0, speedMetersPerSecond - Vector3.Dot(velocity, dir)));
+            // Over a broken shell's open sky, a twirl at the top of the jump leans harder, up to the run speed (AD-65).
+            var apex = surface.Shell is { } open && MathF.Abs(verticalBeforeMetersPerSecond) <= _p.Hazard.ApexSpeed.Value && open.OverHole(up);
+            var nudge = apex ? _p.Hazard.ApexNudge.Value : _p.Jump.AirJumpNudge.Value;
+            var cap = apex ? _p.RunSpeed.Value : speedMetersPerSecond;
+            var add = MathF.Min(nudge, MathF.Max(0, cap - Vector3.Dot(velocity, dir)));
             velocity += dir * add;
+            if (apex) ApexTwirls++;
         }
 
         if (e.Kind != JumpEventKind.None) LastEvent = e;
@@ -378,6 +507,58 @@ public sealed class SphereWalker
         Facing = facing;
         Height = Meters.Of(heightMeters);
         Support = Meters.Of(supportMeters);
+
+        // Below a rim's level over open sky: the recovery's window runs (a whole planet has no rim, so it never starts).
+        if (surface.Shell is { } brokenShell && !_jump.Grounded && heightMeters < 0 && brokenShell.OverHole(up))
+        {
+            _belowRimSeconds = _belowRimSeconds < 0 ? 0 : _belowRimSeconds + dtSeconds;
+        }
+        else
+        {
+            _belowRimSeconds = -1;
+            if (_jump.Grounded) _recoverySpent = false;
+        }
+    }
+
+    /// <summary>
+    /// A press below a rim (HazardMoveParams): airborne, falling, feet below the rim's level over open sky, and no take-off
+    /// pending. In time (<see cref="HazardMoveParams.Window"/>, <see cref="HazardMoveParams.MaxDepth"/>) with ground within
+    /// <see cref="HazardMoveParams.Reach"/>, the recovery: a lift to <see cref="HazardMoveParams.Clearance"/> above the rim (full
+    /// gravity, so a tap and a hold alike) and a carry towards the ground, replacing the tangential velocity. Otherwise a last
+    /// effort: no lift. Either spends the press and the twirl; once per airtime. Returns None (the ordinary twirl rules) when
+    /// the press is not below a rim.
+    /// </summary>
+    private JumpEvent RecoveryPress(BrokenShell shell, Vector3 up, ref Vector3 velocity, float heightMeters, float dtSeconds)
+    {
+        if (_jump.Grounded || !_jump.PressPending || _jump.CanTakeOff(dtSeconds) || _recoverySpent) return JumpEvent.None;
+        var rp = _p.Hazard;
+        var vy = _jump.VerticalVelocity.Value;
+        var belowRim = heightMeters < 0 && vy < 0;
+        if ((!belowRim && vy >= -rp.LateSpeed.Value) || !shell.OverHole(up)) return JumpEvent.None; // rising, at the top, or over ground: the twirl
+        _recoverySpent = true;
+        var depthMeters = MathF.Max(0, -heightMeters);
+        var inTime = _jump.AirJumpsLeft > 0 && depthMeters <= rp.MaxDepth.Value && (!belowRim || (_belowRimSeconds >= 0 && _belowRimSeconds <= _recoveryWindowSeconds));
+        var ground = inTime ? shell.NearestGround(up, rp.Reach.Value, velocity) : null;
+        if (ground is not { } found)
+        {
+            LastEfforts++;
+            return _jump.SpendPress(JumpEventKind.LastEffort, 0);
+        }
+
+        // The lift: v² = 2 g h takes the feet from the depth to the clearance above the rim (the apex hang adds a little).
+        var liftMetersPerSecond = MathF.Max(rp.MinLift.Value, MathF.Sqrt(2 * _p.Jump.Gravity.Value * MathF.Max(0, rp.Clearance.Value - heightMeters)));
+        // The carry: towards the ground found, aiming the inset beyond it.
+        var toGround = found.Point - up * Vector3.Dot(found.Point, up);
+        if (toGround.LengthSquared() > 1e-10f)
+        {
+            var dir = Vector3.Normalize(toGround);
+            var aimMeters = found.Metres + rp.Inset.Value;
+            var speed = MathF.Min(rp.MaxCarrySpeed.Value, aimMeters / rp.CatchTime.ToSecondsF());
+            velocity = dir * speed;
+        }
+
+        Recoveries++;
+        return _jump.SpendPress(JumpEventKind.Recovery, liftMetersPerSecond);
     }
 
     /// <summary>Rotates the walker's frame (position direction, velocity, facing) about a unit axis through the centre.</summary>

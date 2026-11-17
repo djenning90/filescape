@@ -15,6 +15,7 @@ namespace FileScape.App.Planets;
 /// <param name="WindUp01">Launcher wind-up, 0 (none) to 1 (about to launch): a crouch that deepens.</param>
 /// <param name="Flying">Travelling between planets: the streamlined pose.</param>
 /// <param name="Twirl">Ask for a twirl (as on an air jump) without the event.</param>
+/// <param name="Flail">A last effort this frame (PLANET-62): arms thrown up, legs kicking, a lean back — the reach that misses.</param>
 public readonly record struct AvatarState(
     float SpeedMetersPerSecond = 0,
     bool Grounded = true,
@@ -24,7 +25,8 @@ public readonly record struct AvatarState(
     bool Landed = false,
     float WindUp01 = 0,
     bool Flying = false,
-    bool Twirl = false);
+    bool Twirl = false,
+    bool Flail = false);
 
 /// <summary>
 /// The traveller (original character, "Lantern Cosmos"): a small rounded figure ≈ 1.1 m tall — a cloak-like body, a
@@ -89,6 +91,11 @@ public partial class AvatarRig : Node3D
     private float _vertical;           // smoothed vertical speed, m/s
 
     private const float TwirlDurationSeconds = 0.5f;
+
+    // ---- the last effort (PLANET-62, AD-65; by eye): a flail this long, arms waving this fast (rad/s, ≈ 3 Hz), leaning back this far (degrees)
+    private const float FlailDurationSeconds = 0.7f, FlailWaveRadiansPerSecond = 19f, FlailLeanDegrees = 18f;
+
+    private float _flailSeconds = -1;  // time since the last effort began, or −1
 
     // ---- animation tuning (by eye; rationale not recorded)
     /// <summary>How fast the run, flight, wind-up and airborne amounts follow the state, per second.</summary>
@@ -275,10 +282,23 @@ public partial class AvatarRig : Node3D
 
         var twirling = _twirlSeconds >= 0 ? 1f : 0f;
 
+        // The last effort: arms up and waving, legs kicking, leaning back, fading out over its last third.
+        if (state.Flail) _flailSeconds = 0;
+        var flail = 0f;
+        if (_flailSeconds >= 0)
+        {
+            _flailSeconds += dt;
+            var t = _flailSeconds / FlailDurationSeconds;
+            flail = t >= 1 ? 0 : Mathf.Clamp((1 - t) * 3f, 0, 1) * Mathf.Clamp(t * 8f, 0, 1);
+            if (t >= 1) _flailSeconds = -1;
+        }
+
+        var wave = Mathf.Sin(_timeSeconds * FlailWaveRadiansPerSecond);
+
         // Lean and spin (pivot about the body centre so the flight pose rotates around the middle, not the feet).
         var forwardSpeed = Mathf.Clamp(speed / 8f, 0, 1);
         // Degrees: 6–14° forward when running, 68° in flight (nearly prone), 8° back when winding up.
-        var leanDeg = _run * (6f + 8f * forwardSpeed) + _fly * 68f + _wind * -8f;
+        var leanDeg = _run * (6f + 8f * forwardSpeed) + _fly * 68f + _wind * -8f - flail * FlailLeanDegrees;
         var shake = _wind * Mathf.Sin(_timeSeconds * 55f) * 2.5f; // a fast ±2.5° tremble while winding up (55 rad/s ≈ 9 Hz)
         var spin = new Basis(Vector3.Up, -twirl * Mathf.Tau);
         var tilt = new Basis(Vector3.Right, -Mathf.DegToRad(leanDeg)) * new Basis(Vector3.Back, Mathf.DegToRad(shake + Mathf.Sin(_phase) * 3f * _run));
@@ -301,8 +321,8 @@ public partial class AvatarRig : Node3D
         var liftL = Mathf.Max(0, Mathf.Cos(_phase)) * 0.1f * _run;
         var liftR = Mathf.Max(0, -Mathf.Cos(_phase)) * 0.1f * _run;
         var tuck = _air * 0.12f;
-        _footL.Position = new Vector3(-0.13f + 0.05f * _fly, liftL + tuck + 0.02f * _wind, -swing + 0.05f * _air + 0.15f * _fly).Lerp(new Vector3(-0.06f, 0.06f, 0.2f), _fly);
-        _footR.Position = new Vector3(0.13f - 0.05f * _fly, liftR + tuck * 0.6f + 0.02f * _wind, swing - 0.03f * _air + 0.15f * _fly).Lerp(new Vector3(0.06f, 0.06f, 0.2f), _fly);
+        _footL.Position = new Vector3(-0.13f + 0.05f * _fly, liftL + tuck + 0.02f * _wind, -swing + 0.05f * _air + 0.15f * _fly + 0.12f * flail * wave).Lerp(new Vector3(-0.06f, 0.06f, 0.2f), _fly);
+        _footR.Position = new Vector3(0.13f - 0.05f * _fly, liftR + tuck * 0.6f + 0.02f * _wind, swing - 0.03f * _air + 0.15f * _fly - 0.12f * flail * wave).Lerp(new Vector3(0.06f, 0.06f, 0.2f), _fly);
         _footL.Rotation = new Vector3(Mathf.DegToRad(-swing * 120f + _fly * 60f), 0, 0);
         _footR.Rotation = new Vector3(Mathf.DegToRad(swing * 120f + _fly * 60f), 0, 0);
 
@@ -311,8 +331,10 @@ public partial class AvatarRig : Node3D
         var handSwing = Mathf.Sin(_phase) * 0.14f * _run;
         var handL = new Vector3(-0.36f - 0.1f * twirling - 0.05f * _air, 0.36f + 0.16f * rise + 0.12f * _wind + 0.08f * twirling, handSwing + 0.1f * _wind);
         var handR = new Vector3(0.36f + 0.1f * twirling + 0.05f * _air, 0.36f + 0.16f * rise + 0.12f * _wind + 0.08f * twirling, -handSwing + 0.1f * _wind);
-        _handL.Position = handL.Lerp(new Vector3(-0.3f, 0.32f, 0.25f), _fly);
-        _handR.Position = handR.Lerp(new Vector3(0.3f, 0.32f, 0.25f), _fly);
+        // The last effort: both mitts thrown up overhead, waving out of step.
+        // (after the flight pose, so it shows in a fall too).
+        _handL.Position = handL.Lerp(new Vector3(-0.3f, 0.32f, 0.25f), _fly).Lerp(new Vector3(-0.3f - 0.08f * wave, 0.95f + 0.1f * wave, -0.1f), flail);
+        _handR.Position = handR.Lerp(new Vector3(0.3f, 0.32f, 0.25f), _fly).Lerp(new Vector3(0.3f - 0.08f * wave, 0.95f - 0.1f * wave, -0.1f), flail);
 
         // Blink now and then: the eyes close to 12 % for the last 0.12 s before each blink, then the next comes 2.2–4.7 s
         // later. sin(t · 12.9898) is a cheap, repeatable pseudo-random number (the constant is the one familiar from a common shader hash).

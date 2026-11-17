@@ -526,6 +526,46 @@ public sealed partial class SkySynth
         Enqueue(now, NoteSpec.Noise(5500, 9500, 0.25f, q: 3f) with { Attack = 0.003f, Decay = 0.3f, Gain = 0.035f, Send = 0.3f });
     }
 
+    /// <summary>
+    /// A Hazard World's recovery twirl (PLANET-62, AD-65): the twirl's bells climbing a step higher and faster than
+    /// <see cref="AirJump"/> (degrees 4, 6, the octave and its third), a rising whoosh under them and a bright catch at the
+    /// top: a lunge that made it. Immediate.
+    /// </summary>
+    public void RecoveryTwirl()
+    {
+        var now = _frame;
+        var len = CurrentScale.Length;
+        int[] degrees = [4, 6, len + 2, len + 4];
+        for (var i = 0; i < degrees.Length; i++)
+        {
+            Enqueue(now + Frames(RecoveryNoteSpacingSeconds * i), NoteSpec.Bell(PitchHz(degrees[i], 1), ratio: 3f, index: 1.3f, indexDecay: 0.12f) with
+            {
+                Attack = 0.002f, Decay = 0.5f, Gain = 0.085f, Pan = 0.25f - 0.17f * i, Send = 0.4f,
+            });
+        }
+
+        Enqueue(now, NoteSpec.Noise(900, 6500, 0.28f, q: 1.6f) with { Attack = 0.01f, Decay = 0.3f, Gain = 0.05f, Send = 0.25f });
+        Enqueue(now + Frames(0.12f), NoteSpec.Tone(Wave.Triangle, PitchHz(len, 1)) with { GlideToHz = PitchHz(len + 4, 1), Glide = 0.06f, Attack = 0.002f, Decay = 0.25f, Gain = 0.06f, ToneHz = 3200, Send = 0.3f });
+    }
+
+    /// <summary>The recovery's bells come this far apart, seconds (the twirl's are 0.035 s: this one is quicker, urgent).</summary>
+    private const float RecoveryNoteSpacingSeconds = 0.028f;
+
+    /// <summary>
+    /// A Hazard World's last effort (PLANET-62, AD-65): Space below the rim too late or too far. Two bells that start the
+    /// twirl's figure and break off, out of the key and falling (the reach that does not connect), and a short strained
+    /// glide down with a breathy flutter — then the fall's own sound takes over. Immediate.
+    /// </summary>
+    public void LastEffort()
+    {
+        var now = _frame;
+        var root = ClockAt(now).Profile.Root;
+        Enqueue(now, NoteSpec.Bell(PitchHz(2, 1), ratio: 3f, index: 1.0f, indexDecay: 0.2f) with { Attack = 0.002f, Decay = 0.25f, Gain = 0.06f, Pan = -0.15f, Send = 0.3f });
+        Enqueue(now + Frames(0.06f), NoteSpec.Bell(MidiHz(root + 13), ratio: 2.76f, index: 1.4f, indexDecay: 0.1f) with { Attack = 0.002f, Decay = 0.22f, Gain = 0.05f, Pan = 0.15f, Send = 0.35f });
+        Enqueue(now + Frames(0.08f), NoteSpec.Tone(Wave.Triangle, MidiHz(root + 19)) with { GlideToHz = MidiHz(root + 7), Glide = 0.3f, Attack = 0.01f, Decay = 0.35f, Gain = 0.07f, ToneHz = 1600, Send = 0.2f });
+        Enqueue(now + Frames(0.05f), NoteSpec.Noise(2400, 900, 0.3f, q: 2.2f) with { Attack = 0.02f, Decay = 0.3f, Gain = 0.035f, Send = 0.2f });
+    }
+
     /// <summary>A landing thump, louder and lower for harder landings. <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown (≈ 12 m/s is a big drop).</summary>
     public void Land(float impactMetersPerSecond)
     {

@@ -297,3 +297,22 @@ On the sample world (Sample world in the toolbar, or `--root=sample`):
    of the view in under a second. Nothing appears for 10 s after a landing or in the overview (T). The stars turn
    about 1° a minute: invisible while you watch, but after a few minutes the galaxies and nebulae have moved on a
    little. A short recording: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-sky\sky-clip.avi`.
+
+## Hazard World moves and gaps (2026-11-17, PLANET-61..63, AD-65)
+
+**Launch:** the sample world (toolbar *Sample world*, or `--root=sample --vis=planets`), then J, "event", Enter.
+
+1. **Read the gaps.** Three kinds, told apart by the ground. A **step** (the ridge's, 1.4–2.2 m) has pale ledges either
+   side: any jump makes it. A **leap** (about 7 m) has glowing amber take-off boards with two amber posts at each end:
+   it takes a twirl. Anything else is either a **hop** (a crack of 2 m or less between two pieces of rock) or a **chasm**
+   (11 m or more): if it looks too far, find the lit path.
+2. **A leap.** Debris Field (Event Horizon's launcher of that name) has one. Walk to its board, jump from the board and
+   press Space again at the top of the jump: the twirl leans you forward. A plain jump falls short; so does a twirl
+   pressed too early or once you are already dropping.
+3. **The recovery twirl.** Walk slowly off any rim, let go of W, and press Space just after you drop: the traveller
+   twirls back up and onto the rim. After a jump that just falls short, press Space the instant you drop below the far
+   rim. Too late (or nothing within a metre) and it is a last effort: a flail and a cry, then the spiral as before, back
+   to the Starter Sky, and Space on the launcher puts you straight back in.
+4. **Judge by feel:** the recovery's window (about a tenth of a second after a short jump, 0.12–0.2 s after walking off),
+   the twirl at the top of the jump, whether the leap's boards read from across the sky, the island outlines (spurs,
+   lobes, ragged bridges), and whether any gap still looks jumpable and is not (where, please).
