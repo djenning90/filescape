@@ -43,7 +43,8 @@ public partial class Main
         {
             DefaultDistribution = Locations.DefaultWslDistribution(),
             // SHUT-01 instrument only: an uncancellable stall before each listing, like an unresponsive share.
-            BeforeEnumerate = delay > 0 ? _ => Thread.Sleep(delay) : null,
+            // PLANET-39 instrument: --test-list-delay-match limits the stall to matching paths ("still listing" in a probe).
+            BeforeEnumerate = delay > 0 ? p => { if (_testListDelayMatch is not { } m || p.Contains(m, StringComparison.OrdinalIgnoreCase)) Thread.Sleep(delay); } : null,
         };
         StartScan(new WorldExplorer(path, options));
     }
@@ -254,14 +255,14 @@ public partial class Main
     private void ShowGoToPath()
     {
         ReleaseAllInput();
-        _hud.ShowLocations(LocationRows(), focusPath: true);
+        _hud.ShowLocations(MarkInside(LocationRows()), focusPath: true, here: _nav.Current); // Main.Navigation
     }
 
     /// <summary>L / Ctrl+O: the in-app Locations chooser (LOC-06); its Browse… opens the system folder picker.</summary>
     private void ShowLocations()
     {
         ReleaseAllInput();
-        _hud.ShowLocations(LocationRows(), focusPath: false);
+        _hud.ShowLocations(MarkInside(LocationRows()), focusPath: false, here: _nav.Current); // Main.Navigation
     }
 
     /// <summary>The Locations rows: the hub, the arrival root, and every location root (drive, WSL, network) with its listing state.</summary>

@@ -221,6 +221,7 @@ public partial class PlanetWorld
     /// <summary>From Main._UnhandledInput: Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
     public bool UnhandledInput(InputEvent e)
     {
+        if (TripKey(e)) return true; // Esc stops a trip (PlanetWorld.Trip)
         if (_universe != null) return UniverseCommand(e);
         if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
         if (RootMarkKey(e)) return true; // PLANET-45: number keys choose the landmark panel's rows while it is open
@@ -566,20 +567,25 @@ public partial class PlanetWorld
     /// <summary>Esc: close the planet's own overlays first (list, preview); false when there was nothing to close.</summary>
     public bool CloseOverlay()
     {
-        if (_contentsPanel.Visible) { _contentsPanel.Visible = false; return true; }
+        if (_contentsPanel.Visible) { CloseContents(); return true; }
         if (_previewPanel.Visible) { ClosePreview(); return true; }
         if (_benchPanel.Visible) { _benchPanel.Visible = false; return true; }
         if (_rootPanel.Visible) { _rootPanel.Visible = false; return true; }
         return false;
     }
 
-    /// <summary>Closes the list, the bench's panel and the preview (a launch, a world switch).</summary>
+    /// <summary>
+    /// Closes the list, the bench's panel and the preview (a launch, a world switch), and the session's navigation dialogs
+    /// (Open Location, the drawer), so nothing covers the flight (PLANET-41). The trip panel and the walkthrough's card stay:
+    /// they guide the sequence.
+    /// </summary>
     private void CloseOverlays()
     {
-        _contentsPanel.Visible = false;
+        CloseContents();
         _benchPanel.Visible = false;
         _rootPanel.Visible = false;
         ClosePreview();
+        _s.DismissNavigationDialogs();
     }
 
     /// <summary>Walking away closes a preview of something you are no longer at (not the bench's README while you are at the bench).</summary>

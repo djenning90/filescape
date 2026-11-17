@@ -187,11 +187,32 @@ public partial class Hud
 
     public bool DestinationsOpen => _destOpen;
     public Rect2 DestinationsButtonRect => _destButton.GetGlobalRect();
+
+    /// <summary>The bottom of the place bar (viewport units; 0 when hidden): it moves down while the scan status shows, and panels below it follow.</summary>
+    public float PlaceBarBottom => _placePanel.Visible ? _placePanel.Position.Y + _placePanel.Size.Y : 0;
     public LineEdit DestinationFilter => _destFilter;
+
+    /// <summary>
+    /// In Planets the ☰ button opens the planet's own Destinations tree (PlanetWorld.Destinations, PLANET-39) instead of
+    /// this drawer, so the button and J open the same list. Set by Main; null in the other experiences.
+    /// </summary>
+    public Action? PlanetsDestinationsToggle { get; set; }
+
+    /// <summary>The ☰ button's pressed look follows the planet's list while Planets shows it.</summary>
+    public void SetDestinationsButton(bool open)
+    {
+        if (_planetsMode) _destButton.SetPressedNoSignal(open);
+    }
 
     /// <summary>Opens or closes the Destinations drawer (J, the ☰ button). Contents, filter and scroll are kept while closed.</summary>
     public void ToggleDestinations(bool focusFilter)
     {
+        if (_planetsMode && PlanetsDestinationsToggle is { } planets && !_destOpen)
+        {
+            planets();
+            return;
+        }
+
         _destOpen = !_destOpen;
         _destPanel.Visible = _placesMode && _destOpen;
         _destButton.SetPressedNoSignal(_destOpen);

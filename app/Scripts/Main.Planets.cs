@@ -29,6 +29,7 @@ public partial class Main : IWorldSession
         _planets = new PlanetWorld(this) { Name = "Planets" };
         AddChild(_planets);
         SetupSound(); // Main.Sound.cs (PLANET-47)
+        ConnectPlanetsDestinations(); // Main.Navigation
     }
 
     // ---------------------------------------------------------------- IWorldSession

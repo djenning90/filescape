@@ -164,3 +164,26 @@ to listen for).
 2. Walk up to it: the ring brightens, a warm light comes up on its face and the prompt says **E · terminal here · copy path · places**. Walk into it: it is solid; you slide off round it as round any pillar.
 3. Press **E**: a small panel. **1** opens a shell of that distribution in `/`; **2** copies `/`; **3** copies `\\wsl.localhost\Ubuntu-24.04\`; then places: **~ home**, **/tmp**, **/mnt/c** (the Windows C: drive, opened as `C:\`). Choosing a place travels there. E or Esc closes the panel; walking away closes it too. Nothing starts until you press a number or click a row.
 4. On a Windows drive the pane gateway does the same in blue: **1** opens Windows Terminal (or PowerShell if Windows Terminal is not installed) in that drive's root, **2** copies `D:\`, **3** copies `/mnt/d`, and the places are the drive's root, Home, Desktop, Documents and Downloads.
+
+## Direct navigation (2026-11-16): the Destinations tree, trips, favourites
+
+**Launch** from source (any PC): `tools/fs.sh run -- --root=sample --vis=planets` (the Starter Sky). About three minutes.
+
+1. **The denser list.** Press **J** (or ☰ Destinations). One row per world, about a third more of them on screen; each
+   says what is behind it: *36 folders*, *8 files*, *empty* (Quiet Moon), *junction*. The ★ section at the top lists your
+   pins and the repositories FileScape has found (Lantern Workshop).
+2. **Down the hierarchy.** Click the small ▸ beside **Long Way Down**: its folder opens underneath. Or with the keyboard:
+   type "long", ↓, then → opens it and → again steps in; keep going three levels; ← closes, ← again steps out. A folder
+   that has not been listed says *listing…* while FileScape lists just that one.
+3. **A trip.** With **Old Bridge** (four levels down) chosen, press **Enter**: you fly Long Way Down → Meadow Gate →
+   Fern Trail → Old Bridge, each hop the usual launch and landing, a little quicker, with a panel at the bottom: *Trip to
+   Old Bridge · hop 2 of 4* and the route lit as you go. **Esc** (or ■ Stop) stops it: a launch that is winding up is
+   cancelled, a hop in the air lands first; you stay on the last world reached. Shift+Enter (*Straight there*) warps
+   directly instead.
+4. **Up and back after a trip.** **U** goes to the parent of where you are (Fern Trail). **Backspace** undoes that, and
+   Backspace again takes you to where the trip began: the whole trip is one step back.
+5. **Find it deep down.** J, type "hollow": the list opens the way to Hollow Oak, six levels down; ↓ Enter flies there.
+6. **Places you care about.** On a folder's card press **P** (★ Pin). From anywhere, J shows it under ★ Favourites &
+   repositories with the repositories; choose one and it is one warp away.
+7. **Dialogs out of the way.** Press **L** (Open a location): the row for where you are is marked *you are here* and
+   cannot be chosen. Leave it open, press J and pick a world: Open Location and the list close before you fly.

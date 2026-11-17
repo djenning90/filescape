@@ -1,0 +1,7 @@
+[21:59:17.806] planets-navigation-denied probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[21:59:21.291] PASS an inaccessible folder says so, in the warning colour, with nothing to open: “access denied”
+[21:59:21.291] PASS the empty room: “empty”
+[21:59:21.390] PASS deep-chain opens in place
+[21:59:21.430] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/r1-planets-navigation-denied/01-denied-list.png current=C:\Users\David\AppData\Local\Temp\FileScape-fixtures\places-20261114-221420-2b09df\Atlas Studio selected=-
+[21:59:21.430] PASS only folders opened in the list were asked for ()
+[21:59:21.603] done failures=0

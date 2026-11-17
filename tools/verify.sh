@@ -133,6 +133,10 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
     mkdir -p "$d/src" "$d/docs"; [[ -f "$d/README.md" ]] || echo "# A folder with spaces" > "$d/README.md"; [[ -f "$d/notes.txt" ]] || echo notes > "$d/notes.txt"
   done
   journey planets-landmarks planets-landmarks.log 300 --automate=planets-landmarks "--root=$(wslpath -w "$FIX/dir with spaces")" "--wsl-root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\tmp\\filescape-wsl-fixtures\\dir with spaces" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # 2026-11-16 (PLANET-39..41): the Destinations tree, trips hop by hop and their Stop, Locations, favourites; one folder
+  # held "still listing" by the delay instrument; then the fixture's inaccessible folder as the list shows it.
+  journey planets-navigation planets-navigation.log 300 --automate=planets-navigation --root=sample --vis=planets --test-shell=record --ui-scale=1 --test-list-delay-ms=12000 "--test-list-delay-match=Pressed Flowers" --tier=functional
+  journey planets-navigation-denied planets-navigation-denied.log 200 --automate=planets-navigation-denied "--root=$R" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
 fi
 
 if [[ "$TIER" == release ]]; then

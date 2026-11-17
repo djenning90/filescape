@@ -103,8 +103,9 @@ public partial class Hud
         v.AddChild(title);
         _locList = new ItemList { CustomMinimumSize = new Vector2(600, 220), SelectMode = ItemList.SelectModeEnum.Single };
         _locList.AddThemeFontSizeOverride("font_size", 14);
-        _locList.ItemActivated += i => LocationChosen?.Invoke((int)_locList.GetItemMetadata((int)i));
-        _locList.ItemClicked += (i, _, button) => { if (button == (long)MouseButton.Left) LocationChosen?.Invoke((int)_locList.GetItemMetadata((int)i)); };
+        // The row for where you already are is disabled (PLANET-41): choosing it does nothing.
+        _locList.ItemActivated += i => { if (!_locList.IsItemDisabled((int)i)) LocationChosen?.Invoke((int)_locList.GetItemMetadata((int)i)); };
+        _locList.ItemClicked += (i, _, button) => { if (button == (long)MouseButton.Left && !_locList.IsItemDisabled((int)i)) LocationChosen?.Invoke((int)_locList.GetItemMetadata((int)i)); };
         _locList.GuiInput += e =>
         {
             if (e is InputEventKey { Pressed: true, Keycode: Key.Escape })
@@ -184,16 +185,24 @@ public partial class Hud
 
     /// <summary>
     /// Opens the Locations dialog with these rows (drives, distributions, This computer). The path field gets the keyboard
-    /// when <paramref name="focusPath"/> (Ctrl+L) or when there are no rows; otherwise the list does.
+    /// when <paramref name="focusPath"/> (Ctrl+L) or when there are no rows; otherwise the list does. The row whose id is
+    /// <paramref name="here"/> is where you already are: marked "● you are here", in the highlight colour, and disabled,
+    /// so it cannot be chosen as a trip to nowhere (PLANET-41).
     /// </summary>
-    public void ShowLocations(IReadOnlyList<(int Id, string Text, string Tooltip)> rows, bool focusPath)
+    public void ShowLocations(IReadOnlyList<(int Id, string Text, string Tooltip)> rows, bool focusPath, int here = int.MinValue)
     {
         _locList.Clear();
         foreach (var (id, text, tip) in rows)
         {
-            var i = _locList.AddItem(text);
+            var isHere = id == here;
+            var i = _locList.AddItem(isHere ? $"●  {text}   ·  you are here" : text);
             _locList.SetItemMetadata(i, id);
-            _locList.SetItemTooltip(i, tip);
+            _locList.SetItemTooltip(i, isHere ? "You are here already." : tip);
+            if (isHere)
+            {
+                _locList.SetItemDisabled(i, true);
+                _locList.SetItemCustomFgColor(i, LocationHereColor);
+            }
         }
 
         if (rows.Count == 0) _locList.AddItem("(no locations in this mode — type a path: Go explores the connected world, Scan as tree makes a bounded tree)", selectable: false);
@@ -205,6 +214,12 @@ public partial class Hud
         }
         else _locList.GrabFocus();
     }
+
+    /// <summary>The "you are here" row's colour: the breadcrumb's current-folder yellow.</summary>
+    private static readonly Color LocationHereColor = new(1f, 0.95f, 0.7f);
+
+    /// <summary>Whether the Locations row at <paramref name="index"/> is disabled (where you already are; probes).</summary>
+    public bool LocationRowDisabled(int index) => index < _locList.ItemCount && _locList.IsItemDisabled(index);
 
     public void HideLocations()
     {
@@ -300,6 +315,9 @@ public partial class Hud
 
         return false;
     }
+
+    /// <summary>Closes the problem list (a destination was committed: it would cover the flight).</summary>
+    public void HideProblemList() => _problemPanel.Visible = false;
 
     private void ToggleProblems() => _problemPanel.Visible = !_problemPanel.Visible && _problemList.ItemCount > 0;
 
