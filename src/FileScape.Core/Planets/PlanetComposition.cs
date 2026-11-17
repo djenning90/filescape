@@ -247,6 +247,13 @@ public sealed class PlanetComposition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public HazardReason? Hazard { get; init; }
 
+    /// <summary>
+    /// A filesystem root's landmark (PLANET-45, AD-58): the Windows gateway or the WSL monolith, solid and placed clear of
+    /// the walking routes; null on every other world. Its solids are among the <see cref="Surface"/>'s obstacles.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public PlanetRootMark? RootMark { get; init; }
+
     /// <summary>The tree version this was made from.</summary>
     public required int TreeVersion { get; init; }
 
