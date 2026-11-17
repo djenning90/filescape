@@ -9,7 +9,8 @@ namespace FileScape.Core.Audio;
 //   - the orchestra (band 3, the deep woods): strings, horns, woodwinds, timpani and harp, the theme passed between them,
 //     dynamics rising and falling twice per cycle (OrchestraDynamics), half time over a string ostinato;
 //   - drum and bass (band 4, the underglow): 172 BPM breaks under a half-time theme, a reese bass, airy strings;
-//   - the hazard world: phrygian at half time, a beating drone, a heartbeat, ticking metal, an unstable lead.
+//   - the abyss (until AD-60 the hazard world's score, kept for a future world type): phrygian at half time, a beating
+//     drone, a heartbeat, ticking metal, an unstable lead. AD-60's hazard score is in SkySynth.Escape.cs.
 // They reuse the score machinery of SkySynth.Music.cs (cycles, variations, development, the band motif); OnStep, PlayPad,
 // PlayFree, PlayArrival and PlayThemeNote dispatch to them by Style.Arrangement. Everything here runs inside Render, except
 // ArrivalDrop (from Arrive).
@@ -22,7 +23,12 @@ public sealed partial class SkySynth
         Festival,
         Orchestral,
         DrumAndBass,
-        Hazard,
+
+        /// <summary>The AD-52 hazard score, kept as <see cref="MusicIdentity.Abyss"/> (AD-60).</summary>
+        Abyss,
+
+        /// <summary>AD-60's hazard score: frenetic, "get out of here" (SkySynth.Escape.cs).</summary>
+        Escape,
     }
 
     // ---- the sidechain pump
@@ -37,6 +43,12 @@ public sealed partial class SkySynth
 
     /// <summary>The festival cycle's build starts at this bar (bars 12–15; the breakdown runs from the theme's end to it).</summary>
     private const int FestivalBuildBar = 12;
+
+    /// <summary>The festival drop's climax starts at this bar (its last phrase): the line doubled an octave up (AD-60).</summary>
+    private const int FestivalClimaxBar = 6;
+
+    /// <summary>The stop before the breakdown: from this sixteenth of the drop's last bar only the lead and the fill play (AD-60).</summary>
+    private const int FestivalStopSixteenth = 12;
 
     /// <summary>A flight's progress (0..1) the festival's build must reach for the arrival to release a drop: a short hop is not a build.</summary>
     private const float FlightBuildForDrop = 0.5f;
@@ -198,6 +210,13 @@ public sealed partial class SkySynth
                 // The drop's harmony: the line a third below in the scale, a narrower stack in the middle.
                 var harmony = p.Root + 12 + ScaleNote(p.Scale, note.Degree - 2);
                 Enqueue(at, LeadSpec(Lead.SuperSaw, MidiHz(harmony), hold) with { Unison = 2, Gain = gain * 0.35f, Pan = 0f, Group = d.Group });
+                // The climax (AD-60): the drop's last phrase (and from bar 4 on a revisit) lifted by the line an octave up.
+                var phraseBar = note.Start / 16;
+                if (phraseBar >= FestivalClimaxBar || (d.Development >= 2 && phraseBar >= FestivalClimaxBar - 2))
+                {
+                    Enqueue(at, LeadSpec(Lead.SuperSaw, hz * 2f, hold) with { Unison = 2, GlideToHz = fromHz > 0 ? hz * 2f : 0, FreqHz = fromHz > 0 ? fromHz * 2f : hz * 2f, Glide = 0.035f, Gain = gain * 0.4f, Pan = -0.1f, Group = d.Group });
+                }
+
                 break;
             }
 
@@ -211,6 +230,9 @@ public sealed partial class SkySynth
                     Enqueue(at, LeadSpec(Lead.Violins, hz * 0.5f, hold) with { Attack = 0.25f, Gain = gain * 0.3f, Pan = -0.3f, Send = 0.7f, Group = d.Group });
                 }
 
+                break;
+            case Arrangement.Escape:
+                EscapeThemeNote(d, at, hz, fromHz, hold, gain);
                 break;
             default:
                 PlayLead(d, Lead.Unstable, at, hz, hold, gain, 0.05f, fromHz, sag: note.Length >= 6);
@@ -248,6 +270,14 @@ public sealed partial class SkySynth
                 DropImpact(d.Profile, frame, 0.8f, g);
             }
 
+            if (bar == d.ThemeBars - 1 && inBar >= FestivalStopSixteenth)
+            {
+                // The stop (AD-60): the beat drops out under the lead's last note; only the snare fill leads into the breakdown.
+                Snare(SnareKind.Snare, frame, 0.35f + 0.12f * (inBar - 12), inBar % 2 == 0 ? -0.15f : 0.15f, g);
+                return;
+            }
+
+            if (bar == FestivalClimaxBar && inBar == 0) Crash(frame, 0.8f, g); // into the climax
             if (inBar % 4 == 0)
             {
                 BigKick(frame, 1f, g);
@@ -265,7 +295,6 @@ public sealed partial class SkySynth
             else if (inBar % 2 == 0 || dev >= 2) ClosedHat(frame, inBar % 2 == 0 ? 0.55f : 0.3f, inBar % 4 < 2 ? -0.25f : 0.25f, g);
             if (inBar % 4 == 2) SawBass(d, frame, chord, up: inBar % 8 == 6, vel: 1f);
             else if (dev >= 2 && inBar % 4 == 3) SawBass(d, frame, chord, up: false, vel: 0.5f);
-            if (bar == d.ThemeBars - 1 && inBar >= 12) Snare(SnareKind.Snare, frame, 0.35f + 0.12f * (inBar - 12), inBar % 2 == 0 ? -0.15f : 0.15f, g); // a fill out of the drop
             return;
         }
 
@@ -485,25 +514,28 @@ public sealed partial class SkySynth
         var bar = d.Bar;
         var dyn = OrchestraDynamics(d, bar);
         var next = OrchestraDynamics(d, bar < 0 ? 0 : (bar + 1) % CycleBars);
+        var pause = bar == OrchestraClimaxBar - 1; // the sections stop for the general pause (AD-60)
+        var release = pause ? 0.12f : 0.9f;
+        if (pause) hold = MathF.Max(0.1f, hold - (float)((16 - OrchestraPauseSixteenth) * d.FramesPerSixteenth / _rate) - 0.05f);
         ReadOnlySpan<(int Tone, int Octave, float Pan)> section = [(0, 0, 0.15f), (2, 12, -0.3f), (4, 12, -0.1f)];
         foreach (var (tone, octave, pan) in section)
         {
             var midi = p.Root + octave + ScaleNote(p.Scale, chord + tone);
             Enqueue(frame, NoteSpec.Saw(MidiHz(midi), 3, 7f, 700f + 1300f * dyn) with
             {
-                ToneToHz = 700f + 1300f * next, ToneGlide = hold, Attack = 0.25f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = 0.9f,
+                ToneToHz = 700f + 1300f * next, ToneGlide = hold, Attack = 0.25f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = release,
                 Gain = 0.013f * (0.5f + 0.5f * dyn), VibratoHz = 5.2f, VibratoDepth = 0.0025f, Pan = pan, Send = 0.65f, Group = d.Group,
             });
         }
 
         Enqueue(frame, NoteSpec.Saw(MidiHz(p.Root - 12 + BassSemitones(p, chord)), 2, 5f, 500f + 500f * dyn) with
         {
-            Attack = 0.2f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = 0.8f, Gain = 0.03f * (0.5f + 0.5f * dyn), Pan = 0.45f, Send = 0.45f, Group = d.Group,
+            Attack = 0.2f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = pause ? release : 0.8f, Gain = 0.03f * (0.5f + 0.5f * dyn), Pan = 0.45f, Send = 0.45f, Group = d.Group,
         });
         if (dyn < 0.8f) return;
         foreach (var tone in (ReadOnlySpan<int>)[2, 4])
         {
-            Enqueue(frame, LeadSpec(Lead.Horn, MidiHz(p.Root + ScaleNote(p.Scale, chord + tone)), hold) with { Attack = 0.25f, Gain = 0.018f * dyn, Pan = 0.25f, Group = d.Group });
+            Enqueue(frame, LeadSpec(Lead.Horn, MidiHz(p.Root + ScaleNote(p.Scale, chord + tone)), hold) with { Attack = 0.25f, Gain = 0.018f * dyn, Pan = 0.25f, Group = d.Group, Release = pause ? release : 0.45f });
         }
     }
 
@@ -528,7 +560,7 @@ public sealed partial class SkySynth
                 ToneToHz = 500f, ToneGlide = 0.12f, Attack = 0.001f, Decay = 0.3f, Gain = inBar % 4 == 0 ? 0.06f : 0.045f, Pan = 0.15f, Send = 0.45f, Group = g,
             });
         }
-        else if (bar >= 2 && (bar != CycleBars - 1 || inBar < 8))
+        else if (bar >= 2 && (bar != CycleBars - 1 || inBar < 8) && !(bar == OrchestraClimaxBar - 1 && inBar >= OrchestraPauseSixteenth))
         {
             ReadOnlySpan<int> rungs = [0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 2, 0, 3, 2, 1];
             var midi = p.Root + ScaleNote(p.Scale, LadderDegree(p, chord, rungs[inBar]));
@@ -546,24 +578,56 @@ public sealed partial class SkySynth
             else if (bar >= 4 && inBar == 8) Timpani(d, frame, chord, 0.5f * dyn);
             else if (bar >= 6 && inBar is 4 or 12) Timpani(d, frame, chord, 0.35f);
         }
-        else if (bar == 13)
+        else if (bar == OrchestraClimaxBar - 1 && inBar < OrchestraPauseSixteenth)
         {
-            // The roll into the climax: two strokes per sixteenth, crescendo.
+            // The roll into the climax: two strokes per sixteenth, crescendo, and the upper strings' tremolo swelling with it
+            // (AD-60); both stop for the general pause.
             var vel = 0.2f + 0.6f * inBar / 16f;
             Timpani(d, frame, chord, vel);
             Timpani(d, frame + (long)(d.FramesPerSixteenth / 2), chord, vel * 0.9f);
+            StringTremolo(d, frame, chord, inBar, vel);
         }
-        else if (bar == 14 && inBar is 0 or 8)
+        else if (bar == OrchestraClimaxBar && inBar is 0 or 8)
         {
             Timpani(d, frame, chord, inBar == 0 ? 1f : 0.6f);
+            if (inBar == 0) Timpani(d, frame, 0, 0.8f); // and the tonic under it: the climax's weight
         }
 
-        if (inBar == 0 && (bar == 5 || bar == 13)) CymbalSwell(d, frame);
+        if (inBar == 0 && bar == 5) CymbalSwell(d, frame, 16, 0.8f);
+        if (inBar == 0 && bar == OrchestraClimaxBar - 1) CymbalSwell(d, frame, OrchestraPauseSixteenth, 0.1f); // choked for the general pause
         if (inBar == 0 && (bar == 6 || bar == 14)) Crash(frame, 0.8f, g);
         if (bar == CycleBars - 1 && inBar < 8) Harp(d, frame, chord, 7 - inBar, 0.8f);
     }
 
-    /// <summary>Between the orchestra's returns: the cellos' band motif (the flute echoing), then the horn call (mi sol do') and the violins' answer falling back.</summary>
+    /// <summary>The orchestra's climax bar (tutti, ff), after the timpani roll and the general pause (AD-60).</summary>
+    private const int OrchestraClimaxBar = 14;
+
+    /// <summary>The general pause: the last two sixteenths of the bar before the climax are silent (AD-60).</summary>
+    private const int OrchestraPauseSixteenth = 14;
+
+    /// <summary>
+    /// The upper strings' measured tremolo into the climax: two bowed notes per sixteenth on the chord's tones, an octave
+    /// above the key's root, swelling with <paramref name="vel"/>.
+    /// </summary>
+    private void StringTremolo(Deck d, long frame, int chord, int inBar, float vel)
+    {
+        var p = d.Profile;
+        ReadOnlySpan<int> rungs = [2, 1];
+        for (var k = 0; k < 2; k++)
+        {
+            var midi = p.Root + 12 + ScaleNote(p.Scale, LadderDegree(p, chord, rungs[(inBar + k) % 2]));
+            Enqueue(frame + (long)(k * d.FramesPerSixteenth / 2), NoteSpec.Saw(MidiHz(midi), 2, 6f, 2400f + 1600f * vel) with
+            {
+                Attack = 0.004f, Decay = 0.12f, Gain = 0.032f * vel, VibratoHz = 5.5f, VibratoDepth = 0.002f, Pan = -0.35f, Send = 0.5f, Group = d.Group,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Between the orchestra's returns: the cellos' band motif (the flute echoing), then the horn call (mi sol do') and the
+    /// violins' answer falling back, stopping short for the general pause; and the climax (AD-60): the horn call again, an
+    /// octave up on the violins over the horns, fortissimo.
+    /// </summary>
     private void OrchestraFree(Deck d, int bar, int inBar, bool first, int phrase, long cycle, long frame, int chord)
     {
         if (bar < 12)
@@ -577,9 +641,17 @@ public sealed partial class SkySynth
         {
             foreach (var (step, length, degree) in (ReadOnlySpan<(int, int, int)>)[(0, 4, 2), (4, 4, 4), (8, 8, 7)]) MotifNote(d, StepAt(d, frame, step), degree, length, 1f, Lead.Horn);
         }
-        else if (bar == 13)
+        else if (bar == OrchestraClimaxBar - 1)
         {
-            foreach (var (step, length, degree) in (ReadOnlySpan<(int, int, int)>)[(0, 4, 9), (4, 2, 8), (6, 2, 7), (8, 8, 4)]) MotifNote(d, StepAt(d, frame, step), degree, length, 0.9f, Lead.Violins);
+            foreach (var (step, length, degree) in (ReadOnlySpan<(int, int, int)>)[(0, 4, 9), (4, 2, 8), (6, 2, 7), (8, 6, 4)]) MotifNote(d, StepAt(d, frame, step), degree, length, 0.9f, Lead.Violins);
+        }
+        else if (bar == OrchestraClimaxBar)
+        {
+            foreach (var (step, length, degree) in (ReadOnlySpan<(int, int, int)>)[(0, 4, 2), (4, 4, 4), (8, 8, 7)])
+            {
+                MotifNote(d, StepAt(d, frame, step), degree + 7, length, 1f, Lead.Violins);
+                MotifNote(d, StepAt(d, frame, step), degree, length, 0.9f, Lead.Horn);
+            }
         }
     }
 
@@ -593,11 +665,11 @@ public sealed partial class SkySynth
         Enqueue(at, NoteSpec.Noise(500, 300, 0.05f, q: 0.8f, lowpass: true) with { Attack = 0.001f, Decay = 0.06f, Gain = 0.05f * vel, Send = 0.3f, Group = g });
     }
 
-    /// <summary>A suspended cymbal rolled up over one bar, peaking on the next downbeat.</summary>
-    private void CymbalSwell(Deck d, long at)
+    /// <summary>A suspended cymbal rolled up over <paramref name="sixteenths"/> (a bar: peaking on the next downbeat), then let ring for <paramref name="decaySeconds"/> (T60; short: choked).</summary>
+    private void CymbalSwell(Deck d, long at, int sixteenths, float decaySeconds)
     {
-        var len = (float)(16 * d.FramesPerSixteenth / _rate);
-        Enqueue(at, NoteSpec.Noise(5000, 8000, len, q: 0.6f) with { Attack = len, Decay = 0.8f, Gain = 0.035f, Pan = -0.2f, Send = 0.6f, Group = d.Group });
+        var len = (float)(sixteenths * d.FramesPerSixteenth / _rate);
+        Enqueue(at, NoteSpec.Noise(5000, 8000, len, q: 0.6f) with { Attack = len, Decay = decaySeconds, Gain = 0.035f, Pan = -0.2f, Send = 0.6f, Group = d.Group });
     }
 
     /// <summary>A harp note on the chord-tone ladder (rung 0 the chord's root, an octave above the key's).</summary>
@@ -623,57 +695,144 @@ public sealed partial class SkySynth
     private static readonly float[] BreakSnare = Hits("....X.......X.......X.......X...");
     private static readonly float[] BreakGhost = Hits(".......o.o.....o.......o.o....oo");
 
+    // Drum and bass's phrase-level drama (AD-60): bars 0–7 the theme over the break; 8–9 the breakdown; 10–11 the build;
+    // 12–15 the drop, which opens with a sub drop and plays the heavy reese.
+
+    /// <summary>The breakdown's first bar: no drums, no reese; the strings, a held sub and the band motif.</summary>
+    private const int DnbBreakdownBar = 8;
+
+    /// <summary>The build's first bar: a snare roll from the pulse's eighths to 32nds, a riser, the reese climbing an octave.</summary>
+    private const int DnbBuildBar = 10;
+
+    /// <summary>The drop's first bar: the sub drop, then the heavy reese and the full break to the cycle's end.</summary>
+    private const int DnbDropBar = 12;
+
+    /// <summary>The sub drop's dive, seconds: from the key's root an octave below middle down another octave (≈ 30–45 Hz).</summary>
+    private const float SubDropDiveSeconds = 0.9f;
+
     /// <summary>
-    /// One score sixteenth of drum and bass (two of the pulse): the break (a two-step kick, snares on the pulse's 2 and 4,
-    /// ghosts from the second visit and in the last four bars, a fill in the last), sixteenth hats, a metallic ride on the
-    /// offbeats, and the reese bass with its sub. Bars 8–9 rest the kick and snare (a short breakdown) until the third visit.
+    /// One score sixteenth of drum and bass (two of the pulse). The theme's bars (0–7) play the break (a two-step kick, snares
+    /// on the pulse's 2 and 4, ghosts from the second visit, a fill into the breakdown), sixteenth hats, a metallic ride on the
+    /// offbeats and the reese. Then the drama (AD-60): the breakdown (bars 8–9: drums and reese out, a held sub, soft air), the
+    /// build (bars 10–11: a snare roll from the pulse's eighths through sixteenths to 32nds, a kick on the beat in bar 10, a
+    /// riser, the reese climbing an octave, the last eighth silent), and the drop (bars 12–15: a sub drop and an impact, then
+    /// the full break with ghosts and the heavy reese, <see cref="Reese"/>). The theme's return at bar 0 lands on a crash.
     /// </summary>
-    private void DrumAndBassGroove(Deck d, int inBar, int bar, bool intro, long frame, int chord)
+    private void DrumAndBassGroove(Deck d, long step, int inBar, int bar, bool intro, long frame, int chord)
     {
         var g = d.Group;
         var dev = d.Development;
-        var drumsOut = !intro && bar is 8 or 9 && dev < 3;
-        var roller = bar >= 12;
+        var p = d.Profile;
+        var breakdown = !intro && bar is DnbBreakdownBar or DnbBreakdownBar + 1;
+        var buildUp = !intro && bar is DnbBuildBar or DnbBuildBar + 1;
+        var drop = !intro && bar >= DnbDropBar;
+        if (buildUp && bar == DnbBuildBar + 1 && inBar == 15) return; // the gasp before the drop: one pulse eighth of silence
+
+        if (!intro && bar == 0 && inBar == 0 && step != 0) Crash(frame, 0.9f, g); // the theme returns
+        if (breakdown)
+        {
+            if (inBar % 4 == 2) Enqueue(frame, NoteSpec.Noise(7000, 6500, 0.03f, q: 1.2f) with { Attack = 0.008f, Decay = 0.08f, Gain = 0.02f, Pan = inBar % 8 < 4 ? -0.3f : 0.3f, Send = 0.3f, Group = g });
+            if (inBar == 0)
+            {
+                Enqueue(frame, NoteSpec.Tone(Wave.Sine, MidiHz(p.Root - 24 + BassSemitones(p, chord))) with
+                {
+                    Attack = 0.08f, Decay = 2f, Sustain = 0.85f, Hold = (float)(15 * d.FramesPerSixteenth / _rate), Release = 0.4f, Gain = 0.05f, Send = 0.05f, Group = g,
+                });
+            }
+
+            return;
+        }
+
+        if (buildUp)
+        {
+            var q = ((bar - DnbBuildBar) * 16 + inBar) / 32f;
+            var per = bar == DnbBuildBar ? 1 : inBar < 8 ? 2 : 4; // the pulse's eighths, sixteenths, then 32nds
+            for (var k = 0; k < per; k++)
+            {
+                Snare(SnareKind.Snare, frame + (long)(k * d.FramesPerSixteenth / per), 0.25f + 0.6f * q, k % 2 == 0 ? -0.15f : 0.15f, g);
+            }
+
+            if (bar == DnbBuildBar && inBar % 4 == 0) Kick(frame, 0.75f, g);
+            if (inBar % 2 == 0) ClosedHat(frame, 0.3f + 0.4f * q, inBar % 4 == 0 ? -0.3f : 0.3f, g);
+            if (bar == DnbBuildBar && inBar == 0)
+            {
+                var len = (float)(31 * d.FramesPerSixteenth / _rate);
+                Enqueue(frame, NoteSpec.Noise(300, 8000, len, q: 1.4f) with { Attack = len, Decay = 0.05f, Gain = 0.045f, Send = 0.4f, Group = g });
+                var hz = MidiHz(p.Root - 12 + BassSemitones(p, chord));
+                Enqueue(frame, NoteSpec.Saw(hz, 2, 14f, 300f) with
+                {
+                    GlideToHz = hz * 2f, Glide = len, ToneToHz = 1500f, ToneGlide = len, Attack = 0.05f, Decay = 3f, Sustain = 0.9f, Hold = len, Release = 0.05f, Gain = 0.05f, Send = 0.1f, Group = g,
+                });
+            }
+
+            return;
+        }
+
+        if (drop && bar == DnbDropBar && inBar == 0) SubDrop(d, frame);
+        var roller = drop;
         for (var h = 0; h < 2; h++)
         {
             var sub = inBar * 2 + h;
             var at = frame + (long)(h * d.FramesPerSixteenth * 0.5);
-            if (!drumsOut)
-            {
-                if (BreakKick[sub] > 0) Kick(at, BreakKick[sub], g);
-                var fill = bar == CycleBars - 1 && sub >= 24;
-                if (fill) Snare(SnareKind.Snare, at, 0.35f + 0.08f * (sub - 24), sub % 2 == 0 ? -0.2f : 0.2f, g);
-                else if (BreakSnare[sub] > 0) BreakSnareHit(at, BreakSnare[sub], g);
-                else if ((dev >= 2 || roller) && BreakGhost[sub] > 0) Snare(SnareKind.Snare, at, 0.22f, 0.15f, g);
-            }
+            if (BreakKick[sub] > 0) Kick(at, BreakKick[sub], g);
+            var fill = bar == d.ThemeBars - 1 && sub >= 24; // into the breakdown
+            if (fill) Snare(SnareKind.Snare, at, 0.35f + 0.08f * (sub - 24), sub % 2 == 0 ? -0.2f : 0.2f, g);
+            else if (BreakSnare[sub] > 0) BreakSnareHit(at, BreakSnare[sub], g);
+            else if ((dev >= 2 || roller) && BreakGhost[sub] > 0) Snare(SnareKind.Snare, at, 0.22f, 0.15f, g);
 
             if (sub % 2 == 0) ClosedHat(at, 0.6f, sub % 4 == 0 ? -0.3f : 0.3f, g);
             else if (dev >= 2 || roller) ClosedHat(at, 0.28f, 0.35f, g);
             if (sub % 4 == 2) Enqueue(at, NoteSpec.Bell(2400f, ratio: 1.41f, index: 2.2f, indexDecay: 0.05f) with { Attack = 0.0005f, Decay = 0.35f, Gain = 0.02f, Pan = 0.4f, Send = 0.2f, ToneHz = 9000, Group = g });
         }
 
-        // The reese: held notes per score bar (even bars root … root, fifth; odd bars root, octave, root).
+        // The reese: held notes per score bar (even bars root … root, fifth; odd bars root, octave, root); heavy in the drop.
         var even = bar % 2 == 0 || intro;
         var (play, steps, interval) = even
             ? inBar switch { 0 => (true, 8, 0), 8 => (true, 4, 0), 12 => (true, 4, -1), _ => (false, 0, 0) }
             : inBar switch { 0 => (true, 6, 0), 6 => (true, 2, 12), 8 => (true, 8, 0), _ => (false, 0, 0) };
         if (play)
         {
-            var p = d.Profile;
             var semis = BassSemitones(p, chord) + (interval == -1 ? ScaleNote(p.Scale, chord + 4) - ScaleNote(p.Scale, chord) : interval);
-            Reese(d, frame, p.Root - 12 + semis, (float)(steps * d.FramesPerSixteenth / _rate) - 0.03f);
+            Reese(d, frame, p.Root - 12 + semis, (float)(steps * d.FramesPerSixteenth / _rate) - 0.03f, heavy: drop);
         }
     }
 
     /// <summary>
     /// The reese bass: two saws 14 cents apart (they phase against each other, the reese's growl), filtered at 260 Hz opening
-    /// to 650 Hz over the note, with a sine sub an octave below.
+    /// to 650 Hz over the note, with a sine sub an octave below. <paramref name="heavy"/> (the drop, AD-60): the filter opens
+    /// from 400 Hz to 1.6 kHz and a third saw an octave up joins, so its harmonics carry it on small speakers that cannot
+    /// play the sub (measured: SkySynthTests' drama render reports the 100–300 Hz band per bar), and the sub is louder.
     /// </summary>
-    private void Reese(Deck d, long at, int midi, float hold)
+    private void Reese(Deck d, long at, int midi, float hold, bool heavy = false)
     {
         var hz = MidiHz(midi);
-        Enqueue(at, NoteSpec.Saw(hz, 2, 14f, 260f) with { ToneToHz = 650f, ToneGlide = MathF.Max(0.05f, hold), Attack = 0.01f, Decay = 2f, Sustain = 0.9f, Hold = MathF.Max(0.05f, hold), Release = 0.08f, Gain = 0.055f, Send = 0.05f, Group = d.Group });
-        Enqueue(at, NoteSpec.Tone(Wave.Sine, hz * 0.5f) with { Attack = 0.01f, Decay = 2f, Sustain = 0.9f, Hold = MathF.Max(0.05f, hold), Release = 0.08f, Gain = 0.08f, Send = 0f, Group = d.Group });
+        var held = MathF.Max(0.05f, hold);
+        if (!heavy)
+        {
+            Enqueue(at, NoteSpec.Saw(hz, 2, 14f, 260f) with { ToneToHz = 650f, ToneGlide = held, Attack = 0.01f, Decay = 2f, Sustain = 0.9f, Hold = held, Release = 0.08f, Gain = 0.055f, Send = 0.05f, Group = d.Group });
+            Enqueue(at, NoteSpec.Tone(Wave.Sine, hz * 0.5f) with { Attack = 0.01f, Decay = 2f, Sustain = 0.9f, Hold = held, Release = 0.08f, Gain = 0.08f, Send = 0f, Group = d.Group });
+            return;
+        }
+
+        Enqueue(at, NoteSpec.Saw(hz, 2, 18f, 400f) with { ToneToHz = 1600f, ToneGlide = held, Attack = 0.008f, Decay = 2f, Sustain = 0.9f, Hold = held, Release = 0.08f, Gain = 0.06f, Send = 0.05f, Group = d.Group });
+        Enqueue(at, NoteSpec.Saw(hz * 2f, 1, 0f, 900f) with { ToneToHz = 2200f, ToneGlide = held, Attack = 0.01f, Decay = 2f, Sustain = 0.8f, Hold = held, Release = 0.08f, Gain = 0.03f, Pan = 0.2f, Send = 0.1f, Group = d.Group });
+        Enqueue(at, NoteSpec.Tone(Wave.Sine, hz * 0.5f) with { Attack = 0.01f, Decay = 2f, Sustain = 0.9f, Hold = held, Release = 0.08f, Gain = 0.1f, Send = 0f, Group = d.Group });
+    }
+
+    /// <summary>
+    /// The drop's sub drop (AD-60): a sine diving an octave from the key's root an octave below the bass (≈ 30–45 Hz at the
+    /// bottom) and holding, with a saw an octave above it diving with it (its harmonics, ≈ 100–400 Hz, let small speakers
+    /// hear the drop the sub alone would hide), a crash and the snare's crack.
+    /// </summary>
+    private void SubDrop(Deck d, long at)
+    {
+        var p = d.Profile;
+        var g = d.Group;
+        var hz = MidiHz(p.Root - 12);
+        Enqueue(at, NoteSpec.Tone(Wave.Sine, hz) with { GlideToHz = hz * 0.5f, Glide = SubDropDiveSeconds, Attack = 0.003f, Decay = 2.5f, Sustain = 0.7f, Hold = 1.6f, Release = 0.5f, Gain = 0.13f, Send = 0f, Group = g });
+        Enqueue(at, NoteSpec.Saw(hz * 2f, 2, 12f, 1400f) with { GlideToHz = hz, Glide = SubDropDiveSeconds, ToneToHz = 500f, ToneGlide = 1.2f, Attack = 0.003f, Decay = 1.4f, Sustain = 0f, Release = 0.3f, Gain = 0.08f, Send = 0.15f, Group = g });
+        Crash(at, 1f, g);
+        BreakSnareHit(at, 1f, g);
     }
 
     /// <summary>The break's snare: the kit's snare with a bright crack on top.</summary>
@@ -707,14 +866,14 @@ public sealed partial class SkySynth
         DropImpact(d.Profile, frame, 0.6f, d.Group);
     }
 
-    // ---------------------------------------------------------------- the hazard world
+    // ---------------------------------------------------------------- the abyss (the AD-52 hazard score, kept by AD-60)
 
     /// <summary>
-    /// One score sixteenth of the hazard world: a heartbeat (lub-dub on beats 1 and 3), a metallic tick on every step (and,
+    /// One score sixteenth of the abyss (until AD-60 the hazard world's score): a heartbeat (lub-dub on beats 1 and 3), a metallic tick on every step (and,
     /// from the second visit, between them), a struck metal on beat 4 of odd bars, and a reversed swell into every second
     /// bar line (the black hole drawing in).
     /// </summary>
-    private void HazardGroove(Deck d, int inBar, int bar, long frame, int chord)
+    private void AbyssGroove(Deck d, int inBar, int bar, long frame, int chord)
     {
         var p = d.Profile;
         var g = d.Group;
@@ -743,10 +902,10 @@ public sealed partial class SkySynth
         Enqueue(at, NoteSpec.Bell(MidiHz(p.Root + 48), ratio: 1.41f, index: 1.2f, indexDecay: 0.02f) with { Attack = 0.0005f, Decay = 0.04f, Gain = 0.03f * vel, Pan = pan, Send = 0.25f, Group = g });
 
     /// <summary>
-    /// The hazard world's pad: a drone two octaves down (the root twice, 7 cents either side, so it beats, and the fifth),
+    /// The abyss's pad (the AD-52 hazard pad): a drone two octaves down (the root twice, 7 cents either side, so it beats, and the fifth),
     /// dark strings on the chord with an uneasy wobble, and a low rumble; all slow to come and go.
     /// </summary>
-    private void HazardPad(Deck d, int chord, float hold, long frame)
+    private void AbyssPad(Deck d, int chord, float hold, long frame)
     {
         var p = d.Profile;
         var g = d.Group;
@@ -771,8 +930,8 @@ public sealed partial class SkySynth
         Enqueue(frame, NoteSpec.Noise(130, 130, 0, q: 0.7f, lowpass: true) with { Attack = 2f, Decay = 2f, Sustain = 0.9f, Hold = hold, Release = 2f, Gain = 0.03f, Send = 0.3f, Group = g });
     }
 
-    /// <summary>Between the hazard world's returns: the theme's head turned downwards (do' sol mi re), low on the unstable lead, every other bar.</summary>
-    private void HazardFree(Deck d, int bar, bool first, long frame)
+    /// <summary>Between the abyss's returns: the theme's head turned downwards (do' sol mi re), low on the unstable lead, every other bar.</summary>
+    private void AbyssFree(Deck d, int bar, bool first, long frame)
     {
         if (!first) return;
         var last = bar % 4 == 2 ? 0 : 1; // the second call sinks to the tonic
@@ -782,8 +941,8 @@ public sealed partial class SkySynth
         }
     }
 
-    /// <summary>The hazard world's first downbeat: a deep, inharmonic gong and a boom falling an octave.</summary>
-    private void HazardArrival(Deck d, long frame)
+    /// <summary>The abyss's first downbeat: a deep, inharmonic gong and a boom falling an octave.</summary>
+    private void AbyssArrival(Deck d, long frame)
     {
         var p = d.Profile;
         Enqueue(frame, NoteSpec.Bell(MidiHz(p.Root - 12), ratio: 1.41f, index: 2.5f, indexDecay: 1.5f) with { Attack = 0.003f, Decay = 4f, Gain = 0.08f, Send = 0.7f, Group = d.Group });

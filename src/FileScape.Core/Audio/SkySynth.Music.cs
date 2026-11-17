@@ -74,12 +74,19 @@ public sealed partial class SkySynth
     /// call back to the world still playing cancels the change. The same world and key again keeps the groove and plays a
     /// drum fill on the last beat of the bar. A world left recently resumes on its next half-cycle.
     /// </summary>
-    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits)
+    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits) => SetWorld(theme, character, visits, IdentityOf(character));
+
+    /// <summary>
+    /// <see cref="SetWorld(PlanetTheme, WorldCharacter, int)"/> with an explicit <paramref name="score"/> in place of the
+    /// character's own identity: how a score with no world kind of its own is heard (the kept AD-52 hazard score,
+    /// <see cref="MusicIdentity.Abyss"/>, AD-60) in samples and tests, and how a future world type would choose it.
+    /// </summary>
+    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits, MusicIdentity score)
     {
         visits = Math.Max(1, visits);
         var cur = _decks[_current];
-        if (cur.Live && cur.Theme == theme && cur.Character == character && cur.Visits == visits) return;
-        var id = IdentityOf(character);
+        if (cur.Live && cur.Theme == theme && cur.Character == character && cur.Visits == visits && cur.Identity == score) return;
+        var id = score;
         var key = WorldKeyOf(id, theme, character);
         var other = _decks[1 - _current];
         if (cur.Live && cur.NextStep == 0)
@@ -99,7 +106,7 @@ public sealed partial class SkySynth
                 return;
             }
 
-            Configure(cur, theme, character, visits, cur.Origin, cur.QuickHop);
+            Configure(cur, theme, character, id, visits, cur.Origin, cur.QuickHop);
             return;
         }
 
@@ -127,7 +134,7 @@ public sealed partial class SkySynth
         _lastSwitchFrame = origin;
         _switches++;
         other.From = cur.Identity;
-        Configure(other, theme, character, visits, origin, quick);
+        Configure(other, theme, character, id, visits, origin, quick);
         other.FadeTarget = 1;
         _current = 1 - _current;
     }
@@ -137,9 +144,8 @@ public sealed partial class SkySynth
     /// where in its music it starts (a remembered position, or later cycles for a developed world) and its random stream.
     /// Everything is a function of the seed, the world and the number of switches so far, so a session replays exactly.
     /// </summary>
-    private void Configure(Deck d, PlanetTheme theme, WorldCharacter character, int visits, long origin, bool quickHop)
+    private void Configure(Deck d, PlanetTheme theme, WorldCharacter character, MusicIdentity id, int visits, long origin, bool quickHop)
     {
-        var id = IdentityOf(character);
         d.Identity = id;
         d.Style = Styles[(int)id];
         d.Theme = theme;
@@ -178,6 +184,7 @@ public sealed partial class SkySynth
         d.CycleReady = false;
         d.FillFrom = long.MinValue;
         d.CounterDegree = 2;
+        d.DroneUntil = long.MinValue;
         d.ResetMelody();
     }
 
@@ -370,10 +377,13 @@ public sealed partial class SkySynth
                 OrchestraGroove(d, inBar, bar, intro, frame, chord);
                 break;
             case Arrangement.DrumAndBass:
-                DrumAndBassGroove(d, inBar, bar, intro, frame, chord);
+                DrumAndBassGroove(d, step, inBar, bar, intro, frame, chord);
                 break;
-            case Arrangement.Hazard:
-                HazardGroove(d, inBar, bar, frame, chord);
+            case Arrangement.Abyss:
+                AbyssGroove(d, inBar, bar, frame, chord);
+                break;
+            case Arrangement.Escape:
+                EscapeGroove(d, step, inBar, bar, intro, frame, chord);
                 break;
             default:
                 PlayGroove(d, step, inBar, bar, intro, frame, chord);
@@ -463,7 +473,10 @@ public sealed partial class SkySynth
                 DrumAndBassArrival(d, frame);
                 break;
             case MusicIdentity.Hazard:
-                HazardArrival(d, frame);
+                EscapeArrival(d, frame);
+                break;
+            case MusicIdentity.Abyss:
+                AbyssArrival(d, frame);
                 break;
             case MusicIdentity.Repository:
             {
@@ -537,7 +550,10 @@ public sealed partial class SkySynth
                 OrchestraFree(d, bar, inBar, first, phrase, cycle, frame, chord);
                 break;
             case MusicIdentity.Hazard:
-                HazardFree(d, bar, first, frame);
+                EscapeFree(d, bar, first, frame);
+                break;
+            case MusicIdentity.Abyss:
+                AbyssFree(d, bar, first, frame);
                 break;
             default:
                 if (first) BandMotif(d, frame, phrase, cycle);
@@ -1083,8 +1099,11 @@ public sealed partial class SkySynth
             case Arrangement.DrumAndBass:
                 DrumAndBassPad(d, chord, holdSeconds, frame);
                 return;
-            case Arrangement.Hazard:
-                HazardPad(d, chord, holdSeconds, frame);
+            case Arrangement.Abyss:
+                AbyssPad(d, chord, holdSeconds, frame);
+                return;
+            case Arrangement.Escape:
+                EscapePad(d, chord, holdSeconds, frame);
                 return;
         }
 
@@ -1626,12 +1645,20 @@ public sealed partial class SkySynth
             Hits(Silent), SnareKind.Snare, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Deep, ArpKind.None, Rungs(Silent),
             0.5f, 1f, 0.6f, 1, Arrangement.DrumAndBass, HalfTime: true, Level: 0.68f),
-        // The hazard world (AD-52): phrygian at half time (70 over a 140 pulse), a beating drone, a heartbeat, ticking metal,
-        // the theme on an unstable, sagging lead; chords every 2 bars between returns (i bII i VI).
-        new(MusicIdentity.Hazard, 140f, 0f, Phrygian, [0, 1, 0, 5], "phrygian (hazard)", Lead.Unstable, 0.9f,
+        // The hazard world (AD-60, "get out of here"): the AD-52 score's phrygian key and chords (i bII i VI, every 2 bars
+        // between returns), drone and unstable lead, but the theme at full tempo (152) over a racing heartbeat that pumps a
+        // ♭2 ostinato, ticking metal, a break and a build per cycle (SkySynth.Escape.cs).
+        new(MusicIdentity.Hazard, 152f, 0f, Phrygian, [0, 1, 0, 5], "phrygian (hazard)", Lead.Unstable, 0.9f,
+            Hits(Silent), SnareKind.Snare, Hits(Silent), Hits(Silent), Hits(Silent), true,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
+            0.6f, 1f, 0.3f, 2, Arrangement.Escape, PumpDepth: 0.35f, Level: 0.95f),
+        // The abyss (AD-52's hazard score, kept by AD-60 for a future world type): phrygian at half time (70 over a 140
+        // pulse), a beating drone, a heartbeat, ticking metal, the theme on an unstable, sagging lead; chords every 2 bars
+        // between returns (i bII i VI). Unchanged but for its name.
+        new(MusicIdentity.Abyss, 140f, 0f, Phrygian, [0, 1, 0, 5], "phrygian (abyss)", Lead.Unstable, 0.9f,
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
-            0.6f, 1f, 1.5f, 2, Arrangement.Hazard, HalfTime: true, Level: 1f),
+            0.6f, 1f, 1.5f, 2, Arrangement.Abyss, HalfTime: true, Level: 1f),
     ];
 
     // ---------------------------------------------------------------- keys
@@ -1767,6 +1794,9 @@ public sealed partial class SkySynth
 
         /// <summary>The step from which a four-sixteenth drum fill plays (a same-world arrival), or long.MinValue.</summary>
         public long FillFrom = long.MinValue;
+
+        /// <summary>The hazard score's drone sounds until this frame (it spans four bars rather than restriking on every chord, AD-60).</summary>
+        public long DroneUntil = long.MinValue;
 
         /// <summary>The crossfade position 0..1 and where it is heading (gain = sin(Fade · π/2), see RenderBlock).</summary>
         public float Fade;

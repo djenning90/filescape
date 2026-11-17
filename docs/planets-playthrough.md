@@ -125,3 +125,19 @@ to listen for).
    own uneasy theme, a warning as you near an edge and a falling whoosh. Samples to compare:
    `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt says what to listen for).
 5. **Legacy views.** The toolbar's *Legacy views* menu opens Places and the two maps; V returns to Planets.
+
+## Silence and music (2026-11-16): sound off, drama, the new hazard score
+
+1. **Sound off.** On the Starter Sky, click **🔊 Sound** at the right end of the toolbar (after Help): the music and every
+   sound stop at once and the button turns amber, **🔇 Sound off**. Fly somewhere, walk to an edge of Event Horizon and fall:
+   all silent. Press **N** (or click the amber button): the sound is back where the music would be. Quit while muted and
+   start again: the button is amber from the start and a toast says the sound is off. (The legacy views make no sound and
+   show no button; the state carries back to Planets.)
+2. **Event Horizon's new score.** Fly in and stay a while: the same dark phrygian key and unstable lead, now racing: a
+   heartbeat on every beat, a ♭2 bass, ticking metal; after the theme the music climbs (snare, toms, tremolo), chases
+   (the theme's head turned downwards, a step higher each time), then the floor drops away (only the heart and the
+   ticks), a build, and the theme hits again. Near an edge the warning should still cut through; fall off and listen to
+   the spiral and the return.
+3. **The drama elsewhere.** Go deeper down the Long Way Down: the trails' drop ends on a climax and a stop before its
+   breakdown; the deep woods roll into a general pause and a tutti horn call; the underglow drops out, builds, and hits a
+   sub drop. Samples, before and after: `%LOCALAPPDATA%\FileScape\evidence\2026-11-16-playtest-2\music\` (README.txt).

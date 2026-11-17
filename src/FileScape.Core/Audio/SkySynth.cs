@@ -103,10 +103,21 @@ public enum MusicIdentity
     Underglow,
 
     /// <summary>
-    /// A hazard world (<see cref="WorldKind.Hazard"/>, AD-52): ominous and unstable but still the theme, in phrygian at half
-    /// time over a beating drone, a heartbeat and ticking metal; with its own warning and fall cues (<see cref="SkySynth.HazardWarning"/>).
+    /// A hazard world (<see cref="WorldKind.Hazard"/>): AD-60's frenetic "get out of here" score in the same phrygian
+    /// tonality, the theme at full tempo (152 BPM) over a racing heartbeat, a ♭2 bass ostinato, ticking metal and the
+    /// beating drone, with a break and a build before each return; with its own warning and fall cues
+    /// (<see cref="SkySynth.HazardWarning"/>). The AD-52 score it replaced is kept as <see cref="Abyss"/>.
     /// </summary>
     Hazard,
+
+    /// <summary>
+    /// The AD-52 hazard score, kept unchanged (AD-60) for a future world type (proposed: a sealed world, a folder FileScape
+    /// cannot list): ominous and unstable but still the theme, in phrygian at half time (70 over a 140 pulse) over a beating
+    /// drone, a heartbeat and ticking metal. No world kind maps to it yet; it is heard through
+    /// <see cref="SkySynth.SetWorld(PlanetTheme, WorldCharacter, int, MusicIdentity)"/>. Appended last, so the other
+    /// identities keep their numbers (and the behaviour baseline its audio).
+    /// </summary>
+    Abyss,
 }
 
 /// <summary>
@@ -342,8 +353,8 @@ public sealed partial class SkySynth
         var start = character ?? HubCharacter;
         _decks[0] = new Deck(0) { Fade = 1, FadeTarget = 1 };
         _decks[1] = new Deck(1);
-        Configure(_decks[0], theme, start, visits: 1, origin: 0, quickHop: false);
-        Configure(_decks[1], theme, start, visits: 1, origin: 0, quickHop: false);
+        Configure(_decks[0], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
+        Configure(_decks[1], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
         _decks[1].Live = false;
         _masterGain = _masterVolume;
     }

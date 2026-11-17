@@ -365,9 +365,20 @@ public partial class SkySynthTests(ITestOutputHelper output)
         MusicIdentity.WindowsRoot => Windows,
         MusicIdentity.WslRoot => Wsl,
         MusicIdentity.Repository => Repo,
-        MusicIdentity.Hazard => HazardWorld,
+        MusicIdentity.Hazard or MusicIdentity.Abyss => HazardWorld,
         _ => Band(id - MusicIdentity.Outskirts + 1),
     };
+
+    /// <summary>
+    /// A synth playing <paramref name="id"/> from its first downbeat: its representative character, and for a score with no
+    /// world kind of its own (the abyss, AD-60) that score chosen before the first downbeat (a retarget, so nothing else plays).
+    /// </summary>
+    private static SkySynth SynthFor(int seed, PlanetTheme theme, MusicIdentity id, float musicVolume = 1f, int rate = Rate)
+    {
+        var s = new SkySynth(seed, theme, rate, CharacterOf(id)) { MusicVolume = musicVolume };
+        if (SkySynth.IdentityOf(CharacterOf(id)) != id) s.SetWorld(theme, CharacterOf(id), 1, id);
+        return s;
+    }
 
     private static double FramesPerSixteenth(MusicIdentity id, int rate = Rate) => rate * 60.0 / (SkySynth.TempoFor(id) * 4.0);
 
@@ -395,9 +406,13 @@ public partial class SkySynthTests(ITestOutputHelper output)
         SkySynth.TempoFor(MusicIdentity.Underglow).Should().BeInRange(170, 175);
         SkySynth.ThemeTempoFor(MusicIdentity.Underglow).Should().Be(SkySynth.TempoFor(MusicIdentity.Underglow) / 2, "drum and bass: the theme at half time");
         SkySynth.ThemeTempoFor(MusicIdentity.Trails).Should().Be(SkySynth.TempoFor(MusicIdentity.Trails));
-        // The hazard world: a slow, heavy theme (half time) on a pulse quick enough for the effects' grid.
-        SkySynth.ThemeTempoFor(MusicIdentity.Hazard).Should().BeLessThan(SkySynth.ThemeTempoFor(MusicIdentity.Hub), "the hazard is the slowest, heaviest theme");
-        SkySynth.TempoFor(MusicIdentity.Hazard).Should().BeGreaterThanOrEqualTo(SkySynth.TempoFor(MusicIdentity.Hub));
+        // The abyss (AD-52's hazard score, kept by AD-60): a slow, heavy theme (half time) on a pulse quick enough for the effects' grid.
+        SkySynth.ThemeTempoFor(MusicIdentity.Abyss).Should().BeLessThan(SkySynth.ThemeTempoFor(MusicIdentity.Hub), "the abyss is the slowest, heaviest theme");
+        SkySynth.TempoFor(MusicIdentity.Abyss).Should().BeGreaterThanOrEqualTo(SkySynth.TempoFor(MusicIdentity.Hub));
+        // AD-60: the hazard world's own score is frenetic, "get out of here": the theme at full tempo, the fastest theme of all.
+        SkySynth.TempoFor(MusicIdentity.Hazard).Should().BeInRange(148, 160);
+        SkySynth.ThemeTempoFor(MusicIdentity.Hazard).Should().Be(SkySynth.TempoFor(MusicIdentity.Hazard), "the hazard theme runs at its full pulse");
+        Enum.GetValues<MusicIdentity>().Where(i => i != MusicIdentity.Hazard).Should().OnlyContain(i => SkySynth.ThemeTempoFor(i) < SkySynth.ThemeTempoFor(MusicIdentity.Hazard), "no theme is more urgent than the hazard world's");
         SkySynth.TempoFor(MusicIdentity.WindowsRoot).Should().NotBe(SkySynth.TempoFor(MusicIdentity.WslRoot));
 
         // The synth follows: the old tempo until the new world's first downbeat (≤ one beat), then the new one.
@@ -426,6 +441,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         SkySynth.IdentityOf(new WorldCharacter(WorldKind.Folder, 0, 0, -1)).Should().Be(MusicIdentity.Outskirts);
         SkySynth.IdentityOf(HazardWorld).Should().Be(MusicIdentity.Hazard);
         SkySynth.KeyFor(PlanetTheme.Hearth, HazardWorld).Mode.Should().StartWith("phrygian");
+        Enum.GetValues<WorldKind>().Select(k => SkySynth.IdentityOf(new WorldCharacter(k, 2, 1, -1))).Should().NotContain(MusicIdentity.Abyss, "the abyss is kept for a future world type (AD-60): no world plays it yet");
         SkySynth.KeyFor(PlanetTheme.Hearth, Windows).Mode.Should().StartWith("lydian");
         SkySynth.KeyFor(PlanetTheme.Hearth, Wsl).Mode.Should().StartWith("dorian");
         SkySynth.KeyFor(PlanetTheme.Meadow, Repo).RootMidiNote.Should().Be(SkySynth.KeyFor(PlanetTheme.Meadow).RootMidiNote, "the theme keeps the root");
@@ -449,7 +465,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         var worst = 0L;
         foreach (var preroll in new[] { 0, 1, 1234, (int)grid - 1, (int)grid + 2, 5000, 9999 })
         {
-            var s = new SkySynth(seed: 5, PlanetTheme.Hearth, Rate, CharacterOf(id)) { MusicVolume = 0 };
+            var s = SynthFor(5, PlanetTheme.Hearth, id, musicVolume: 0);
             s.Render(preroll);
             s.Select();
             var first = FirstSound(s.Render(Frames(0.2)), preroll);
@@ -507,7 +523,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         var sixteenth = FramesPerSixteenth(id);
         foreach (var preroll in new[] { 0, 777, 4321, 12345 })
         {
-            var s = new SkySynth(seed: 2, PlanetTheme.Wild, Rate, CharacterOf(id));
+            var s = SynthFor(2, PlanetTheme.Wild, id);
             s.Render(preroll);
             var wanted = TimeSpan.FromSeconds(0.75);
             var aligned = s.AlignToGrid(wanted, TimeSpan.FromSeconds(0.09));
@@ -679,7 +695,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         var features = new Dictionary<MusicIdentity, (float Bpm, double Onsets, double High, double Rms)>();
         foreach (var id in Enum.GetValues<MusicIdentity>())
         {
-            var s = new SkySynth(seed: 2026, PlanetTheme.Hearth, Rate, CharacterOf(id));
+            var s = SynthFor(2026, PlanetTheme.Hearth, id);
             var buf = RenderSeconds(s, 16);
             var f = (SkySynth.TempoFor(id), OnsetRate(buf), HighShare(buf), Measure(buf).Rms);
             features[id] = f;
@@ -722,7 +738,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         (float[] Audio, int Counter) Run(int visits)
         {
             var s = new SkySynth(seed: 12, PlanetTheme.Library, Rate, Band(1));
-            s.SetWorld(PlanetTheme.Library, CharacterOf(id), visits); // retargets before the first downbeat
+            s.SetWorld(PlanetTheme.Library, CharacterOf(id), visits, id); // retargets before the first downbeat
             s.Development.Should().Be(Math.Min(3, visits));
             var counter = 0;
             s.MelodyObserver = n =>
@@ -792,7 +808,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         {
             float[] Run(float music)
             {
-                var s = new SkySynth(seed: 30, PlanetTheme.Hearth, Rate, CharacterOf(id)) { MusicVolume = music };
+                var s = SynthFor(30, PlanetTheme.Hearth, id, musicVolume: music);
                 s.Render(Frames(at));
                 s.Land(6);
                 s.Launch();
@@ -888,7 +904,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         {
             var character = CharacterOf(id);
             var key = SkySynth.KeyFor(theme, character);
-            var s = new SkySynth(seed: 2026, theme, Rate, character);
+            var s = SynthFor(2026, theme, id);
             var intro = id == MusicIdentity.Repository ? 1 : 0; // the repository's arrival bar comes first
             var lead = new List<MelodyNote>();
             var all = new List<MelodyNote>();
@@ -1099,7 +1115,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         {
             var character = CharacterOf(id);
             var key = SkySynth.KeyFor(theme, character);
-            var s = new SkySynth(seed: 2026, theme, Rate, character);
+            var s = SynthFor(2026, theme, id);
             var lead = new List<MelodyNote>();
             s.MelodyObserver = n =>
             {
@@ -1127,7 +1143,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
             float peak = 0;
             foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Workshop, PlanetTheme.Vault })
             {
-                var s = new SkySynth(seed: 77, theme, Rate, CharacterOf(id));
+                var s = SynthFor(77, theme, id);
                 var buf = RenderSeconds(s, 32);
                 lufs.Add(Lufs(buf));
                 var m = Measure(buf);
@@ -1500,7 +1516,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         {
             float[] Run(float music)
             {
-                var s = new SkySynth(seed: 30, PlanetTheme.Hearth, Rate, CharacterOf(id)) { MusicVolume = music };
+                var s = SynthFor(30, PlanetTheme.Hearth, id, musicVolume: music);
                 s.Render(Frames(4.0));
                 start(s);
                 var all = new List<float>();
@@ -1847,7 +1863,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         public SkySynth Synth => s;
 
         /// <summary>A launch as the app makes it (AD-52 samples): a 0.4 s wind-up on the grid, a flight calling Fly every frame, landing at 8 m/s, SetWorld, Arrive.</summary>
-        public void Flight(PlanetTheme theme, WorldCharacter character, int visits, double flightSeconds = 2.0)
+        public void Flight(PlanetTheme theme, WorldCharacter character, int visits, double flightSeconds = 2.0, MusicIdentity? score = null)
         {
             var windUp = s.AlignToGrid(TimeSpan.FromSeconds(0.4), TimeSpan.FromSeconds(0.09));
             s.WindUp(windUp);
@@ -1858,9 +1874,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
             Until(t0 + flightSeconds, now => s.Fly((float)((now - t0) / flightSeconds)));
             s.Fly(1);
             s.Land(8);
-            s.SetWorld(theme, character, visits);
+            s.SetWorld(theme, character, visits, score ?? SkySynth.IdentityOf(character));
             s.Arrive();
-            Events.Add($"land {T:0.00} s ({SkySynth.IdentityOf(character)})");
+            Events.Add($"land {T:0.00} s ({score ?? SkySynth.IdentityOf(character)})");
         }
 
         public void Hop(PlanetTheme theme, WorldCharacter character, int visits)
