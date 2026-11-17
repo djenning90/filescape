@@ -99,6 +99,18 @@ public enum JumpEventKind
 
     /// <summary>The feet met a support while falling.</summary>
     Land,
+
+    /// <summary>
+    /// A Hazard World's recovery twirl (PLANET-62, AD-65): Space pressed just after dropping below a rim with the rim in
+    /// reach gave a brief lift towards it. Only the <see cref="Planets.SphereWalker"/> on a broken shell raises it.
+    /// </summary>
+    Recovery,
+
+    /// <summary>
+    /// A Hazard World's last effort (PLANET-62, AD-65): Space pressed below a rim too late or too far from it — a flail and
+    /// a cry, no lift; the fall goes on. Only the <see cref="Planets.SphereWalker"/> on a broken shell raises it.
+    /// </summary>
+    LastEffort,
 }
 
 /// <summary>A vertical event and, for a landing, how hard it was (for sounds, dust and the camera).</summary>
@@ -182,6 +194,7 @@ public sealed class JumpModel
         _sinceJumpPressedSeconds = NotRecentlySeconds;
         AirJumpsLeft = _p.AirJumps;
         LastEvent = JumpEvent.None;
+        _riseLocked = false;
     }
 
     /// <summary>Space was pressed (an edge) this frame.</summary>
@@ -225,6 +238,44 @@ public sealed class JumpModel
         return LastEvent;
     }
 
+    // ---- hooks for a Hazard World's recovery twirl (SphereWalker on a broken shell only; PLANET-62, AD-65). Nothing above
+    // calls them, so every other walk is unchanged.
+
+    /// <summary>A Space press is waiting (pressed within the jump buffer and not yet used).</summary>
+    public bool PressPending => _sinceJumpPressedSeconds <= _jumpBufferSeconds;
+
+    /// <summary>
+    /// A pending press in the next sub-step of <paramref name="dtSeconds"/> would be a ground or coyote take-off (the same
+    /// test <see cref="BeginStep"/> makes; a take-off takes precedence over any airborne move).
+    /// </summary>
+    public bool CanTakeOff(float dtSeconds) =>
+        (Grounded ? 0 : _sinceGroundedSeconds + dtSeconds) <= _coyoteSeconds && _verticalMetersPerSecond <= TakeOffMaxRiseSpeed;
+
+    /// <summary>
+    /// While true, a rise keeps full gravity even with Space released (no short hop): the recovery's lift is sized for
+    /// full gravity, so a tap and a hold catch the rim alike. Cleared at the apex, on landing and on reset.
+    /// </summary>
+    private bool _riseLocked;
+
+    /// <summary>
+    /// Uses the pending press for something else (the walker's recovery or last effort): the press is spent, the boost is
+    /// spent too (no twirl after it in this airtime), and a positive <paramref name="riseMetersPerSecond"/> higher than the
+    /// vertical speed now replaces it, rising at full gravity whether Space is held or not (0: the fall goes on untouched). Returns (and records)
+    /// <paramref name="kind"/>.
+    /// </summary>
+    public JumpEvent SpendPress(JumpEventKind kind, float riseMetersPerSecond)
+    {
+        _sinceJumpPressedSeconds = NotRecentlySeconds;
+        AirJumpsLeft = 0;
+        if (riseMetersPerSecond > 0 && riseMetersPerSecond > _verticalMetersPerSecond)
+        {
+            _verticalMetersPerSecond = riseMetersPerSecond;
+            _riseLocked = true;
+        }
+
+        return LastEvent = new JumpEvent(kind);
+    }
+
     /// <summary>Grounded and supported this step: no vertical motion.</summary>
     public void StayOnGround() => _verticalMetersPerSecond = 0;
 
@@ -239,6 +290,12 @@ public sealed class JumpModel
     public float IntegrateRiseMeters(float dtSeconds, bool jumpHeld)
     {
         var g = _p.Gravity.Value;
+        if (_riseLocked)
+        {
+            if (_verticalMetersPerSecond > 0) jumpHeld = true; // the recovery's lift: a hold and a tap rise alike
+            else _riseLocked = false;
+        }
+
         if (_verticalMetersPerSecond > 0 && !jumpHeld) g *= _p.ShortHopGravityScale;
         else if (MathF.Abs(_verticalMetersPerSecond) < _p.ApexHangSpeed.Value && jumpHeld) g *= _p.ApexGravityScale;
         else if (_verticalMetersPerSecond < 0) g *= _p.FallGravityScale;
@@ -256,6 +313,7 @@ public sealed class JumpModel
         _verticalMetersPerSecond = 0;
         Grounded = true;
         AirJumpsLeft = _p.AirJumps;
+        _riseLocked = false;
         Landings++;
         return LastEvent = new JumpEvent(JumpEventKind.Land, impact);
     }

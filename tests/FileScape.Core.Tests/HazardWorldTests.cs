@@ -160,6 +160,8 @@ public class HazardWorldTests(ITestOutputHelper output)
     /// <summary>Hazard worlds of every shape the composer meets: the sample, a sparse and a crowded one, files only, nothing at all, and the sample's crowded Debris Field.</summary>
     public static TheoryData<string> Worlds() => new() { "sample", "few", "crowded", "files", "empty", "debris" };
 
+    internal static (FsTree Tree, int Id) HazardFor(string kind) => Hazard(kind);
+
     private static (FsTree Tree, int Id) Hazard(string kind)
     {
         var sky = new Spec("Starter Sky").File(HazardRules.SampleRootMarkerName);
@@ -301,7 +303,7 @@ public class HazardWorldTests(ITestOutputHelper output)
                     if (!step.Jump) e.Should().BeGreaterThan(HazardTerrain.MinBridgeWidthMetres / 2 - 0.05f, $"{kind}: the way to {name} keeps to the middle of the ground");
                 }
 
-                if (step.Jump) longestOpen.Should().BeInRange(HazardTerrain.MinJumpGapMetres - 0.15f, HazardTerrain.MaxJumpGapMetres + 0.15f, $"{kind}: the gap on the way to {name}");
+                if (step.Jump) longestOpen.Should().BeInRange(HazardTerrain.MinJumpGapMetres - 0.15f, HazardTerrain.MaxJumpGapMetres + 2 * ShellSpan.GapJagMetres + 0.15f, $"{kind}: the step on the way to {name}");
                 else longestOpen.Should().Be(0, $"{kind}: no open sky on a walking leg to {name}");
                 from = step.Point;
             }
@@ -319,7 +321,8 @@ public class HazardWorldTests(ITestOutputHelper output)
             (2 * s.HalfWidthMetres).Should().BeGreaterThanOrEqualTo(HazardTerrain.MinBridgeWidthMetres);
             for (var along = 0f; along <= s.LengthMetres; along += 0.2f)
             {
-                if (s.Gaps.Any(g => along > g.FromMetres - 0.05f && along < g.ToMetres + 0.05f)) continue;
+                // Clear of a gap's jagged ends (they lengthen it by up to GapJagMetres each side, across part of the bridge).
+                if (s.Gaps.Any(g => along > g.FromMetres - ShellSpan.GapJagMetres - 0.05f && along < g.ToMetres + ShellSpan.GapJagMetres + 0.05f)) continue;
                 var p = s.PointAlong(along);
                 var side = Vector3.Cross(s.DirectionAt(p), p);
                 foreach (var sign in new[] { -1f, 1f })
@@ -331,12 +334,22 @@ public class HazardWorldTests(ITestOutputHelper output)
 
             foreach (var (g0, g1) in s.Gaps)
             {
-                (g1 - g0).Should().BeInRange(HazardTerrain.MinJumpGapMetres, HazardTerrain.MaxJumpGapMetres);
+                if (s.GapClass == ShellGapClass.Advanced) (g1 - g0).Should().BeInRange(HazardTerrain.LeapMinMetres, HazardTerrain.LeapMaxMetres, "a leap");
+                else (g1 - g0).Should().BeInRange(HazardTerrain.MinJumpGapMetres, HazardTerrain.MaxJumpGapMetres, "a step");
                 shell.OverHole(s.PointAlong((g0 + g1) / 2)).Should().BeTrue("a gap is open sky");
+                // Nominal at its shortest: wherever you cross it, at least that long and at most its jagged ends longer.
+                for (var side = -s.HalfWidthMetres; side <= s.HalfWidthMetres; side += 0.25f)
+                {
+                    s.InsideMetres(s.PointAt(g0 + 0.02f, side)).Should().BeLessThan(0, "the gap starts where it says");
+                    s.InsideMetres(s.PointAt(g1 - 0.02f, side)).Should().BeLessThan(0, "and ends where it says");
+                    s.InsideMetres(s.PointAt(g0 - ShellSpan.GapJagMetres - 0.05f, side)).Should().BeGreaterThan(0, "its jagged end is at most GapJagMetres longer");
+                    s.InsideMetres(s.PointAt(g1 + ShellSpan.GapJagMetres + 0.05f, side)).Should().BeGreaterThan(0);
+                }
             }
         }
 
-        shell.Links.Count(l => l.Jump).Should().BeInRange(1, 3, $"{kind}: a few gaps worth lining up");
+        shell.Links.Count(l => l.Jump && !l.Advanced).Should().BeInRange(1, 3, $"{kind}: a few steps worth lining up");
+        shell.Links.Count(l => l.Advanced).Should().BeLessThanOrEqualTo(2, $"{kind}: a leap or two at most");
     }
 
     // ------------------------------------------------------------------ walking, jumping and falling (the real walker)
@@ -415,7 +428,7 @@ public class HazardWorldTests(ITestOutputHelper output)
         var (t, id) = Hazard(kind);
         var c = PlanetComposer.Compose(t, id);
         var shell = c.Surface.Shell!;
-        foreach (var link in shell.Links.Where(l => l.Jump))
+        foreach (var link in shell.Links.Where(l => l.Jump && !l.Advanced))
         {
             var s = shell.Spans[link.Span];
             var (g0, g1) = s.Gaps[0];
@@ -450,6 +463,7 @@ public class HazardWorldTests(ITestOutputHelper output)
             var w = new SphereWalker();
             w.Teleport(c.Surface, c.Arrival.Up, PlanetFrame.Facing(c.Arrival.Up, MathF.PI + bearing * MathF.PI / 180f));
             var committedAt = -1;
+            var crossedSky = false;
             for (var i = 0; i < 60 * 25; i++)
             {
                 // Keep heading the same way (parallel transport keeps Facing; the wish follows it).
@@ -460,9 +474,12 @@ public class HazardWorldTests(ITestOutputHelper output)
                     continue;
                 }
 
-                // Skimming a tooth's tip dips a few centimetres and lands again; on solid ground nothing sinks further.
-                if (!shell.OverHole(w.Up)) w.Height.Value.Should().BeGreaterThan(-PlanetSurface.FallThroughMetres, $"{kind}, bearing {bearing}: solid ground holds");
-                if (w.Height.Value < -PlanetSurface.FallThroughMetres)
+                // Skimming a tooth's tip dips a few centimetres and lands again; on solid ground nothing sinks further — unless the
+                // walker ran on over a crack (a hop it did not jump: AD-65) and came down under the far rim.
+                if (shell.OverHole(w.Up) && !w.Grounded) crossedSky |= w.Height.Value < -0.2f;
+                if (w.Grounded) crossedSky = false;
+                if (!shell.OverHole(w.Up) && !crossedSky) w.Height.Value.Should().BeGreaterThan(-PlanetSurface.FallThroughMetres, $"{kind}, bearing {bearing}: solid ground holds");
+                if (w.FallCommitted)
                 {
                     committedAt = i;
                     shell.EdgeMetres(w.Up).Should().BeLessThan(1.5f, "a fall starts at an edge");
