@@ -119,6 +119,12 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   journey planets-route-hub planets-route-hub.log 300 --automate=planets-route-hub --root=hub --vis=planets --test-shell=record --ui-scale=1 "--repo=${FILESCAPE_WSL_FIXTURE:+$FILESCAPE_WSL_FIXTURE\\project}" --tier=functional
+  # PLANET-45: the root landmarks (solid; E: terminal here, the path's forms, places) on fixture folders whose names have
+  # spaces, shown with a root's look (never C:\ itself); the WSL panel's "/" goes to the distribution's real root.
+  for d in "$FIX/dir with spaces" "/tmp/filescape-wsl-fixtures/dir with spaces"; do
+    mkdir -p "$d/src" "$d/docs"; [[ -f "$d/README.md" ]] || echo "# A folder with spaces" > "$d/README.md"; [[ -f "$d/notes.txt" ]] || echo notes > "$d/notes.txt"
+  done
+  journey planets-landmarks planets-landmarks.log 300 --automate=planets-landmarks "--root=$(wslpath -w "$FIX/dir with spaces")" "--wsl-root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\tmp\\filescape-wsl-fixtures\\dir with spaces" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
 fi
 
 if [[ "$TIER" == release ]]; then

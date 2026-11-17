@@ -218,6 +218,7 @@ public partial class PlanetWorld
     {
         if (_universe != null) return UniverseCommand(e);
         if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
+        if (RootMarkKey(e)) return true; // PLANET-45: number keys choose the landmark panel's rows while it is open
         switch (e)
         {
             case InputEventKey { Pressed: true, Echo: false } k when k.IsAction(InputBindings.Jump):
@@ -354,6 +355,7 @@ public partial class PlanetWorld
         }
         _focusItem = null;
         _focusTelescope = false;
+        UpdateRootMarkGlow(); // PLANET-45: a root landmark's cue brightens as you come near (PlanetWorld.RootMark.cs)
         if (_focusLauncher == null)
         {
             var best = FocusReachMetres;
@@ -405,6 +407,10 @@ public partial class PlanetWorld
         {
             SetPrompt("E · the telescope: list every world and file here", "the inspection station");
         }
+        else if (UpdateRootMarkFocus())
+        {
+            // PLANET-45: within reach of a root landmark; it set its own prompt (PlanetWorld.RootMark.cs)
+        }
         else
         {
             SetPrompt("");
@@ -446,6 +452,12 @@ public partial class PlanetWorld
         {
             OpenContents(null);
             _audio.Inspect();
+            return;
+        }
+
+        if (_focusRootMark)
+        {
+            ToggleRootMarkPanel(); // PLANET-45: the landmark's panel; nothing runs until a row is chosen
             return;
         }
 
@@ -551,6 +563,7 @@ public partial class PlanetWorld
         if (_contentsPanel.Visible) { _contentsPanel.Visible = false; return true; }
         if (_previewPanel.Visible) { ClosePreview(); return true; }
         if (_benchPanel.Visible) { _benchPanel.Visible = false; return true; }
+        if (_rootPanel.Visible) { _rootPanel.Visible = false; return true; }
         return false;
     }
 
@@ -559,6 +572,7 @@ public partial class PlanetWorld
     {
         _contentsPanel.Visible = false;
         _benchPanel.Visible = false;
+        _rootPanel.Visible = false;
         ClosePreview();
     }
 
@@ -625,7 +639,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},{RootMarkStateJson()}{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

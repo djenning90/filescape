@@ -112,10 +112,10 @@ public static class PathForms
             case ProjectPlatform.Wsl when ListAhead.LinuxPath(path) is { } linux:
                 var unc = PathIdentity.Normalize(path);
                 if (unc.Count(c => c == '\\') == 3) unc += "\\"; // \\wsl.localhost\Distro → \\wsl.localhost\Distro\ (the root)
-                return [new PathForm("Linux path", linux), new PathForm("Windows path to it", unc)];
+                return [new PathForm("Linux path", linux), new PathForm("Windows path", unc)];
             case ProjectPlatform.Windows:
                 var native = path.Length == 2 && path[1] == ':' ? path + "\\" : path;
-                return MountPath(native) is { } mnt ? [new PathForm("Windows path", native), new PathForm("From WSL", mnt)] : [new PathForm("Windows path", native)];
+                return MountPath(native) is { } mnt ? [new PathForm("Windows path", native), new PathForm("WSL path", mnt)] : [new PathForm("Windows path", native)];
             default:
                 return [new PathForm("Path", path)];
         }

@@ -238,6 +238,32 @@ public static partial class PlanetArt
     }
 
     /// <summary>
+    /// The interaction cue round a root's landmark (PLANET-45, AD-58): two rings of light on the ground (radius
+    /// <paramref name="radiusMetres"/> and 0.8 of it), in white so <see cref="RootMarkHaloMaterial"/> gives the colour and
+    /// the brightness. Base at y = 0; it is drawn at scale 1, not the mark's.
+    /// </summary>
+    public static ArrayMesh RootMarkHalo(float radiusMetres)
+    {
+        var b = new MeshBuilder();
+        b.Torus(T(new Vector3(0, 0.07f, 0)), radiusMetres, 0.07f, Colors.White, 56, 4);
+        b.Torus(T(new Vector3(0, 0.05f, 0)), radiusMetres * 0.8f, 0.035f, Colors.White, 48, 3);
+        return Commit(b, material: RootMarkHaloMaterial(Colors.White));
+    }
+
+    /// <summary>The halo's own material (one per planet, so its brightness can follow the walker): unshaded, additive, its alpha the glow (0 = unseen).</summary>
+    public static StandardMaterial3D RootMarkHaloMaterial(Color color) => new()
+    {
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+        AlbedoColor = color with { A = 0 },
+        CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+    };
+
+    /// <summary>The gateway's glass blue and the monolith's phosphor amber: the colours of each root's cue (as in their meshes).</summary>
+    public static Color RootMarkColor(WorldKind kind) => kind == WorldKind.WslRoot ? C(1f, 0.62f, 0.22f) : C(0.45f, 0.8f, 1f);
+
+    /// <summary>
     /// A depth band's waymarker (≈ 1.8 m, stands beside the arrival): a cairn post with one glowing ring per band — the
     /// sign you see again and again on a deep journey, counting how far down you are; a teal bead on top inside a project.
     /// </summary>

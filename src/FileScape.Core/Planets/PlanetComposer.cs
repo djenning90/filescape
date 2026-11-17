@@ -735,6 +735,7 @@ public static class PlanetComposer
         var flats = new List<(Vector3 Direction, float Radius)> { (pole, p.ArrivalRadius), (overlookDir, complexRadius + OverlookFlatMargin) };
         foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + PadFlatMargin));
         foreach (var g in groves) flats.Add((g.CentreDirection, GroveFlatRadius));
+        if (rootMark != null) flats.Add((rootMark.Direction, RootMarkLayout.Footprint(rootMark.Kind) + PadFlatMargin)); // its round base sits level
         var shape = new PlanetShape(radius, seed, hillAmplitude, flats);
 
         // ---- decorations
