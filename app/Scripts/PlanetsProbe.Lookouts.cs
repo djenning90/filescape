@@ -130,6 +130,13 @@ public partial class PlanetsProbe
         Check(swing > 0.1f, F($"the bell swings: up to {swing * 180 / MathF.PI:0.0}°"));
         await Shot("lookouts-bell-swing");
         Check(!P.PreviewOpen && !P.ListOpen, "ringing opens nothing");
+        // The state file carries what the real-input probe (os-planets-probe.ps1 -Landmarks) steers and judges by.
+        using (var doc = System.Text.Json.JsonDocument.Parse(App.StateJson()))
+        {
+            var pl = doc.RootElement.GetProperty("planets");
+            Check(pl.GetProperty("bellRings").GetInt32() == P.BellRings && pl.GetProperty("underBell").GetBoolean() && pl.GetProperty("bellDistance").GetSingle() < 1.3f && pl.GetProperty("overlookEdge").GetSingle() > 0,
+                F($"  state file: bellRings {pl.GetProperty("bellRings").GetInt32()}, underBell, bellDistance {pl.GetProperty("bellDistance").GetSingle():0.00} m, overlookEdge {pl.GetProperty("overlookEdge").GetSingle():0.0} m"));
+        }
         await Seconds(1.5);
 
         // Again: a second twirl rings it a second time.

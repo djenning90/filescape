@@ -243,8 +243,9 @@ public partial class PlanetWorld
         }
 
         if (BeginFallIfThrough()) return; // through a broken world's rim: the fall takes over (PlanetWorld.Hazard)
-        // PLANET-43: a twirl by a file previews it; PLANET-56: under the bell it rings the bell instead (nothing else).
-        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder()) TwirlNearFile();
+        // PLANET-43: a twirl by a file previews it; PLANET-56: under the bell it rings the bell instead (nothing else);
+        // AD-63: at a root landmark it arms the quick route (Enter runs it; the twirl starts nothing).
+        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder() && !TwirlAtRootMark()) TwirlNearFile();
         if (_walker.Footsteps != _lastFootsteps)
         {
             _lastFootsteps = _walker.Footsteps;

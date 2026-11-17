@@ -27,9 +27,15 @@
   corner, with real mouse input, and reads the audio generator's underruns (planets.audioSkips) before and after each:
   the Windows move/resize loop stops the frame callback, which used to starve the music.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio]
+  -Landmarks (PLANET-54..56, 2026-11-17) on the Starter Sky with the recording test shell: walks up to the overlook
+  (the telescope's sign and prompt appear), onto it with a real jump and twirl, E opens the list; J to Music Box, a
+  twirl beside the bell tower rings nothing, walks under the bell, a jump rings nothing, a jump and twirl rings it once
+  (bellRings, bellSwing); then Help -> Learn to play, skip to the overview, T, a left-drag, and the real mouse wheel
+  until the zoom step completes (uniZoom, uniWorlds), Esc.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio | -Landmarks]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -84,7 +90,7 @@ if (Test-Path $prefs) { Remove-Item $prefs }
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "--root=$(if ($Audio) { $AudioRoot } else { 'sample' })", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks) { $a += '--test-shell=record' }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
@@ -191,6 +197,95 @@ try {
     Check ($s4 -eq $s3) "steady play after: no gaps (+$($s4 - $s3)); the app kept running ($((State).planets.phase))"
     Mark 'end'
     Shot 'audio-after-move-resize' | Out-Null
+    Log "OS planets probe: $fails failure(s)"
+    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($Landmarks) {
+    # PLANET-54..56 with real input (the recording test shell launches nothing): the telescope's cue and E, the bell
+    # tower rung by a real jump and twirl, and the walkthrough's wheel step with the real mouse wheel.
+    function Type-Line($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
+    # Steers with the arrow keys and W towards a bearing/distance pair read from the state file, as a player does.
+    function Steer-By([string]$bearingField, [string]$distanceField, [double]$stop, [int]$tries = 90) {
+      $last = [double]::MaxValue; $stuck = 0
+      for ($i = 0; $i -lt $tries; $i++) {
+        $s = (State).planets; $b = [double]$s.$bearingField; $d = [double]$s.$distanceField
+        if ($d -lt -0.5 -or $d -le $stop) { return $s }
+        if ([Math]::Abs($b) -gt 12) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000)); Start-Sleep -Milliseconds 100; continue }
+        Hold-Key 'W' ([int][Math]::Min(400, 100 + $d * 60))
+        $stuck = if ($d -gt $last - 0.05) { $stuck + 1 } else { 0 }
+        $last = $d
+        if ($stuck -ge 3) { Hold-Key 'D' 500; $stuck = 0 }
+        Start-Sleep -Milliseconds 100
+      }
+      return (State).planets
+    }
+    # A jump held 0.3 s, released, then Space again in the air: the twirl. W held through it when -Forward.
+    function Jump-Twirl([switch]$Forward) {
+      if ($Forward) { Key-Down 'W' }
+      try { Hold-Key 'Space' 300; Start-Sleep -Milliseconds 40; Hold-Key 'Space' 80; Start-Sleep -Milliseconds 900 } finally { if ($Forward) { Key-Up 'W' } }
+      Start-Sleep -Milliseconds 300
+    }
+    $shell0 = [int](State).nav.shellCount
+
+    # ---- the telescope: walk towards the overlook; at 5 m its sign and prompt; up onto it with a jump and twirl; E.
+    $s = (State).planets
+    Check (-not $s.telescopeSign) "far from the overlook its sign is hidden (edge $($s.overlookEdge) m, cue $($s.telescopeCue))"
+    $s = Steer-By 'overlookBearing' 'overlookEdge' 1.2
+    Start-Sleep -Milliseconds 600; $s = (State).planets
+    Check ($s.telescopeSign -and $s.prompt -match 'telescope') "walking up, the telescope's sign shows and the prompt points to it (edge $($s.overlookEdge) m): '$($s.prompt)'"
+    Shot 'landmarks-telescope-approach' | Out-Null
+    for ($k = 0; $k -lt 4 -and -not (State).planets.onOverlook; $k++) { Jump-Twirl -Forward; Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 800; $s = (State).planets
+    Check ($s.onOverlook -and $s.prompt -like 'E · Telescope*') "up on the overlook (a real jump and twirl): '$($s.prompt)'"
+    Hold-Key 'E' 60; Start-Sleep -Milliseconds 700
+    Check ((State).nav.listOpen) "E at the telescope opens this world's list"
+    Shot 'landmarks-telescope-list' | Out-Null
+    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400
+
+    # ---- the bell: J to Music Box; beside the tower a twirl is only a twirl; under the bell a jump is only a jump; a twirl rings it.
+    Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line 'music'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.currentName -eq 'Music Box' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Seconds 1
+    Check ((State).currentName -eq 'Music Box') "J, typed 'music', Enter: Music Box"
+    $s = Steer-By 'bellBearing' 'bellDistance' 4.5 120
+    $r0 = [int]$s.bellRings
+    Jump-Twirl; $s = (State).planets
+    Check ([int]$s.bellRings -eq $r0) "beside the tower ($($s.bellDistance) m from its axis) a twirl is only a twirl (rings $($s.bellRings))"
+    $s = Steer-By 'bellBearing' 'bellDistance' 0.5 80
+    Start-Sleep -Milliseconds 500; $s = (State).planets
+    Check ($s.underBell -and [double]$s.height -gt 0.25) "walked onto the base and under the bell ($($s.bellDistance) m from its axis, feet $($s.height) m)"
+    Shot 'landmarks-bell-under' | Out-Null
+    Hold-Key 'Space' 200; Start-Sleep -Milliseconds 1200
+    Check ([int](State).planets.bellRings -eq $r0) "a real jump under the bell does not ring it"
+    $swing = 0.0
+    Hold-Key 'Space' 300; Start-Sleep -Milliseconds 40; Hold-Key 'Space' 80
+    for ($i = 0; $i -lt 12; $i++) { $swing = [Math]::Max($swing, [Math]::Abs([double](State).planets.bellSwing)); Start-Sleep -Milliseconds 60 }
+    Shot 'landmarks-bell-ring' | Out-Null
+    Start-Sleep -Milliseconds 600; $s = (State).planets
+    Check ([int]$s.bellRings -eq $r0 + 1 -and $swing -gt 0.05) "a real jump and twirl under the bell rings it once (rings +$([int]$s.bellRings - $r0), swing up to $([Math]::Round($swing * 57.3, 1)) deg)"
+    Check ((State).nav.shellCount -eq $shell0 -and -not (State).nav.listOpen) "nothing started or opened ($([int](State).nav.shellCount - $shell0) shell requests)"
+
+    # ---- the walkthrough's wheel step: Help -> Learn to play, skip to "The overview", T, a left-drag, then the real wheel.
+    Hold-Key 'F1' 60; Start-Sleep -Milliseconds 700; $s = State; Click-At $s.helpLearn
+    for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.tutorialStep -eq 0) { break }; Start-Sleep -Milliseconds 250 }
+    for ($k = 0; $k -lt 10; $k++) { $s = State; Click-At $s.lessonSkip; Start-Sleep -Milliseconds 300 }
+    $s = Wait-Step 10; Check ($s.tutorialStep -eq 10) "skipped to the overview step ($($s.tutorialTitle))"
+    Hold-Key 'T' 60; $s = Wait-Step 11
+    Start-Sleep -Seconds 1; Client-Pos $script:w 800 600; Drag 'left' 360 0
+    $s = Wait-Step 12; Check ($s.tutorialStep -eq 12 -and $s.tutorialTitle -like '*Zoom out*') "the zoom step: '$($s.tutorialTitle)' (keys $($s.cue.keys))"
+    Start-Sleep -Milliseconds 1500
+    $z0 = [double]$s.planets.uniZoom; $w0 = [int]$s.planets.uniWorlds
+    Shot 'landmarks-zoom-before' | Out-Null
+    $n = 0
+    for (; $n -lt 30 -and (State).tutorialStep -eq 12; $n++) { Client-Pos $script:w 800 620; Wheel -1; Start-Sleep -Milliseconds 350 }
+    Start-Sleep -Milliseconds 500; $s = State
+    Log "  after $n real wheel notches: camera $z0 -> $($s.planets.uniZoom) m, worlds in view $w0 -> $($s.planets.uniWorlds)"
+    Check ($s.tutorialStep -ge 13 -and [double]$s.planets.uniZoom -ge 3 * $z0 -and [int]$s.planets.uniWorlds -ge $w0 + 10) "the real wheel zoomed out and the step completed ($($s.tutorialTitle))"
+    Shot 'landmarks-zoom-after' | Out-Null
+    Hold-Key 'Escape' 60; $s = Wait-Step 99 8000
+    Check ($s.tutorialTitle -eq 'done') "Esc back where you stood: walkthrough complete"
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
     exit $fails
@@ -434,6 +529,10 @@ try {
     Hold-Key 'T' 60; $s = Wait-Step 11; Check ($s.tutorialStep -ge 11) "T opened the overview ($($s.tutorialTitle))"
     Start-Sleep -Seconds 1; Client-Pos $script:w 800 600; Drag 'left' 360 0
     $s = Wait-Step 12; Check ($s.tutorialStep -ge 12) "left-drag orbited the overview ($($s.tutorialTitle))"
+    # PLANET-54: the zoom step, with the real mouse wheel (notch by notch until it completes).
+    Start-Sleep -Milliseconds 1500
+    for ($n = 0; $n -lt 30 -and (State).tutorialStep -eq 12; $n++) { Client-Pos $script:w 800 620; Wheel -1; Start-Sleep -Milliseconds 350 }
+    $s = Wait-Step 13; Check ($s.tutorialStep -ge 13) "$n real wheel notches zoomed the overview out ($($s.tutorialTitle); camera $($s.planets.uniZoom) m, $($s.planets.uniWorlds) worlds in view)"
     Hold-Key 'Escape' 60; $s = Wait-Step 99 8000
     Check ($s.tutorialTitle -eq 'done') "Esc back where you stood: walkthrough complete"
     Shot 'lesson-done' | Out-Null

@@ -52,6 +52,9 @@ public partial class PlanetWorld
     public int FocusNodeId => _focusItem?.NodeId ?? _focusLauncher?.TargetId ?? -1;
     public string PromptText => _prompt.Text;
 
+    /// <summary>The prompt's quieter second line (probes).</summary>
+    public string PromptDetail => _promptDetail.Text;
+
     // ------------------------------------------------------------------ input
 
     /// <summary>A left press on the world, not yet a click or a drag (PLANET-24): it becomes a drag after

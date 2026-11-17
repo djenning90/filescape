@@ -148,7 +148,13 @@ public partial class PlanetWorld
     private string LandmarkStateJson()
     {
         var (cue, visible) = TelescopeCue;
-        return System.FormattableString.Invariant($"\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},");
+        // Where to steer (the real-input probe, os-planets-probe.ps1 -Landmarks): the bearing from the camera's heading
+        // (degrees, + right) and the distance (metres) to the overlook's edge and to the bell tower's axis; −1 without one.
+        var c = _current;
+        var (tb, td) = c?.Comp.Overlook is { } ov && !OnBenchWorld ? (CameraTurnTo(ov.Direction), OverlookEdgeMetres() ?? -1) : (0f, -1f);
+        var (bb, bd) = c?.Comp.Landmark is { Bell: true } lm ? (CameraTurnTo(lm.Direction), PlanetShape.Angle(_walker.Up, lm.Direction) * c.Comp.Shape.Radius) : (0f, -1f);
+        var (zoom, _) = UniverseZoom;
+        return System.FormattableString.Invariant($"\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},");
     }
 
     /// <summary>Where the bell tower's axis is and a point <paramref name="metres"/> out from it towards the arrival (probes walk in from there), or null without a bell.</summary>
