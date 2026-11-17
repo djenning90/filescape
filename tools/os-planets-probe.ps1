@@ -18,6 +18,11 @@
   (to the child launcher it reaches most easily, jumping any gap on the way; no fall), then off an edge: the fall, the
   return to the parent, and straight back in.
 
+  -Recovery (with -Hazard; PLANET-62, AD-65, 2026-11-17) adds the recovery twirl with real keys: walk off a rim and let W
+  go as the feet leave it, Space 0.15 s later lifts you back on (planets.recoveries; up to three tries, since the state
+  file is 0.15 s old and the press is timed from the walking speed); then a press too late (0.5 s after the edge) is a
+  last effort (planets.lastEfforts), the fall returns you to the Starter Sky and you go straight back in from the launcher.
+
   -Play (PLANET-39..43, 2026-11-16) plays the second playtest's navigation and file actions with real input, the
   recording test shell launching nothing: J to the repository (the workbench in view on landing), a real double-click
   on its solution file (opened through Open, no jump), a nested trip watched hop by hop, U and Backspace after it, a
@@ -27,9 +32,9 @@
   corner, with real mouse input, and reads the audio generator's underruns (planets.audioSkips) before and after each:
   the Windows move/resize loop stops the frame callback, which used to starve the music.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio]
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -355,6 +360,57 @@ try {
     for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
     Check ($s.planets.character -eq 'Hazard') "straight back in from its launcher ($($s.currentName))"
     Shot 'hazard-reentered' | Out-Null
+
+    if ($Recovery) {
+      # Walking speed (SphereWalkParams.WalkSpeed, 6 m/s) and the time to reach it from a standstill (≈ 0.16 s at
+      # 14/s): the press is timed from them, since the state file is up to 0.15 s old.
+      $walkMetresPerSecond = 6.0; $startSeconds = 0.12
+      # Back to the launcher of Event Horizon after a fall, then in again.
+      function Back-In {
+        for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $sky -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+        Start-Sleep -Milliseconds 800
+        $s = Steer 'selPadBearing' 'selPadDistance' 0.6 40
+        Hold-Key 'Space' 80
+        for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+        Start-Sleep -Seconds 2
+        return State
+      }
+      # Off the nearest drop: face it, stop 1.6 m short, then W until the edge (by time), let go, and Space after $afterMs.
+      function Slip([int]$afterMs) {
+        $s = Steer 'holeBearing' 'holeDistance' 1.6 80
+        $b = [double]$s.planets.holeBearing
+        if ([Math]::Abs($b) -gt 5) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(30, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 300; $s = State }
+        $d = [double]$s.planets.holeDistance
+        if ($d -lt 0) { return $s }
+        $toEdgeMs = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond))
+        Key-Down 'W'
+        try { Start-Sleep -Milliseconds $toEdgeMs } finally { Key-Up 'W' }
+        Start-Sleep -Milliseconds $afterMs
+        Hold-Key 'Space' 120
+        Start-Sleep -Milliseconds 1500
+        return State
+      }
+      # A recovery: Space 0.15 s after the feet leave the rim (after the 0.12 s coyote jump, inside the 0.3 s window).
+      $rec0 = [int]$s.planets.recoveries; $recovered = $false
+      for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
+        $f = [int](State).planets.fallsStarted
+        $s = Slip 150
+        $recovered = [int]$s.planets.recoveries -gt $rec0 -and [int]$s.planets.fallsStarted -eq $f
+        Log "  recovery try $try`: recoveries $($s.planets.recoveries), falls $($s.planets.fallsStarted - $f), last efforts $($s.planets.lastEfforts)"
+        if (-not $recovered -and [int]$s.planets.fallsStarted -gt $f) { $s = Back-In }
+      }
+      Shot 'hazard-recovered' | Out-Null
+      Check $recovered "a slip off the rim caught by Space in time: back on the ground (recoveries $($s.planets.recoveries))"
+      # Too late: Space 0.5 s after the edge is a last effort; the fall goes on, returns you to the parent; straight back in.
+      $s = State; $e0 = [int]$s.planets.lastEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns
+      $s = Slip 500
+      Check ([int]$s.planets.lastEfforts -gt $e0 -and [int]$s.planets.fallsStarted -gt $f0) "Space too late is a last effort and the fall goes on (last efforts $($s.planets.lastEfforts - $e0), falls $($s.planets.fallsStarted - $f0))"
+      $s = Back-In
+      Check ([int]$s.planets.fallReturns -gt $r0) "the fall returned you to the Starter Sky (returns $($s.planets.fallReturns - $r0))"
+      Check ($s.planets.character -eq 'Hazard') "and straight back in from its launcher ($($s.currentName))"
+      Shot 'hazard-retry' | Out-Null
+    }
+
     exit $fails
   }
 

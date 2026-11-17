@@ -573,3 +573,70 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   read-only promise, and Reveal gets you to the same place); recognising Downloads from the mix alone (it would be
   wrong too often).
 - **Revisit if:** DJ ranks the Gallery first, or wants these worlds as themes rather than identities.
+
+## AD-65 Hazard World gaps in three classes, a recovery twirl, broken outlines (2026-11-17; amends AD-59)
+
+- **Problem:** DJ (2026-11-17): "Some gaps look jumpable from the takeoff edge even though I can't make them. Play the
+  routes and distinguish gaps a normal jump can clear, gaps that reward an advanced move, and gaps that are there to
+  steer me toward a bridge … Try a late recovery twirl … a short, bounded window … Also try a deliberate double jump or
+  improved jump-and-twirl timing … The broken ground still looks a little like a graph of pads and bridges."
+- **Measured first (Core, the real `SphereWalker`, a hazard-sized 22 m planet, over a clean gap):** at walking pace a
+  plain jump clears 3.9 m wherever Space is pressed (0.25–1.3 m before the edge, held), 5.1–5.2 m at best (a 0.08 s tap
+  3.5 m); running 8.1 m dependably, 9.3–9.4 m at best. The twirl (the air jump, 7.1 m/s up, whatever the timing) carried
+  a walking jump to 10.4 m when held and pressed late, 5.4–7.6 m with taps. The old terrain's islands stood ≈ 5 m apart
+  (outcrops were placed a "bridge's length" away), so open sky of 2.6–10 m between pieces with a long walk round was
+  everywhere: a ray audit from every edge found 397–1473 such rays per world (the 5.2–7.0 m "looks jumpable" band
+  46–220).
+- **Decision — three classes, sized by that envelope** (`HazardTerrain`; checked against the walker in
+  `HazardMovementTests`):
+  - **Steps** (`ShellGapClass.Plain`): 1.4–2.2 m on the tree's bridges, their ends jagged (up to +0.2 m each,
+    `ShellSpan.GapJagMetres`), and the bridge widens 0.6 m each side for 1.8 m either side of the gap (a ledge), drawn a
+    pale lip colour. Any plain jump clears one.
+  - **Leaps** (`ShellGapClass.Advanced`): 6.7–7.0 m, only on an extra bridge where the walk round is at least 1.6× its
+    straight way plus 6 m (`ShellLink.Advanced`: the route never takes one, so every launcher stays reachable by walking
+    and steps), with 4 m of open sky round its stretch. The bridge widens 1 m each side by the gap; the last metre before
+    each end is a glowing amber take-off board with two pulsing amber posts at its corners. No plain jump at walking pace
+    makes one, with or without a recovery (6.4 m); a twirl at the top of the jump does (≥ 15 of 18 attempts; a running
+    jump also does). One or two per world where they fit cleanly (none where a leap would leave a misleading gap beside
+    it); the sample's Debris Field has one (6.97 m).
+  - **Hops and chasms:** wherever two pieces of ground (`ShellSeparations`: islands, and bridge stretches between gaps)
+    face each other across open sky with a long walk round (more than twice the straight way plus 4 m, counting hops),
+    the sky is a hop (≤ `HopMaxMetres` 2.6 m) or a chasm (≥ `SteeringMinMetres` 11 m, beyond everything at walking pace:
+    10.2 m). Between, the two pieces grow spurs towards each other (`ShellSpur`, `SpanSpur`: a broad tongue of rock,
+    flat-topped, star-shaped) until the gap is a hop of 1.5–2.1 m; where one side is hemmed in the other grows the whole
+    way; where both are, a rock arch joins them (ground, not a route). The black hole's window (the opening ahead and the
+    jets' clearings) is exempt: nothing grows into it. Up to six rounds.
+- **Decision — the twirl over open sky** (`HazardMoveParams`; whole planets and solid ground unchanged):
+  - **Timed twirl:** a twirl at the top of the jump (vertical speed within ±3 m/s) leans forward 2.2 m/s instead of
+    1 m/s, up to the run speed. Walking jump and twirl: 10.2 m at best.
+  - **Recovery twirl:** falling faster than 4 m/s, or with the feet below a rim's level, the twirl is the catch. With the
+    twirl unused, within 0.3 s of dropping below the rim and no deeper than 1.1 m, and ground within 1.1 m: a lift to
+    0.35 m above the rim (at least 3 m/s, full gravity whether Space is held or tapped) and a carry towards that ground,
+    aiming 0.7 m inside it, over ≈ 0.4 s, at most 6.5 m/s. After a jump that falls short the window is in practice the
+    first ≈ 0.1 s below the rim (the depth closes it); walking off a rim, 0.12–0.2 s after leaving it (after the coyote
+    jump). Sound: the twirl's bells, higher and quicker, over a rising whoosh.
+  - **Last effort:** the catch too late, too deep, too far, or after the twirl: no lift, a flail (arms up, kicking,
+    leaning back) and a broken-off cue; Space in the first 0.6 s of the fall itself is a late last effort. The fall, the
+    spiral, the return to the parent and the immediate retry are unchanged; the fall now starts when
+    `SphereWalker.FallCommitted` (past saving), no longer at the depth alone. Until a recovery has been made, the first
+    two returns from a fall add a tip ("press Space as you drop").
+- **Decision — broken outlines:** every island's lobes and teeth (2, 3, 5, 7 lobes; 11, 17, 29 teeth) are drawn at a
+  seeded strength (0.45–1 of their most), so outlines differ; bridges have a three-wave rag up to 0.45 m (was 0.3);
+  outcrops are lobes grown onto an island (70 %) or islands far out, a chasm away (no more islands 5 m off). Lands are
+  sized by their own wobble (content margins unchanged). Mesh, footing and edge warning all read `BrokenShell`, as before.
+- **Measured after (Core; ray audit = rays from every edge across 2.6–11 m of sky with a long walk round):** misleading
+  pairs 0 on all six test worlds (sample, few, crowded, files, empty, Debris Field); ray audit sample 408 → 231, few 625
+  → 156, crowded 1473 → 433, files 584 → 294, empty 397 → 189, Debris Field 816 → 455; walkable 35–44 % (was 31–37 %;
+  the test allows 25–55 %); compose (Release, loaded machine) 27–100 ms per Hazard World (was 17–66 ms). The behaviour
+  baseline is bit-identical. In-app `planets-hazard` 75 checks, 0 failures; Debris Field walking p95 16.7 ms.
+- **Alternatives:** enforcing hop-or-chasm along every stretch of edge (the ray audit's view) — it needs islands either
+  merged or ≥ 11 m apart, which the launcher rings (pads 12 m apart) do not allow without a continent; fragments a crack
+  away from islands (tried: they doubled the near-hop band); making a running jump count as "normal" (then a leap would
+  have to exceed 9.4 m, too long for these planets); a recovery after the twirl as well (a held late twirl plus a catch
+  reached 11.5 m, beyond any chasm that fits).
+- **Known gaps / unknown:** the ray audit still finds 156–455 rays per world (mostly 5–10 m across a bay or past a spur);
+  a running twirl (≈ 14 m) crosses some chasms — an expert's stunt, never needed; leaps exist only where they fit cleanly
+  (none on four of the six test worlds); how the timing feels (the recovery's 0.1–0.2 s, the apex twirl's ±3 m/s) is by
+  trial, not by hand; the real-input recovery steps are written but not run (another session had the desktop).
+- **Revisit if:** DJ still finds gaps that look jumpable (then the ray audit is the measure to drive down), the recovery
+  too easy or too strict, or wants leaps on every Hazard World.

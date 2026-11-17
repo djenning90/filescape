@@ -219,3 +219,22 @@ Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh 
    beside its launcher, on solid ground.
 7. **Judge by feel:** bridge widths (1.8–3 m), the gap lengths (1.4–2.2 m), the higher camera on Hazard Worlds, the turn
    to the jet on landing, the warning sound on bridges (the edge is never far there), and the frame rate on Debris Field.
+
+## Hazard World moves and gaps (2026-11-17, PLANET-61..63, AD-65)
+
+**Launch:** the sample world (toolbar *Sample world*, or `--root=sample --vis=planets`), then J, "event", Enter.
+
+1. **Read the gaps.** Three kinds, told apart by the ground. A **step** (the ridge's, 1.4–2.2 m) has pale ledges either
+   side: any jump makes it. A **leap** (about 7 m) has glowing amber take-off boards with two amber posts at each end:
+   it takes a twirl. Anything else is either a **hop** (a crack of 2 m or less between two pieces of rock) or a **chasm**
+   (11 m or more): if it looks too far, find the lit path.
+2. **A leap.** Debris Field (Event Horizon's launcher of that name) has one. Walk to its board, jump from the board and
+   press Space again at the top of the jump: the twirl leans you forward. A plain jump falls short; so does a twirl
+   pressed too early or once you are already dropping.
+3. **The recovery twirl.** Walk slowly off any rim, let go of W, and press Space just after you drop: the traveller
+   twirls back up and onto the rim. After a jump that just falls short, press Space the instant you drop below the far
+   rim. Too late (or nothing within a metre) and it is a last effort: a flail and a cry, then the spiral as before, back
+   to the Starter Sky, and Space on the launcher puts you straight back in.
+4. **Judge by feel:** the recovery's window (about a tenth of a second after a short jump, 0.12–0.2 s after walking off),
+   the twirl at the top of the jump, whether the leap's boards read from across the sky, the island outlines (spurs,
+   lobes, ragged bridges), and whether any gap still looks jumpable and is not (where, please).
