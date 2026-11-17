@@ -66,6 +66,7 @@ public partial class Main
         _prefs = p.Normalized();
         _walker.SetSpeeds(_prefs.WalkSpeed, _prefs.RunSpeed);
         _hud.SetPreferences(_prefs, _prefsPath);
+        ApplySound(loaded: !save); // Main.Sound.cs (PLANET-47)
         if (!save || _prefsPath == null) return;
         try
         {

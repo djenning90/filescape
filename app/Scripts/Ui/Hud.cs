@@ -244,6 +244,7 @@ public partial class Hud : CanvasLayer
         var help = MakeButton("Help (F1)", () => HelpToggled?.Invoke(), "Show or hide the controls (F1).");
         help.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.6f));
         row.AddChild(help);
+        BuildSound(row); // Hud.Sound.cs: the speaker button (PLANET-47)
 
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         _sourcePanel = new PanelContainer();
@@ -670,6 +671,7 @@ public partial class Hud : CanvasLayer
         _homeButton.Visible = true;
         _overviewButton.Visible = !planets;
         _flightButton.Visible = true;
+        _soundButton.Visible = planets; // Hud.Sound.cs: the legacy views make no sound (AD-60)
         if (planets) SetPlanetsOverview(open: false);
     }
 

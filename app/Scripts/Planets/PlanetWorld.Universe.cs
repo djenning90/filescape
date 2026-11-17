@@ -430,8 +430,7 @@ public partial class PlanetWorld
             case InputEventKey { Pressed: true, Echo: false } b when b.IsAction(InputBindings.Overview):
                 return true; // B (the overlook view) means nothing up here
             case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
-                _audio.ToggleMute();
-                _s.Toast(_audio.Muted ? "Sound off (N turns it on)." : "Sound on.");
+                RequestSoundToggle(); // PlanetWorld.Sound.cs: the same control as the toolbar's sound button
                 return true;
         }
 

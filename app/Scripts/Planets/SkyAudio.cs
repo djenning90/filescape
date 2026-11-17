@@ -122,15 +122,31 @@ public partial class SkyAudio : Node
         }
     }
 
-    /// <summary>N: sound on or off (the music and effects; kept while FileScape runs).</summary>
+    /// <summary>
+    /// Sound off (PLANET-47): the toolbar's sound button or N, through Main, which saves it in Preferences. Silences the
+    /// synth's master (a 15 ms ramp), so the music and every cue (launch, landing, travel, chimes, hazard warning, fall) are
+    /// silent while the music's clock keeps running; turning it back on resumes the music where it would be.
+    /// </summary>
     public bool Muted { get; private set; }
 
-    /// <summary>N: flips <see cref="Muted"/>.</summary>
-    public void ToggleMute()
+    /// <summary>Sets <see cref="Muted"/> (see there).</summary>
+    public void SetMuted(bool muted)
     {
-        Muted = !Muted;
+        Muted = muted;
         _synth.Mute(Muted || !_active);
     }
+
+    /// <summary>Flips <see cref="Muted"/>.</summary>
+    public void ToggleMute() => SetMuted(!Muted);
+
+    /// <summary>
+    /// The largest absolute sample pushed to the output since <see cref="ResetOutputPeak"/> (linear, either channel): the
+    /// meter the sound probe reads to show that a muted FileScape sends silence (PLANET-47). Cheap: one comparison per sample.
+    /// </summary>
+    public float OutputPeak { get; private set; }
+
+    /// <summary>Starts a new <see cref="OutputPeak"/> measurement.</summary>
+    public void ResetOutputPeak() => OutputPeak = 0;
 
     /// <summary>The music's level under a sound preview (linear, 20 %): the preview is clearly heard and the music
     /// does not stop (rationale for 0.2 not recorded).</summary>
@@ -178,7 +194,16 @@ public partial class SkyAudio : Node
             var n = Math.Min(needed, PushChunkFrames);
             var samples = _interleaved.AsSpan(0, n * 2);
             _synth.Render(samples);
-            for (var i = 0; i < n; i++) _frames[i] = new Vector2(samples[i * 2], samples[i * 2 + 1]);
+            var peak = OutputPeak;
+            for (var i = 0; i < n; i++)
+            {
+                var l = samples[i * 2];
+                var r = samples[i * 2 + 1];
+                peak = MathF.Max(peak, MathF.Max(MathF.Abs(l), MathF.Abs(r)));
+                _frames[i] = new Vector2(l, r);
+            }
+
+            OutputPeak = peak;
             _playback.PushBuffer(new ReadOnlySpan<Vector2>(_frames, 0, n));
             needed -= n;
         }
@@ -206,8 +231,8 @@ public partial class SkyAudio : Node
     /// <summary>Overall level 0..1 (linear amplitude, default 0.8).</summary>
     public void SetMasterVolume(float volume01) => _synth.SetMasterVolume(volume01);
 
-    /// <summary>Silences or restores all sound with a short ramp.</summary>
-    public void Mute(bool muted) => _synth.Mute(muted);
+    /// <summary>Silences, or restores, all sound with a short ramp; never louder than <see cref="Muted"/> allows (it does not change Muted).</summary>
+    public void Mute(bool muted) => _synth.Mute(muted || Muted || !_active);
 
     // ---------------------------------------------------------------- effects (see SkySynth for each sound)
 
