@@ -446,3 +446,27 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Why these lessons:** they are the moves every later session needs, in the order you need them; the up-versus-back pair is staged where they differ (after a direct jump with J, up and back lead to different places).
 - **Alternatives:** a video or a control sheet (DJ: learn by playing); a modal step-by-step overlay (hides the world).
 - **Revisit if:** playtesters stall on a step (the probe and the real-input probe record every step's completion), or the sample world changes.
+
+## AD-55 The walkthrough's target cues: a lime beacon, a pinned chevron, an edge arrow (2026-11-16)
+
+- **Problem:** In DJ's playtest of `c29785d9b32a` the walkthrough's beacon (a warm-gold column with a ring and a pinned name) was lost by step two. The name was a sign in the destination-label style, so it blended in with ordinary labels. On the tower step the column stood inside the tower. Nothing on screen said where the target was once it left the view; only the green "turn left/right" line on the card helped. DJ got to step four of thirteen (PLANET-38).
+- **Decision:** The active target has a visual language of its own, **lime** (`TutorialCue.CueColor`, 0.55/1/0.3). Nothing else in the planets uses that colour, and the card's turn hint, the key caps and the success burst now share it. The cue has **no sign-style label**.
+  - **In the world** (`PlanetWorld.Tutorial.cs`): a 16 m column of light rising from the spot (bright at the base, fading upwards; its core breathes at 1 Hz) and a band of light round the spot on the ground marking where to stand, with ripples that close in on it. The band reaches down by the curve's drop so it meets the ground all round.
+  - **On screen** (`TutorialCue`, a 2D layer under the planets' panels), one of three modes:
+    - **onscreen:** a bobbing chevron with a soft halo, pinned over the spot (over the tower's top, over the pad, over the bench's deck), with the distance under it. It says "over the horizon" when the ground there is behind the curve but the chevron's point is in sight.
+    - **horizon:** when that point is hidden too, the chevron waits where the horizon is in the target's direction (a point 30 m along the ground's tangent from the camera).
+    - **edge:** otherwise (to the side or behind), a 64-unit arrow with a dark disc behind it, pulsing and nudging, at the left or right edge (70 units in, below the lesson card, level with the horizon). It points the way to turn, says "behind you" beyond 120°, and keeps its side while the target is within 15° of straight behind, so it doesn't flip.
+  - **Approach:** within 6 m of the spot's edge the ring brightens and pulses, the ripples double their speed, the chevron grows and comes down, the distance gives way to a lime **pill** saying what to do there ("Stand here · press Space to fly", "Run at it and press Space", "Press E to read the README", "Walk into the ring"), and the column fades out (gone when you stand there, so it never fills the view). The pill stays while you stand on the spot.
+  - **Steps with no place to go** (look, jump, U, J, U, Backspace, T, orbit, Esc) show no beacon: the card shows their keys as **key caps** (lime on dark), which is where the eye already is. This holds for every step: the instruction and the caps sit side by side.
+  - The card's text line stays as the backup ("The green beacon is behind you: turn right →").
+  - The arrival title now moves below the card's actual bottom; it used to overlap when the hint line was showing.
+- **State for the real-input probe:** `cue` in the state file:
+  - `mode`: none | onscreen | horizon | edge
+  - `x`, `y`: window pixels
+  - `angle`: the arrow's screen angle, degrees; 0 = right, 90 = down (a chevron), 180 = left
+  - `distance`: metres to the spot's edge
+  - `phase`: far | near | here
+  - `overHorizon`, `action`, `keys`
+- **Alternatives:** An arrow floating in the world to chase (it gets lost behind the avatar and off screen, which was the original complaint). A label in the destination style with a different colour (it would still read as a label). A minimap or compass bar (more UI over the world; the edge arrow does the job only when needed). Pointing at keys in the J list (the list's own filter and selection already guide; the key caps are enough).
+- **Revisit if:** playtesters still lose the target, the lime clashes with a world's palette (a green aurora is the closest; the dark outlines keep the cue readable over it), or the pill and the bottom prompt feel redundant on the pad (they say the same thing in two places).
+

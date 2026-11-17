@@ -314,6 +314,12 @@ Baseline kept as is: jumping, the look and movement of the worlds, the backdrops
 | PLANET-36 | Ready for GitHub: a welcoming README (what it is, run the Windows build or build from source, the sample walkthrough, legacy views), a representative Planets screenshot from sample data, a review of what a clone and a release package expose (machine paths, real-folder screenshots/logs, attribution), flagged licence/visibility decisions, exact publication steps. | Review report; README; screenshot. | Done (README, screenshots, review, fixes); licence and visibility: DJ's decisions (docs/publishing.md) |
 | PLANET-37 | Hand-off build: verified on a clean settings profile; repository workbench, overview round trip, legacy views and shutdown still work; release checks on the final build. | Release tier; real-input probes scoped to FileScape. | See implementation-status |
 
+## Walkthrough cues (PLANET-38, 2026-11-16)
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-38 | The walkthrough's target can't be mistaken for a label (DJ, 2026-11-16: "by step two I couldn't find the marker… it blended in with ordinary destination labels"). The active target has its own visual language: in view, a distinctive beacon and a ground highlight that read as *go here*; out of view or behind you, a prominent arrow at the edge of the view pointing the way to turn; the same when the planet's curve hides it. The text hint stays as a backup. The cue changes as you approach (where to stand, what to do there), follows each lesson as it advances, and clears when you leave. Steps with no place to go show their keys instead. The world stays visible. | Probe `planets-tutorial-cues` from a fresh profile: the first four steps with the cue checked at each, turning away on purpose (edge arrow on the correct side, pointing that way, clear of the card), the target hidden by curvature (chevron at the horizon), approach (near, then here, with the action), the cue moving to the next lesson's target, clearing on Leave, all 13 steps; screenshots at every phase; the state file's `cue` for the real-input probe. | See implementation-status |
+
 ## Later (not in this prototype)
 
 Search, watchers/live refresh, persistent scan caches, bookmarks, split views, mutations (copy/move/rename/delete), shell context menus, multi-select, rich previews, warp mode and other historical-fidelity features, themes as data packages, sound/weather, installers, signing, marketplaces.
