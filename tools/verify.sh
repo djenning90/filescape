@@ -96,6 +96,8 @@ if [[ "$TIER" != fast ]]; then
   # 2026-11-15 (the first public playtest): the walkthrough, played through, and the black-hole world (safe route, a fall, re-entry).
   journey planets-tutorial planets-tutorial.log 300 --automate=planets-tutorial --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-hazard planets-hazard.log 300 --automate=planets-hazard --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # 2026-11-16 (PLANET-47): the sound button and N; travel, inspect, the warning and a fall measured silent while muted.
+  journey planets-sound planets-sound.log 300 --automate=planets-sound --root=sample --vis=planets --test-shell=record --ui-scale=1.25 "${F[@]}"
 fi
 
 if [[ "$TIER" == full || "$TIER" == release ]]; then
