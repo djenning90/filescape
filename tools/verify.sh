@@ -134,6 +134,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # PLANET-59: ordinary worlds' relief on a small and a large Starter Sky world: pads and landings level, feet on the
   # ground every frame of a walk up the highest nearby rise.
   journey planets-relief planets-relief.log 250 --automate=planets-relief --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # PLANET-60: the sky's slow turn (far below camera drift standing still) and a shooting star standing and in flight;
+  # none just after a landing or in the overview.
+  journey planets-sky planets-sky.log 200 --automate=planets-sky --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,

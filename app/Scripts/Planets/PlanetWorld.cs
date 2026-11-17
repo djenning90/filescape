@@ -213,6 +213,9 @@ public partial class PlanetWorld : Node3D
         if (!_active) return;
         _pointerBlocked = pointerBlocked;
         var dt = (float)delta;
+        // PlanetWorld.Sky: the slow turn and the occasional shooting star, every frame (also while a flight waits for its
+        // destination's listing, and in the overview, which shows no shooting star).
+        UpdateSky(dt);
         RunDeliveries();
         _overlay.Visible = true;
         var tree = _s.Tree;

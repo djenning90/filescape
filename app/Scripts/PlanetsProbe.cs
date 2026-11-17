@@ -116,6 +116,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
         else if (Mode == "planets-near-far") await NearFarRun(); // PlanetsProbe.NearFar.cs (PLANET-58)
         else if (Mode == "planets-relief") await ReliefRun(); // PlanetsProbe.Relief.cs (PLANET-59)
+        else if (Mode == "planets-sky") await SkyRun(); // PlanetsProbe.Sky.cs (PLANET-60)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

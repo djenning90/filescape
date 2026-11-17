@@ -219,3 +219,22 @@ Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh 
    beside its launcher, on solid ground.
 7. **Judge by feel:** bridge widths (1.8–3 m), the gap lengths (1.4–2.2 m), the higher camera on Hazard Worlds, the turn
    to the jet on landing, the warning sound on bridges (the edge is never far there), and the frame rate on Debris Field.
+
+## Near and far, relief, sky motion (2026-11-17, PLANET-58..60, AD-64)
+
+**Launch:** the sample world (`--root=sample --vis=planets`), and for a crowded root a fixture made by
+`tools/make-wsl-fixture.sh --root-like` (it prints the `\\wsl.localhost\…` path to open with Ctrl+L).
+
+1. **Near and far.** Fly to Constellations (J, type "const", Enter). From the arrival, drag slowly round: where a pad
+   on the inner ring lines up with one on the outer ring, the nearer name is larger and sits in front; the farther one
+   stands just above it on a longer stem, and its stem passes behind the nearer name. Walk towards the near pad: its
+   name grows a little, smoothly, and stops growing about when you reach the pad (never larger than 19 px). Click either
+   name: it selects that destination (double-click flies there). On the root-like fixture, "etc" and "var" line up
+   like this when you turn about 60° left from the arrival.
+2. **Relief.** On Constellations, walk out past the outer ring towards the highest ground: long low rises and shallow
+   dips, the horizon's outline no longer a perfect arc; pads, the arrival meadow and the spot where you land beside a
+   pad stay level. Compare with `--test-relief=classic` (the hills as they were).
+3. **Sky.** Stand still for a minute or two: about once a minute (40–90 s) a faint shooting star crosses the upper part
+   of the view in under a second. Nothing appears for 10 s after a landing or in the overview (T). The stars turn
+   about 1° a minute: invisible while you watch, but after a few minutes the galaxies and nebulae have moved on a
+   little. A short recording: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-sky\sky-clip.avi`.

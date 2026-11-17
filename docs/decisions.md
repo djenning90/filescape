@@ -573,3 +573,58 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   read-only promise, and Reveal gets you to the same place); recognising Downloads from the mix alone (it would be
   wrong too often).
 - **Revisit if:** DJ ranks the Gallery first, or wants these worlds as themes rather than identities.
+
+## AD-64 Near and far names, a little more relief, a sky with a little motion (2026-11-17)
+
+- **Problem:** DJ (PLANET-58..60): when a nearby launcher and a farther one line up on a crowded world, help me see
+  which is closer (try a nearby name or marker that grows slightly and smoothly as I approach, with a cap), keeping
+  names attached, legible and selectable; a little more seeded relief on ordinary planets, small and large, with the
+  mesh, footing and launchers in agreement; keep the sky, try an occasional subtle shooting star, and try an extremely
+  slow apparent rotation, kept only if it feels good standing and in flight.
+- **Near and far (reproduced first, on a fixture shaped like a distribution root, `tools/make-wsl-fixture.sh
+  --root-like`):** from the arrival camera "etc" (14.5 m) and "var" (22.6 m) lined up to within 0 px, and var's name
+  vanished: etc's name with its detail line was taller than the one-slot climb (PinnedSlots) allowed; a click on a name
+  selected nothing (over sky) or the pad behind it. **Decision:** a pinned name's size follows the camera distance
+  smoothly instead of in bands: 14 px at 30 m and beyond, smoothstep up to a cap of **19 px at 8 m** (the chase camera
+  is ≈ 8 m from a pad you stand on), e.g. 14.7 px at 25 m, 16.5 px at 19 m, 18.3 px at 13 m; a focused name is at least
+  18 px (as before); characters kept grow 16 → 26. Drawn at a whole font size scaled by the remainder (±3 %), so it
+  never jumps a pixel at a band edge. Its anchor dot grows 3 → 4.5 px and its stem 1.5 → 2.25 px. Far names are drawn
+  first, so a near name covers a far one, and a far stem is cut where a nearer name covers it (the boxes are
+  see-through; a stem crossing a name's text read as belonging to it). A pinned name whose own slots are taken climbs
+  to just above the names in its way (at most 3 climbs, a stem of at most 150 px), still straight above its pad. A
+  click on a name selects what it names (a double-click acts on it as on the pad). Places and the aerial view keep their
+  bands (not pinned). **Alternatives considered, not built:** dimming the far name (risks reading as disabled); a
+  distance in metres in the detail line (more text in a busy view); scaling the 3D pads (they already shrink with
+  distance; what went wrong was the names).
+- **Relief:** ordinary worlds' hills are 0.75–1.1 m on the smallest world (were 0.6–0.9 m), growing linearly to ×1.6
+  on the largest (34 m: 1.2–1.76 m), drawn `PlanetRelief.Rolling`: the same seven hills (so a world still looks like
+  itself), hollows a third as deep as a hill is high (were half), three broad low rises added after them (34°–54° wide,
+  0.3–0.6 of the amplitude), tops eased under the amplitude by tanh instead of clipped. Measuring first showed that the
+  steepest ground and the largest gaps between the drawn and the walked ground were never the hills (3–6°) but the
+  rims of flat spots, where the minimum of two fades leaves a crease (classic: slopes 12–18°, the app's triangles up to
+  19 cm off the walked ground). Rolling multiplies the fades (smooth where they meet) and makes them 5 m long per metre
+  of relief (at least 3.5 m), which keeps a rim under ≈ 17°. Measured on 12 names × a small (≈ 21 m) and a large
+  (≈ 33 m) world: steepest 18.0° (design limit `PlanetShape.MaxWalkSlopeDegrees` = 20°: the walker itself has no slope
+  limit), triangles within 6.9 cm, pads and the arrival exactly level, return points ≤ 2.4°. Hazard Worlds keep the
+  classic hills (their islands were designed on them, AD-59). `--test-relief=classic` composes every world the old way
+  for before/after screenshots in one build. **Alternatives:** more hills (changes every world's look); a larger
+  amplitude without longer fades (rims reached 21–23°).
+- **Sky — shooting stars: kept.** One at a time, every 40–90 s (uniformly random), lasting 0.8 s, travelling 14° with a
+  6° trail, its head no brighter than the brightest stars (under the glow threshold most of its life), starting in the
+  upper part of the view (0.15–0.85 across, 0.08–0.4 down) on open sky and falling on a 20–55° slant; none in the first
+  10 s after a landing (travel resets that count) and none in the overview. Judged on
+  stills: visible if you are looking, gone before you could turn to it, standing or in flight (in flight, over the
+  bright nebulae, it is fainter still). DJ judges the motion in the clip.
+- **Sky — rotation: kept, at 1°/min** (a full turn in 6 hours; the real night sky turns 0.25°/min), about an axis 49°
+  from the arrival's zenith, so stars rise and set on a slant instead of sliding sideways as a camera's yaw would move
+  them. The celestial sphere turns (stars, nebulae, galaxies, the commit graph); the gradient, the hub's dawn, the
+  aurora, panes and scanlines stay fixed to the world. **Why kept:** at the walking camera's 62° view a star moves at
+  most 0.24 px/s on a 900 px tall window (0.19 px/s at 720 px): ≈ 0.5 arcmin/s at a desk, under the 1–2 arcmin/s at which
+  slow motion is noticed against a fixed horizon, so standing still it cannot read as drift or unsteadiness, and in
+  flight the camera's own motion is hundreds of times faster. What it adds is a sky that has moved on when you look
+  back after a few minutes (3° in 3 minutes: see the stills). A faster rate was not tried in the app: by the same
+  arithmetic 4°/min (≈ 1 px/s) is at the edge of noticing and could read as the camera creeping. **Revisit if:** DJ notices it as drift, or
+  wants it visible (then a faster rate, but only in the overview or in flight).
+- **Evidence:** `planets-near-far` (root-like fixture and Constellations; before/after and close-ups in
+  `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-nearfar\`), `PlanetReliefTests`, `planets-relief`
+  (`…\2026-11-17-relief\`), `planets-sky` and the clip (`…\2026-11-17-sky\`).
