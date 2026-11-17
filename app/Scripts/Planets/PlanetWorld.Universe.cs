@@ -96,6 +96,41 @@ public partial class PlanetWorld
     private const float OpenFlashLevel = 0.75f;
 
     private Node3D? _universe;
+
+    /// <summary>The drawn bodies' batches and the bodies in each, in instance order (re-scaled every frame, see DrawnRadius).</summary>
+    private readonly List<(MultiMesh Mesh, List<UniverseBody> Bodies)> _uniBatches = [];
+
+    /// <summary>
+    /// The smallest a world is drawn in the overview, pixels of radius (FOLLOW-1, 2026-11-17): a world is 1.2–4 m across
+    /// but its children's rings are hundreds of metres, so framing a grown system (the Starter Sky's is ≈ 480 m) left every
+    /// world 2–5 px wide and the overview looked empty. Far worlds keep this apparent size, like markers in Universe
+    /// Sandbox; close up they are their real size. 6 px radius ≈ a 12 px disc: clearly a world, still smaller than its name.
+    /// </summary>
+    private const float MinDrawnRadiusPixels = 6f;
+
+    /// <summary>
+    /// A body's drawn radius now, metres: its real radius, or at least <see cref="MinDrawnRadiusPixels"/> on screen at its
+    /// distance from the camera (pixels per radian = view height / (2 tan(fov/2))).
+    /// </summary>
+    private float DrawnRadius(UniverseBody b, Vector3 at)
+    {
+        var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
+        return MathF.Max(b.Radius, _camera.GlobalPosition.DistanceTo(at) * MinDrawnRadiusPixels / pixelsPerRadian);
+    }
+
+    /// <summary>Re-scales every drawn body to <see cref="DrawnRadius"/> (≤ 1,500 instance transforms a frame).</summary>
+    private void RescaleUniverseBodies()
+    {
+        foreach (var (mm, list) in _uniBatches)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                var b = list[i];
+                var r = DrawnRadius(b, UniverseOrigin + Gd(b.Position));
+                mm.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), Gd(b.Position)));
+            }
+        }
+    }
     private readonly List<(UniverseBody Body, Vector3 At)> _uniBodies = [];
     private readonly Dictionary<int, int> _uniIndex = [];
     private Vector3 _uniFocus, _uniFocusTarget;
@@ -154,6 +189,7 @@ public partial class PlanetWorld
         _camera.Far = OverviewFarMetres;
         _warpFlash = OpenFlashLevel; // a soft flash, fading as you pull back from your world
         _s.Hud.SetPlanetsOverview(open: true);
+        _titleTime = MathF.Min(_titleTime, 0.3f); // the arrival title fades out of the way (it lingered over the map)
         _audio.Launch();
         _s.Signs.Clear();
         UpdateUniverse(tree, 0f, true);
@@ -170,9 +206,11 @@ public partial class PlanetWorld
         var sphere = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 24, Rings = 12 };
         var solid = bodies.Where(b => b.Discovery != Discovery.Unknown).ToList();
         var ghosts = bodies.Where(b => b.Discovery == Discovery.Unknown).ToList();
+        _uniBatches.Clear();
         MultiMeshInstance3D Batch(List<UniverseBody> list, Material mat, Func<UniverseBody, Color> color)
         {
             var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = sphere, InstanceCount = list.Count };
+            _uniBatches.Add((mm, list));
             for (var i = 0; i < list.Count; i++)
             {
                 var r = list[i].Radius;
@@ -281,6 +319,7 @@ public partial class PlanetWorld
         _uniPanning = false;
         _universe.QueueFree();
         _universe = null;
+        _uniBatches.Clear();
         _uniSelectRing?.QueueFree();
         _uniSelectRing = null;
         _uniBodies.Clear();
@@ -337,6 +376,7 @@ public partial class PlanetWorld
         _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
         _camera.LookAt(_uniFocus, Vector3.Up);
         _camera.Fov = OverviewFovDegrees;
+        RescaleUniverseBodies();
 
         var mouse = GetViewport().GetMousePosition();
         _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? PickUniverse(mouse) : -1;
@@ -347,7 +387,7 @@ public partial class PlanetWorld
             if (_uniSelectRing.Visible)
             {
                 var toCam = (_camera.GlobalPosition - sel.At).Normalized();
-                var r = sel.Body.Radius;
+                var r = DrawnRadius(sel.Body, sel.At);
                 var basis = Basis.LookingAt(toCam, Vector3.Up).Rotated(Basis.LookingAt(toCam, Vector3.Up).X, Mathf.Pi / 2);
                 _uniSelectRing.GlobalTransform = new Transform3D(basis.Scaled(new Vector3(r, r, r)), sel.At);
             }
@@ -382,7 +422,7 @@ public partial class PlanetWorld
             if (b.HiddenChildren > 0) detail += $" · +{b.HiddenChildren} more folders";
             if (_s.Visited(id) && !here) detail += " · visited";
             var color = here ? new Color(1f, 0.85f, 0.45f) : b.Discovery == Discovery.Unknown ? new Color(0.75f, 0.78f, 0.95f) : new Color(1f, 0.95f, 0.8f);
-            _signs.Add(new SignCandidate(id, at + screenUp * (b.Radius * 1.15f), name, detail, color, FileIcons.For(n), focus, here ? 30f : 0f, FixedAnchor: true));
+            _signs.Add(new SignCandidate(id, at + screenUp * (DrawnRadius(b, at) * 1.15f), name, detail, color, FileIcons.For(n), focus, here ? 30f : 0f, FixedAnchor: true));
         }
 
         _s.Signs.Layout(_camera, _signs, _s.Hud.BlockingRects);
@@ -392,23 +432,32 @@ public partial class PlanetWorld
             $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zoom · Esc or T: back");
     }
 
+    /// <summary>
+    /// The world under the pointer: of the worlds whose drawn disc (a little enlarged, and at least
+    /// <see cref="PickMinPixels"/>) contains the point, the one whose centre is nearest it on screen. Drawn at a minimum
+    /// size (FOLLOW-1) neighbouring worlds overlap, and the nearest along the ray was often not the one clicked.
+    /// </summary>
     private int PickUniverse(Vector2 screen)
     {
-        var eye = _camera.ProjectRayOrigin(screen);
-        var ray = _camera.ProjectRayNormal(screen);
         var best = float.PositiveInfinity;
         var id = -1;
+        var right = _camera.GlobalBasis.X;
         foreach (var (b, at) in _uniBodies)
         {
-            // A little larger than the body, so small far worlds can be clicked.
-            var r = MathF.Max(b.Radius * 1.25f, eye.DistanceTo(at) * 0.012f);
-            if (RayPlanet(eye - at, ray, r) is not { } hit || hit >= best) continue;
-            best = hit;
+            if (_camera.IsPositionBehind(at)) continue;
+            var c = _camera.UnprojectPosition(at);
+            var px = c.DistanceTo(_camera.UnprojectPosition(at + right * DrawnRadius(b, at)));
+            var d = c.DistanceTo(screen);
+            if (d > MathF.Max(px * 1.25f, PickMinPixels) || d >= best) continue;
+            best = d;
             id = b.NodeId;
         }
 
         return id;
     }
+
+    /// <summary>A click this close to a world's centre picks it however small it is drawn, pixels.</summary>
+    private const float PickMinPixels = 8f;
 
     /// <summary>Input in the overview (from Main's unhandled input): keys and clicks. Returns true when consumed.</summary>
     private bool UniverseCommand(InputEvent e)

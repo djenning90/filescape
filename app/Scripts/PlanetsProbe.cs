@@ -109,6 +109,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-reading") await ReadingTour(); // PlanetsProbe.Actions.cs
         else if (Mode == "planets-sound") await SoundRun(); // PlanetsProbe.Sound.cs (PLANET-47)
         else if (Mode == "planets-landmarks") await LandmarksRun(); // PlanetsProbe.Landmarks.cs (PLANET-45)
+        else if (Mode == "planets-overview-routes") await OverviewRoutes(); // PlanetsProbe.Overview.cs (FOLLOW-1)
         else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
         else await Journey(reel: Mode == "planets-reel");

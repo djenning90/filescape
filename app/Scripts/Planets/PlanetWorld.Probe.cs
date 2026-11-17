@@ -265,3 +265,35 @@ public partial class PlanetWorld
         SnapCamera();
     }
 }
+
+/// <summary>
+/// The overview as it is drawn (FOLLOW-1, 2026-11-17): which bodies are actually inside the view and how big they look,
+/// so a probe can tell a blank overview from one that only has bodies on paper (a positive body count alone missed it).
+/// </summary>
+public partial class PlanetWorld
+{
+    /// <summary>A body counts as drawn when its centre is in the view and it is at least this wide, pixels (viewport units).</summary>
+    private const float DrawnBodyMinPixels = 3f;
+
+    /// <summary>Bodies in the view now: node, screen centre (viewport units), apparent diameter (pixels).</summary>
+    public List<(int Id, Vector2 At, float Pixels)> UniverseOnScreen()
+    {
+        var list = new List<(int, Vector2, float)>();
+        if (_universe == null) return list;
+        var vp = GetViewport().GetVisibleRect();
+        var right = _camera.GlobalBasis.X;
+        foreach (var (b, at) in _uniBodies)
+        {
+            if (_camera.IsPositionBehind(at)) continue;
+            var c = _camera.UnprojectPosition(at);
+            var edge = _camera.UnprojectPosition(at + right * DrawnRadius(b, at));
+            var px = 2f * c.DistanceTo(edge);
+            if (vp.HasPoint(c) && px >= DrawnBodyMinPixels) list.Add((b.NodeId, c, px));
+        }
+
+        return list;
+    }
+
+    /// <summary>The overview camera's distance from what it frames, metres, and the framed body.</summary>
+    public (float Metres, int Focus) UniverseFraming => (_uniDistance, _uniSelected);
+}
