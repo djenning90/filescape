@@ -26,9 +26,16 @@ namespace FileScape.App.Planets;
 /// reached by its path when it is not in the tree yet); a file here is approached. Every commit dismisses the
 /// navigation dialogs first (<see cref="IWorldSession.DismissNavigationDialogs"/>), so nothing covers the flight.
 /// </para>
+/// <para>
+/// The keyboard (PLANET-51, AD-62): opening puts the filter in edit mode with the keyboard; while the list is open it owns
+/// every key no control used (<see cref="ListKey"/>, called before any shortcut), so typing never fires a game shortcut,
+/// even after a click on the world; in the results, Backspace edits the filter and Home/End/Page keys move, never travel.
+/// </para>
 /// Preserve: the panel is rebuilt at most every <see cref="RebuildIntervalSeconds"/> and only when its rows change, with
-/// the selection, the open branches and the scroll kept, so it stays usable while scanning and discovery go on; the
-/// keyboard contract the walkthrough and the OS probes use (J, type, ↓, Enter) is unchanged.
+/// the open branches and the scroll kept (the selection too, unless the filter changed), so it stays usable while
+/// scanning and discovery go on; the keyboard contract the walkthrough and the OS probes use (J, type, ↓, Enter) is
+/// unchanged; no key typed while the list is open reaches a shortcut except J (when the filter is not focused), Esc,
+/// Ctrl/Alt chords and the F keys.
 /// </summary>
 public partial class PlanetWorld
 {
@@ -68,6 +75,9 @@ public partial class PlanetWorld
     /// <summary>The list's top edge, viewport units: at least 150 (below the toolbar and place bar), else 10 below the place bar.</summary>
     private const float ListTopPixels = 150f, ListGapPixels = 10f;
 
+    /// <summary>The keyboard route under the tree (PLANET-51): typing, into the results, opening folders, going.</summary>
+    private const string TreeHint = "Type to filter · ↓ or Tab: into the results · ↑↓ choose · → opens a folder, ← closes · Enter goes (Shift+Enter: straight there) · Backspace edits the filter · Esc closes";
+
     private static readonly Color DestDetailColor = new(0.62f, 0.68f, 0.84f);
     private static readonly Color DestWarningColor = new(1f, 0.72f, 0.5f);
     private static readonly Color DestNoteColor = new(0.66f, 0.72f, 0.86f);
@@ -103,9 +113,9 @@ public partial class PlanetWorld
         var close = new Button { Text = "×", Flat = true, FocusMode = Control.FocusModeEnum.None, TooltipText = "Close (J or Esc). What you opened is kept." };
         close.Pressed += CloseContents;
         head.AddChild(close);
-        _contentsFilter = new LineEdit { PlaceholderText = "Type to filter · ↓ into the list · Enter go", ClearButtonEnabled = true };
+        _contentsFilter = new LineEdit { PlaceholderText = "Type to filter · ↓ or Tab: the results · Enter: go", ClearButtonEnabled = true };
         _contentsFilter.AddThemeFontSizeOverride("font_size", 13);
-        _contentsFilter.TextChanged += _ => { if (_contentsCategory != null) FillContents(); else RebuildDestinations(force: true); };
+        _contentsFilter.TextChanged += _ => OnFilterChanged();
         _contentsFilter.GuiInput += OnFilterKey;
 
         _contentsList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single, FixedIconSize = new Vector2I(16, 16), Visible = false };
@@ -147,7 +157,7 @@ public partial class PlanetWorld
         buttons.AddChild(_goButton);
         buttons.AddChild(_warpButton);
 
-        _contentsHint = new Label { Text = "▸ or → opens a folder here · ← closes · double-click goes · Esc closes", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _contentsHint = new Label { Text = TreeHint, AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _contentsHint.AddThemeFontSizeOverride("font_size", 11);
         _contentsHint.AddThemeColorOverride("font_color", new Color(0.7f, 0.76f, 0.9f));
         v.AddChild(head);
@@ -188,12 +198,116 @@ public partial class PlanetWorld
         _contentsList.Visible = category != null;
         _goButton.GetParent<Control>().Visible = category == null;
         _contentsHint.Text = category == null
-            ? "▸ or → opens a folder here · ← closes · double-click or Enter goes · Esc closes"
+            ? TreeHint
             : "Click: select (the card shows it) · double-click or Enter: stand by it · Esc closes";
         if (category != null) FillContents();
         else RebuildDestinations(force: true);
-        _contentsFilter.GrabFocus();
+        FocusFilter();
         _s.Hud.SetDestinationsButton(category == null);
+    }
+
+    /// <summary>
+    /// The keyboard goes to the filter, editing, caret at the end (PLANET-51): the first letter typed after J or the ☰
+    /// button lands there. Godot's LineEdit only takes typed text while in edit mode, so edit mode is entered explicitly
+    /// rather than relying on GrabFocus doing it "for compatibility".
+    /// </summary>
+    private void FocusFilter()
+    {
+        _contentsFilter.GrabFocus();
+        if (!_contentsFilter.IsEditing()) _contentsFilter.Edit();
+        _contentsFilter.CaretColumn = _contentsFilter.Text.Length;
+    }
+
+    /// <summary>The filter is typed into from elsewhere (a key that reached the list's catch-all or the tree): the
+    /// text is appended (or, for Backspace, its last character removed) and the keyboard returns to the filter.</summary>
+    private void TypeIntoFilter(string? text)
+    {
+        FocusFilter();
+        if (text == null)
+        {
+            if (_contentsFilter.Text.Length > 0) _contentsFilter.Text = _contentsFilter.Text[..^1]; // Text= does not emit TextChanged
+            OnFilterChanged();
+        }
+        else _contentsFilter.InsertTextAtCaret(text); // emits TextChanged
+        _contentsFilter.CaretColumn = _contentsFilter.Text.Length;
+    }
+
+    /// <summary>
+    /// The filter's text changed: the rows follow it, and a row chosen before the change is let go, so Enter from the
+    /// filter goes to the best match for what is typed now, never to a row chosen for an earlier filter (found 2026-11-17:
+    /// "Lantern" then Enter started a trip to Constellations, a row left selected from before).
+    /// </summary>
+    private void OnFilterChanged()
+    {
+        if (_contentsCategory != null) FillContents();
+        else
+        {
+            _destTree.DeselectAll();
+            RebuildDestinations(force: true);
+        }
+    }
+
+    /// <summary>From the filter or a row: the keyboard moves into the results, on the best match (the tree) or the first row (a flat list).</summary>
+    private void FocusResults()
+    {
+        if (_contentsCategory != null)
+        {
+            if (_contentsList.ItemCount == 0) return;
+            _contentsList.GrabFocus();
+            if (_contentsList.GetSelectedItems().Length == 0) _contentsList.Select(0);
+            return;
+        }
+
+        if (FirstSelectable(preferMatch: true) is not { } first) return;
+        _destTree.GrabFocus();
+        first.Select(0);
+        _destTree.ScrollToItem(first);
+    }
+
+    /// <summary>
+    /// While the list is open it owns the keys that reach the game's shortcuts (AD-62, PLANET-51): from
+    /// <see cref="UnhandledInput"/>, before any shortcut. A typed character goes into the filter (whatever had the
+    /// keyboard: a click on the world, the flat list); Backspace edits the filter; ↓ or Tab moves into the results;
+    /// Enter goes to the chosen row; PageUp, Home and the other keys that would move you are kept from the game. J (to
+    /// close it), Esc, Ctrl/Alt chords and the F keys still reach the game. Returns true when the key was used.
+    /// </summary>
+    private bool ListKey(InputEvent e)
+    {
+        if (!_contentsPanel.Visible || e is not InputEventKey { Pressed: true } k) return false;
+        if (k.CtrlPressed || k.AltPressed || k.MetaPressed) return false;
+        if (k.Keycode is Key.Escape || k.Keycode is >= Key.F1 and <= Key.F12) return false;
+        if (k.PhysicalKeycode == Key.J && !_contentsFilter.HasFocus()) return false; // J closes the list (ToggleContents)
+        switch (k.Keycode)
+        {
+            case Key.Backspace:
+                TypeIntoFilter(null);
+                return true;
+            case Key.Down or Key.Tab:
+                FocusResults();
+                return true;
+            case Key.Up:
+                FocusFilter();
+                return true;
+            case Key.Enter or Key.KpEnter:
+                if (_contentsCategory != null)
+                {
+                    var sel = _contentsList.GetSelectedItems();
+                    if (sel.Length > 0 && sel[0] < _contentsIds.Count) { var id = _contentsIds[sel[0]]; CloseContents(); Activate(id, sky: false); }
+                    return true;
+                }
+
+                if (SelectedRow() == null && FirstSelectable(preferMatch: true) is { } top) top.Select(0);
+                CommitDestination(k.ShiftPressed);
+                return true;
+        }
+
+        if (k.Unicode >= 32)
+        {
+            TypeIntoFilter(char.ConvertFromUtf32((int)k.Unicode));
+            return true;
+        }
+
+        return true; // Home, PageUp, Delete, arrows…: never a shortcut while the list is open
     }
 
     /// <summary>Lists one kind of file here (a pile, the telescope), filtered, up to <see cref="MaxListRows"/>.</summary>
@@ -481,19 +595,10 @@ public partial class PlanetWorld
                 CloseContents();
                 _contentsFilter.AcceptEvent();
                 break;
-            case Key.Down when _contentsCategory != null && _contentsList.ItemCount > 0:
-                _contentsList.GrabFocus();
-                _contentsList.Select(0);
-                _contentsFilter.AcceptEvent();
-                break;
-            case Key.Down when _contentsCategory == null:
-                if (FirstSelectable(preferMatch: true) is { } first)
-                {
-                    _destTree.GrabFocus();
-                    first.Select(0);
-                    _destTree.ScrollToItem(first);
-                }
-
+            case Key.Down or Key.Tab:
+                // Into the results (PLANET-51): Tab as well as ↓, so the way from typing to choosing is the key people try.
+                if (_contentsCategory != null && _contentsList.ItemCount > 0) _contentsList.Select(0);
+                FocusResults();
                 _contentsFilter.AcceptEvent();
                 break;
             case Key.Enter or Key.KpEnter when _contentsCategory == null:
@@ -535,7 +640,18 @@ public partial class PlanetWorld
                 _destTree.AcceptEvent();
                 return;
             case Key.Up when item != null && item == FirstSelectable():
-                _contentsFilter.GrabFocus();
+            case Key.Tab:
+                FocusFilter();
+                _destTree.AcceptEvent();
+                return;
+            case Key.Backspace:
+                // Editing the filter from the results, never "back" (PLANET-51: it reached History back before).
+                TypeIntoFilter(null);
+                _destTree.AcceptEvent();
+                return;
+            case Key.Home or Key.End or Key.Pageup or Key.Pagedown:
+                // Moving within the results (PageUp and Home reached Up and Home-world before, 2026-11-17).
+                MoveSelection(k.Keycode);
                 _destTree.AcceptEvent();
                 return;
         }
@@ -543,10 +659,27 @@ public partial class PlanetWorld
         if (k.Unicode >= 32 && !k.CtrlPressed && !k.AltPressed && k.Keycode is not (Key.Space or Key.Enter or Key.KpEnter))
         {
             // Typing in the tree types in the filter (as the list's type-ahead did, but across every row).
-            _contentsFilter.GrabFocus();
-            _contentsFilter.InsertTextAtCaret(char.ConvertFromUtf32((int)k.Unicode));
+            TypeIntoFilter(char.ConvertFromUtf32((int)k.Unicode));
             _destTree.AcceptEvent();
         }
+    }
+
+    /// <summary>Home / End: the first / last row; PageUp / PageDown: a list's height of rows up or down (selectable rows only).</summary>
+    private void MoveSelection(Key key)
+    {
+        var rows = new List<TreeItem>();
+        for (var it = _destTree.GetRoot()?.GetFirstChild(); it != null; it = it.GetNextVisible())
+        {
+            if (RowOf(it) is { Kind: not DestinationRowKind.Note }) rows.Add(it);
+        }
+
+        if (rows.Count == 0) return;
+        var at = Math.Max(0, rows.IndexOf(_destTree.GetSelected()!));
+        var page = Math.Max(1, DestinationRowsThatFit - 1);
+        var to = key switch { Key.Home => 0, Key.End => rows.Count - 1, Key.Pageup => at - page, _ => at + page };
+        var target = rows[Math.Clamp(to, 0, rows.Count - 1)];
+        target.Select(0);
+        _destTree.ScrollToItem(target);
     }
 
     /// <summary>
@@ -711,4 +844,13 @@ public partial class PlanetWorld
 {
     /// <summary>The list's Go button on screen (probes).</summary>
     public Rect2 DestinationGoRect => _goButton.GetGlobalRect();
+
+    /// <summary>The Destinations filter's text (probes: the first letter typed after J must land here).</summary>
+    public string DestinationFilterText => _contentsFilter.Text;
+
+    /// <summary>The Destinations filter has keyboard focus (probes and the state file).</summary>
+    public bool DestinationFilterFocused => _contentsFilter.HasFocus();
+
+    /// <summary>The filter is in Godot's edit mode (focused but not editing, it lets typed letters through to the shortcuts).</summary>
+    public bool DestinationFilterEditing => _contentsFilter.IsEditing();
 }

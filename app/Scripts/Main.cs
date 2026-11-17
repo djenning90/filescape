@@ -287,6 +287,26 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Key presses that reached the game's shortcuts (<see cref="_UnhandledInput"/> on the planets), newest last, at most
+    /// <see cref="UnhandledKeyLogLength"/> (probes, PLANET-51: while you type in a text field none may arrive here).
+    /// </summary>
+    public readonly List<string> UnhandledKeys = [];
+
+    /// <summary>The unhandled-key log keeps this many entries (enough for one probe step's typing).</summary>
+    private const int UnhandledKeyLogLength = 64;
+
+    private void NoteUnhandledKey(InputEventKey k)
+    {
+        if (k.Keycode is Key.Shift or Key.Ctrl or Key.Alt or Key.Meta) return; // held modifiers, never a shortcut on their own
+        if (UnhandledKeys.Count >= UnhandledKeyLogLength) UnhandledKeys.RemoveAt(0);
+        UnhandledKeys.Add(OS.GetKeycodeString(k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode) + (k.Echo ? "(echo)" : ""));
+        UnhandledKeyCount++;
+    }
+
+    /// <summary>Every key press that reached the game's shortcuts so far (the log above keeps only the newest).</summary>
+    public int UnhandledKeyCount { get; private set; }
+
     /// <summary>What the recording test shell was asked to do (probes; empty with the real shell).</summary>
     public IReadOnlyList<string> ShellLog => (_shell as FileScape.Core.Shell.RecordingShellActions)?.Log ?? [];
 
@@ -1124,6 +1144,8 @@ public partial class Main : Node3D
         if (_experimentOnly) return;
         if (_experience == Experience.Planets)
         {
+            if (_planets.PanelKey(@event)) return; // a trip's Esc, the open Destinations list's typing (PLANET-51)
+            if (@event is InputEventKey { Pressed: true } seen) NoteUnhandledKey(seen);
             if (_planets.UnhandledInput(@event)) return;
             if (@event is InputEventMouseButton { Pressed: true }) GetViewport().GuiReleaseFocus();
             if (@event is InputEventKey { Pressed: true, Echo: false } pk) HandleCommand(pk);
