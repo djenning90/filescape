@@ -27,9 +27,18 @@
   corner, with real mouse input, and reads the audio generator's underruns (planets.audioSkips) before and after each:
   the Windows move/resize loop stops the frame callback, which used to starve the music.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio]
+  -InputFocus (PLANET-51..53, 2026-11-17) types and scrolls as DJ did, with the recording test shell launching nothing.
+  On the Starter Sky: J then a name typed at once (every letter a shortcut), ↓ / Tab / Backspace / → / ← / Enter in the
+  results, the list reopened after travel, the ☰ button; nothing may reach the game's shortcuts (state: input.*). Then,
+  with -ReaderRoot <the \\wsl.localhost path tools/make-wsl-fixture.sh --readme prints>, on its guide.md: the preview's
+  Expand icon, the wheel over the preview and the reader (they scroll, the camera does not zoom), keys while reading,
+  End, Enter and the Open button (recorded), Close, R. -RealOpen adds one real open of a file FileScape's probe writes
+  under %TEMP%\FileScape-fixtures (its default app starts or comes forward; nothing is closed: it may be DJ's app).
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -83,8 +92,9 @@ $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
-  $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "--root=$(if ($Audio) { $AudioRoot } else { 'sample' })", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play) { $a += '--test-shell=record' }
+  $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
+  $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
+  if ($Play -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
@@ -193,6 +203,145 @@ try {
     Shot 'audio-after-move-resize' | Out-Null
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($InputFocus) {
+    # Runs here, after Launch and Await-Window: every key and click goes through Guard / Guard-Pointer (os-input-probe.ps1).
+    $script:Vk['End'] = 0x23; $script:Vk['PageDown'] = 0x22; $script:Vk['PageUp'] = 0x21
+    $script:Extended += @('End', 'PageDown', 'PageUp')
+    function In { (State).input }
+    # Types at a person's pace with no pause after what opened the list: Shift for capitals, Space, Backspace as '<'.
+    function Type-Now($text) {
+      foreach ($ch in [char[]]$text) {
+        if ($ch -eq ' ') { Hold-Key 'Space' 25 }
+        elseif ($ch -eq '<') { Hold-Key 'Backspace' 25 }
+        elseif ([char]::IsUpper($ch)) { Key-Down 'Shift'; Hold-Key ([string]$ch) 25; Key-Up 'Shift' }
+        else { Hold-Key ([string]([char]::ToUpperInvariant($ch))) 25 }
+        Start-Sleep -Milliseconds 35
+      }
+      Start-Sleep -Milliseconds 300
+    }
+    function Calm($s) { "$($s.currentName)|$($s.planets.overview)|$($s.nav.locationsOpen)|$($s.experience)" }
+    function Typed-After($how, [scriptblock]$open, $text) {
+      $s0 = State; $u0 = [int]$s0.input.unhandledKeys
+      & $open
+      Type-Now $text
+      $s = State
+      Check ($s.input.filterText -eq $text -and $s.input.focus -eq 'filter') "$how, then '$text' typed at once: it is in the filter ('$($s.input.filterText)', keyboard: $($s.input.focus))"
+      $leaked = [int]$s.input.unhandledKeys - $u0
+      Check ($leaked -le 1 -and (Calm $s) -eq (Calm $s0)) "$how`: no typed letter reached a shortcut ($leaked key(s) reached the game, the opening key included; last: $($s.input.unhandledLast -join ','))"
+    }
+    function Wait-Walking-At2($name, [int]$ms = 25000) { for ($i = 0; $i -lt $ms / 200; $i++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq $name -and -not $s.nav.tripActive) { return $s }; Start-Sleep -Milliseconds 200 }; return State }
+    Client-Pos $w 900 300
+
+    # ---- Destinations (PLANET-51)
+    Typed-After 'J' { Hold-Key 'J' 40 } 'Lantern'
+    Hold-Key 'Down' 50; Start-Sleep -Milliseconds 200
+    $s = State; Check ($s.input.focus -eq 'results' -and $s.input.selectedRow) "Down moves into the results (row $($s.input.selectedRow))"
+    Type-Now '<'
+    $s = State; Check ($s.input.focus -eq 'filter' -and $s.input.filterText -eq 'Lanter' -and $s.currentName -eq 'Starter Sky') "Backspace in the results edits the filter ('$($s.input.filterText)'), it does not go back"
+    Hold-Key 'Tab' 50; Start-Sleep -Milliseconds 200
+    $s = State; Check ($s.input.focus -eq 'results') "Tab moves into the results"
+    Hold-Key 'PageUp' 50; Hold-Key 'End' 50; Hold-Key 'Home' 50; Start-Sleep -Milliseconds 300
+    $s = State; Check ($s.currentName -eq 'Starter Sky' -and $s.planets.phase -eq 'Walking' -and $s.nav.listOpen) "PageUp, End, Home move in the results and nowhere else (at $($s.currentName), $($s.planets.phase))"
+    Hold-Key 'Tab' 50; Type-Now '<<<<<<long way'
+    Hold-Key 'Down' 50; Start-Sleep -Milliseconds 200
+    $r0 = (In).selectedRow
+    Hold-Key 'Right' 50; Start-Sleep -Milliseconds 400; Hold-Key 'Right' 50; Start-Sleep -Milliseconds 300
+    $r1 = (In).selectedRow
+    Check ($r0 -and $r1 -and $r1 -ne $r0) "Right opens the Long Way Down and steps into it ($r0 -> $r1)"
+    Hold-Key 'Left' 50; Start-Sleep -Milliseconds 300; Hold-Key 'Left' 50; Start-Sleep -Milliseconds 300
+    Check ((In).selectedRow -eq $r0) "Left steps back up and closes it"
+    Shot 'input-list-keyboard' | Out-Null
+    Hold-Key 'Tab' 50; Type-Now '<<<<<<<<Lantern Workshop'
+    Hold-Key 'Enter' 50
+    $s = Wait-Walking-At2 'Lantern Workshop'; Start-Sleep -Milliseconds 1200
+    Check ($s.currentName -eq 'Lantern Workshop') "Enter from the filter goes to Lantern Workshop ($($s.currentName))"
+    Typed-After 'J after travel' { Hold-Key 'J' 40 } 'Notes'
+    Hold-Key 'Escape' 50; Start-Sleep -Milliseconds 300
+    $s = State
+    Typed-After 'the Destinations button after travel' { Click-At $s.nav.destButton } 'Readme'
+    Hold-Key 'Escape' 50; Start-Sleep -Milliseconds 300
+    Shot 'input-after-travel' | Out-Null
+
+    # ---- the reader (PLANET-52/53), on the README fixture
+    if ($ReaderRoot) {
+      $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+      $script:LaunchRoot = $ReaderRoot
+      $p = Launch; Await-Window $p
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+      Start-Sleep -Seconds 4
+      Client-Pos $w 900 300
+      Hold-Key 'J' 40; Type-Now 'guide'; Hold-Key 'Down' 50; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 50
+      for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.input.previewOpen -and $s.input.previewExpand) { break }; Start-Sleep -Milliseconds 250 }
+      Start-Sleep -Milliseconds 600
+      $s = State
+      Check ($s.input.previewOpen -and $s.input.previewExpand) "J, 'guide', Enter: guide.md's preview, with its Expand icon ($($s.input.previewExpand -join ','))"
+      Shot 'input-preview' | Out-Null
+      $t = $s.input.previewText; $cam = [double]$s.input.camDistance
+      Client-Pos $w ([int]($t[0] + $t[2] / 2)) ([int]($t[1] + $t[3] / 2)); Wheel -3; Start-Sleep -Milliseconds 400
+      $s = State
+      Check ([double]$s.input.previewScroll -gt 0 -and [Math]::Abs([double]$s.input.camDistance - $cam) -lt 0.01) "the wheel over the preview scrolls it ($($s.input.previewScroll) px) and leaves the camera ($cam -> $($s.input.camDistance) m)"
+      $n = [int]$s.nav.shellCount
+      Hold-Key 'Enter' 50; Start-Sleep -Milliseconds 400
+      $s = State; Check ([int]$s.nav.shellCount -eq $n + 1 -and $s.nav.shellLast -like 'open *guide.md') "Enter in the preview opens guide.md (recorded: $($s.nav.shellLast))"
+      Click-At $s.input.previewExpand; Start-Sleep -Milliseconds 900
+      $s = State
+      Check ($s.input.readerOpen -and -not $s.input.previewOpen -and $s.input.readerFocused) "the Expand icon replaces the preview with the reading view, which has the keyboard"
+      $t = $s.input.readerText; $cam = [double]$s.input.camDistance
+      Client-Pos $w ([int]($t[0] + $t[2] / 2)) ([int]($t[1] + $t[3] / 2)); Wheel -3; Start-Sleep -Milliseconds 400
+      $s = State
+      Check ([double]$s.input.readerScroll -gt 0 -and [Math]::Abs([double]$s.input.camDistance - $cam) -lt 0.01) "the wheel over the reading view scrolls it ($($s.input.readerScroll) px) and leaves the camera ($cam -> $($s.input.camDistance) m)"
+      $u0 = [int]$s.input.unhandledKeys; $y0 = [double]$s.input.readerScroll
+      Hold-Key 'PageDown' 50; Type-Now 'jtl'
+      $s = State
+      Check ([double]$s.input.readerScroll -gt $y0 -and $s.input.readerOpen -and -not $s.nav.listOpen -and [int]$s.input.unhandledKeys -eq $u0) "Page Down scrolls it; J, T, L while reading fire nothing ($([int]$s.input.unhandledKeys - $u0) reached the game)"
+      Hold-Key 'End' 50; Start-Sleep -Milliseconds 400
+      $s = State; Check ($s.input.readerAtEnd) "End reaches the end of the document"
+      Shot 'input-reader-end' | Out-Null
+      $n = [int]$s.nav.shellCount
+      Hold-Key 'Enter' 50; Start-Sleep -Milliseconds 400
+      $s = State
+      Check ([int]$s.nav.shellCount -eq $n + 1 -and $s.input.toastAboveReader -and $s.input.readerStatus -like '*guide.md*') "Enter in the reading view opens guide.md, said above the reader and in it ('$($s.input.readerStatus)')"
+      Click-At $s.input.readerOpenButton; Start-Sleep -Milliseconds 400
+      $s = State; Check ([int]$s.nav.shellCount -eq $n + 2) "its Open with Windows button opens it too ($($s.nav.shellLast))"
+      Click-At $s.input.readerClose; Start-Sleep -Milliseconds 500
+      $s = State; Check (-not $s.input.readerOpen -and $s.input.previewOpen) "Close returns to the preview"
+      Hold-Key 'R' 50; Start-Sleep -Milliseconds 900
+      $s = State; Check ($s.input.readerOpen) "R expands it"
+      Hold-Key 'R' 50; Start-Sleep -Milliseconds 400
+      $s = State; Check (-not $s.input.readerOpen) "R closes it"
+    } else { Log "  (no -ReaderRoot: the reader part was left out; tools/make-wsl-fixture.sh --readme prints the path)" }
+
+    # ---- one real open (opt-in): a file this probe writes under %TEMP%\FileScape-fixtures, opened with its default app
+    if ($RealOpen) {
+      $dir = Join-Path $env:TEMP ("FileScape-fixtures\reader-open-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      Set-Content -Path (Join-Path $dir '.filescape-fixture') -Value 'reader-open (os-planets-probe.ps1 -RealOpen)'
+      Set-Content -Path (Join-Path $dir 'open me.txt') -Value "FileScape real-open check: this file was written by os-planets-probe.ps1 -RealOpen and may be deleted.`r`n"
+      $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+      $script:LaunchRoot = $dir; $script:RealShell = $true
+      $p = Launch; Await-Window $p
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+      Start-Sleep -Seconds 4
+      Hold-Key 'J' 40; Type-Now 'open me'; Hold-Key 'Down' 50; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 50
+      for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.input.previewOpen) { break }; Start-Sleep -Milliseconds 250 }
+      Start-Sleep -Milliseconds 600
+      Hold-Key 'Enter' 50   # the real open: no input is sent after this
+      Start-Sleep -Seconds 3
+      $s = State
+      $fg = Foreground-Name
+      Log "  real open: '$($s.lastShell)'; the foreground app is now $fg"
+      Check ($s.lastShell -like 'Opened with Windows:*open me.txt') "the real open went through Windows' association ($($s.lastShell))"
+      Check ($fg -ne 'FileScape' -and $fg -ne 'FileScape.console') "the opened file's app came forward ($fg is in front; Alt+Tab returns to FileScape)"
+      Log "  nothing was closed: the app that opened 'open me.txt' may be one DJ already had open. The fixture is $dir."
+      # FileScape is no longer in front: stop sending input (Guard would refuse it anyway).
+      $script:w = 0
+    }
+    Log "OS planets probe: $fails failure(s)"
+    if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000) }
+    $log | Set-Content (Join-Path $Out 'os-planets.log')
     exit $fails
   }
 
