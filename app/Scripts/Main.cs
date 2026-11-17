@@ -1416,7 +1416,9 @@ public partial class Main : Node3D
             StateJsonNavigation() + StateJsonSettings() + _planets.StateJson() + "}";
     }
 
-    private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    /// <summary>Escapes a string for the state file's JSON: backslash, quote and the control characters (a trip panel's
+    /// text has line breaks; unescaped, the state file stopped parsing, 2026-11-17).</summary>
+    private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
 
     private void WriteState()
     {
