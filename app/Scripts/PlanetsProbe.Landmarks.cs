@@ -75,6 +75,11 @@ public partial class PlanetsProbe
         Check(mark is { Kind: WorldKind.WslRoot } && mark.ClearanceMetres >= 0, F($"the real root's monolith stands clear of every route: {P.Composition!.Launchers.Count} launchers, clearance {mark?.ClearanceMetres ?? -1:0.00} m, {PlanetFrame.PolarOf(mark?.Direction ?? NVector3.UnitY) * P.Composition.Shape.Radius:0.0} m from the arrival at {PlanetFrame.AzimuthOf(mark?.Direction ?? NVector3.UnitY) * 180 / MathF.PI:0}°"));
         await Shot("landmarks-wsl-root-arrival");
         await MarkVisit("wsl-root", expectTerminal: $"start wsl.exe -d {distro} --cd /", expectCopies: ["/", Locations.WslPrefix + distro + "\\"], expectPlaces: ["/tmp", "/mnt/c"], copies: false);
+        // A click on a row does what its key does (the row's button; the click does not take the keyboard from walking).
+        var clip0 = App.ClipboardLog.Count;
+        if (P.RootMarkRowCentre(1) is { } row) await Click(row);
+        Check(App.ClipboardLog.Count == clip0 + 1 && App.ClipboardLog[^1] == "/" && App.GetViewport().GuiGetFocusOwner() == null,
+            $"a click on row 2 copies the path: {(App.ClipboardLog.Count > clip0 ? App.ClipboardLog[^1] : "(nothing)")}; keyboard focus stays with the world");
         await Key(Godot.Key.E);
         await Frames(3);
         Check(!P.RootMarkPanelOpen, "E again closes the panel");
@@ -106,7 +111,9 @@ public partial class PlanetsProbe
     {
         var m = P.Composition!.RootMark!;
         var r = P.Composition.Shape.Radius;
-        // From the arrival, facing the mark: it is in view and its cue is faint.
+        // From in front of it, 5.5 m out (the arrival on a small root; [direct] on a crowded one, where you may arrive beside
+        // a launcher elsewhere), facing it: it is in view and its cue is faint.
+        if (P.RootMarkFront(5.5f) is { } front) P.Walker.Teleport(P.Composition.Surface, front, -m.Facing);
         var up = P.Walker.Up;
         var toward = m.Direction - up * NVector3.Dot(m.Direction, up);
         if (toward.LengthSquared() > 1e-8f)
@@ -128,9 +135,9 @@ public partial class PlanetsProbe
         var held = Godot.Key.None;
         var touchedAt = -1;
         var shotNear = false;
-        // Up to 12 s at 60 Hz to walk up; then 1.5 s more pushing into it (longer, a narrow mark's round solids let you
+        // Up to 12 s at 60 Hz to walk up; then 0.5 s more pushing into it (longer, and a narrow mark's round solids let you
         // slide off round its end, as a pillar would).
-        for (var frame = 0; frame < 720 && (touchedAt < 0 || frame < touchedAt + 90); frame++)
+        for (var frame = 0; frame < 720 && (touchedAt < 0 || frame < touchedAt + 30); frame++)
         {
             var (_, face) = P.RootMarkBearing();
             closest = MathF.Min(closest, face);
@@ -159,7 +166,7 @@ public partial class PlanetsProbe
         await Frames(20);
         var (_, standFace) = P.RootMarkBearing();
         var onFront = NVector3.Dot(P.Walker.Up - m.Direction, m.Facing) > 0;
-        Check(closest > 0.2f && onFront, F($"{tag}: the mark is solid: W towards it, then 1.5 s more into it, stops {closest:0.00} m from its face (the walker is 0.35 m round), still in front of it"));
+        Check(closest > 0.2f && onFront, F($"{tag}: the mark is solid: W towards it, then 0.5 s more into it, stops {closest:0.00} m from its face (the walker is 0.35 m round), still in front of it"));
         Check(P.RootMarkFocused && P.PromptText.StartsWith("E · terminal here", StringComparison.Ordinal), F($"{tag}: within reach ({standFace:0.0} m) the prompt offers it: \"{P.PromptText}\""));
         Check(P.RootMarkGlow > 0.8f && P.RootMarkGlow > farGlow + 0.5f, F($"{tag}: the cue brightened from {farGlow:0.00} to {P.RootMarkGlow:0.00}"));
         Check(App.ShellLog.Count == shell0, $"{tag}: walking up to it and into it started nothing");

@@ -255,6 +255,14 @@ public partial class PlanetWorld
         return System.FormattableString.Invariant($"\"rootMark\":{{\"kind\":\"{m.Kind}\",\"bearing\":{deg:0.#},\"face\":{metres:0.##},\"clearance\":{m.ClearanceMetres:0.##},\"focused\":{(_focusRootMark ? "true" : "false")},\"panel\":{(_rootPanel.Visible ? "true" : "false")},\"glow\":{RootMarkGlow:0.##}}},");
     }
 
+    /// <summary>The screen centre of the panel's row <paramref name="index"/> (0-based), or null (probes click it).</summary>
+    public Vector2? RootMarkRowCentre(int index)
+    {
+        if (!_rootPanel.Visible) return null;
+        var rows = _rootRows.GetChildren().OfType<Button>().ToList();
+        return index >= 0 && index < rows.Count ? rows[index].GetGlobalRect().GetCenter() : null;
+    }
+
     /// <summary>The direction of the mark's face centre, a step in front of it (probes stand there).</summary>
     public NVector3? RootMarkFront(float metres) => RootMark is { } m && _current != null ? PlanetFrame.Move(m.Direction, m.Facing, metres, _current.Comp.Shape.Radius) : null;
 }
