@@ -1402,7 +1402,7 @@ public partial class Main : Node3D
             StateJsonTutorial() +
             System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
             System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\",") +
-            StateJsonSettings() + _planets.StateJson() + "}";
+            StateJsonNavigation() + StateJsonSettings() + _planets.StateJson() + "}";
     }
 
     private static string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");

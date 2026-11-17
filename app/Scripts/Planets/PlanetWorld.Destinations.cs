@@ -685,6 +685,18 @@ public partial class PlanetWorld
     public int DestinationRowsThatFit => DestinationRowHeight > 0 ? (int)(_destTree.Size.Y / DestinationRowHeight) : 0;
 
     public bool DestinationTreeFocused => _destTree.HasFocus();
+
+    /// <summary>The rows shown now, top to bottom (the real-input probe clicks them): name, the row's rectangle, its ▸ point.</summary>
+    public IEnumerable<(string Name, Rect2 Rect, Vector2 Arrow)> VisibleDestinationRows()
+    {
+        if (!_contentsPanel.Visible) yield break;
+        for (var it = _destTree.GetRoot()?.GetFirstChild(); it != null; it = it.GetNextVisible())
+        {
+            if (RowOf(it) is not { } row) continue;
+            var rect = DestinationRowRect(row.Key);
+            if (rect.Size.Y > 0) yield return (row.Name, rect, DestinationArrowPoint(row.Key));
+        }
+    }
 }
 
 public partial class PlanetWorld

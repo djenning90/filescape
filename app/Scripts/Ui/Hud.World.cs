@@ -46,6 +46,9 @@ public partial class Hud
 
     public bool LocationsVisible => _locPanel.Visible;
 
+    /// <summary>The place bar's Locations button on screen (the real-input probe opens the panel with it).</summary>
+    public Rect2 LocationsButtonRect => _locButton.GetGlobalRect();
+
     public string LocationRowText(int index) => index < _locList.ItemCount ? _locList.GetItemText(index) : "";
     public bool ProblemsVisible => _problemPanel.Visible;
     public string ConnectionText => _connection.Visible ? _connection.Text : "";

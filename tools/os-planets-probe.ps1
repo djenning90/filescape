@@ -18,9 +18,14 @@
   (to the child launcher it reaches most easily, jumping any gap on the way; no fall), then off an edge: the fall, the
   return to the parent, and straight back in.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard]
+  -Play (PLANET-39..43, 2026-11-16) plays the second playtest's navigation and file actions with real input, the
+  recording test shell launching nothing: J to the repository (the workbench in view on landing), a real double-click
+  on its solution file (opened through Open, no jump), a nested trip watched hop by hop, U and Backspace after it, a
+  trip stopped with the Stop button, and Locations and Destinations open together, both gone once a flight starts.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard)
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -75,6 +80,7 @@ if (Test-Path $prefs) { Remove-Item $prefs }
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', '--root=sample', '--vis=planets', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
+  if ($Play) { $a += '--test-shell=record' }
   if (Test-Path $state) { Remove-Item $state }
   return Start-Process -FilePath $Exe -ArgumentList $a -PassThru
 }
@@ -111,6 +117,84 @@ try {
   Start-Sleep -Seconds 3 # the establishing shot
   $s = State
   Check ($s.planets -and $s.planets.phase -eq 'Walking') "arrives on the Starter Sky on foot (phase=$($s.planets.phase))"
+
+  if ($Play) {
+    function Type-Line($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ($(if ($ch -eq ' ') { 'Space' } else { [string]$ch })) 30; Start-Sleep -Milliseconds 40 } }
+    function Wait-Walking-At($name, [int]$ms = 20000) { for ($i = 0; $i -lt $ms / 200; $i++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq $name -and -not $s.nav.tripActive) { return $s }; Start-Sleep -Milliseconds 200 }; return State }
+    function Row-At($name) { $s = State; foreach ($r in $s.nav.rows) { if ($r.name -eq $name) { return $r } }; return $null }
+    function List-Pick($typed, $name) {
+      Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line $typed; Start-Sleep -Milliseconds 900
+      $r = Row-At $name
+      if ($r) { Click-At $r.at; Start-Sleep -Milliseconds 300 } else { Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200 }
+      Hold-Key 'Enter' 60
+      return $r
+    }
+    $start = (State).currentName
+    # 1 · the repository by the list; the workbench is in the arrival view (PLANET-42).
+    List-Pick 'lantern' 'Lantern Workshop' | Out-Null
+    $s = Wait-Walking-At 'Lantern Workshop'; Start-Sleep -Milliseconds 500; $s = State
+    Check ($s.currentName -eq 'Lantern Workshop' -and $s.planets.benchWorld) "J, 'lantern', Enter: landed on the repository ($($s.currentName))"
+    Check ([Math]::Abs([double]$s.planets.benchBearing) -le 50) "the workbench is in the arrival view (bearing $($s.planets.benchBearing)°, $($s.planets.benchDistance) m)"
+    Shot 'play-repo-arrival' | Out-Null
+    # 2 · a real double-click on the solution's object: opened through Open, no jump (PLANET-43).
+    for ($k = 0; $k -lt 14 -and -not (State).nav.sln; $k++) { Hold-Key 'Right' 260; Start-Sleep -Milliseconds 250 }
+    $s = State
+    Check ($null -ne $s.nav.sln) "the solution file stands on the planet in view (at $($s.nav.sln))"
+    if ($s.nav.sln) {
+      $j0 = [int]$s.planets.jumps; $c0 = [int]$s.nav.shellCount
+      Client-DoubleClick $script:w ([int]$s.nav.sln[0]) ([int]$s.nav.sln[1]); Start-Sleep -Milliseconds 1200
+      $s = State
+      Check ([int]$s.nav.shellCount -eq $c0 + 1 -and $s.nav.shellLast -match '^open .*Lantern\.sln$' -and [int]$s.planets.jumps -eq $j0) "double-click on Lantern.sln opens it with Open (shell: $($s.nav.shellLast); jumps $j0 -> $($s.planets.jumps)); app said: $($s.lastShell)"
+      Shot 'play-sln-opened' | Out-Null
+      Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 300
+    }
+    Hold-Key 'U' 60; $s = Wait-Walking-At $start
+    # 3 · a nested trip watched to the end, then U and Backspace (PLANET-40).
+    List-Pick 'old bridge' 'Old Bridge' | Out-Null
+    for ($i = 0; $i -lt 30 -and -not (State).nav.tripActive; $i++) { Start-Sleep -Milliseconds 100 }
+    $s = State; $hops = [int]$s.nav.tripHops
+    Check ($s.nav.tripActive -and $hops -ge 3 -and -not $s.nav.listOpen) "Enter on Old Bridge starts a trip of $hops hops; the list steps aside"
+    $seen = @(); $shot = $false
+    for ($i = 0; $i -lt 400 -and (State).nav.tripActive; $i++) {
+      $s = State; if ($seen -notcontains $s.currentName) { $seen += $s.currentName }
+      if (-not $shot -and [int]$s.nav.tripReached -ge 2 -and $s.nav.phase -eq 'Flying') { Shot 'play-trip-hop' | Out-Null; $shot = $true; Log "  trip panel: $($s.nav.tripText -replace '\n', ' ')" }
+      Start-Sleep -Milliseconds 150
+    }
+    $s = Wait-Walking-At 'Old Bridge'
+    Check ($s.currentName -eq 'Old Bridge' -and $s.nav.tripOutcome -eq 'arrived') "the trip lands hop by hop on Old Bridge (outcome $($s.nav.tripOutcome); seen: $($seen -join ' > '))"
+    $bridgePath = $s.currentPath
+    Hold-Key 'U' 60; Start-Sleep -Seconds 4; $s = State
+    Check ($bridgePath.StartsWith($s.currentPath) -and $s.currentPath.Length -lt $bridgePath.Length) "U after the trip goes to Old Bridge's parent ($($s.currentName))"
+    Hold-Key 'Backspace' 60; $s = Wait-Walking-At 'Old Bridge' 12000
+    Hold-Key 'Backspace' 60; $s = Wait-Walking-At $start 12000
+    Check ($s.currentName -eq $start) "Backspace, Backspace: back on Old Bridge, then where the trip began ($($s.currentName))"
+    # 4 · a trip stopped in the air with the Stop button: you stay on the last world reached.
+    List-Pick 'hollow oak' 'Hollow Oak' | Out-Null
+    for ($i = 0; $i -lt 200; $i++) { $s = State; if ($s.nav.tripActive -and [int]$s.nav.tripReached -ge 2 -and $s.nav.phase -eq 'Flying') { break }; Start-Sleep -Milliseconds 100 }
+    Shot 'play-trip-stop' | Out-Null
+    Click-At $s.nav.tripStop
+    for ($i = 0; $i -lt 100 -and (State).nav.tripActive; $i++) { Start-Sleep -Milliseconds 150 }
+    Start-Sleep -Seconds 1; $s = State
+    Check (-not $s.nav.tripActive -and $s.nav.tripOutcome -eq 'stopped' -and $s.currentName -ne 'Hollow Oak' -and $s.currentName -ne $start -and $s.planets.phase -eq 'Walking') "Stop (clicked): the hop in the air lands and the trip ends on $($s.currentName) ($($s.nav.tripOutcome))"
+    Hold-Key 'Backspace' 60; $s = Wait-Walking-At $start 12000
+    # 5 · Locations and Destinations open together; a commit clears both off the flight (PLANET-41).
+    Click-At $s.nav.locButton; Start-Sleep -Milliseconds 600; $s = State
+    Check ($s.nav.locationsOpen) "Locations opens from the place bar ($($s.nav.locRows) rows; here: row $($s.nav.locHere))"
+    Click-At $s.nav.destButton; Start-Sleep -Milliseconds 600; $s = State
+    Check ($s.nav.locationsOpen -and $s.nav.listOpen) "Destinations opens over it: both panels are open"
+    Shot 'play-both-open' | Out-Null
+    $r = Row-At 'Music Box'
+    Check ($null -ne $r) "Music Box is a row in the list"
+    if ($r) {
+      Client-DoubleClick $script:w ([int]$r.at[0]) ([int]$r.at[1]); Start-Sleep -Milliseconds 150
+      $clear = $false
+      for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.nav.phase -in @('WindUp', 'AwaitNav', 'Flying')) { $clear = -not $s.nav.listOpen -and -not $s.nav.locationsOpen; break }; Start-Sleep -Milliseconds 100 }
+      Shot 'play-flight-clear' | Out-Null
+      Check $clear "committing to Music Box closes both panels before the flight (phase $($s.nav.phase), list $($s.nav.listOpen), locations $($s.nav.locationsOpen))"
+      $s = Wait-Walking-At 'Music Box'
+      Check ($s.currentName -eq 'Music Box') "landed on Music Box ($($s.currentName))"
+    }
+  }
 
   if ($Hazard) {
     function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
