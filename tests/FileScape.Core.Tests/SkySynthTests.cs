@@ -42,7 +42,7 @@ public sealed class SkySynthArrangementsFactAttribute : FactAttribute
 }
 
 /// <summary>The Planets audio synth (pure DSP; PLANET-23, PLANET-28, AD-49): safety, determinism, latency, smooth crossfades, the worlds' music and cost.</summary>
-public class SkySynthTests(ITestOutputHelper output)
+public partial class SkySynthTests(ITestOutputHelper output)
 {
     private const int Rate = SkySynth.DefaultSampleRateHz;
 
