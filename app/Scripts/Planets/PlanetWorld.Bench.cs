@@ -379,6 +379,7 @@ public partial class PlanetWorld
     /// <summary>The bench's names on screen (while revealed): each card is named with what it is for.</summary>
     private void AddBenchSigns(FsTree tree)
     {
+        AddBenchMarkerSign(); // before the reveal: where the bench is (PlanetWorld.Arrival)
         if (!_benchRevealed || _benchReveal01 < 0.45f) return; // names appear as the cards are nearly half risen
         var up = _camera.GlobalBasis.Y;
         for (var i = 0; i < _tiles.Count; i++)

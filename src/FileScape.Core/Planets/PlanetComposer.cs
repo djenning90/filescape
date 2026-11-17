@@ -507,7 +507,10 @@ public static class PlanetComposer
         // ---- arrival, landmark, overlook and its steps
         var pole = Vector3.UnitY;
         var hasParent = !folder.IsRoot;
-        var rings = LauncherRings(launched.Count, hasParent, radius, p);
+        // A repository's workbench takes a slot on the first launcher ring (PLANET-42, AD-57): in the arrival's view, not
+        // beyond the rings by the landmark where it used to stand (DJ 2026-11-16: "I should see it when I land").
+        var rings = LauncherRings(launched.Count + (bench ? 1 : 0), hasParent, radius, p);
+        RingSlot? benchSlot = bench ? BenchSlot(rings) : null;
         // The landmark stands ahead beyond the outermost ring (it used to stand at 40°, among the launchers).
         var outer = rings.Count == 0 ? 0f : rings.Max(r => r.DistanceMetres);
         var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + LandmarkBeyondRings) / radius);
@@ -527,7 +530,8 @@ public static class PlanetComposer
         }
 
         var landmarkDir = PlanetFrame.FromPolar(MathF.Min(landmarkPolar, Deg(LandmarkMaxPolarDeg)), landmarkAz);
-        var overlookDir = PlanetFrame.Move(landmarkDir, PlanetFrame.East(landmarkDir), p.LandmarkRadius + p.LandmarkOverlookGap + p.OverlookRadius, radius);
+        var overlookDir = benchSlot is { } bs ? bs.Direction
+            : PlanetFrame.Move(landmarkDir, PlanetFrame.East(landmarkDir), p.LandmarkRadius + p.LandmarkOverlookGap + p.OverlookRadius, radius);
         var steps = new List<SurfaceObstacle>();
         {
             var north = PlanetFrame.North(overlookDir);
@@ -549,7 +553,7 @@ public static class PlanetComposer
         var complexRadius = p.OverlookRadius + 2 * p.StepRadius; // the overlook with its ring of stones
 
         // ---- launcher directions
-        var launcherDirs = rings.Where(r => !r.Parent).Select(r => r.Direction).ToList();
+        var launcherDirs = rings.Where(r => !r.Parent && r != benchSlot).Select(r => r.Direction).ToList();
         var launchers = new List<PlanetLauncher>();
         var sky = new List<SkyBody>();
         var paths = new List<PlanetPath>();
@@ -945,6 +949,23 @@ public static class PlanetComposer
         }
 
         return slots;
+    }
+
+    /// <summary>The workbench's preferred bearing on the first ring, degrees clockwise from straight ahead: front right
+    /// (about one o'clock), clear of the largest grove, which grows front left (by eye, 2026-11-16).</summary>
+    private const float BenchBearingDeg = 30f;
+
+    /// <summary>
+    /// The first-ring slot (never the way back) nearest <see cref="BenchBearingDeg"/>: where a repository's workbench
+    /// stands (PLANET-42). The slots were laid out for one more pad than there are child folders, so taking one leaves
+    /// every folder its own pad, still in name order clockwise.
+    /// </summary>
+    private static RingSlot BenchSlot(List<RingSlot> rings)
+    {
+        var first = rings.Min(r => r.DistanceMetres);
+        var want = Deg(BenchBearingDeg);
+        return rings.Where(r => !r.Parent && r.DistanceMetres <= first + 1e-3f)
+            .OrderBy(r => MathF.Abs(MathF.IEEERemainder(PlanetFrame.AzimuthOf(r.Direction) - want, 2 * MathF.PI))).First();
     }
 
     /// <summary>

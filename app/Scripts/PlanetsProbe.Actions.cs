@@ -123,6 +123,78 @@ public partial class PlanetsProbe
         else Log($"(the meadow has {Tree[P.FocusNodeId].Name} in reach; the empty-twirl check is skipped)");
     }
 
+    /// <summary>
+    /// <c>--automate=planets-arrival</c> (PLANET-42): the arrival framing judged in motion. On the Starter Sky (the opening),
+    /// Lantern Workshop (a repository: its workbench must be on screen), Music Box (large) and Quiet Moon (the smallest):
+    /// photographs at landing +0.3 s and +1.5 s standing still, then while running (0.3, 0.8, 2 s of W), with the eye height,
+    /// the camera's distance from the traveller and the framing weight logged; the framing must hold while standing and
+    /// be gone (back to the close follow) after 2 s of running.
+    /// </summary>
+    private async Task ArrivalTour()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await WaitSettled();
+        var root = App.Navigator.Current;
+        await Seconds(0.8);
+        await Shot("arrival-opening-0.8s");
+        await Seconds(2.6);
+        await ArrivalFrames("Starter Sky", opening: true);
+        foreach (var name in new[] { "Lantern Workshop", "Music Box", "Quiet Moon" })
+        {
+            var id = Child(root, name);
+            if (id < 0) { Check(false, $"{name} exists in the sample"); continue; }
+            App.Selection.Select(id); // [direct] the selection a click makes
+            await Frames(2);
+            await Fly(Godot.Key.G, id, name);
+            if (name == "Lantern Workshop")
+            {
+                var bench = P.BenchOnScreen();
+                Check(bench != null, $"the workbench is on screen as you land on {name}{(bench is { } b ? F($" at ({b.X:0},{b.Y:0})") : "")}");
+                await Seconds(0.3);
+                Check(App.Signs.ShownIds.Contains(PlanetWorld.BenchMarkerSignId), $"the workbench is named from the arrival, 0.3 s after landing ({string.Join(" | ", App.Signs.ShownText.Values.Take(8))})");
+            }
+
+            await ArrivalFrames(name, opening: false);
+            await Key(Godot.Key.Backspace);
+            await Until(() => App.Navigator.Current == root && !P.Busy, 10);
+            await Seconds(0.8);
+        }
+    }
+
+    /// <summary>The arrival sequence on the world just reached: standing, then running away from the camera.</summary>
+    private async Task ArrivalFrames(string name, bool opening)
+    {
+        var tag = name.Replace(' ', '-').ToLowerInvariant();
+        var r = P.Composition!.Shape.Radius;
+        string State() => F($"eye {P.CameraEyeHeight():0.0} m, camera {P.CameraToTraveller():0.0} m from the traveller, framing {P.ArrivalFraming:0.00}");
+        if (!opening)
+        {
+            await Seconds(0.3);
+            Log($"{name} (radius {r:0.0} m) +0.3 s: {State()}");
+            await Shot($"arrival-{tag}-0.3s");
+        }
+
+        await Seconds(1.2);
+        var standingEye = P.CameraEyeHeight();
+        Log($"{name} +1.5 s standing: {State()}");
+        Check(P.ArrivalFraming > 0.99f && standingEye > 3.2f, F($"{name}: standing after the arrival keeps the higher view (eye {standingEye:0.0} m; the close follow is ≈ 2.2 m)"));
+        await Shot($"arrival-{tag}-1.5s-standing");
+        HoldKey(Godot.Key.W, true);
+        foreach (var (t, wait) in new[] { (0.3, 0.3), (0.8, 0.5), (2.0, 1.2) })
+        {
+            await Seconds(wait);
+            Log(F($"{name} running {t:0.0} s: {State()}"));
+            await Shot(F($"arrival-{tag}-run-{t:0.0}s"));
+        }
+
+        HoldKey(Godot.Key.W, false);
+        await Frames(2);
+        // Back to the close follow: the framing's weight is 0 and the boom is the walking one (7.2 m, plus the follow lag).
+        // (The eye's height over the ground below it is not compared: on a small world the ground falls away under any camera.)
+        Check(P.ArrivalFraming < 0.01f && P.CameraToTraveller() < 8.6f,
+            $"{name}: once moving the camera is back in close ({State()})");
+    }
+
     private string Sel => App.Selection.Selected >= 0 ? Tree[App.Selection.Selected].Name : "-";
 
     /// <summary>What the shell recorded since <paramref name="before"/> entries.</summary>

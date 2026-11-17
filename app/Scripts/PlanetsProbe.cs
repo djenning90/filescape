@@ -103,6 +103,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-tutorial") await TutorialRun();
         else if (Mode == "planets-hazard") await HazardTour(); // PlanetsProbe.Hazard.cs
         else if (Mode == "planets-actions") await ActionsTour(); // PlanetsProbe.Actions.cs
+        else if (Mode == "planets-arrival") await ArrivalTour(); // PlanetsProbe.Actions.cs
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
