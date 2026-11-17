@@ -55,8 +55,9 @@ public partial class PlanetWorld
     /// <summary>The column's bright core and its soft glow, radii in metres.</summary>
     private const float CoreRadiusMetres = 0.14f, GlowRadiusMetres = 0.65f;
 
-    /// <summary>The ground ring is a short band of light this tall, metres (plus the curve's drop under it, so it meets the ground all round).</summary>
-    private const float RingBandMetres = 0.8f;
+    /// <summary>The ground ring is a short band of light this tall, metres: knee-high, so it marks the spot without walling
+    /// in the traveller (0.8 m read as a glass jar round the pad). Plus the curve's drop under it, so it meets the ground all round.</summary>
+    private const float RingBandMetres = 0.45f;
 
     /// <summary>Within this distance of the spot's edge, metres, the cue changes to "nearly there": brighter ring, faster
     /// ripples, a bigger, lower chevron and the action pill. Under a second's run (by eye).</summary>

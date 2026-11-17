@@ -1,0 +1,75 @@
+[22:27:42.304] planets-tutorial-cues probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:27:47.278] PASS step 1 (look): no place to go, so no beacon; key caps instead: 'drag+← →', cue None
+[22:27:47.321] screenshot %TEMP%/fs-cues/r8/01-cues-1-look-keycaps.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:49.022] PASS looked round → 1 · Walk to the tower
+[22:27:49.083] PASS step 2 shows a cue for the tower at once: Edge at (1530,450), 19.6 m
+[22:27:49.111] screenshot %TEMP%/fs-cues/r8/02-cues-2-tower-start.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:49.178] PASS turned away (bearing 153°): the edge arrow shows (Edge)
+[22:27:49.178] PASS   on the side to turn towards and pointing that way: x 1530 of 1600, angle 0° for bearing 153°
+[22:27:49.178] PASS   the arrow is clear of the lesson card (arrow top 400 > card bottom 304)
+[22:27:49.179] PASS   the card's text backup agrees: 'The green beacon is behind you: turn right →  (drag, or press →)'
+[22:27:49.196] PASS   state file: cue mode 'edge', angle 0, at [1530,450], phase far, keys 'W A S D'
+[22:27:49.218] screenshot %TEMP%/fs-cues/r8/03-cues-3-tower-behind.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:50.371] PASS to the side (bearing -98°): edge arrow at x 70, angle 180°
+[22:27:50.371] PASS   the text says which side: '←  The green beacon is to your left  (drag, or press ←)'
+[22:27:50.409] screenshot %TEMP%/fs-cues/r8/04-cues-4-tower-side.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:51.393] PASS facing it: the chevron is ahead, in its direction (Horizon at 864,558; over the horizon True; phase Far, 19.6 m)
+[22:27:51.393] PASS   no turn hint while it is in view
+[22:27:51.394] PASS   state file: cue mode 'horizon', angle 90, at [864,558], phase far, keys 'W A S D'
+[22:27:51.429] screenshot %TEMP%/fs-cues/r8/05-cues-5-tower-ahead.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:52.066] PASS over the brow the chevron pins over the tower (OnScreen, Far, 17.2 m, at 755,591)
+[22:27:52.067] PASS   state file: cue mode 'onscreen', angle 90, at [755,591], phase far, keys 'W A S D'
+[22:27:52.104] screenshot %TEMP%/fs-cues/r8/06-cues-6-tower-onscreen.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:54.032] PASS approaching: the cue says near (Near, 5.7 m from the ring; chevron at y 371, was 558; pill 'Walk into the ring')
+[22:27:54.069] screenshot %TEMP%/fs-cues/r8/07-cues-7-tower-near.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:56.425] PASS into the ring → 2 · Jump
+[22:27:56.478] PASS between steps the cue clears (None)
+[22:27:56.529] PASS step 3 (jump): no beacon, key cap 'Space'
+[22:27:57.973] PASS jumped → 2 · Fly to a folder
+[22:27:58.009] PASS the lesson advanced and the cue followed: now the Lantern Workshop launcher ('Stand here · press Space to fly')
+[22:27:58.044] screenshot %TEMP%/fs-cues/r8/08-cues-8-pad-start.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:27:59.956]   facing the pad 12.1 m away: OnScreen; walking away from it
+[22:28:04.130]   facing the pad 12.2 m away: OnScreen; walking away from it
+[22:28:08.341] PASS behind the curve (15.1 m away): the chevron waits at the horizon in its direction (Horizon at 875,558)
+[22:28:08.342] PASS   state file: cue mode 'horizon', angle 90, at [875,558], phase far, keys 'Space'
+[22:28:08.383] screenshot %TEMP%/fs-cues/r8/09-cues-9-pad-horizon.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:28:09.289] PASS over the brow the chevron pins onto the pad (Far, 11.2 m)
+[22:28:09.326] screenshot %TEMP%/fs-cues/r8/10-cues-10-pad-onscreen.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:28:12.037] PASS on the pad: phase Here, the pill says 'Stand here · press Space to fly' (OnScreen)
+[22:28:12.071] screenshot %TEMP%/fs-cues/r8/11-cues-11-pad-here.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:28:14.009] PASS Space: flew to Lantern Workshop
+[22:28:14.010] PASS a visible wind-up first: 0.36 s (0.4 s, aligned to the beat ±0.09 s)
+[22:28:14.010] PASS a brisk crossing: 1.51 s
+[22:28:14.010] PASS the landing does not cut: the traveller moves 0.0 % of the screen height in the landing frame (flight frames ≤ 0.0 %, the largest at 0.00 of the way)
+[22:28:14.010] PASS landed on foot
+[22:28:15.365] PASS step 5 of 13 reached (the first four done) → 3 · A software project
+[22:28:15.398] PASS after the flight the cue is the workbench on the new world (Edge, 'Run at it and press Space')
+[22:28:15.433] screenshot %TEMP%/fs-cues/r8/12-cues-12-bench.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=-
+[22:28:22.318] PASS jumped onto the bench → 3 · Read the README
+[22:28:22.351] PASS on the bench: the pill says 'Press E to read the README' (Here, OnScreen)
+[22:28:22.388] screenshot %TEMP%/fs-cues/r8/13-cues-13-bench-press-e.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=-
+[22:28:23.982] PASS E read the README → 4 · Up a level
+[22:28:24.183] PASS step 7: key caps 'U', no beacon (None)
+[22:28:28.543] PASS   U went up → 4 · Straight to a folder
+[22:28:28.579] screenshot %TEMP%/fs-cues/r8/14-cues-14-keycap-j.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Lantern Workshop
+[22:28:28.591] PASS step 8: key caps 'J+↓+Enter', no beacon (None)
+[22:28:32.386] PASS   J list → Music Box → 4 · Up is the parent
+[22:28:32.439] PASS step 9: key caps 'U', no beacon (None)
+[22:28:36.728] PASS   U → the Starter Sky → 4 · Back is your history
+[22:28:36.781] PASS step 10: key caps 'Backspace', no beacon (None)
+[22:28:40.190] PASS   Backspace → Music Box → 5 · The overview
+[22:28:41.255] PASS step 11: key caps 'T', no beacon (None)
+[22:28:42.705] PASS   T opened the overview → 5 · Look round it
+[22:28:43.768] PASS step 12: key caps 'drag', no beacon (None)
+[22:28:44.185]   orbit drag 1: overview yaw moved 2.65 rad
+[22:28:45.248] PASS   orbited → 5 · Back where you stood
+[22:28:45.299] PASS step 13: key caps 'Esc', no beacon (None)
+[22:28:46.749] PASS   Esc back where you stood → done
+[22:28:46.749] PASS all 13 steps done; no cue left behind (None)
+[22:28:46.785] screenshot %TEMP%/fs-cues/r8/15-cues-15-done.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:28:49.876] PASS Start over, skip to the tower: the cue is back (Edge)
+[22:28:49.912] screenshot %TEMP%/fs-cues/r8/16-cues-16-before-leave.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Music Box
+[22:28:50.042] PASS Leave clears the cue: tutorial False, cue None, beacon gone
+[22:28:50.042] PASS   state file: cue mode 'none', angle 0, at [0,0], phase far, keys ''
+[22:28:50.081] screenshot %TEMP%/fs-cues/r8/17-cues-17-after-leave.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Music Box
+[22:28:50.247] done failures=0

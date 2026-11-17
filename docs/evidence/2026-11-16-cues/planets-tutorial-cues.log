@@ -1,0 +1,90 @@
+[22:29:45.417] planets-tutorial-cues probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:29:50.149] PASS step 1 (look): no place to go, so no beacon; key caps instead: 'drag+← →', cue None
+[22:29:50.188] screenshot %TEMP%/fs-cues/r9/01-cues-1-look-keycaps.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:51.879] PASS looked round → 1 · Walk to the tower
+[22:29:51.956] PASS step 2 shows a cue for the tower at once: Edge at (1530,450), 19.6 m
+[22:29:51.987] screenshot %TEMP%/fs-cues/r9/02-cues-2-tower-start.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:52.029] PASS turned away (bearing 153°): the edge arrow shows (Edge)
+[22:29:52.030] PASS   on the side to turn towards and pointing that way: x 1530 of 1600, angle 0° for bearing 153°
+[22:29:52.030] PASS   the arrow is clear of the lesson card (arrow top 400 > card bottom 304)
+[22:29:52.030] PASS   the card's text backup agrees: 'The green beacon is behind you: turn right →  (drag, or press →)'
+[22:29:52.047] PASS   state file: cue mode 'edge', angle 0, at [1530,450], phase far, keys 'W A S D'
+[22:29:52.066] screenshot %TEMP%/fs-cues/r9/03-cues-3-tower-behind.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:53.244] PASS to the side (bearing -97°): edge arrow at x 70, angle 180°
+[22:29:53.244] PASS   the text says which side: '←  The green beacon is to your left  (drag, or press ←)'
+[22:29:53.281] screenshot %TEMP%/fs-cues/r9/04-cues-4-tower-side.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:54.258] PASS facing it: the chevron is ahead, in its direction (Horizon at 874,558; over the horizon True; phase Far, 19.6 m)
+[22:29:54.259] PASS   no turn hint while it is in view
+[22:29:54.259] PASS   state file: cue mode 'horizon', angle 90, at [874,558], phase far, keys 'W A S D'
+[22:29:54.311] screenshot %TEMP%/fs-cues/r9/05-cues-5-tower-ahead.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:54.940] PASS over the brow the chevron pins over the tower (OnScreen, Far, 17.3 m, at 747,594)
+[22:29:54.941] PASS   state file: cue mode 'onscreen', angle 90, at [747,594], phase far, keys 'W A S D'
+[22:29:54.983] screenshot %TEMP%/fs-cues/r9/06-cues-6-tower-onscreen.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:57.020] PASS approaching: the cue says near (Near, 5.7 m from the ring; chevron at y 369, was 558; pill 'Walk into the ring')
+[22:29:57.057] screenshot %TEMP%/fs-cues/r9/07-cues-7-tower-near.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:29:59.293] PASS into the ring → 2 · Jump
+[22:29:59.358] PASS between steps the cue clears (None)
+[22:29:59.421] PASS step 3 (jump): no beacon, key cap 'Space'
+[22:30:00.846] PASS jumped → 2 · Fly to a folder
+[22:30:00.880] PASS the lesson advanced and the cue followed: now the Lantern Workshop launcher ('Stand here · press Space to fly')
+[22:30:00.918] screenshot %TEMP%/fs-cues/r9/08-cues-8-pad-start.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:30:02.726]   facing the pad 10.6 m away: OnScreen; walking away from it
+[22:30:06.907]   facing the pad 12.1 m away: OnScreen; walking away from it
+[22:30:11.130] PASS behind the curve (14.2 m away): the chevron waits at the horizon in its direction (Horizon at 880,558)
+[22:30:11.131] PASS   state file: cue mode 'horizon', angle 90, at [880,558], phase far, keys 'Space'
+[22:30:11.170] screenshot %TEMP%/fs-cues/r9/09-cues-9-pad-horizon.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:30:11.929] PASS over the brow the chevron pins onto the pad (Far, 11.3 m)
+[22:30:11.978] screenshot %TEMP%/fs-cues/r9/10-cues-10-pad-onscreen.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:30:14.328] PASS on the pad: phase Here, the pill says 'Stand here · press Space to fly' (OnScreen)
+[22:30:14.362] screenshot %TEMP%/fs-cues/r9/11-cues-11-pad-here.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:30:16.423] PASS Space: flew to Lantern Workshop
+[22:30:16.423] PASS a visible wind-up first: 0.42 s (0.4 s, aligned to the beat ±0.09 s)
+[22:30:16.423] PASS a brisk crossing: 1.52 s
+[22:30:16.423] PASS the landing does not cut: the traveller moves 0.0 % of the screen height in the landing frame (flight frames ≤ 0.0 %, the largest at 0.00 of the way)
+[22:30:16.423] PASS landed on foot
+[22:30:17.737] PASS step 5 of 13 reached (the first four done) → 3 · A software project
+[22:30:17.769] PASS after the flight the cue is the workbench on the new world (Edge, 'Run at it and press Space')
+[22:30:17.810] screenshot %TEMP%/fs-cues/r9/12-cues-12-bench.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=-
+[22:30:23.433] window focus LOST (injected input is ignored until it returns)
+[22:30:25.024] PASS jumped onto the bench → 3 · Read the README
+[22:30:25.057] PASS on the bench: the pill says 'Press E to read the README' (Here, OnScreen)
+[22:30:25.094] screenshot %TEMP%/fs-cues/r9/13-cues-13-bench-press-e.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=-
+[22:31:25.230]   (waited 60.0 s for the window's focus: still away)
+[22:31:26.677] PASS E read the README → 4 · Up a level
+[22:32:26.682]   (waited 60.0 s for the window's focus: still away)
+[22:32:26.882] PASS step 7: key caps 'U', no beacon (None)
+[22:33:02.120]   (waited 35.2 s for the window's focus: back)
+[22:33:02.122] window focus regained
+[22:33:02.866] window focus LOST (injected input is ignored until it returns)
+[22:33:06.519] PASS   U went up → 4 · Straight to a folder
+[22:33:06.555] screenshot %TEMP%/fs-cues/r9/14-cues-14-keycap-j.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Lantern Workshop
+[22:33:06.568] PASS step 8: key caps 'J+↓+Enter', no beacon (None)
+[22:33:36.862]   (waited 30.3 s for the window's focus: back)
+[22:33:36.865] window focus regained
+[22:33:37.566] window focus LOST (injected input is ignored until it returns)
+[22:33:40.565] PASS   J list → Music Box → 4 · Up is the parent
+[22:33:40.618] PASS step 9: key caps 'U', no beacon (None)
+[22:34:30.981]   (waited 50.4 s for the window's focus: back)
+[22:34:30.983] window focus regained
+[22:34:31.725] window focus LOST (injected input is ignored until it returns)
+[22:34:35.329] PASS   U → the Starter Sky → 4 · Back is your history
+[22:34:35.395] PASS step 10: key caps 'Backspace', no beacon (None)
+[22:35:12.345]   (waited 37.0 s for the window's focus: back)
+[22:35:12.347] window focus regained
+[22:35:15.765] PASS   Backspace → Music Box → 5 · The overview
+[22:35:16.846] PASS step 11: key caps 'T', no beacon (None)
+[22:35:18.277] PASS   T opened the overview → 5 · Look round it
+[22:35:19.325] PASS step 12: key caps 'drag', no beacon (None)
+[22:35:19.741]   orbit drag 1: overview yaw moved 2.65 rad
+[22:35:20.827] PASS   orbited → 5 · Back where you stood
+[22:35:20.856] PASS step 13: key caps 'Esc', no beacon (None)
+[22:35:21.031] window focus LOST (injected input is ignored until it returns)
+[22:35:22.338] PASS   Esc back where you stood → done
+[22:35:22.338] PASS all 13 steps done; no cue left behind (None)
+[22:35:22.375] screenshot %TEMP%/fs-cues/r9/15-cues-15-done.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:35:25.483] PASS Start over, skip to the tower: the cue is back (Edge)
+[22:35:25.520] screenshot %TEMP%/fs-cues/r9/16-cues-16-before-leave.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Music Box
+[22:35:25.652] PASS Leave clears the cue: tutorial False, cue None, beacon gone
+[22:35:25.654] PASS   state file: cue mode 'none', angle 0, at [0,0], phase far, keys ''
+[22:35:25.702] screenshot %TEMP%/fs-cues/r9/17-cues-17-after-leave.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=Music Box
+[22:35:25.875] done failures=0

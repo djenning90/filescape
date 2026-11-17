@@ -1,0 +1,39 @@
+[22:35:30.849] planets-tutorial probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:35:35.350] PASS Help → Learn to play starts the walkthrough: 1 · Look around
+[22:35:35.390] screenshot %TEMP%/fs-cues/tut/01-tutorial-1-look.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:35:36.199] PASS the step waits for the action (no turn yet)
+[22:35:37.929] PASS left-drag look done → 1 · Walk to the tower
+[22:35:37.967] screenshot %TEMP%/fs-cues/tut/02-tutorial-2-walk.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:35:44.969] PASS walked to the landmark (3.2 m) → 2 · Jump
+[22:35:46.401] PASS jumped → 2 · Fly to a folder
+[22:35:48.700] PASS G: flew to Music Box (a wrong turn)
+[22:35:48.700] PASS a visible wind-up first: 0.48 s (0.4 s, aligned to the beat ±0.09 s)
+[22:35:48.700] PASS a brisk crossing: 1.73 s
+[22:35:48.700] PASS the landing does not cut: the traveller moves 0.0 % of the screen height in the landing frame (flight frames ≤ 0.0 %, the largest at 0.00 of the way)
+[22:35:48.700] PASS landed on foot
+[22:35:49.647] PASS a wrong turn: the card offers Back to the lesson and keeps the step
+[22:35:49.684] screenshot %TEMP%/fs-cues/tut/03-tutorial-wrong-turn.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:35:53.638] PASS Back to the lesson returns to the Starter Sky, same step
+[22:36:00.342] PASS Space: flew to Lantern Workshop
+[22:36:00.342] PASS a visible wind-up first: 0.49 s (0.4 s, aligned to the beat ±0.09 s)
+[22:36:00.343] PASS a brisk crossing: 1.52 s
+[22:36:00.343] PASS the landing does not cut: the traveller moves 0.0 % of the screen height in the landing frame (flight frames ≤ 0.0 %, the largest at 0.00 of the way)
+[22:36:00.343] PASS landed on foot
+[22:36:01.642] PASS launched into Lantern Workshop → 3 · A software project
+[22:36:01.682] screenshot %TEMP%/fs-cues/tut/04-tutorial-4-bench.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=Music Box
+[22:36:08.483] PASS jumped onto the workbench → 3 · Read the README
+[22:36:10.112] PASS E read the README → 4 · Up a level
+[22:36:10.150] screenshot %TEMP%/fs-cues/tut/05-tutorial-5-readme.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=README.md
+[22:36:14.667] PASS U went up → 4 · Straight to a folder
+[22:36:18.416] PASS J list → Music Box → 4 · Up is the parent
+[22:36:22.729] PASS U → the Starter Sky → 4 · Back is your history
+[22:36:26.004] PASS Backspace → Music Box (history, not up) → 5 · The overview
+[22:36:28.450] PASS T opened the overview → 5 · Look round it
+[22:36:30.946] PASS orbited the overview → 5 · Back where you stood
+[22:36:30.985] screenshot %TEMP%/fs-cues/tut/06-tutorial-overview.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:36:32.393] PASS Esc back where you stood: the walkthrough is done and offers This computer
+[22:36:32.431] screenshot %TEMP%/fs-cues/tut/07-tutorial-done.png current=%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:36:35.374] PASS Start over replays from the first step
+[22:36:35.521] PASS Skip step goes on: 1 · Walk to the tower
+[22:36:35.671] PASS Leave closes the walkthrough mid-lesson
+[22:36:35.675] done failures=0

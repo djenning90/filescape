@@ -115,11 +115,10 @@ public partial class TutorialCue : Control
             {
                 var near = _state.Phase != TutorialCuePhase.Far;
                 var tip = _state.Anchor + new Vector2(0, bob);
-                // A bigger chevron when you are close: the cue changes as you approach. A soft halo behind it makes it
-                // pop against a busy sky without hiding what is there.
+                // A bigger chevron when you are close: the cue changes as you approach. (A halo disc behind it was tried
+                // and read as a grey smudge over the pink and violet skies; the dark outline is enough.)
                 var w = near ? 28f : 22f;
                 var h = near ? 36f : 30f;
-                DrawCircle(tip + new Vector2(0, -h * 0.55f), h * 0.95f, CueColor with { A = 0.18f });
                 Chevron(tip, w, h, 1f);
                 // Far: how far, and whether it is over the horizon; near: what to do there (the pill).
                 var label = _state.Phase != TutorialCuePhase.Far ? "" : _state.OverHorizon ? $"{_state.DistanceMetres:0} m · over the horizon" : $"{_state.DistanceMetres:0} m";
