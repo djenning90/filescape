@@ -867,6 +867,8 @@ try {
     $t = Turned $a (Heading)
     Check ((State).selected -ne $wo[0] -and $t -ge 20) "a left-drag that starts on world $($wo[0]) turns the camera ($([Math]::Round($t,1))deg) and selects nothing (selected=$((State).selected))"
     $s = State; $wo = $s.planets.worldOnScreen
+    # The drag turned the camera: look round again if no world is left in view (found 2026-11-17, a null click target).
+    for ($k = 0; $k -lt 12 -and -not $wo; $k++) { Hold-Key 'Right' 250; Start-Sleep -Milliseconds 1200; $wo = (State).planets.worldOnScreen }
     Client-Click $w ([int]$wo[1]) ([int]$wo[2])
     $s = State
     Check ($s.selected -eq $wo[0]) "a click on world $($wo[0]) selects it on release (selected=$($s.selected))"
