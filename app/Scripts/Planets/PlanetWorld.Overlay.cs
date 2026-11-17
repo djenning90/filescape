@@ -4,6 +4,7 @@ using FileScape.App.Visual;
 using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
+using FileScape.Core.Shell;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -153,6 +154,7 @@ public partial class PlanetWorld
         open.Pressed += () => _s.OpenSelection();
         var row = new HBoxContainer();
         row.AddChild(open);
+        row.AddChild(MakeExpandButton()); // PlanetWorld.Reading: the expanded reading view
         row.AddChild(close);
         v.AddChild(_previewTitle);
         v.AddChild(_previewMeta);
@@ -285,7 +287,7 @@ public partial class PlanetWorld
         _previewImage.Visible = false;
         _previewImage.Texture = null;
         _previewText.Visible = false;
-        _previewText.Text = "";
+        PreviewPlain("");
         _previewPlayer.Stop();
         _previewPanel.Visible = true;
         if (!_s.IsLive || n.Kind != NodeKind.File) return; // sample data has no contents; links and folders are not previewed
@@ -293,9 +295,9 @@ public partial class PlanetWorld
         {
             // Reading a cloud placeholder can make its provider download it: never for a preview (Open asks first).
             _previewText.Visible = true;
-            _previewText.Text = (n.Flags & NodeFlags.CloudPlaceholder) != 0
+            PreviewPlain((n.Flags & NodeFlags.CloudPlaceholder) != 0
                 ? "A cloud file that may not be stored on this PC: FileScape does not read it for a preview, so nothing is downloaded. Open (Enter) asks first."
-                : "A reparse point (a link or a special file): FileScape does not read through it for a preview.";
+                : "A reparse point (a link or a special file): FileScape does not read through it for a preview.");
             return;
         }
 
@@ -314,19 +316,26 @@ public partial class PlanetWorld
         else if (ext is ".wav" or ".ogg" or ".mp3" && n.Size <= MaxAudioBytes)
         {
             _previewText.Visible = true;
-            _previewText.Text = "♪ loading a preview…";
+            PreviewPlain("♪ loading a preview…");
             _ = Task.Run(() => Thumbnails.ReadBounded(path, MaxAudioBytes)).ContinueWith(t => Deliver(() => PlayPreview(id, t.Result, ext)));
         }
         else if (PlanetText.LooksLikeText(n.Name) && n.Size <= MaxTextBytes)
         {
             _previewText.Visible = true;
-            _previewText.Text = "…";
-            _ = Task.Run(() => PlanetText.ReadPreview(path, PreviewTextBytes)).ContinueWith(t => Deliver(() => PreviewSays(id, t.Result)));
+            PreviewPlain("…");
+            // Markdown is rendered, other text shown plain (PlanetWorld.Reading, PLANET-44); a failed read says why, plainly.
+            var name = n.Name;
+            _ = Task.Run(() => Readme.Read(path, PreviewTextBytes)).ContinueWith(t => Deliver(() =>
+            {
+                var r = t.Result;
+                if (r.Error != null) PreviewSays(id, r.Error);
+                else PreviewText(id, name, r.Truncated ? r.Text + "\n…" : r.Text);
+            }));
         }
         else
         {
             _previewText.Visible = true;
-            _previewText.Text = "No preview for this kind of file here. Enter opens it with Windows.";
+            PreviewPlain("No preview for this kind of file here. Enter opens it with Windows.");
         }
     }
 
@@ -345,7 +354,7 @@ public partial class PlanetWorld
     {
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
         _previewText.Visible = true;
-        _previewText.Text = text;
+        PreviewPlain(text);
     }
 
     /// <summary>A decoded picture: shown on its easel in the world, and in the panel if it is still open on it.</summary>

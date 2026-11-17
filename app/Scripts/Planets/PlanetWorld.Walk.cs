@@ -137,6 +137,7 @@ public partial class PlanetWorld
         _camBlendFrom = new Transform3D(Basis.LookingAt((look - eye).Normalized(), up), eye);
         _camera.GlobalTransform = _camBlendFrom;
         _camBlend = _camBlendTotal = seconds;
+        BeginArrivalFraming(); // the opening glides down into the arrival framing, not straight to the close follow
         EstablishingShots++;
     }
 
@@ -185,6 +186,7 @@ public partial class PlanetWorld
         if (_hop != null)
         {
             _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * OverlookBlendPerSecond);
+            UpdateArrivalFraming(dt, moved: true); // a hop is a move
             UpdateHop(dt);
             return;
         }
@@ -241,7 +243,7 @@ public partial class PlanetWorld
         }
 
         if (BeginFallIfThrough()) return; // through a broken world's rim: the fall takes over (PlanetWorld.Hazard)
-        UpdateBench(dt, ev.Kind);
+        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump) TwirlNearFile(); // PLANET-43: a twirl by a file previews it
         if (_walker.Footsteps != _lastFootsteps)
         {
             _lastFootsteps = _walker.Footsteps;
@@ -262,6 +264,7 @@ public partial class PlanetWorld
         }
 
         _overlook01 = Mathf.MoveToward(_overlook01, wantOverlook ? 1 : 0, dt * OverlookBlendPerSecond);
+        UpdateArrivalFraming(dt, moved: jump || wish.LengthSquared() > 0.01f || !_walker.Grounded);
         UpdateCamera(dt, lookAt: null, moving: _walker.Velocity.Length() > 0.8f); // above 0.8 m/s counts as moving (the camera may swing in)
         UpdateFocus();
         UpdateEdgeWarning(dt);
@@ -358,10 +361,12 @@ public partial class PlanetWorld
         // Near a broken edge (PlanetWorld.Hazard) the camera rises and looks ahead, so you see down into the hole before
         // you step off it; elsewhere _edgeNearness is 0 and this adds nothing.
         var peek = _edgeNearness;
-        var pitch = Mathf.DegToRad(Mathf.Lerp(_camPitchDegrees, OverlookPitchDegrees, _overlook01) + EdgePeekPitchDegrees * peek);
-        var dist = Mathf.Lerp(_camDistance, OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek;
+        // Just arrived: a higher, further boom looking further ahead (PlanetWorld.Arrival, PLANET-42); 0 once you move.
+        var arrive = ArrivalWeight();
+        var pitch = Mathf.DegToRad(Mathf.Lerp(Mathf.Lerp(_camPitchDegrees, ArrivalPitchDegrees, arrive), OverlookPitchDegrees, _overlook01) + EdgePeekPitchDegrees * peek);
+        var dist = Mathf.Lerp(Mathf.Lerp(_camDistance, ArrivalDistanceHere(), arrive), OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek;
         // The aim point rises by half the wind-up's lift (the eye rises by all of it), so the view tilts down a little.
-        var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * (LookAheadMetres + EdgePeekAheadMetres * peek);
+        var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * (LookAheadMetres + EdgePeekAheadMetres * peek + ArrivalLookAheadMetres * arrive);
         var desired = target - f * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist + extraUp);
         // Never under the ground: keep the eye at least 0.9 m above the surface below it (the planet's centre is the origin,
         // so pushing the eye out along its own direction lifts it straight up).

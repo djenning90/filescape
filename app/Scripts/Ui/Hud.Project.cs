@@ -122,6 +122,7 @@ public partial class Hud
     /// <summary>Shows a README Main has already read and converted to BBCode (<paramref name="footer"/>: what was shown, e.g. a truncation note), from the top, above other panels.</summary>
     public void ShowReadme(string title, string bbcode, string footer)
     {
+        FitReadingWidth();
         _readmeTitle.Text = title;
         _readmeText.Text = bbcode;
         _readmeText.ScrollToLine(0);
@@ -129,6 +130,32 @@ public partial class Hud
         _readmePanel.Visible = true;
         _readmePanel.MoveToFront();
     }
+
+    /// <summary>The reading view's widest text column, viewport units: about 110 characters at 15 px, a comfortable line
+    /// (PLANET-44, 2026-11-16); a narrower window keeps the 120-unit side insets it always had.</summary>
+    private const float ReadingMaxWidth = 1040f;
+
+    /// <summary>Centres the reading view and caps its width at <see cref="ReadingMaxWidth"/> for the current window.</summary>
+    private void FitReadingWidth()
+    {
+        var width = _root.GetViewportRect().Size.X;
+        var inset = MathF.Max(120f, (width - ReadingMaxWidth) / 2f);
+        _readmePanel.OffsetLeft = inset;
+        _readmePanel.OffsetRight = -inset;
+    }
+
+    /// <summary>The reading view's text is longer than its window, so it scrolls (probes).</summary>
+    public bool ReadmeScrolls => _readmeText.GetVScrollBar() is { } bar && bar.MaxValue > bar.Page + 1;
+
+    /// <summary>Scrolls the reading view by a fraction of its page (probes; the wheel and the scrollbar do the same).</summary>
+    public void ScrollReadme(float pages)
+    {
+        var bar = _readmeText.GetVScrollBar();
+        bar.Value += bar.Page * pages;
+    }
+
+    /// <summary>The reading view's scroll position, 0 at the top (probes).</summary>
+    public double ReadmeScroll => _readmeText.GetVScrollBar().Value;
 
     /// <summary>Closes the viewer (Esc or Close); the text stays until the next <see cref="ShowReadme"/>.</summary>
     public void HideReadme()

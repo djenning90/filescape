@@ -13,8 +13,8 @@ namespace FileScape.App.Planets;
 /// The repository workbench (PLANET-29, AD-50). On a repository world the overlook is a low workbench (one plain jump).
 /// <list type="bullet">
 /// <item><b>Land on it</b> (or press E there, or click it): the project's README and key entry points come into view —
-/// they rise out of the bench as a slow ring of glowing cards, each named with what it is for (click one to select it,
-/// double-click to go to it), and they are listed on the bench's panel.</item>
+/// they rise out of the bench as a slow ring of glowing cards, each named with what it is for (click one to select it;
+/// double-click opens a file or goes to a folder, PLANET-43), and they are listed on the bench's panel.</item>
 /// <item><b>Spin on it</b> (jump from the bench and twirl in the air, Space twice): the README opens in the preview.</item>
 /// </list>
 /// Movement only reveals, selects and previews. Opening a file with Windows (an editor, an IDE) stays a deliberate
@@ -116,11 +116,11 @@ public partial class PlanetWorld
         _benchList.ItemActivated += i =>
         {
             if (_universe != null || !ReferenceEquals(_s.Tree, _tree) || i < 0 || i >= _benchIds.Count) return;
-            BenchGoTo(_benchIds[(int)i]);
+            DoubleClickOn(_benchIds[(int)i], sky: false); // the same rule as the cards (PLANET-43)
         };
         var hint = new Label
         {
-            Text = "Click: select (the card shows it) · double-click: go to it · spin on the bench (Space, Space) or E: read the README · Enter opens the selected file with Windows",
+            Text = "Click: select (the card shows its actions) · double-click: open a file, go to a folder · spin on the bench (Space, Space) or E: read the README · Enter opens the selection",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         hint.AddThemeFontSizeOverride("font_size", 12);
@@ -158,10 +158,12 @@ public partial class PlanetWorld
         _benchEntries = entries;
     }
 
-    /// <summary>Per frame while walking: landing on the bench reveals; a twirl from it reads the README.</summary>
-    private void UpdateBench(float dt, Core.Movement.JumpEventKind ev)
+    /// <summary>Per frame while walking: landing on the bench reveals; a twirl from it reads the README. True when this
+    /// frame's twirl was the bench's (so the twirl by a file, <see cref="TwirlNearFile"/>, does not also act).</summary>
+    private bool UpdateBench(float dt, Core.Movement.JumpEventKind ev)
     {
-        if (!OnBenchWorld) return;
+        if (!OnBenchWorld) return false;
+        var took = false;
         var onBench = StandingOnBench();
         if (onBench && !_wasOnBench) RevealBench("landed");
         // A jump leaves the ground in the frame it is reported: whether it left from the bench is last frame's answer.
@@ -171,12 +173,14 @@ public partial class PlanetWorld
         {
             _jumpFromBench = false;
             ReadReadme("spin");
+            took = true;
         }
 
         if (ev == Core.Movement.JumpEventKind.Land && !onBench) _jumpFromBench = false;
         if (_benchRevealed) _benchReveal01 = MathF.Min(1, _benchReveal01 + dt / BenchRevealSeconds);
         UpdateBenchTiles(dt);
         if (_benchLamp != null) _benchLamp.LightEnergy = Mathf.Lerp(_benchLamp.LightEnergy, onBench ? BenchLampOnEnergy : BenchLampOffEnergy, 1 - MathF.Exp(-BenchLampRatePerSecond * dt));
+        return took;
     }
 
     /// <summary>
@@ -354,12 +358,13 @@ public partial class PlanetWorld
         return id;
     }
 
-    /// <summary>A click on a card: select it (the card shows it); a double-click goes to it.</summary>
+    /// <summary>A click on a card: select it (the selection card shows its actions); a double-click opens a file or goes to
+    /// a folder (<see cref="DoubleClickOn"/>, PLANET-43).</summary>
     private bool ClickedBenchTile(Vector2 screen, bool doubleClick)
     {
         var id = PickBenchTile(screen);
         if (id < 0) return false;
-        if (doubleClick) BenchGoTo(id);
+        if (doubleClick) DoubleClickOn(id, sky: false);
         else
         {
             _s.Select(id);
@@ -374,6 +379,7 @@ public partial class PlanetWorld
     /// <summary>The bench's names on screen (while revealed): each card is named with what it is for.</summary>
     private void AddBenchSigns(FsTree tree)
     {
+        AddBenchMarkerSign(); // before the reveal: where the bench is (PlanetWorld.Arrival)
         if (!_benchRevealed || _benchReveal01 < 0.45f) return; // names appear as the cards are nearly half risen
         var up = _camera.GlobalBasis.Y;
         for (var i = 0; i < _tiles.Count; i++)
@@ -416,26 +422,6 @@ public partial class PlanetWorld
         var idx = _benchIds.IndexOf(readme.NodeId);
         if (idx >= 0) _benchList.Select(idx);
         GD.Print($"[planets] README read on the bench ({how}): {tree[readme.NodeId].Name}");
-    }
-
-    /// <summary>From the bench's panel: go to a key location (fly to a folder; stand by a file here; preview one further down).</summary>
-    private void BenchGoTo(int id)
-    {
-        if (_universe != null || _s.Tree is not { } tree || !tree.Contains(id)) return;
-        var n = tree[id];
-        _s.Select(id);
-        if (n.IsDirectory || n.Kind == NodeKind.Link)
-        {
-            LaunchToSelection(); // leaves from its launcher's bearing when it has one
-            return;
-        }
-
-        if (n.ParentId == _current?.FolderId) Approach(id);
-        else
-        {
-            ShowPreview(tree, n); // a file one level down (src/Program.cs): previewed from here
-            _benchPreviewId = id;
-        }
     }
 
     /// <summary>A click on the workbench itself (when nothing else is hit): the same as landing on it.</summary>

@@ -489,6 +489,7 @@ public partial class PlanetWorld
         _transfer = null;
         _camBlend = _camBlendTotal = LandingBlendSeconds;
         _camBlendFrom = _camera.GlobalTransform;
+        BeginArrivalFraming(); // PLANET-42: land into the higher arrival view (PlanetWorld.Arrival)
         LastLandingCameraJump = 0; // measured by the probe across the frame (camera position before vs after)
         Mark("land");
         ShowTitleCard(tree, body.FolderId, null);
@@ -574,6 +575,7 @@ public partial class PlanetWorld
             _warpFlash = 0;
             _camBlend = _camBlendTotal = LandingBlendSeconds;
             _camBlendFrom = _camera.GlobalTransform;
+            BeginArrivalFraming();
             Mark("land");
             ShowTitleCard(tree, _current.FolderId, null);
         }

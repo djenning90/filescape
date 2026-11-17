@@ -63,67 +63,11 @@ public static class Readme
     }
 
     /// <summary>
-    /// Markdown (or plain text) → Godot BBCode for a read-only view. Every '[' of the source is escaped first, so no tag
-    /// in the file can become markup; only the converter's own tags format headings, emphasis, code and lists.
+    /// Markdown (or plain text) → Godot BBCode for a read-only view: <see cref="MarkdownText"/> (PLANET-44). Every '[' of
+    /// the source is escaped, so no tag in the file can become markup.
     /// </summary>
-    public static string ToBbcode(string text, bool markdown)
-    {
-        var sb = new StringBuilder();
-        var inCode = false;
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.Replace("[", "[lb]");
-            if (!markdown)
-            {
-                sb.Append(line).Append('\n');
-                continue;
-            }
-
-            if (raw.TrimStart().StartsWith("```", StringComparison.Ordinal))
-            {
-                sb.Append(inCode ? "[/code][/bgcolor]\n" : "[bgcolor=#1c2333][code]"); // a dark slate panel behind code blocks
-                inCode = !inCode;
-                continue;
-            }
-
-            if (inCode)
-            {
-                sb.Append(line).Append('\n');
-                continue;
-            }
-
-            var t = line.TrimStart();
-            var hashes = t.TakeWhile(c => c == '#').Count();
-            if (hashes is > 0 and <= 6 && t.Length > hashes && t[hashes] == ' ')
-            {
-                var size = hashes switch { 1 => 26, 2 => 22, 3 => 19, _ => 17 }; // heading font sizes, pixels: # largest, #### and deeper alike
-                sb.Append($"[font_size={size}][b]").Append(Inline(t[(hashes + 1)..])).Append("[/b][/font_size]\n");
-                continue;
-            }
-
-            if (t.StartsWith("- ", StringComparison.Ordinal) || t.StartsWith("* ", StringComparison.Ordinal))
-            {
-                sb.Append(new string(' ', (line.Length - t.Length) * 2)).Append(" • ").Append(Inline(t[2..])).Append('\n');
-                continue;
-            }
-
-            sb.Append(Inline(line)).Append('\n');
-        }
-
-        if (inCode) sb.Append("[/code][/bgcolor]");
-        return sb.ToString();
-    }
-
-    /// <summary>Inline markdown on an already escaped line: images to alt text, links to "text ‹url›", code, bold.</summary>
-    private static string Inline(string s)
-    {
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"!\[lb\]([^\]]*)\]\(([^)]*)\)", m => $"[i](image: {m.Groups[1].Value})[/i]");
-        // Links: the text underlined, the address after it in muted grey-blue so it reads as metadata, not as something to click.
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\[lb\]([^\]]+)\]\(([^)]*)\)", m => $"[u]{m.Groups[1].Value}[/u] [color=#8899aa]‹{m.Groups[2].Value}›[/color]");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"`([^`]+)`", m => $"[code]{m.Groups[1].Value}[/code]");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\*\*([^*]+)\*\*", m => $"[b]{m.Groups[1].Value}[/b]");
-        return s;
-    }
+    public static string ToBbcode(string text, bool markdown, int baseFontSize = 15) =>
+        markdown ? MarkdownText.ToBbcode(text, baseFontSize) : MarkdownText.PlainToBbcode(text);
 }
 
 /// <summary>Which platform a project lives on, and therefore how it may be opened (DEV-03).</summary>

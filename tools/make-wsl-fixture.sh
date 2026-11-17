@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Creates a small, synthetic WSL fixture for LOC-03 / LINK-01 checks and prints its \\wsl.localhost path.
 #   tools/make-wsl-fixture.sh [parent]     default parent: /tmp/filescape-wsl-fixtures
+#   tools/make-wsl-fixture.sh --readme [parent]   a repository with a long real README (for --automate=planets-reading)
 #   tools/make-wsl-fixture.sh --delete <dir>
 # Contents: case pairs (Notes/notes, README.md/readme.md), Linux symlinks (to a folder, a file, a missing target,
 # an absolute path, a loop, and /mnt/c), a FIFO, an executable script (never run by FileScape), and a small project
@@ -9,6 +10,24 @@ set -euo pipefail
 if [[ "${1:-}" == "--delete" ]]; then
   d="${2:?dir}"; [[ -f "$d/.filescape-wsl-fixture" ]] || { echo "refusing: $d is not a FileScape WSL fixture" >&2; exit 2; }
   rm -rf -- "$d"; echo "deleted $d"; exit 0
+fi
+if [[ "${1:-}" == "--readme" ]]; then
+  # PLANET-44: a repository whose README is long, real Markdown (a copy of FileScape's own README, headings, lists, a
+  # table, code, local images) plus a plain notes.txt, for --automate=planets-reading. Kept apart from the main fixture
+  # so the other journeys' counts do not change.
+  repo="$(cd "$(dirname "$0")/.." && pwd)"
+  parent="${2:-/tmp/filescape-wsl-fixtures}"
+  root="$parent/readme-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$root/.git/objects" "$root/.git/refs/heads" "$root/src" "$root/docs"
+  touch "$root/.filescape-wsl-fixture"
+  echo "ref: refs/heads/main" > "$root/.git/HEAD"
+  cp "$repo/README.md" "$root/README.md"
+  cp "$repo/docs/units.md" "$root/docs/units.md"
+  printf 'namespace Demo;\npublic static class Program { public static void Main() { } }\n' > "$root/src/Program.cs"
+  printf 'Plain notes: *not emphasis*, # not a heading, [b]not bold[/b].\nSecond line.\n' > "$root/notes.txt"
+  distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
+  echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
+  exit 0
 fi
 parent="${1:-/tmp/filescape-wsl-fixtures}"
 root="$parent/wsl-$(date +%Y%m%d-%H%M%S)"

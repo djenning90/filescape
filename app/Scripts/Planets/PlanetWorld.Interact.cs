@@ -163,7 +163,8 @@ public partial class PlanetWorld
         else OrbitCamera(screenPixels);
     }
 
-    /// <summary>A left click released without a drag: select what is under it (double-click: go there).</summary>
+    /// <summary>A left click released without a drag: select what is under it; a double-click goes to a folder or opens a
+    /// file (the rule is in PlanetWorld.Actions). Each click's resolution is traced.</summary>
     private void Click(Vector2 at, bool doubleClick)
     {
         if (_universe != null)
@@ -175,16 +176,20 @@ public partial class PlanetWorld
             return;
         }
 
-        if (Busy) return;
-        if (ClickedBenchTile(at, doubleClick)) return;
+        var how = doubleClick ? "double" : "single";
+        if (Busy) { TraceClick($"{how} at ({at.X:0},{at.Y:0}): ignored (travelling)"); return; }
+        var tile = PickBenchTile(at);
+        if (ClickedBenchTile(at, doubleClick)) { TraceClick($"{how} at ({at.X:0},{at.Y:0}): bench card #{tile} → {ActionWord(tile, doubleClick)}"); return; }
         var hit = Pick(at);
         if (hit.Id < 0)
         {
-            ClickedBench(at);
+            var bench = ClickedBench(at);
+            TraceClick($"{how} at ({at.X:0},{at.Y:0}): nothing picked → {(bench ? "the workbench (reveal)" : "nothing")}");
             return;
         }
 
-        if (doubleClick) Activate(hit.Id, hit.Sky);
+        TraceClick($"{how} at ({at.X:0},{at.Y:0}): {(hit.Sky ? "world in the sky" : "object or pad")} #{hit.Id} → {ActionWord(hit.Id, doubleClick)}");
+        if (doubleClick) DoubleClickOn(hit.Id, hit.Sky); // PLANET-43: a folder goes there, a file opens (PlanetWorld.Actions)
         else
         {
             _s.Select(hit.Id);
@@ -238,7 +243,8 @@ public partial class PlanetWorld
         return false;
     }
 
-    /// <summary>A double-click (or Enter in the list): a world or link launches there; a file here is approached.</summary>
+    /// <summary>Enter or a double-click in the planet's list (J): a world or link launches there; a file here is approached
+    /// (the list is the "where is it?" tool; on the world itself a double-click opens a file, PlanetWorld.Actions).</summary>
     private void Activate(int id, bool sky)
     {
         var tree = _s.Tree;
@@ -394,7 +400,8 @@ public partial class PlanetWorld
             {
                 var n = tree[it2.NodeId];
                 var sel = _s.Selection.Selected == n.Id;
-                SetPrompt(sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
+                // The twirl's preview is named before you do it (PLANET-43); opening stays Enter (or a double-click).
+                SetPrompt(sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
             }
         }
         else if (_focusTelescope && OnBenchWorld)
