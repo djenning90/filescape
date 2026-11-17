@@ -119,6 +119,10 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   journey planets-route-hub planets-route-hub.log 300 --automate=planets-route-hub --root=hub --vis=planets --test-shell=record --ui-scale=1 "--repo=${FILESCAPE_WSL_FIXTURE:+$FILESCAPE_WSL_FIXTURE\\project}" --tier=functional
+  # 2026-11-16 (PLANET-39..41): the Destinations tree, trips hop by hop and their Stop, Locations, favourites; one folder
+  # held "still listing" by the delay instrument; then the fixture's inaccessible folder as the list shows it.
+  journey planets-navigation planets-navigation.log 300 --automate=planets-navigation --root=sample --vis=planets --test-shell=record --ui-scale=1 --test-list-delay-ms=12000 "--test-list-delay-match=Pressed Flowers" --tier=functional
+  journey planets-navigation-denied planets-navigation-denied.log 200 --automate=planets-navigation-denied "--root=$R" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
 fi
 
 if [[ "$TIER" == release ]]; then

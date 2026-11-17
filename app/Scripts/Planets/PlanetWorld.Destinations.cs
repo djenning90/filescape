@@ -167,6 +167,7 @@ public partial class PlanetWorld
         else OpenContents(null);
     }
 
+    /// <summary>Closes the list and gives the keyboard back to walking (what was opened in the tree is kept for next time).</summary>
     public void CloseContents()
     {
         _contentsPanel.Visible = false;
