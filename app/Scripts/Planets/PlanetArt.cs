@@ -334,8 +334,20 @@ public static partial class PlanetArt
     public static ArrayMesh PlanetMesh(PlanetShape shape, PlanetPalette palette, int subdivisions = 5) =>
         PlanetMesh(PlanetMeshArrays(shape, palette, subdivisions));
 
-    /// <summary>The ground's vertex data, computed from plain maths only (no engine objects), so it can be made on a worker thread.</summary>
-    public sealed record GroundArrays(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, int[] Indices);
+    /// <summary>
+    /// The ground's vertex data, computed from plain maths only (no engine objects), so it can be made on a worker thread.
+    /// A Hazard World's ground also carries the outline of its broken edges (<see cref="RimOutline"/>; null elsewhere).
+    /// </summary>
+    public sealed record GroundArrays(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, int[] Indices, RimOutline? Rim = null);
+
+    /// <summary>
+    /// A Hazard World's ground is this finely divided (≈ 0.3 m edges at 18–25 m): its bridges are 1.8 m wide and their
+    /// edges must read cleanly (AD-59). 81,920 triangles before the cut, of which about a third are kept.
+    /// </summary>
+    public const int HazardSubdivisions = 6;
+
+    /// <summary>A Hazard World hanging in another's sky is drawn this finely (≈ 1.2 m edges): its islands and widest bridges read from afar.</summary>
+    public const int HazardPreviewSubdivisions = 4;
 
     /// <summary>Uploads ground vertex data as a mesh (main thread).</summary>
     public static ArrayMesh PlanetMesh(GroundArrays g)
@@ -356,7 +368,7 @@ public static partial class PlanetArt
     /// The ground's vertices (each at <see cref="PlanetShape.GroundRadius"/>, so it matches walking exactly), normals and
     /// colours. Thread-safe: plain maths on value types (2026-11-11: moved off the main thread, where it cost 40–140 ms).
     /// </summary>
-    /// <param name="shell">A hazard world's broken shell (PLANET-34): its holes are cut out and the crust added (<see cref="BreakShell"/>).</param>
+    /// <param name="shell">A Hazard World's broken shell (PLANET-34, PLANET-46): only its islands and bridges are kept, and the crust added (<see cref="BreakShell"/>).</param>
     public static GroundArrays PlanetMeshArrays(PlanetShape shape, PlanetPalette palette, int subdivisions = 5, BrokenShell? shell = null)
     {
         var (dirs, tris) = Icosphere(Math.Clamp(subdivisions, 0, 6));
@@ -397,7 +409,8 @@ public static partial class PlanetArt
                 path = MathF.Max(path, 0.35f * (1 - Smooth(sr * 0.6f, sr + 0.4f, dist)));
                 path = MathF.Max(path, 0.6f * (1 - Smooth(0.35f, 1.0f, MathF.Abs(dist - (sr + 0.8f)))));
                 clear = MathF.Min(clear, Smooth(sr, sr + 3f, dist));
-                if (s > 0) path = MathF.Max(path, 0.65f * (1 - Smooth(0.45f, 1.2f, ArcDistance(nd, spots[0].Direction, sd, shape.Radius))));
+                // (Not on a Hazard World: its straight ways would cross open sky; its route is lit along the bridges instead.)
+                if (s > 0 && shell == null) path = MathF.Max(path, 0.65f * (1 - Smooth(0.45f, 1.2f, ArcDistance(nd, spots[0].Direction, sd, shape.Radius))));
             }
 
             // Patches of the accent (flower meadows: features ≈ 6.5 m, where the noise passes 0.6–0.75) away from
@@ -411,7 +424,7 @@ public static partial class PlanetArt
         }
 
         var ground = new GroundArrays(verts, normals, colors, tris.ToArray());
-        return shell != null ? BreakShell(ground, shape, shell) : ground;
+        return shell != null ? BreakShell(ground, shape, shell, palette) : ground;
     }
 
     /// <summary>Distance along the surface (metres) from <paramref name="p"/> to the great-circle arc a→b (beyond the ends: to the nearer end).</summary>

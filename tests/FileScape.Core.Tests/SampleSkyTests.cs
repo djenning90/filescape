@@ -117,24 +117,32 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
 
         Directory.EnumerateFileSystemEntries(P("Quiet Moon")).Should().BeEmpty();
 
-        // Event Horizon, the sample hazard (PLANET-34): its marker, notes, and two child worlds to travel to.
+        // Event Horizon, the sample hazard (PLANET-34): its marker, notes, and three child worlds to travel to, one of them
+        // Debris Field, a crowded Hazard World (PLANET-46) with sixteen child worlds of one log each.
         Files(P("Event Horizon")).Should().BeEquivalentTo(HazardRules.SampleMarkerName, "README.txt", "caution.txt", "orbit-log.csv");
-        Dirs(P("Event Horizon")).Should().BeEquivalentTo("Accretion Disc", "Photon Sphere");
+        Dirs(P("Event Horizon")).Should().BeEquivalentTo("Accretion Disc", "Debris Field", "Photon Sphere");
+        Files(P("Event Horizon", "Debris Field")).Should().BeEquivalentTo(HazardRules.SampleMarkerName, "manifest.txt");
+        Dirs(P("Event Horizon", "Debris Field")).Should().BeEquivalentTo(SampleSky.DebrisFieldWorlds).And.HaveCount(16);
+        foreach (var d in SampleSky.DebrisFieldWorlds) Files(P("Event Horizon", "Debris Field", d)).Should().Equal("log.txt");
         Files(P("Event Horizon", "Accretion Disc")).Should().Equal("spin-notes.md");
         Files(P("Event Horizon", "Photon Sphere")).Should().Equal("postcard.txt");
         HazardRules.SampleRootMarkerName.Should().Be(SampleSky.MarkerName, "the hazard rule recognises the sample by the sample's own marker");
     }
 
     [Fact]
-    public void The_written_sample_classifies_event_horizon_and_nothing_else_as_a_hazard()
+    public void The_written_sample_classifies_event_horizon_and_debris_field_and_nothing_else_as_hazards()
     {
         var (tree, _) = ScanRunner.Run(new DirectoryScanner(sky.Root));
         var hazards = tree.Nodes.Where(n => n.IsDirectory && HazardRules.IsHazard(tree, n.Id)).Select(n => n.Name).ToList();
-        hazards.Should().Equal("Event Horizon");
+        hazards.Should().BeEquivalentTo("Event Horizon", "Debris Field");
         var comp = PlanetComposer.Compose(tree, tree.Nodes.First(n => n.Name == "Event Horizon").Id);
         comp.Hazard!.Rule.Should().Be(HazardRule.Sample);
         comp.Surface.Shell.Should().NotBeNull();
-        comp.Launchers.Should().HaveCount(3, "two child worlds and the way back");
+        comp.Launchers.Should().HaveCount(4, "three child worlds and the way back");
+        var debris = PlanetComposer.Compose(tree, tree.Nodes.First(n => n.Name == "Debris Field").Id);
+        debris.Surface.Shell.Should().NotBeNull();
+        debris.Launchers.Count(l => !l.IsParent).Should().BeLessThan(16, "more child worlds than its ground carries");
+        debris.SkyBodies.Count(s => s.InBelt).Should().Be(16 - debris.Launchers.Count(l => !l.IsParent), "the rest are moons");
     }
 
     [Fact]

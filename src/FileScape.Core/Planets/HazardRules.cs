@@ -112,7 +112,7 @@ public static class HazardRules
 
         if (HasFile(tree, node, SampleMarkerName) && InsideSample(tree, folderId))
         {
-            return new HazardReason(HazardRule.Sample, node.Name, "the Starter Sky's sample hazard: a broken world to practise falling off, safely.");
+            return new HazardReason(HazardRule.Sample, node.Name, "a FileScape sample Hazard World: somewhere to practise falling off, safely.");
         }
 
         return null;

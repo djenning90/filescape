@@ -440,6 +440,11 @@ public static class PlanetComposer
             throw new ArgumentException("The overlook's stepping stones would rise more than MaxStepRise.", nameof(parameters));
         }
 
+        // A Hazard World (PLANET-34, PLANET-46, AD-59) carries fewer pads and files on its scarce ground: the rest of its
+        // child folders hang in the belt (click and G, or the list), the rest of its files go to the groves' piles.
+        var hazard = HazardRules.Classify(tree, folderId);
+        if (hazard != null) p = p with { MaxLaunchers = Math.Min(p.MaxLaunchers, HazardMaxPads), MaxItems = Math.Min(p.MaxItems, HazardMaxItems), ArrivalRadius = MathF.Min(p.ArrivalRadius, HazardArrivalRadius) };
+
         var state = Listing.Of(folder);
         var name = tree.DisplayName(folderId);
         var theme = ThemeOf(tree, folderId, visible);
@@ -497,8 +502,7 @@ public static class PlanetComposer
         var radius = theme == PlanetTheme.Quiet ? QuietPlanetRadius
             : theme == PlanetTheme.Veiled && nothingShown ? VeiledEmptyPlanetRadius
             : Math.Clamp(PlanetRadiusBase + PlanetRadiusPerSqrtShown * MathF.Sqrt(itemCount + LauncherWeight * launched.Count), MinPlanetRadius, MaxPlanetRadius);
-        // A hazard world (PLANET-34) is never small: its holes need room beyond the route's margins.
-        var hazard = HazardRules.Classify(tree, folderId);
+        // A Hazard World (PLANET-34) is never small: its islands, bridges and open sky need room.
         if (hazard != null) radius = MathF.Max(radius, HazardMinPlanetRadius);
         var seed = NameSeed(name);
         // Frac's salts (1 here, 4 for the belt) pick independent "random" fractions from the one name seed.
@@ -507,15 +511,25 @@ public static class PlanetComposer
         // ---- arrival, landmark, overlook and its steps
         var pole = Vector3.UnitY;
         var hasParent = !folder.IsRoot;
-        var rings = LauncherRings(launched.Count, hasParent, radius, p);
+        var rings = hazard != null ? HazardLauncherSlots(launched.Count, hasParent, radius) : LauncherRings(launched.Count, hasParent, radius, p);
+        var slotCount = rings.Count(r => !r.Parent);
+        if (slotCount < launched.Count)
+        {
+            // More launchers than a Hazard World's rings hold (AD-59): the lowest ranked join the belt.
+            launched = ranked.Take(slotCount).OrderBy(c => c.Node.Name, NameOrder).ThenBy(c => c.Id).ToList();
+            belt = ranked.Skip(slotCount).Take(p.MaxBelt).OrderBy(c => c.Node.Name, NameOrder).ThenBy(c => c.Id).ToList();
+            omitted = Math.Max(0, ranked.Count - slotCount - p.MaxBelt);
+        }
+
         // The landmark stands ahead beyond the outermost ring (it used to stand at 40°, among the launchers).
         var outer = rings.Count == 0 ? 0f : rings.Max(r => r.DistanceMetres);
-        var landmarkPolar = MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + LandmarkBeyondRings) / radius);
+        // On a Hazard World the landmark stands straight ahead at the end of the ridge, across the open sky (AD-59).
+        var landmarkPolar = hazard != null ? HazardLandmarkMetres / radius : MathF.Max(Deg(p.LandmarkPolarDeg), (outer + p.PadRadius + p.LandmarkRadius + LandmarkBeyondRings) / radius);
         // On the bearing near ahead farthest from every pad's bearing, so the walk out to it passes between pads.
         // "Farthest" is measured as the sideways distance at each pad's ring (bearing difference × ring distance,
         // metres); within 1 cm the bearing nearer straight ahead wins.
         var landmarkAz = 0f;
-        if (rings.Count > 0)
+        if (rings.Count > 0 && hazard == null)
         {
             var best = -1f;
             for (var deg = -LandmarkBearingSearchDeg; deg <= LandmarkBearingSearchDeg; deg++)
@@ -542,6 +556,17 @@ public static class PlanetComposer
                 var d = PlanetFrame.Move(overlookDir, north * MathF.Cos(a) + east * MathF.Sin(a), ring, radius);
                 steps.Add(new SurfaceObstacle(d, p.StepRadius, rise * (i + 1)));
             }
+        }
+
+        if (hazard != null)
+        {
+            // On a Hazard World the ridge runs ahead-right, past the opening straight ahead where the black hole's jet climbs
+            // out (AD-59): turn the landmark, the overlook and its stones about the pole so the walk's end (by the first
+            // stone, or the bench) is at HazardRidgeBearingDeg. A turn about the pole keeps every distance between them.
+            var turn = Deg(HazardRidgeBearingDeg) - PlanetFrame.AzimuthOf(steps.Count > 0 ? steps[0].Direction : overlookDir);
+            landmarkDir = PlanetFrame.TurnAboutPole(landmarkDir, turn);
+            overlookDir = PlanetFrame.TurnAboutPole(overlookDir, turn);
+            for (var i = 0; i < steps.Count; i++) steps[i] = steps[i] with { Direction = PlanetFrame.TurnAboutPole(steps[i].Direction, turn) };
         }
 
         var overlook = new PlanetOverlook(overlookDir, p.OverlookTop, p.OverlookRadius, steps);
@@ -639,11 +664,24 @@ public static class PlanetComposer
         };
         foreach (var l in launchers) keepOut.Add(new Solid(l.Direction, p.LauncherClearRadius));
 
-        // ---- a hazard world's broken shell (PLANET-34, AD-53): holes off the route, then nothing stands near them
-        var shell = hazard != null ? CarveShell(radius, seed, rings, launchers, paths, landmarkDir, overlookDir, complexRadius, p) : null;
-        if (shell != null)
+        // ---- a Hazard World's broken shell (PLANET-46, AD-59): islands round the destinations, bridges between them; the
+        // drawn routes become the walks along the bridges, and files and scenery stand only on solid ground
+        BrokenShell? shell = null;
+        IReadOnlyList<Vector3> plateaus = [];
+        if (hazard != null)
         {
-            foreach (var h in shell.Holes) keepOut.Add(new Solid(h.Centre, h.MaxRadiusRadians * radius + BrokenShell.SafeMarginMetres));
+            var overlookRoute = paths[^1].Points; // pole, the stand-off before the first stone, the stone; or pole, the step before the bench
+            var routeFoot = overlookRoute.Count > 2 ? overlookRoute[^2] : overlookRoute[^1];
+            (shell, plateaus) = DesignShell(radius, seed, launchers, landmarkDir, overlookDir, complexRadius, routeFoot, groups, budget, p);
+            paths.Clear();
+            foreach (var l in launchers)
+            {
+                var route = shell.Route(pole, l.Direction).Select(s => s.Point);
+                paths.Add(new PlanetPath(l.IsParent ? -1 : l.TargetId, [pole, .. route]));
+            }
+
+            foreach (var s in shell.Spans) paths.Add(new PlanetPath(-1, [s.A, s.B]));
+            foreach (var w in shell.Waypoints) keepOut.Add(new Solid(w, HazardWaypointClearMetres));
         }
 
         var solids = new List<Solid>();
@@ -658,7 +696,8 @@ public static class PlanetComposer
         }
 
         var maxZone = keepOut.Max(z => z.Radius);
-        var ringDistances = rings.Select(r => r.DistanceMetres).Distinct().ToArray();
+        // On a Hazard World the rings are not walking routes (the bridges are), so nothing is kept off them.
+        var ringDistances = hazard != null ? [] : rings.Select(r => r.DistanceMetres).Distinct().ToArray();
         // Distances are compared through dot products first (one multiply-add per solid), and measured exactly only
         // for the few candidates that are close: composition runs whenever a listing changes, so it must stay cheap.
         bool Free(Vector3 d, float r, float gap, List<Solid> extraZones)
@@ -698,15 +737,8 @@ public static class PlanetComposer
                 if (PlanetShape.Angle(d, s.Direction) * radius < s.Radius + r + gap) return false;
             }
 
-            if (shell != null)
-            {
-                // Nothing in a hole's shadow seen from the arrival: the straight way from the meadow to anything placed
-                // passes no edge closer than HazardShadowClearanceMetres, so a hop routed through the meadow is always safe.
-                foreach (var h in shell.Holes)
-                {
-                    if (PlanetFrame.DistanceToArc(h.Centre, pole, d, radius) < h.MaxRadiusRadians * radius + HazardShadowClearanceMetres) return false;
-                }
-            }
+            // On a Hazard World everything stands on solid ground, back from the edges.
+            if (shell != null && shell.EdgeMetres(d) < r + HazardSceneryEdgeMetres) return false;
 
             return true;
         }
@@ -716,7 +748,7 @@ public static class PlanetComposer
         var groves = new List<PlanetGrove>();
         if (groups.Count > 0)
         {
-            PlaceGroves(tree, groups, budget, radius, p, Free, solids, items, groves);
+            PlaceGroves(tree, groups, budget, radius, p, Free, solids, items, groves, plateaus);
         }
 
         foreach (var g in groves)
@@ -778,32 +810,115 @@ public static class PlanetComposer
 
     private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
 
-    /// <summary>A hazard world's smallest radius, metres: room for a main breach and side breaches beyond the route's margins (rationale for 18 m: by trial on the sample, where 16 m left the side breaches too small to read).</summary>
+    /// <summary>A Hazard World's smallest radius, metres: room for islands, bridges and open sky round the arrival (18 m: by trial on the sample, 2026-11-15; kept for AD-59).</summary>
     private const float HazardMinPlanetRadius = 18f;
 
-    /// <summary>On a hazard world, the straight way from the arrival to anything placed stays this far from every hole's farthest tooth, metres (a body, 0.7 m, and room to spare).</summary>
-    private const float HazardShadowClearanceMetres = 1.5f;
+    /// <summary>A Hazard World holds at most this many launcher pads (AD-59): more than its scarce ground carries comfortably; the rest join the belt.</summary>
+    private const int HazardMaxPads = 10;
+
+    /// <summary>A Hazard World shows at most this many files one by one (the rest in piles): its file plateaus stay compact.</summary>
+    private const int HazardMaxItems = 24;
+
+    /// <summary>A Hazard World's landmark stands this far ahead of the arrival, metres: past the arrival's island, a ridge of ≈ 8 m and its own island.</summary>
+    private const float HazardLandmarkMetres = 23f;
+
+    /// <summary>The ridge to a Hazard World's landmark runs this many degrees right of straight ahead (clear of the jet's opening straight ahead).</summary>
+    private const float HazardRidgeBearingDeg = 32f;
+
+    /// <summary>A Hazard World's arrival meadow is this wide (radius, metres; 4 elsewhere): the drop ahead starts a few steps away, the landing still well inside solid ground.</summary>
+    private const float HazardArrivalRadius = 3f;
+
+    /// <summary>On a Hazard World, files and scenery keep this far from an edge, metres (plus their own radius).</summary>
+    private const float HazardSceneryEdgeMetres = 1.0f;
+
+    /// <summary>Round every waypoint of a Hazard World's route this much stays clear of files and scenery, metres: where bridges meet you can walk through.</summary>
+    private const float HazardWaypointClearMetres = 1.5f;
+
+    /// <summary>How far a launcher's land must carry round its pad, metres: the pad, the stand point coming back from the child (<see cref="ReturnStandOff"/>) and a body (0.35 m).</summary>
+    private static float LauncherContentMetres(PlanetParams p) => p.PadRadius + ReturnStandOff + 0.35f;
+
+    /// <summary>A file plateau's area per file shown, in grove cells (GroveSpacing²): 1.6 (the slots are ≈ GroveSpacing apart, and the bridges' clear bands take a share).</summary>
+    private const float HazardPlateauCellsPerItem = 1.6f;
+
+    /// <summary>At most this many file plateaus; further groves grow on whatever ground is left.</summary>
+    private const int HazardMaxPlateaus = 4;
 
     /// <summary>
-    /// The broken shell for a hazard world (<see cref="BrokenShell.Carve"/>), clear of the route: the arrival meadow, the
-    /// landmark, the overlook with its stones, every launcher's clear area, every drawn route, the walk to the way back
-    /// (pole to the parent pad: it has no drawn path, but it is the first walk anyone takes) and every launcher ring.
+    /// The broken shell for a Hazard World (<see cref="HazardTerrain.Design"/>): one site per destination — the arrival
+    /// meadow, every launcher with its return stand point, the landmark with the overlook (its waypoint is the route's
+    /// foot before the overlook) — and one plateau per grove, sized for the files it shows.
     /// </summary>
-    private static BrokenShell CarveShell(float radius, int seed, List<RingSlot> rings, List<PlanetLauncher> launchers, List<PlanetPath> paths,
-        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, PlanetParams p)
+    private static (BrokenShell Shell, IReadOnlyList<Vector3> Plateaus) DesignShell(float radius, int seed, List<PlanetLauncher> launchers,
+        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, Vector3 routeFoot, List<(FileCategory Category, List<int> Ids)> groups,
+        int[] budget, PlanetParams p)
     {
         var pole = Vector3.UnitY;
-        var discs = new List<(Vector3, float)> { (pole, p.ArrivalRadius), (landmarkDir, p.LandmarkRadius), (overlookDir, complexRadius) };
-        foreach (var l in launchers) discs.Add((l.Direction, p.LauncherClearRadius));
-        var routes = new List<(Vector3, Vector3, float)>();
-        foreach (var path in paths)
+        var sites = new List<HazardSite> { new(pole, pole, p.ArrivalRadius, HazardSiteKind.Arrival) };
+        foreach (var l in launchers) sites.Add(new HazardSite(l.Direction, l.Direction, LauncherContentMetres(p), l.IsParent ? HazardSiteKind.WayBack : HazardSiteKind.Launcher));
+        var mid = Vector3.Normalize(landmarkDir + overlookDir);
+        var complex = MathF.Max(
+            MathF.Max(PlanetShape.Angle(mid, landmarkDir) * radius + p.LandmarkRadius, PlanetShape.Angle(mid, overlookDir) * radius + complexRadius),
+            PlanetShape.Angle(mid, routeFoot) * radius + HazardWaypointClearMetres);
+        sites.Add(new HazardSite(routeFoot, mid, complex, HazardSiteKind.Landmark));
+        var plateauContent = new List<float>();
+        for (var g = 0; g < groups.Count && g < HazardMaxPlateaus; g++)
         {
-            for (var k = 1; k < path.Points.Count; k++) routes.Add((path.Points[k - 1], path.Points[k], p.PathHalfWidth));
+            var shown = budget[g] + (budget[g] < groups[g].Ids.Count ? 1 : 0);
+            if (shown == 0) continue;
+            var area = shown * HazardPlateauCellsPerItem * p.GroveSpacing * p.GroveSpacing;
+            plateauContent.Add(MathF.Sqrt(area / MathF.PI) + HazardWaypointClearMetres);
         }
 
-        foreach (var l in launchers.Where(l => l.IsParent)) routes.Add((pole, l.Direction, p.PathHalfWidth));
-        var bands = rings.Select(r => PlanetFrame.PolarOf(r.Direction)).Distinct().Select(polar => (polar, p.PathHalfWidth)).ToList();
-        return BrokenShell.Carve(radius, seed, discs, routes, bands);
+        return HazardTerrain.Design(radius, seed, sites, plateauContent);
+    }
+
+    /// <summary>A Hazard World's first launcher ring stands this far from the arrival, metres, and further rings this much further out (AD-59: room for an island each and a bridge between).</summary>
+    private const float HazardRingFirstMetres = 15f, HazardRingGapMetres = 11f;
+
+    /// <summary>Neighbouring pads on a Hazard World's ring stand at least this far apart, metres (two islands and a short bridge).</summary>
+    private const float HazardPadSpacingMetres = 12f;
+
+    /// <summary>A Hazard World has at most this many launcher rings; launchers that do not fit join the belt.</summary>
+    private const int HazardMaxRings = 3;
+
+    /// <summary>
+    /// Launcher slots on a Hazard World (AD-59): rings like <see cref="LauncherRings"/>, read like a clock from 6 o'clock
+    /// clockwise, but wider spaced, and never in the opening straight ahead (±<see cref="HazardTerrain.FrontOpeningHalfDeg"/>),
+    /// where the ground falls away to show the black hole's jet and the ridge to the landmark. The way back is at 6
+    /// o'clock on the first ring. Returns fewer child slots than <paramref name="n"/> when the rings are full.
+    /// </summary>
+    private static List<RingSlot> HazardLauncherSlots(int n, bool hasParent, float radius)
+    {
+        var slots = new List<RingSlot>();
+        var h = Deg(HazardTerrain.FrontOpeningHalfDeg);
+        var usable = 2 * MathF.PI - 2 * h; // the arc from 6 o'clock clockwise round to the opening's left side, then on from its right side back to 6
+        var remaining = n;
+        for (var ring = 0; ring < HazardMaxRings && (remaining > 0 || (ring == 0 && hasParent)); ring++)
+        {
+            var distance = HazardRingFirstMetres + ring * HazardRingGapMetres;
+            var polar = MathF.Min(distance / radius, Deg(MaxRingPolarDeg));
+            var capacity = Math.Max(1, (int)(usable * radius * MathF.Sin(polar) / HazardPadSpacingMetres));
+            var reserveBack = ring == 0 && hasParent;
+            var here = Math.Max(0, Math.Min(remaining, capacity - (reserveBack ? 1 : 0)));
+            // Fraction f of the usable arc is azimuth −π + f·usable up to the opening's left side, and h + … past its right
+            // side. With the way back at 6 o'clock it takes the arc's two ends, the children evenly between.
+            float Az(float f)
+            {
+                var x = f * usable;
+                return x < MathF.PI - h ? -MathF.PI + x : h + (x - (MathF.PI - h));
+            }
+
+            for (var i = 0; i < here; i++)
+            {
+                var f = reserveBack ? (i + 1f) / (here + 1) : (i + 0.5f) / here;
+                slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, Az(f)), distance, false));
+            }
+
+            if (reserveBack) slots.Add(new RingSlot(PlanetFrame.FromPolar(polar, MathF.PI), distance, true));
+            remaining -= here;
+        }
+
+        return slots;
     }
 
     /// <summary>A child world's radius from the entries below it: log scale from SkyRadiusMin (empty) to SkyRadiusMax (≈ 10,000).</summary>
@@ -972,7 +1087,7 @@ public static class PlanetComposer
     /// no grove crowds out another, and fills each with its files in name order from its centre outwards, then its pile.
     /// </summary>
     private static void PlaceGroves(FsTree tree, List<(FileCategory Category, List<int> Ids)> groups, int[] budget, float radius,
-        PlanetParams p, FreeCheck free, List<Solid> solids, List<PlanetItem> items, List<PlanetGrove> groves)
+        PlanetParams p, FreeCheck free, List<Solid> solids, List<PlanetItem> items, List<PlanetGrove> groves, IReadOnlyList<Vector3>? seedHints = null)
     {
         // As many slots as hexagonal cells of the grove spacing cover the sphere (a hexagonal cell of pitch s has area
         // (√3/2)·s² ≈ 0.866·s²), so neighbouring slots are about GroveSpacing apart.
@@ -1012,7 +1127,11 @@ public static class PlanetComposer
             {
                 if (!open[s] || taken[s]) continue;
                 float score;
-                if (growth.Count == 0)
+                if (seedHints != null && g < seedHints.Count)
+                {
+                    score = Vector3.Dot(slots[s], seedHints[g]); // a Hazard World's plateau for this grove (AD-59)
+                }
+                else if (growth.Count == 0)
                 {
                     score = Vector3.Dot(slots[s], preferred);
                 }

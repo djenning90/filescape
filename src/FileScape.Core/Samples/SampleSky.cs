@@ -24,7 +24,10 @@ public static class SampleSky
     public const string MarkerName = ".filescape-sample";
 
     /// <summary>The content version written into the marker. Bump it when the generated content changes.</summary>
-    public const int Version = 4; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down. 3: waymark notes name the right bands. 4 (2026-11-15): Event Horizon, the sample hazard world (PLANET-34)
+    public const int Version = 5; // 2 (2026-11-14): Lantern Workshop is a repository (.git); the Long Way Down. 3: waymark notes name the right bands. 4 (2026-11-15): Event Horizon, the sample hazard world (PLANET-34). 5 (2026-11-16): Event Horizon as islands and bridges, and Debris Field inside it, a crowded Hazard World (PLANET-46)
+
+    /// <summary>The names of Debris Field's child worlds (Event Horizon\Debris Field, the crowded sample Hazard World; PLANET-46).</summary>
+    public static IReadOnlyList<string> DebrisFieldWorlds => SampleTexts.DebrisField.Select(d => d.Name).ToList();
 
     private const string MarkerMagic = "FileScape sample folder";
     private const string JunctionName = "Shortcut to Garden";
@@ -270,6 +273,12 @@ public static class SampleSky
         {
             Text(root, Path.Combine("Event Horizon", rel), text);
         }
+
+        // Debris Field: a crowded Hazard World inside it (PLANET-46, AD-59): more child worlds than its ground holds.
+        var debris = Path.Combine("Event Horizon", "Debris Field");
+        Text(root, Path.Combine(debris, ".filescape-hazard"), SampleTexts.HazardMarkerText);
+        Text(root, Path.Combine(debris, "manifest.txt"), SampleTexts.DebrisFieldManifest);
+        foreach (var (name, log) in SampleTexts.DebrisField) Text(root, Path.Combine(debris, name, "log.txt"), log);
 
         // The Long Way Down: six levels, one per step of the journey, so every depth band can be visited (AD-48).
         var path = "Long Way Down";
@@ -1715,8 +1724,8 @@ internal static class SampleTexts
         - Garden Photos is a meadow of pictures. Music Box rings. Letters is a quiet library.
         - The Star Archive holds far too many small files to show one by one; see how it copes.
         - Quiet Moon is empty on purpose. Somebody has to keep the silence.
-        - Event Horizon is a broken world over a black hole. The paths are solid; the edges are not.
-          Step off one and you fall, spin, and land back here. Nothing happens to any file.
+        - Event Horizon is a Hazard World over a black hole: islands of rock, narrow bridges, a gap to jump.
+          Step off and you fall, spin, and land back here. Nothing happens to any file.
 
         """;
 
@@ -1748,22 +1757,26 @@ internal static class SampleTexts
     /// </summary>
     public static readonly (string Path, string Text)[] EventHorizon =
     [
-        (".filescape-hazard", "FileScape sample hazard: this world is drawn as a broken shell over a black hole.\nIt is honoured only inside a FileScape sample folder. Safe to delete.\n"),
+        (".filescape-hazard", HazardMarkerText),
         ("README.txt", """
             Event Horizon
             =============
 
-            This world is broken. Big pieces of its shell have fallen in, and a small black hole
-            spins at its heart, eating starlight.
+            This is a Hazard World. Most of its shell has fallen in, and a small black hole spins
+            at its heart, eating starlight. Its jet climbs out of the gap straight ahead of where
+            you land.
 
-            The launchers and the paths between them stand on solid rock, well back from any edge.
-            The danger lives out past the rings: walk far enough and the ground simply stops.
+            What is left is islands of rock: one for every launcher, one for the tower and its
+            lookout, one or two for the files. Narrow bridges join them, with nothing on either
+            side, and here and there a bridge has a gap you have to jump. Follow the lit path
+            along a bridge; line up before a gap, then run and jump.
 
             If you step off, you fall. The fall bends into a spiral round the black hole, the light
             flares, and you are put back down in the Starter Sky, right beside this world's launcher.
             Step on and come back whenever you like.
 
             Falling is only a way of travelling. It never moves, changes or deletes a file.
+            And if you just want to get somewhere: J lists everything here, U goes up.
 
             """),
         ("caution.txt", """
@@ -1787,6 +1800,43 @@ internal static class SampleTexts
             and I can see the back of my own head.
 
             """),
+    ];
+
+    /// <summary>The marker that makes a folder inside the sample a Hazard World (HazardRules: honoured only inside a marked sample).</summary>
+    public const string HazardMarkerText = "FileScape sample Hazard World: this world is drawn as islands of broken shell over a black hole.\nIt is honoured only inside a FileScape sample folder. Safe to delete.\n";
+
+    /// <summary>
+    /// Debris Field, a crowded Hazard World inside Event Horizon (PLANET-46, AD-59): more child worlds than its islands
+    /// carry, so the rest hang in its sky as moons (click and G, or the list). Each child holds one short log. Original text.
+    /// </summary>
+    public const string DebrisFieldManifest = """
+        Debris Field - manifest
+        =======================
+
+        Sixteen pieces of a moon that came too close. The biggest still have room for a launcher;
+        the rest drift overhead. Click one and press G, or press J and pick it from the list.
+
+        """;
+
+    /// <summary>Debris Field's sixteen child worlds and their one-line logs (names and lines original).</summary>
+    public static readonly (string Name, string Log)[] DebrisField =
+    [
+        ("Cinder Shelf", "Still warm on the underside.\n"),
+        ("Ember Rock", "Glows when nobody is looking.\n"),
+        ("Hollow Spar", "You can hear the black hole through it.\n"),
+        ("Iron Comet", "Arrived late, stayed anyway.\n"),
+        ("Knot of Ice", "Melts a little every orbit.\n"),
+        ("Lantern Shard", "A piece of somebody's lamp.\n"),
+        ("Moth Stone", "Moths land here for the light.\n"),
+        ("Orbit Scrap", "Goes round, comes round.\n"),
+        ("Pale Ember", "Was bright once.\n"),
+        ("Quartz Wing", "Rings when you tap it.\n"),
+        ("Rust Moon", "The smallest moon with the most rust.\n"),
+        ("Salt Drift", "Tastes like the sea, somehow.\n"),
+        ("Shale Boat", "Floats on nothing in particular.\n"),
+        ("Spindle", "Spins the other way, out of spite.\n"),
+        ("Tin Halo", "Fits nobody.\n"),
+        ("Umber Flake", "Thin enough to read through.\n"),
     ];
 
     /// <summary>The Long Way Down: six nested folders, each with a waymark note (names and notes original).</summary>

@@ -14,8 +14,9 @@
   is saved and honoured by a second launch; Help -> Learn to play; the whole walkthrough played with real input;
   leaving mid-lesson; a legacy view from the menu and back; and a normal shutdown.
 
-  -Hazard (PLANET-34) plays the Starter Sky's black-hole world twice with real keys: the easy route (to a child's
-  launcher and away, no fall), then off an edge: the fall, the return to the parent, and straight back in.
+  -Hazard (PLANET-34, PLANET-46) plays the Starter Sky's Hazard World twice with real keys: the route along its bridges
+  (to the child launcher it reaches most easily, jumping any gap on the way; no fall), then off an edge: the fall, the
+  return to the parent, and straight back in.
 
   .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard]
 #>
@@ -134,13 +135,37 @@ try {
       for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
       Start-Sleep -Seconds 2; return State
     }
-    # Play 1: the easy route.
+    # Follows a Hazard World's route (AD-59) with the arrow keys, W and Space, as a player who has learnt it: turn to the
+    # next waypoint (routeBearing) to within 5 degrees, walk on in short bursts, and where the next leg crosses a gap
+    # (routeJump) hold W for a run-up and press Space (held, a full jump) once the edge is under 1.4 m ahead
+    # (gapAheadMetres; the state is 0.15 s old at most, 0.9 m at walking pace, so the press lands 0.2-1.4 m before the edge,
+    # inside what the Core tests clear). Never a sidestep: on a bridge that is a fall.
+    function Steer-Route([double]$stop, [int]$tries = 220) {
+      for ($i = 0; $i -lt $tries; $i++) {
+        $s = State; $p = $s.planets
+        if ($p.falling -or [double]$p.routeLeft -lt 0 -or [double]$p.routeLeft -le $stop) { return $s }
+        $b = [double]$p.routeBearing
+        if ([Math]::Abs($b) -gt 5) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(30, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 80; continue }
+        if ($p.routeJump) {
+          Key-Down 'W'
+          try {
+            for ($k = 0; $k -lt 60; $k++) { $g = [double](State).planets.gapAheadMetres; if ($g -ge 0 -and $g -lt 1.4) { break }; Start-Sleep -Milliseconds 30 }
+            Key-Down 'Space'; Start-Sleep -Milliseconds 350; Key-Up 'Space'; Start-Sleep -Milliseconds 500
+          } finally { Key-Up 'W'; Key-Up 'Space' }
+          Start-Sleep -Milliseconds 150; continue
+        }
+        Hold-Key 'W' ([int][Math]::Min(300, 100 + [double]$p.routeDistance * 30))
+        Start-Sleep -Milliseconds 80
+      }
+      return State
+    }
+    # Play 1: the route along the bridges.
     $s = Enter-Hazard
     Check ($s.planets.character -eq 'Hazard' -and $s.planets.edgeMetres -gt 3) "J -> Event Horizon: a hazard world, landed on solid ground ($($s.planets.edgeMetres) m from the nearest edge)"
     Shot 'hazard-arrival' | Out-Null
     $f0 = $s.planets.fallsStarted
-    $s = Steer 'childPadBearing' 'childPadDistance' 0.6
-    Check ($s.planets.fallsStarted -eq $f0) "walked the safe route to a child's launcher without falling ($($s.planets.childPadDistance) m from the pad)"
+    $s = Steer-Route 0.6
+    Check ($s.planets.fallsStarted -eq $f0 -and [double]$s.planets.childPadDistance -lt 1.3) "walked the route along the bridges to a child's launcher without falling ($($s.planets.childPadDistance) m from the pad)"
     $hz = $s.planets.folder
     Hold-Key 'Space' 80; Start-Sleep -Seconds 4
     $s = State; Check ($s.planets.folder -ne $hz -and $s.planets.fallsStarted -eq $f0) "launched from the hazard world into $($s.currentName), no fall"

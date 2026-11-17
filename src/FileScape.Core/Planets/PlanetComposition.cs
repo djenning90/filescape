@@ -323,6 +323,13 @@ public static class PlanetFrame
     /// <summary>The angle of a direction from the arrival pole, radians.</summary>
     public static float PolarOf(Vector3 up) => PlanetShape.Angle(up, Vector3.UnitY);
 
+    /// <summary>Turns a direction about the pole by <paramref name="azimuthRadians"/> (as <see cref="FromPolar"/>: positive is clockwise seen from above, to the right).</summary>
+    public static Vector3 TurnAboutPole(Vector3 up, float azimuthRadians)
+    {
+        var (s, c) = MathF.SinCos(azimuthRadians);
+        return new Vector3(up.X * c - up.Z * s, up.Y, up.X * s + up.Z * c);
+    }
+
     /// <summary>
     /// Walks <paramref name="metres"/> along the surface (at <paramref name="radius"/>) from <paramref name="up"/> in the
     /// direction of a tangent, along the great circle.

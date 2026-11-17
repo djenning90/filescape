@@ -238,7 +238,7 @@ public sealed class PlanetSurface
     {
         Shape = shape;
         Obstacles = obstacles;
-        Shell = shell is { Holes.Count: > 0 } ? shell : null;
+        Shell = shell is { Lands.Count: > 0 } ? shell : null;
     }
 
     public PlanetShape Shape { get; }
