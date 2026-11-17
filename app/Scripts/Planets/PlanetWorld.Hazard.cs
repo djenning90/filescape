@@ -5,13 +5,13 @@ using NVector3 = System.Numerics.Vector3;
 namespace FileScape.App.Planets;
 
 /// <summary>
-/// The hazard world's behaviour (PLANET-34, AD-53): the caution cue on arrival, the edge warning as you near a broken
-/// edge, and the fall. Core decides where there is no ground (<see cref="BrokenShell"/>); once the walker has dropped
+/// A Hazard World's behaviour (PLANET-34, PLANET-46; AD-53, AD-59): the caution cue on arrival, the edge warning as you
+/// near a broken edge (with rock crumbling off it), the fall, and hops that keep to the route. Core decides where there is no ground (<see cref="BrokenShell"/>); once the walker has dropped
 /// <see cref="PlanetSurface.FallThroughMetres"/> below the rim the fall is committed and this part takes over.
 /// <para>
 /// <b>The fall</b> (<see cref="Phase.Falling"/>, so the world is <see cref="Busy"/>): ≈ 2.6 s along a path that starts with
 /// the momentum you stepped off with, drops towards the centre, flattens into the black hole's disc and winds round it
-/// faster and faster (<see cref="FallPoint"/>); the camera follows you down through the hole, speed lines and a violet
+/// faster and faster (<see cref="FallPoint"/>, in the black hole's own frame: its spin axis is <see cref="BrokenShell.JetAxis"/>); the camera follows you down through the hole, speed lines and a violet
 /// flash build, the traveller tumbles and shrinks. At the flash's peak the world asks the session to go up
 /// (<c>TravelUp</c>: ordinary navigation, so history, selection and listing behave as for U or Backspace), and the
 /// navigator's change arrives as a warp descent out of the light onto the parent, beside this world's launcher
@@ -65,6 +65,49 @@ public partial class PlanetWorld
     /// </summary>
     private const float EdgePeekPitchDegrees = 26f, EdgePeekBackMetres = 2.5f, EdgePeekAheadMetres = 3f;
 
+    /// <summary>
+    /// On a Hazard World the walking camera rides this much higher (pitch, degrees) and further back (metres), and the
+    /// total pitch with the edge peek stops at the max: the islands, the bridges' edges and the open sky between them read
+    /// at walking pace, and the opening ahead of the arrival with the black hole's jet is in view as you land (AD-59; by
+    /// eye, 2026-11-16: at the usual 18° the openings beyond 6 m sat in a thin band on the horizon).
+    /// </summary>
+    private const float HazardViewPitchDegrees = 16f, HazardViewBackMetres = 2.2f, HazardViewMaxPitchDegrees = 62f;
+
+    /// <summary>The hazard view eases in and out at this rate per second (≈ 0.5 s), so leaving or entering by a launch never jumps.</summary>
+    private const float HazardViewRatePerSecond = 2f;
+
+    private float _hazardView;
+
+    /// <summary>How much of the hazard view applies now (0 off a Hazard World … 1 on one), eased over <paramref name="dt"/>; <paramref name="snap"/> jumps straight to it.</summary>
+    private float HazardViewAmount(float dt, bool snap = false)
+    {
+        var want = Shell != null ? 1f : 0f;
+        _hazardView = snap ? want : Mathf.MoveToward(_hazardView, want, dt * HazardViewRatePerSecond);
+        return _hazardView;
+    }
+
+    /// <summary>
+    /// Landing at a Hazard World's arrival, the chase camera turns towards the opening ahead and the black hole's jet for
+    /// this long, seconds, at this rate per second (≈ 0.3 s time constant), unless you look round yourself (AD-59: the view
+    /// after a flight faces wherever the flight came from, so the opening was often out of shot).
+    /// </summary>
+    private const float ArrivalLookSeconds = 1.8f, ArrivalLookRatePerSecond = 3.5f;
+
+    private float _arrivalLook;
+
+    /// <summary>The camera's heading <paramref name="f"/> turned towards the jet's opening while the arrival look lasts (walking frames only).</summary>
+    private Godot.Vector3 HazardArrivalLook(Godot.Vector3 f, Godot.Vector3 up, float dt)
+    {
+        if (_arrivalLook <= 0 || Shell is not { } shell || _phase != Phase.Walking || _transfer != null) return f;
+        if (_orbiting || _keyLook != 0) { _arrivalLook = 0; return f; } // the player looks round: theirs from now on
+        _arrivalLook -= dt;
+        var exit = Gd(shell.JetAxis);
+        var want = exit - up * exit.Dot(up);
+        if (want.LengthSquared() < 1e-6f) return f;
+        var ang = f.SignedAngleTo(want.Normalized(), up);
+        return f.Rotated(up, ang * (1 - MathF.Exp(-ArrivalLookRatePerSecond * dt))).Normalized();
+    }
+
     /// <summary>The edge hint is shown once per visit, when the warning first passes this level.</summary>
     private const float EdgeHintLevel = 0.6f;
 
@@ -89,6 +132,9 @@ public partial class PlanetWorld
 
         /// <summary>Where the spiral ends, metres from the centre.</summary>
         public float DEnd;
+
+        /// <summary>The black hole's frame (planet frame columns; Y its spin axis): the spiral is computed in it.</summary>
+        public Basis Frame = Basis.Identity;
 
         /// <summary>Set once the session has been asked to go up.</summary>
         public bool Asked;
@@ -130,7 +176,10 @@ public partial class PlanetWorld
     public bool CautionShown => _cautionTime > 0;
     public string CautionText => _hazardLayer == null ? "" : _caution.Text + " · " + _cautionDetail.Text;
 
-    /// <summary>The current world's broken shell, if it is a hazard world.</summary>
+    /// <summary>Rock is crumbling off the edge nearest the traveller (probes).</summary>
+    public bool CrumbsFalling => _current?.Visual?.CrumbsEmitting ?? false;
+
+    /// <summary>The current world's broken shell, if it is a Hazard World.</summary>
     public BrokenShell? Shell => _current?.Comp.Surface.Shell;
 
     // ------------------------------------------------------------------ the screen layer
@@ -155,7 +204,7 @@ public partial class PlanetWorld
         _caution = MakeLabel(19, CautionColour, HorizontalAlignment.Center, outline: 8);
         _cautionDetail = MakeLabel(15, new Color(1f, 0.9f, 0.78f), HorizontalAlignment.Center, outline: 5);
         var route = MakeLabel(15, new Color(1f, 0.9f, 0.78f), HorizontalAlignment.Center, outline: 5);
-        route.Text = "The paths and launchers stand on solid rock. Past the rings, the edges do not.";
+        route.Text = "Islands of rock, narrow bridges, a gap or two to jump: follow the lit paths. J lists everything, U goes up.";
         box.AddChild(_caution);
         box.AddChild(_cautionDetail);
         box.AddChild(route);
@@ -212,8 +261,10 @@ public partial class PlanetWorld
         _edgeNearness = 0;
         _current.Visual?.SetEdgeWarning(0);
         if (_current.Comp.Hazard is not { } hz) return;
+        // Landing at the arrival (not beside a launcher, coming back from a child): the camera turns to the opening ahead.
+        _arrivalLook = _current.Comp.LauncherFor(arriveFrom) == null ? ArrivalLookSeconds : 0;
         EnsureHazardLayer();
-        _caution.Text = "⚠  Caution · a broken world";
+        _caution.Text = "⚠  Caution · a Hazard World";
         _cautionDetail.Text = char.ToUpperInvariant(hz.Why[0]) + hz.Why[1..];
         _cautionTime = CautionSeconds;
     }
@@ -235,7 +286,7 @@ public partial class PlanetWorld
         var target = 1 - Mathf.Clamp((e - EdgeWarnFullMetres) / (EdgeWarnFromMetres - EdgeWarnFullMetres), 0, 1);
         _edgeNearness = Mathf.Lerp(_edgeNearness, target, 1 - MathF.Exp(-EdgeWarnRatePerSecond * dt));
         _audio.HazardWarning(_edgeNearness);
-        _current!.Visual?.SetEdgeWarning(_edgeNearness);
+        _current!.Visual?.SetEdgeWarning(_edgeNearness, Gd(_walker.Feet));
         if (_edgeNearness > EdgeHintLevel && !_edgeHintShown && _s.Tree is { } tree)
         {
             _edgeHintShown = true;
@@ -253,9 +304,12 @@ public partial class PlanetWorld
     private bool BeginFallIfThrough()
     {
         if (_current == null || Shell == null || _walker.Grounded || _walker.Height.Value >= -PlanetSurface.FallThroughMetres) return false;
-        var p0 = Gd(_walker.Feet);
+        // The spiral is computed in the black hole's frame (its disc lies across the jet axis), from where and how fast you
+        // stepped off, both turned into that frame.
+        var frame = BlackHoleArt.AxisBasis(Shell.JetAxis);
+        var p0 = frame.Inverse() * Gd(_walker.Feet);
         var d0 = p0.Length();
-        var v0 = Gd(_walker.Velocity) + Gd(_walker.Up) * _walker.VerticalVelocity.Value;
+        var v0 = frame.Inverse() * (Gd(_walker.Velocity) + Gd(_walker.Up) * _walker.VerticalVelocity.Value);
         var horizontal = new Vector2(p0.X, p0.Z).Length();
         // The azimuth round the disc's axis (+Y); straight below the axis it is undefined, so take the way you were going.
         var phi = horizontal > 0.05f * d0 ? MathF.Atan2(p0.Z, p0.X) : MathF.Atan2(v0.Z, v0.X);
@@ -267,6 +321,7 @@ public partial class PlanetWorld
             Phi0 = phi,
             V0 = v0,
             DEnd = _current.Comp.Shape.Radius * BrokenShell.HorizonRadiusFraction * FallEndCoreRadii,
+            Frame = frame,
         };
         _phase = Phase.Falling;
         _hop = null;
@@ -280,13 +335,13 @@ public partial class PlanetWorld
         _audio.HazardWarning(0);
         _edgeNearness = 0;
         _flightCamStarted = false;
-        _flightTrail.Begin(p0);
+        _flightTrail.Begin(Gd(_walker.Feet));
         Mark("fall");
         return true;
     }
 
     /// <summary>
-    /// Where the fall has taken the traveller at progress <paramref name="u"/> (0..1), planet frame: the distance from the
+    /// Where the fall has taken the traveller at progress <paramref name="u"/> (0..1), in the black hole's frame (Y its spin axis; <see cref="FallState.Frame"/> turns it into the planet frame): the distance from the
     /// centre shrinks with u^1.8 (slow, then accelerating), the elevation above the disc flattens out between 5 % and
     /// 80 %, and the azimuth winds on by <see cref="FallTurns"/> × u^2.2 (faster and faster), plus the stepping-off momentum,
     /// fading. At u = 0 it is exactly where you fell from, moving as you were, so the hand-over has no kink.
@@ -324,8 +379,8 @@ public partial class PlanetWorld
         }
 
         var u = Mathf.Clamp(f.T / FallSeconds, 0, 1);
-        var pos = FallPoint(f, u);
-        var ahead = FallPoint(f, MathF.Min(1, u + 0.01f)) - pos;
+        var pos = f.Frame * FallPoint(f, u);
+        var ahead = f.Frame * FallPoint(f, MathF.Min(1, u + 0.01f)) - pos;
         var fwd = ahead.LengthSquared() > 1e-8f ? ahead.Normalized() : -pos.Normalized();
         var outward = pos.LengthSquared() > 1e-6f ? pos.Normalized() : Vector3.Up;
         LastFallClosestMetres = MathF.Min(LastFallClosestMetres, pos.Length());
@@ -342,7 +397,7 @@ public partial class PlanetWorld
 
         // The camera: behind and above along the path, looking past the traveller towards the black hole; its up turns from
         // the ground's up to the disc's axis, so by the end you look across the spinning disc.
-        var camUpWant = outward.Slerp(Vector3.Up, Smooth(u)).Normalized();
+        var camUpWant = outward.Slerp(f.Frame.Y.Normalized(), Smooth(u)).Normalized();
         var desired = pos - fwd * FallCamBackMetres + camUpWant * FallCamUpMetres;
         _camPos = _camPos.Lerp(desired, 1 - MathF.Exp(-FallCamFollowRatePerSecond * dt));
         var look = pos.Lerp(Vector3.Zero, 0.25f + 0.35f * u);
@@ -429,20 +484,21 @@ public partial class PlanetWorld
         }
     }
 
-    // ------------------------------------------------------------------ hops on a broken world
+    // ------------------------------------------------------------------ hops on a Hazard World
 
     /// <summary>
-    /// The way a hop should go from <paramref name="from"/> to <paramref name="to"/> on a broken world: null for the straight
-    /// arc, or the arrival point to pass over when the straight arc would cross a hole (the composer keeps the straight way
-    /// from the arrival to everything clear of holes, so the two legs are safe). Approach, Home and the list's hops use it,
-    /// so keyboard and list navigation never route across an edge.
+    /// The way a hop should go from <paramref name="from"/> to <paramref name="to"/> on a Hazard World: null for the
+    /// straight arc (when it keeps over solid ground), or the route's waypoints after <paramref name="from"/>, ending at
+    /// <paramref name="to"/> (<see cref="BrokenShell.Route"/>: along the bridges' centre lines). Approach, Home and the
+    /// list's hops use it, so keyboard and list navigation keep to the route; a hop is airborne, so a gap on the way is
+    /// simply hopped over.
     /// </summary>
-    private NVector3? HopVia(NVector3 from, NVector3 to)
+    private NVector3[]? HopRoute(NVector3 from, NVector3 to)
     {
         if (Shell is not { } shell || _current == null) return null;
-        const float clearanceMetres = 1f; // a body and a little
+        const float clearanceMetres = 0.6f; // a body and a little
         if (shell.ArcClear(from, to, clearanceMetres)) return null;
-        var pole = _current.Comp.Arrival.Up;
-        return PlanetShape.Angle(from, pole) < 1e-3f || PlanetShape.Angle(to, pole) < 1e-3f ? null : pole;
+        var route = shell.Route(from, to).Select(s => s.Point).ToArray();
+        return route.Length > 1 ? route : null;
     }
 }

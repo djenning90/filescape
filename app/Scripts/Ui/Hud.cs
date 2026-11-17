@@ -465,7 +465,9 @@ public partial class Hud : CanvasLayer
                 "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
                 "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
-                "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n\n" +
+                "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
+                "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
+                "    jump the gaps; step off and you fall back up to the folder above. J, U, Backspace and every file action work as anywhere.\n\n" +
                 "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +
                 "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +

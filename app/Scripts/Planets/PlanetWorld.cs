@@ -465,10 +465,11 @@ public partial class PlanetWorld : Node3D
         // A preview's ground is small (subdivision 3): made right here rather than queued behind full-size prefetches.
         var ground = full ? GroundAsync(body.Comp, full) : null;
         var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
-        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme), PreviewSubdivisions, body.Comp.Surface.Shell);
+        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme),
+            body.Comp.Surface.Shell != null ? PlanetArt.HazardPreviewSubdivisions : PreviewSubdivisions, body.Comp.Surface.Shell);
         var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key, CacheKey = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
-        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes})");
+        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes}){(built.HazardStats.Length > 0 ? $"; Hazard World ground {arrays.Indices.Length / 3} triangles, {built.HazardStats}" : "")}");
         return built;
     }
 
@@ -486,8 +487,8 @@ public partial class PlanetWorld : Node3D
         if (_groundTasks.TryGetValue(key, out var task)) return task;
         var shape = comp.Shape;
         var palette = PlanetArt.Palette(comp.Theme);
-        var subdivisions = full ? PlanetArt.SubdivisionsFor(shape.Radius) : PreviewSubdivisions;
         var shell = comp.Surface.Shell; // immutable: safe to read on the worker
+        var subdivisions = shell != null ? (full ? PlanetArt.HazardSubdivisions : PlanetArt.HazardPreviewSubdivisions) : full ? PlanetArt.SubdivisionsFor(shape.Radius) : PreviewSubdivisions;
         task = Task.Run(() => PlanetArt.PlanetMeshArrays(shape, palette, subdivisions, shell));
         _groundTasks[key] = task;
         _groundOrder.Enqueue(key);

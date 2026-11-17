@@ -345,7 +345,7 @@ public partial class PlanetWorld
             if (MathF.Abs(ang) < Mathf.DegToRad(SwingInMaxDegrees)) f = f.Rotated(up, ang * (1 - MathF.Exp(-SwingInRatePerSecond * dt)));
         }
 
-        _camFwd = f;
+        _camFwd = HazardArrivalLook(f, up, dt); // landing on a Hazard World: turn to the opening and the jet (PlanetWorld.Hazard)
         // Up: eased towards the local up and capped (90°/s), so walking round a small world never rolls the view suddenly.
         // The ease alone would turn fast after a big change of up; the cap bounds that, and the ease keeps small changes soft.
         var upAngle = _camUp.AngleTo(up);
@@ -358,13 +358,18 @@ public partial class PlanetWorld
             if (dt > 0) _maxRollRateDegreesPerSecond = MathF.Max(_maxRollRateDegreesPerSecond, Mathf.RadToDeg(step) / dt);
         }
 
-        // Near a broken edge (PlanetWorld.Hazard) the camera rises and looks ahead, so you see down into the hole before
+        // Near a broken edge (PlanetWorld.Hazard) the camera rises and looks ahead, so you see down past the edge before
         // you step off it; elsewhere _edgeNearness is 0 and this adds nothing.
+        // On a Hazard World the whole walk is seen from a little higher and further back (HazardViewAmount), so the islands,
+        // the bridges' edges and the open sky between them read at walking pace (AD-59).
         var peek = _edgeNearness;
         // Just arrived: a higher, further boom looking further ahead (PlanetWorld.Arrival, PLANET-42); 0 once you move.
         var arrive = ArrivalWeight();
-        var pitch = Mathf.DegToRad(Mathf.Lerp(Mathf.Lerp(_camPitchDegrees, ArrivalPitchDegrees, arrive), OverlookPitchDegrees, _overlook01) + EdgePeekPitchDegrees * peek);
-        var dist = Mathf.Lerp(Mathf.Lerp(_camDistance, ArrivalDistanceHere(), arrive), OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek;
+        var hz = HazardViewAmount(dt);
+        var basePitch = Mathf.Lerp(Mathf.Lerp(_camPitchDegrees, ArrivalPitchDegrees, arrive), OverlookPitchDegrees, _overlook01);
+        // The cap only ever limits what the hazard view and the peek add (never a pitch you chose yourself).
+        var pitch = Mathf.DegToRad(MathF.Min(basePitch + EdgePeekPitchDegrees * peek + HazardViewPitchDegrees * hz, MathF.Max(HazardViewMaxPitchDegrees, basePitch)));
+        var dist = Mathf.Lerp(Mathf.Lerp(_camDistance, ArrivalDistanceHere(), arrive), OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek + HazardViewBackMetres * hz;
         // The aim point rises by half the wind-up's lift (the eye rises by all of it), so the view tilts down a little.
         var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * (LookAheadMetres + EdgePeekAheadMetres * peek + ArrivalLookAheadMetres * arrive);
         var desired = target - f * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist + extraUp);
@@ -469,17 +474,19 @@ public partial class PlanetWorld
     /// <summary>The flight camera's eye and look point, relative to the traveller (they ride along with it).</summary>
     private Godot.Vector3 _camOffset, _lookOffset;
 
-    /// <summary>Puts the camera straight into its walking pose (arrival, switching worlds).</summary>
-    private void SnapCamera()
+    /// <summary>Puts the camera straight into its walking pose (arrival, switching worlds), looking along the traveller's facing or <paramref name="forward"/>.</summary>
+    private void SnapCamera(Godot.Vector3? forward = null)
     {
         if (_current == null) return;
         _camUp = Gd(_walker.Up);
-        _camFwd = Gd(_walker.Facing);
+        _camFwd = forward ?? Gd(_walker.Facing);
         var up = _camUp;
         var feet = Gd(_walker.Feet);
-        var pitch = Mathf.DegToRad(_camPitchDegrees);
+        var hz = HazardViewAmount(0, snap: true);
+        var pitch = Mathf.DegToRad(MathF.Min(_camPitchDegrees + HazardViewPitchDegrees * hz, MathF.Max(HazardViewMaxPitchDegrees, _camPitchDegrees)));
+        var dist = _camDistance + HazardViewBackMetres * hz;
         var target = feet + up * LookHeightMetres;
-        _camPos = target - _camFwd * (MathF.Cos(pitch) * _camDistance) + up * (MathF.Sin(pitch) * _camDistance);
+        _camPos = target - _camFwd * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist);
         _camera.LookAtFromPosition(_camPos, target, _camUp);
         _camLook = target;
         _camBlend = 0;
@@ -497,11 +504,11 @@ public partial class PlanetWorld
         public float T, Seconds, Height;
         public int Inspect = -1;
 
-        /// <summary>On a broken world, a point the hop passes over to go round a hole rather than across it (<see cref="HopVia"/>), else null.</summary>
-        public NVector3? Via;
+        /// <summary>On a Hazard World, the route's points after <see cref="FromUp"/> (ending at <see cref="ToUp"/>) when the straight arc would leave the ground (<see cref="HopRoute"/>), else null.</summary>
+        public NVector3[]? Path;
 
-        /// <summary>With <see cref="Via"/>: the first leg's share of the whole way (0..1).</summary>
-        public float FirstLeg;
+        /// <summary>With <see cref="Path"/>: the share of the whole way (0..1) reached at each of its points.</summary>
+        public float[] PathShares = [];
     }
 
     private Hop? _hop;
@@ -509,24 +516,38 @@ public partial class PlanetWorld
     // A hop's length and height grow with the distance along the ground, within limits (by eye; rationale not recorded):
     // 0.45 s plus a second per 40 m, at most 1.2 s; a peak of a quarter of the distance, 1.2–9 m.
     private const float HopBaseSeconds = 0.45f, HopMetresPerSecond = 40f, HopMaxSeconds = 1.2f;
+
+    /// <summary>A hop along a Hazard World's route (AD-59) may take up to this long, seconds: it follows the bridges, which can be the long way round.</summary>
+    private const float HopRouteMaxSeconds = 1.8f;
     private const float HopHeightPerMetre = 0.25f, HopMinHeightMetres = 1.2f, HopMaxHeightMetres = 9f;
 
     /// <summary>A short hop across the planet to stand at <paramref name="up"/> facing <paramref name="facing"/> (then inspect).</summary>
     private void StartHop(NVector3 up, NVector3 facing, int inspect)
     {
         if (_current == null) return;
-        var via = HopVia(_walker.Up, up);
-        var first = via is { } v ? PlanetShape.Angle(_walker.Up, v) : 0f;
-        var angle = via is { } w ? first + PlanetShape.Angle(w, up) : PlanetShape.Angle(_walker.Up, up);
+        var path = HopRoute(_walker.Up, up);
+        var shares = Array.Empty<float>();
+        var angle = PlanetShape.Angle(_walker.Up, up);
+        if (path != null)
+        {
+            // The route's legs, as shares of its whole length, so the hop keeps one pace along all of them.
+            shares = new float[path.Length];
+            var sum = 0f;
+            var prev = _walker.Up;
+            for (var i = 0; i < path.Length; i++) { sum += PlanetShape.Angle(prev, path[i]); shares[i] = sum; prev = path[i]; }
+            for (var i = 0; i < shares.Length; i++) shares[i] = sum > 1e-6f ? shares[i] / sum : 1f;
+            angle = sum;
+        }
+
         var dist = angle * _current.Comp.Shape.Radius;
         _hop = new Hop
         {
             FromUp = _walker.Up, ToUp = up, Facing = facing,
-            Seconds = Mathf.Clamp(HopBaseSeconds + dist / HopMetresPerSecond, HopBaseSeconds, HopMaxSeconds),
+            Seconds = Mathf.Clamp(HopBaseSeconds + dist / HopMetresPerSecond, HopBaseSeconds, path != null ? HopRouteMaxSeconds : HopMaxSeconds),
             Height = Mathf.Clamp(dist * HopHeightPerMetre, HopMinHeightMetres, HopMaxHeightMetres),
             Inspect = inspect,
-            Via = via,
-            FirstLeg = angle > 1e-6f ? first / angle : 0f,
+            Path = path,
+            PathShares = shares,
         };
         _audio.Jump();
         _avatar.Jump();
@@ -542,9 +563,17 @@ public partial class PlanetWorld
         h.T += dt;
         var u = Mathf.Clamp(h.T / h.Seconds, 0, 1);
         var s = Smooth(u);
-        // Round a hole: two great-circle legs through Via, at the same pace as one straight arc.
-        var dir = h.Via is not { } via ? Slerp(h.FromUp, h.ToUp, s)
-            : s < h.FirstLeg ? Slerp(h.FromUp, via, s / h.FirstLeg) : Slerp(via, h.ToUp, (s - h.FirstLeg) / MathF.Max(1e-6f, 1 - h.FirstLeg));
+        // Along a Hazard World's route: great-circle legs through its points, at one pace.
+        var dir = Slerp(h.FromUp, h.ToUp, s);
+        if (h.Path is { } path)
+        {
+            var k = 0;
+            while (k < path.Length - 1 && s > h.PathShares[k]) k++;
+            var s0 = k == 0 ? 0f : h.PathShares[k - 1];
+            var a = k == 0 ? h.FromUp : path[k - 1];
+            dir = Slerp(a, path[k], Mathf.Clamp((s - s0) / MathF.Max(1e-6f, h.PathShares[k] - s0), 0, 1));
+        }
+
         var surf = _current!.Comp.Surface;
         var height = 4 * h.Height * u * (1 - u); // 4u(1 − u): 0 at both ends, 1 at u = ½
         var facing = h.ToUp - dir * NVector3.Dot(h.ToUp, dir);

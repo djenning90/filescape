@@ -199,3 +199,23 @@ Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh 
 5. **Steps 7 to 13:** key caps only (U, J ↓ Enter, U, Backspace, T, drag, Esc).
 6. **Leave** at any time: the column, the ring and the arrow disappear.
 
+## Hazard Worlds (2026-11-16, PLANET-46, AD-59)
+
+**Launch:** the sample world (toolbar *Sample world*, or `--root=sample --vis=planets`).
+
+1. **Land.** In the Starter Sky, J, type "event", Enter. You land on a small island: straight ahead the ground ends a few
+   steps away, and the black hole's jet climbs out of the opening into the sky; the camera turns to it as you land. The
+   lit stripes are the routes; to the right a narrow ridge runs out across the open sky to the tower and its lookout.
+2. **The way back** is behind you along a wide bridge (no gap): walk it once, then Home to hop back.
+3. **The ridge.** Follow the lit stripe right of ahead: a 2 m bridge with nothing either side, and a gap of about
+   1.5 m. Run at it and press Space a step before the edge (holding Space jumps further). On the far side, the stones
+   up to the lookout.
+4. **Launchers** stand on their own islands round the arrival (never in the opening ahead); every one is reached along
+   the stripes, some with a gap on the way. J lists every folder and file; G flies to the selected one from anywhere.
+5. **Fall.** Walk off any edge: rock crumbles, the rim glows, then the spiral round the black hole and back to the Starter
+   Sky beside Event Horizon's launcher; Space on it and you are straight back in.
+6. **Debris Field** (Event Horizon's third launcher) is the crowded one: 16 child worlds, 10 pads on its islands, the
+   other 6 as moons in its sky (click one and press G, or pick it in J). Falling off it puts you back on Event Horizon,
+   beside its launcher, on solid ground.
+7. **Judge by feel:** bridge widths (1.8–3 m), the gap lengths (1.4–2.2 m), the higher camera on Hazard Worlds, the turn
+   to the jet on landing, the warning sound on bridges (the edge is never far there), and the frame rate on Debris Field.

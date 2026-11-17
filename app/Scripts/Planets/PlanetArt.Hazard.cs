@@ -5,10 +5,12 @@ using NVector3 = System.Numerics.Vector3;
 namespace FileScape.App.Planets;
 
 /// <summary>
-/// The hazard world's art (PLANET-34, AD-53; original): the broken shell's mesh — the ground with its holes cut out along
-/// <see cref="ShellHole.BoundaryRadians"/> (the same edge the walker falls at), scorched near the edges, a dark underside
-/// and broken rim walls showing the crust's strata down to a glowing seam — the debris chunks, and the black hole's parts
-/// (<see cref="BlackHoleArt"/>). Mesh data is plain maths so it is made on the ground worker with the rest of the ground.
+/// A Hazard World's art (PLANET-34, PLANET-46; AD-53, AD-59; original): the broken shell's mesh — the ground cut along
+/// <see cref="BrokenShell.EdgeMetres"/> (the same edge the walker falls at) into islands and bridges, scorched near the
+/// edges, with a faintly lit stripe along every bridge's route, a dark underside and broken rim walls showing the crust's
+/// strata down to a glowing seam — the debris chunks, and the black hole's parts (<see cref="BlackHoleArt"/>). Mesh data
+/// is plain maths so it is made on the ground worker with the rest of the ground; the rim's outline is handed on in
+/// <see cref="GroundArrays.Rim"/> for the glowing edge line (<c>PlanetVisual.Hazard</c>).
 /// </summary>
 public static partial class PlanetArt
 {
@@ -24,74 +26,159 @@ public static partial class PlanetArt
     private static readonly Color Scorch = C(0.26f, 0.18f, 0.27f);
 
     /// <summary>The ground is scorched within this many metres of an edge (fading in from the outer value to full at the inner).</summary>
-    private const float ScorchOuterMetres = 3f, ScorchInnerMetres = 0.3f, ScorchAmount = 0.85f;
+    private const float ScorchOuterMetres = 1.6f, ScorchInnerMetres = 0.15f, ScorchAmount = 0.75f;
 
-    /// <summary>The rim walls are sampled about this often along each edge, metres (finer than the ground's ≈ 1 m edges, so the teeth show).</summary>
-    private const float RimSampleMetres = 0.3f;
+    /// <summary>
+    /// The route's stripe along every bridge (AD-59, "follow the lit path"): full within this half-width of the centre line,
+    /// gone by the outer value, metres; this much of the palette's path colour, glowing this much (vertex alpha).
+    /// </summary>
+    private const float RouteStripeInnerMetres = 0.12f, RouteStripeOuterMetres = 0.38f, RouteStripeAmount = 0.7f, RouteStripeGlow = 0.18f;
 
     /// <summary>The rim's rows, as fractions of <see cref="BrokenShell.CrustMetres"/> below the ground (the last is pushed lower or higher per sample: a ragged bottom).</summary>
     private static readonly float[] RimDepths = [0f, 0.1f, 0.32f, 0.55f, 0.78f, 1f];
 
-    /// <summary>The ragged bottom: ± this fraction of the crust, metres per metre; the teeth also lean in and out by ± this many metres.</summary>
+    /// <summary>The ragged bottom: ± this fraction of the crust; the wall also leans in and out by ± this many metres.</summary>
     private const float RimBottomRagFraction = 0.35f, RimLeanMetres = 0.18f;
 
-    /// <summary>
-    /// Cuts the shell's holes out of ground vertex data (<see cref="PlanetMeshArrays"/>) and adds the underside and the rim
-    /// walls. Triangles wholly over a hole are dropped; a triangle crossing an edge keeps its corners on solid ground and
-    /// moves the others onto the edge along their bearing from the hole's centre, so the drawn edge follows the walked
-    /// one to within a chord. Thread-safe (plain maths), like the rest of the ground.
-    /// </summary>
-    public static GroundArrays BreakShell(GroundArrays g, PlanetShape shape, BrokenShell shell)
-    {
-        var n = g.Vertices.Length;
-        var verts = new List<Vector3>(n * 3);
-        var normals = new List<Vector3>(n * 3);
-        var colors = new List<Color>(n * 3);
-        var tris = new List<int>(g.Indices.Length * 2);
-        var scorch = Linear(Scorch);
-        var holeOf = new int[n];
-        for (var i = 0; i < n; i++)
-        {
-            var d = g.Vertices[i].Normalized();
-            var nd = new NVector3(d.X, d.Y, d.Z);
-            holeOf[i] = -1;
-            for (var h = 0; h < shell.Holes.Count; h++)
-            {
-                if (shell.Holes[h].Contains(nd)) { holeOf[i] = h; break; }
-            }
+    /// <summary>Snapping a corner onto the edge: Newton steps on the edge distance, the gradient sampled this far each way (metres), to within this (metres).</summary>
+    private const int SnapIterations = 6;
 
-            verts.Add(g.Vertices[i]);
-            normals.Add(g.Normals[i]);
-            var e = shell.EdgeMetres(nd);
-            colors.Add(g.Colors[i].Lerp(scorch, ScorchAmount * (1 - Smooth(ScorchInnerMetres, ScorchOuterMetres, e))));
+    private const float SnapProbeMetres = 0.04f, SnapToleranceMetres = 0.01f;
+
+    /// <summary>
+    /// The outline of a broken shell's ground: <see cref="Points"/> on the edge (planet frame, at ground height),
+    /// <see cref="Out"/> the unit tangent at each pointing off the ground into open sky, <see cref="Segments"/> pairs of
+    /// indices into them (each a piece of edge), and the glowing edge line's ribbon, made here on the worker so the main
+    /// thread only uploads it (<see cref="GlowVertices"/>, <see cref="GlowNormals"/>, <see cref="GlowIndices"/>).
+    /// </summary>
+    public sealed record RimOutline(Vector3[] Points, Vector3[] Out, int[] Segments, Vector3[] GlowVertices, Vector3[] GlowNormals, int[] GlowIndices);
+
+    /// <summary>The glowing edge line: this wide, metres, lying across the edge (a quarter on the ground, the rest over the drop), this far above the ground.</summary>
+    private const float RimLineWidthMetres = 0.35f, RimLineLiftMetres = 0.04f;
+
+    /// <summary>The glowing edge line's ribbon along the outline: two vertices per outline point, a quad per segment in both windings (the glow shader culls back faces, and segments run either way round).</summary>
+    private static (Vector3[] Vertices, Vector3[] Normals, int[] Indices) RimGlowRibbon(List<Vector3> points, List<Vector3> outs, List<int> segs)
+    {
+        var v = new Vector3[points.Count * 2];
+        var nrm = new Vector3[points.Count * 2];
+        for (var i = 0; i < points.Count; i++)
+        {
+            var up = points[i].Normalized();
+            var p = points[i] + up * RimLineLiftMetres;
+            v[2 * i] = p - outs[i] * (RimLineWidthMetres * 0.25f);
+            v[2 * i + 1] = p + outs[i] * (RimLineWidthMetres * 0.75f) - up * 0.06f;
+            nrm[2 * i] = nrm[2 * i + 1] = up;
         }
 
-        // Corners over a hole are moved onto its edge (one copy per corner, shared by its triangles).
+        var idx = new int[segs.Count / 2 * 12];
+        var k = 0;
+        for (var s = 0; s < segs.Count; s += 2)
+        {
+            int iu = 2 * segs[s], ou = iu + 1, iv = 2 * segs[s + 1], ov = iv + 1;
+            foreach (var x in new[] { iu, ou, ov, iu, ov, iv, iu, ov, ou, iu, iv, ov }) idx[k++] = x;
+        }
+
+        return (v, nrm, idx);
+    }
+
+    /// <summary>
+    /// Cuts a broken shell out of ground vertex data (<see cref="PlanetMeshArrays"/>): triangles wholly over open sky are
+    /// dropped; a triangle crossing an edge keeps its solid corners and moves the others onto the edge (Newton steps on
+    /// <see cref="BrokenShell.EdgeMetres"/>), so the drawn edge follows the walked one to within a chord (≈ 0.3 m at the
+    /// subdivision hazard worlds use). Adds the route stripe, the scorch, the underside and the rim walls, and returns the
+    /// outline. Thread-safe (plain maths), like the rest of the ground.
+    /// </summary>
+    public static GroundArrays BreakShell(GroundArrays g, PlanetShape shape, BrokenShell shell, PlanetPalette palette)
+    {
+        var n = g.Vertices.Length;
+        var verts = new List<Vector3>(n * 2);
+        var normals = new List<Vector3>(n * 2);
+        var colors = new List<Color>(n * 2);
+        var tris = new List<int>(g.Indices.Length * 2);
+        var scorch = Linear(Scorch);
+        var stripe = Linear(palette.Path.Lerp(Colors.White, 0.25f));
+        var edge = new float[n];
+        for (var i = 0; i < n; i++)
+        {
+            var nd = N(g.Vertices[i].Normalized());
+            edge[i] = shell.EdgeMetres(nd);
+            verts.Add(g.Vertices[i]);
+            normals.Add(g.Normals[i]);
+            colors.Add(GroundColour(g.Colors[i], nd, edge[i], shell, scorch, stripe));
+        }
+
+        // Corners over open sky are moved onto the edge (one copy per corner, shared by its triangles).
         var snapped = new Dictionary<int, int>();
-        int Snap(int i)
+        int Snap(int i, int towards)
         {
             if (snapped.TryGetValue(i, out var s)) return s;
-            var hole = shell.Holes[holeOf[i]];
-            var d = g.Vertices[i].Normalized();
-            var b = hole.BoundaryPoint(hole.BearingOf(new NVector3(d.X, d.Y, d.Z)));
+            var b = SnapToEdge(shell, N(g.Vertices[i].Normalized()), N(g.Vertices[towards].Normalized()));
             var nrm = shape.Normal(b);
-            verts.Add(new Vector3(b.X, b.Y, b.Z) * shape.GroundRadius(b));
-            normals.Add(new Vector3(nrm.X, nrm.Y, nrm.Z));
-            colors.Add(scorch);
+            verts.Add(G(b) * shape.GroundRadius(b));
+            normals.Add(G(nrm));
+            colors.Add(GroundColour(g.Colors[i], b, 0, shell, scorch, stripe));
             return snapped[i] = verts.Count - 1;
         }
 
         for (var t = 0; t < g.Indices.Length; t += 3)
         {
             int a = g.Indices[t], b = g.Indices[t + 1], c = g.Indices[t + 2];
-            var over = (holeOf[a] >= 0 ? 1 : 0) + (holeOf[b] >= 0 ? 1 : 0) + (holeOf[c] >= 0 ? 1 : 0);
-            if (over == 3) continue;
-            tris.Add(holeOf[a] >= 0 ? Snap(a) : a);
-            tris.Add(holeOf[b] >= 0 ? Snap(b) : b);
-            tris.Add(holeOf[c] >= 0 ? Snap(c) : c);
+            bool sa = edge[a] > 0, sb = edge[b] > 0, sc = edge[c] > 0;
+            if (!sa && !sb && !sc) continue;
+            var solid = sa ? a : sb ? b : c;
+            tris.Add(sa ? a : Snap(a, solid));
+            tris.Add(sb ? b : Snap(b, solid));
+            tris.Add(sc ? c : Snap(c, solid));
         }
 
-        // The underside: the kept ground again, a crust's thickness lower, facing inwards (seen through the holes and
+        // The outline: edges used by one kept triangle only (the rest of the sphere is closed). Each vertex's "out" is the
+        // sum of its edges' outward normals, pointing away from the kept triangle's third corner.
+        var use = new Dictionary<(int, int), (int Count, int Third)>();
+        for (var t = 0; t < tris.Count; t += 3)
+        {
+            for (var k = 0; k < 3; k++)
+            {
+                int u = tris[t + k], v = tris[t + (k + 1) % 3], w = tris[t + (k + 2) % 3];
+                var key = u < v ? (u, v) : (v, u);
+                use[key] = use.TryGetValue(key, out var e) ? (e.Count + 1, w) : (1, w);
+            }
+        }
+
+        var rimIndex = new Dictionary<int, int>();
+        var rimPoints = new List<Vector3>();
+        var rimOut = new List<Vector3>();
+        var rimSegs = new List<int>();
+        int RimOf(int v)
+        {
+            if (rimIndex.TryGetValue(v, out var r)) return r;
+            rimPoints.Add(verts[v]);
+            rimOut.Add(Vector3.Zero);
+            return rimIndex[v] = rimPoints.Count - 1;
+        }
+
+        foreach (var ((u, v), (count, third)) in use)
+        {
+            if (count != 1 || verts[u].IsEqualApprox(verts[v])) continue;
+            int ru = RimOf(u), rv = RimOf(v);
+            var mid = (verts[u] + verts[v]) * 0.5f;
+            var up = mid.Normalized();
+            var along = verts[v] - verts[u];
+            var o = along.Cross(up).Normalized();
+            if (o.Dot(verts[third] - mid) > 0) o = -o; // away from the ground
+            rimOut[ru] += o;
+            rimOut[rv] += o;
+            rimSegs.Add(ru);
+            rimSegs.Add(rv);
+        }
+
+        for (var i = 0; i < rimOut.Count; i++)
+        {
+            var up = rimPoints[i].Normalized();
+            var o = rimOut[i] - up * rimOut[i].Dot(up);
+            rimOut[i] = o.LengthSquared() > 1e-10f ? o.Normalized() : Vector3.Zero;
+        }
+
+        // The underside: the kept ground again, a crust's thickness lower, facing inwards (seen across the open sky and
         // from inside during a fall). Faintly glowing (vertex alpha), as if lit from below by the disc.
         var outerCount = verts.Count;
         var under = Glowing(Linear(Underside), 0.18f);
@@ -111,55 +198,110 @@ public static partial class PlanetArt
             tris.Add(tris[t + 1] + outerCount);
         }
 
-        foreach (var hole in shell.Holes) AddRim(hole, shape, verts, normals, colors, tris);
-        return new GroundArrays(verts.ToArray(), normals.ToArray(), colors.ToArray(), tris.ToArray());
+        AddRimWalls(rimPoints, rimOut, rimSegs, verts, normals, colors, tris);
+        var (gv, gn, gi) = RimGlowRibbon(rimPoints, rimOut, rimSegs);
+        return new GroundArrays(verts.ToArray(), normals.ToArray(), colors.ToArray(), tris.ToArray(), new RimOutline(rimPoints.ToArray(), rimOut.ToArray(), rimSegs.ToArray(), gv, gn, gi));
+    }
+
+    /// <summary>A ground vertex's colour on a broken shell: scorched towards an edge, and the lit route stripe along the bridges.</summary>
+    private static Color GroundColour(Color c, NVector3 up, float edgeMetres, BrokenShell shell, Color scorch, Color stripe)
+    {
+        c = c.Lerp(scorch, ScorchAmount * (1 - Smooth(ScorchInnerMetres, ScorchOuterMetres, edgeMetres)));
+        var near = float.PositiveInfinity;
+        foreach (var s in shell.Spans)
+        {
+            if (PlanetShape.Angle(up, s.Mid) > s.BoundRadians) continue;
+            var (along, side) = s.Measure(up);
+            if (along < 0 || along > s.LengthMetres) continue;
+            near = MathF.Min(near, MathF.Abs(side));
+        }
+
+        var k = 1 - Smooth(RouteStripeInnerMetres, RouteStripeOuterMetres, near);
+        if (k <= 0) return c;
+        var lit = c.Lerp(stripe, RouteStripeAmount * k);
+        return new Color(lit.R, lit.G, lit.B, Mathf.Lerp(c.A, 1f - RouteStripeGlow, k));
     }
 
     /// <summary>
-    /// One hole's rim wall: a strip round the edge from just above the ground down through the crust in
-    /// <see cref="RimDepths"/> rows (lip, soil, three rock bands, the glowing seam), with a ragged bottom and teeth that
-    /// lean in and out, facing into the hole.
+    /// The point of the edge nearest <paramref name="p"/> (a direction over open sky): Newton steps along the edge
+    /// distance's gradient; if that does not settle, halving along the way to <paramref name="solid"/> (a corner on ground).
     /// </summary>
-    private static void AddRim(ShellHole hole, PlanetShape shape, List<Vector3> verts, List<Vector3> normals, List<Color> colors, List<int> tris)
+    private static NVector3 SnapToEdge(BrokenShell shell, NVector3 p, NVector3 solid)
     {
-        var perimeter = 2 * MathF.PI * MathF.Sin(hole.RadiusRadians) * shape.Radius;
-        var samples = Math.Max(96, (int)MathF.Ceiling(perimeter / RimSampleMetres));
+        var r = shell.Radius;
+        var q = p;
+        for (var it = 0; it < SnapIterations; it++)
+        {
+            var e = shell.EdgeMetres(q);
+            if (MathF.Abs(e) < SnapToleranceMetres) return q;
+            var (a, b) = PlanetShape.Tangents(q);
+            var ga = (shell.EdgeMetres(PlanetFrame.Move(q, a, SnapProbeMetres, r)) - shell.EdgeMetres(PlanetFrame.Move(q, -a, SnapProbeMetres, r))) / (2 * SnapProbeMetres);
+            var gb = (shell.EdgeMetres(PlanetFrame.Move(q, b, SnapProbeMetres, r)) - shell.EdgeMetres(PlanetFrame.Move(q, -b, SnapProbeMetres, r))) / (2 * SnapProbeMetres);
+            var g2 = ga * ga + gb * gb;
+            if (g2 < 1e-6f) break;
+            var grad = a * ga + b * gb;
+            var next = PlanetFrame.Move(q, grad, -e / MathF.Sqrt(g2), r);
+            if (PlanetShape.Angle(next, p) * r > 1.2f) break; // wandered off: fall back on halving
+            q = next;
+        }
+
+        if (MathF.Abs(shell.EdgeMetres(q)) < 0.05f) return q;
+        // Halving between the corner (open) and its solid neighbour.
+        NVector3 lo = p, hi = solid;
+        for (var it = 0; it < 14; it++)
+        {
+            var mid = NVector3.Normalize(lo + hi);
+            if (shell.EdgeMetres(mid) > 0) hi = mid;
+            else lo = mid;
+        }
+
+        return hi;
+    }
+
+    /// <summary>
+    /// The rim walls: from every outline point a column down through the crust in <see cref="RimDepths"/> rows (lip, soil,
+    /// three rock bands, the glowing seam), leaning out and with a ragged bottom, and a strip of quads per outline segment,
+    /// facing out over the open sky.
+    /// </summary>
+    private static void AddRimWalls(List<Vector3> points, List<Vector3> outs, List<int> segs, List<Vector3> verts, List<Vector3> normals, List<Color> colors, List<int> tris)
+    {
         var rows = RimDepths.Length;
         Color[] rowColour = [Linear(RimLip), Linear(RimSoil), Linear(RimRockA), Linear(RimRockB), Linear(RimRockC), Glowing(Linear(RimSeam), 0.85f)];
         var first = verts.Count;
-        var centre = new Vector3(hole.Centre.X, hole.Centre.Y, hole.Centre.Z);
-        for (var k = 0; k < samples; k++)
+        for (var i = 0; i < points.Count; i++)
         {
-            var th = 2 * MathF.PI * k / samples;
-            var b = hole.BoundaryPoint(th);
-            var up = new Vector3(b.X, b.Y, b.Z);
-            var inward = (centre - up * centre.Dot(up)).Normalized(); // along the ground, into the hole
-            var ground = shape.GroundRadius(b);
-            var rag = (Noise(up * 9.3f + new Vector3(hole.Seed % 97, 1.3f, 2.1f)) - 0.5f) * 2f;
-            var lean = (Noise(up * 4.1f + new Vector3(5.2f, hole.Seed % 89, 0.7f)) - 0.5f) * 2f * RimLeanMetres;
+            var up = points[i].Normalized();
+            var ground = points[i].Length();
+            var o = outs[i];
+            var rag = (Noise(up * 37f) - 0.5f) * 2f;
+            var lean = (Noise(up * 17f + new Vector3(5.2f, 1.1f, 0.7f)) - 0.5f) * 2f * RimLeanMetres;
             for (var j = 0; j < rows; j++)
             {
                 var depth = RimDepths[j] * BrokenShell.CrustMetres;
                 if (j == rows - 1) depth *= 1 + RimBottomRagFraction * rag;
-                var lift = j == 0 ? 0.04f : 0f; // the lip sits a hair above the ground so the seam between them never shows a gap
-                var p = up * (ground + lift - depth) + inward * (lean * RimDepths[j]);
-                verts.Add(p);
-                normals.Add(inward);
+                var lift = j == 0 ? 0.03f : 0f; // the lip sits a hair above the ground so the seam between them never shows a gap
+                verts.Add(up * (ground + lift - depth) + o * (lean * RimDepths[j]));
+                normals.Add(o);
                 colors.Add(rowColour[j]);
             }
         }
 
-        for (var k = 0; k < samples; k++)
+        for (var s = 0; s < segs.Count; s += 2)
         {
-            var k1 = (k + 1) % samples;
+            int u = segs[s], v = segs[s + 1];
+            var front = (outs[u] + outs[v]).Normalized();
             for (var j = 0; j < rows - 1; j++)
             {
-                int a = first + k * rows + j, b = first + k1 * rows + j, c = first + k1 * rows + j + 1, d = first + k * rows + j + 1;
-                AddFacing(verts, tris, a, b, c, normals[a]);
-                AddFacing(verts, tris, a, c, d, normals[a]);
+                int a = first + u * rows + j, b = first + v * rows + j, c = first + v * rows + j + 1, d = first + u * rows + j + 1;
+                AddFacing(verts, tris, a, b, c, front);
+                AddFacing(verts, tris, a, c, d, front);
             }
         }
     }
+
+    private static NVector3 N(Vector3 v) => new(v.X, v.Y, v.Z);
+
+    private static Vector3 G(NVector3 v) => new(v.X, v.Y, v.Z);
 
     /// <summary>Adds a triangle wound so its front faces along <paramref name="front"/> (Godot's front faces wind clockwise seen from the front).</summary>
     private static void AddFacing(List<Vector3> verts, List<int> tris, int a, int b, int c, Vector3 front)

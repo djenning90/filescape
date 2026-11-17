@@ -132,6 +132,20 @@ public partial class PlanetWorld
         SnapCamera();
     }
 
+    /// <summary>
+    /// [direct] Aims the chase camera along a surface direction without turning the traveller (what steering with the
+    /// mouse does): probes that walk a route turn the view towards the next waypoint each frame and hold W.
+    /// </summary>
+    public void AimCameraAlong(NVector3 tangent)
+    {
+        var up = Gd(_walker.Up);
+        var f = Gd(tangent);
+        f -= up * f.Dot(up);
+        if (f.LengthSquared() < 1e-6f) return;
+        _sinceOrbitSeconds = 0;
+        SnapCamera(f.Normalized());
+    }
+
     /// <summary>Rebuilds the current world where you stand (probes: after <see cref="ProbeCharacter"/> changes).</summary>
     public void ProbeRebuild()
     {
@@ -147,22 +161,100 @@ public partial class PlanetWorld
     /// <summary>[direct] Stands the traveller at a surface direction (on the overlook, say) and snaps the camera;
     /// <paramref name="top"/> is not used.</summary>
     /// <summary>
-    /// For the real-input probe (2026-11-15): falls, the nearest broken edge and hole, the first child launcher, and the
-    /// launcher of whatever is selected, each as a bearing from the camera (degrees, + right) and a surface distance (metres).
+    /// For the real-input probe (2026-11-15; AD-59, 2026-11-16): falls, the nearest open sky, the child launcher the route
+    /// reaches most easily (fewest jumps, then shortest), the next waypoint on the route to it, and the launcher of whatever
+    /// is selected, each as a bearing from the camera (degrees, + right) and a surface distance (metres); and how far ahead,
+    /// along the camera's heading, the ground ends (for timing a jump). Steer by <c>routeBearing</c> until
+    /// <c>routeLeft</c> is under a metre; when <c>routeJump</c> is true, run and press Space once <c>gapAheadMetres</c>
+    /// is under about 0.8.
     /// </summary>
     private string HazardStateJson()
     {
         if (_current == null) return "";
         (float B, float D) To(NVector3 dir) => (CameraTurnTo(dir), PlanetShape.Angle(_walker.Up, dir) * _current.Comp.Shape.Radius);
-        var hole = Shell?.Holes.OrderBy(h => PlanetShape.Angle(_walker.Up, h.Centre)).FirstOrDefault();
-        var (hb, hd) = hole != null ? To(hole.Centre) : (0f, -1f);
-        var child = _current.Comp.Launchers.FirstOrDefault(l => !l.IsParent);
+        var open = NearestOpenSky();
+        var (hb, hd) = open is { } o ? To(o) : (0f, -1f);
+        var child = EasiestChildLauncher();
         var (cb, cd) = child != null ? To(child.Direction) : (0f, -1f);
+        var step = child != null ? NextRouteStep(child.Direction) : null;
+        var (rb, rd) = step is { } st ? To(st.Point) : (0f, -1f);
         var sel = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == _s.Selection.Selected);
         var (sb, sd) = sel != null ? To(sel.Direction) : (0f, -1f);
         var edge = EdgeMetresHere;
         return System.FormattableString.Invariant(
-            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
+            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"routeBearing\":{rb:0.#},\"routeDistance\":{rd:0.##},\"routeJump\":{(step?.Jump == true ? "true" : "false")},\"routeLeft\":{step?.RemainingMetres ?? -1:0.##},\"gapAheadMetres\":{GapAheadMetres():0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
+    }
+
+    /// <summary>On a Hazard World, the nearest point over open sky (searched in rings out to 20 m), or null.</summary>
+    public NVector3? NearestOpenSky()
+    {
+        if (Shell is not { } shell || _current == null) return null;
+        var r = _current.Comp.Shape.Radius;
+        var (a, b) = PlanetShape.Tangents(_walker.Up);
+        // Coarse on purpose (the real-input probe reads it every 0.15 s): rings 0.4 m apart, 32 bearings each.
+        for (var d = 0.4f; d <= 20f; d += 0.4f)
+        {
+            for (var k = 0; k < 32; k++)
+            {
+                var th = Mathf.Tau * k / 32;
+                var p = PlanetFrame.Move(_walker.Up, a * MathF.Cos(th) + b * MathF.Sin(th), d, r);
+                if (shell.OverHole(p)) return p;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>On a Hazard World, the child launcher with the easiest route from here (fewest jumps, then shortest); elsewhere the first child launcher.</summary>
+    public PlanetLauncher? EasiestChildLauncher()
+    {
+        if (_current == null) return null;
+        var children = _current.Comp.Launchers.Where(l => !l.IsParent).ToList();
+        if (Shell is not { } shell) return children.FirstOrDefault();
+        return children
+            .Select(l => (l, Route: shell.Route(_walker.Up, l.Direction)))
+            .OrderBy(x => x.Route.Count(s => s.Jump))
+            .ThenBy(x => RouteMetres(x.Route))
+            .Select(x => x.l)
+            .FirstOrDefault();
+    }
+
+    /// <summary>The next point to head for on the route to <paramref name="target"/>, whether a gap lies before it, and the metres left to the target; null off a Hazard World.</summary>
+    public (NVector3 Point, bool Jump, float RemainingMetres)? NextRouteStep(NVector3 target)
+    {
+        if (Shell is not { } shell || _current == null) return null;
+        var route = shell.Route(_walker.Up, target);
+        var r = _current.Comp.Shape.Radius;
+        // A waypoint within 0.8 m counts as reached: head for the one after it.
+        var k = 0;
+        while (k < route.Count - 1 && PlanetShape.Angle(_walker.Up, route[k].Point) * r < 0.8f) k++;
+        return (route[k].Point, route[k].Jump, RouteMetres(route));
+    }
+
+    /// <summary>The length of a route from where the traveller stands, metres.</summary>
+    private float RouteMetres(IReadOnlyList<RouteStep> route)
+    {
+        var sum = 0f;
+        var prev = _walker.Up;
+        foreach (var s in route) { sum += PlanetShape.Angle(prev, s.Point); prev = s.Point; }
+        return sum * (_current?.Comp.Shape.Radius ?? 0);
+    }
+
+    /// <summary>On a Hazard World, how far ahead along the camera's heading the ground ends, metres (up to 6 m; −1 when it does not).</summary>
+    public float GapAheadMetres()
+    {
+        if (Shell is not { } shell || _current == null) return -1;
+        var up = Gd(_walker.Up);
+        var f = -_camera.GlobalBasis.Z;
+        f -= up * f.Dot(up);
+        if (f.LengthSquared() < 1e-6f) return -1;
+        var fwd = new NVector3(f.X, f.Y, f.Z) / f.Length();
+        for (var d = 0f; d <= 6f; d += 0.1f)
+        {
+            if (shell.OverHole(PlanetFrame.Move(_walker.Up, fwd, d, _current.Comp.Shape.Radius))) return d;
+        }
+
+        return -1;
     }
 
     public void ProbeStandOn(NVector3 up, float top)

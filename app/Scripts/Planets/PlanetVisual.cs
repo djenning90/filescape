@@ -166,7 +166,7 @@ public partial class PlanetVisual : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(groundNode);
-        if (comp.Surface.Shell is { } shell) BuildHazard(shell); // a broken world: its black hole, rim glow and debris (PlanetVisual.Hazard.cs)
+        if (comp.Surface.Shell is { } shell) BuildHazard(shell, ground?.Rim); // a Hazard World: its black hole and jet, rim glow and debris (PlanetVisual.Hazard.cs)
         // The atmosphere shell reads as a soft rim from outside; from inside (the planet you stand on) it would haze the
         // whole view, so only worlds in the sky get it.
         if (!full) AddChild(PlanetArt.Atmosphere(comp.Shape.Radius, _pal));

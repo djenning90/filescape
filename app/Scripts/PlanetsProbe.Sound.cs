@@ -138,13 +138,14 @@ public partial class PlanetsProbe
         // ---- muted: near an edge (the warning), off it (the fall), back at the Starter Sky (the return)
         var shell = P.Shell;
         var comp = P.Composition!;
-        Check(shell != null, "Event Horizon is a broken world");
+        Check(shell != null, "Event Horizon is a Hazard World");
         if (shell == null) return;
         var r = comp.Shape.Radius;
-        var (edge, hole) = NearestEdgeToArrival(shell);
-        var outward = -NVector3.Normalize(hole.Centre - edge * NVector3.Dot(hole.Centre, edge));
-        var stand = PlanetFrame.Move(edge, outward, 1.3f, r);
-        var toward = NVector3.Normalize(edge - stand * NVector3.Dot(edge, stand));
+        // The first open sky from the arrival towards the jet (as PlanetsProbe.Hazard does on the AD-59 terrain).
+        var edge = Enumerable.Range(1, 400).Select(i => PlanetFrame.FromPolar(i * 0.025f / r, -25f * MathF.PI / 180f)).First(shell.OverHole);
+        var inward = NVector3.Normalize(NVector3.UnitY - edge * edge.Y);
+        var stand = PlanetFrame.Move(edge, inward, 1.3f, r);
+        var toward = -NVector3.Normalize(inward - stand * NVector3.Dot(inward, stand));
         P.Walker.Teleport(comp.Surface, stand, toward); // [direct] stand 1.3 m from the edge, facing it
         P.FaceCameraAlong(toward);
         ResetMeters();

@@ -19,8 +19,8 @@ public enum WorldKind
     Repository,
 
     /// <summary>
-    /// A hazard world (PLANET-34, AD-53): a system-managed location that warrants a caution cue, or the sample hazard. Its
-    /// planet is a broken shell over a spinning black hole; the route is safe, the edges are not. Classification is
+    /// A Hazard World (PLANET-34, AD-53, AD-59): a system-managed location that warrants a caution cue, or the sample hazard. Its
+    /// planet is a Hazard World: islands of broken shell over a spinning black hole, joined by narrow bridges (AD-59). Classification is
     /// <c>HazardRules</c>' job (names, platform and path context only); falling is a navigation event and never touches files.
     /// </summary>
     Hazard,
@@ -59,7 +59,7 @@ public readonly record struct WorldCharacter(WorldKind Kind, int Depth, int Band
         WorldKind.WindowsRoot => "a Windows volume",
         WorldKind.WslRoot => "a Linux distribution",
         WorldKind.Repository => Worktree ? "a repository (worktree)" : "a repository",
-        WorldKind.Hazard => "a broken world (handle with care)",
+        WorldKind.Hazard => "a Hazard World (handle with care)",
         _ => BandName(Band) + (InsideRepository ? " · in a project" : ""),
     };
 
