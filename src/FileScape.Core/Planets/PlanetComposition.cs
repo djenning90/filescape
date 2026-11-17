@@ -14,11 +14,25 @@ namespace FileScape.Core.Planets;
 /// <param name="Facing">Unit tangent (perpendicular to <paramref name="Up"/>) the walker faces.</param>
 public readonly record struct PlanetPose(Vector3 Up, Vector3 Facing);
 
-/// <summary>The planet's landmark: a solid silhouette ahead of the arrival, seen over the horizon on arrival.</summary>
+/// <summary>
+/// The planet's landmark: a silhouette ahead of the arrival, seen over the horizon on arrival. Most are one solid
+/// cylinder; the Chime world's bell tower (<see cref="BellTower"/>, PLANET-56) is a walkable base with four pillars and
+/// a bell you can stand under (<see cref="Bell"/>). <see cref="Solids"/> are what the walker collides with.
+/// </summary>
 /// <param name="Direction">Unit direction of its axis.</param>
-/// <param name="Radius">Footprint radius along the surface, metres.</param>
+/// <param name="Radius">Footprint radius along the surface, metres (what keeps files and scenery off it).</param>
 /// <param name="Top">Height above the ground, metres.</param>
-public sealed record PlanetLandmark(Vector3 Direction, float Radius, float Top);
+public sealed record PlanetLandmark(Vector3 Direction, float Radius, float Top)
+{
+    /// <summary>Its solids (in <see cref="PlanetSurface.Obstacles"/>) when it is not the one cylinder of <see cref="Radius"/> and <see cref="Top"/> (null).</summary>
+    /// <remarks>Left out of serialised output when null (the behaviour baseline is unchanged for every other landmark).</remarks>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SurfaceObstacle>? Solids { get; init; }
+
+    /// <summary>It is the bell tower: a bell hangs over its axis that a twirl underneath rings (<see cref="BellTower.UnderBell"/>).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Bell { get; init; }
+}
 
 /// <summary>
 /// The overlook: a raised round platform beside the landmark, reached by walking up a spiral of stepping stones or by a

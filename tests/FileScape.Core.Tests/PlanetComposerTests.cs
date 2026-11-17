@@ -618,6 +618,104 @@ public class PlanetComposerTests
             .Should().BeTrue($"the overlook top is reachable by its steps on {c.Name}");
     }
 
+    // ------------------------------------------------------------------ the bell tower (PLANET-56)
+
+    /// <summary>An audio folder (Chime: the bell tower) with a few destinations, like the Starter Sky's Music Box.</summary>
+    private static (FsTree Tree, int Songs) Songs()
+    {
+        var s = new Spec("Music Box");
+        for (var i = 0; i < 14; i++) s.File($"track-{i:D2}.mp3", 3_000_000 + i * 1000);
+        s.File("cover.png", 90_000).Dir(new Spec("Live").File("set.flac", 9_000_000)).Dir(new Spec("Demos").File("idea.wav", 400_000));
+        var tree = new Spec("top").Dir(s).Build();
+        return (tree, tree.Find("Music Box").Id);
+    }
+
+    /// <summary>Walks a real <see cref="SphereWalker"/> towards <paramref name="target"/> for up to <paramref name="seconds"/>; the closest approach, metres.</summary>
+    private static float WalkTowards(SphereWalker w, Vector3 target, float seconds, float stopWithinMetres = 0.05f)
+    {
+        var best = float.MaxValue;
+        for (var t = 0f; t < seconds; t += 1 / 60f)
+        {
+            var d = w.Surface.SurfaceDistance(w.Up, target);
+            best = MathF.Min(best, d);
+            if (d < stopWithinMetres) break;
+            var to = target - w.Up * Vector3.Dot(target, w.Up);
+            w.Update(new SphereWalkInput(to.LengthSquared() > 1e-10f ? Vector3.Normalize(to) * MathF.Min(1, d) : Vector3.Zero, false, false, false), Units.Durations.FromSeconds(1 / 60.0));
+        }
+
+        return best;
+    }
+
+    [Fact]
+    public void The_bell_tower_s_platform_can_be_walked_onto_and_under_the_bell()
+    {
+        var (tree, songs) = Songs();
+        var c = PlanetComposer.Compose(tree, songs);
+        c.Theme.Should().Be(PlanetTheme.Chime);
+        var lm = c.Landmark;
+        var R = c.Shape.Radius;
+        // From 4 m out on the side facing the arrival (between two pillars), walk to the axis: under the hanging bell.
+        var start = PlanetFrame.Move(lm.Direction, PlanetFrame.North(lm.Direction), 4f, R);
+        var w = new SphereWalker();
+        w.Teleport(c.Surface, start, -PlanetFrame.North(start));
+        var closest = WalkTowards(w, lm.Direction, 6f);
+        closest.Should().BeLessThan(0.3f, "the platform and the space under the bell are open: only the pillars are solid");
+        w.Grounded.Should().BeTrue();
+        w.Support.Value.Should().BeApproximately(BellTower.BaseTopMetres, 1e-3f, "standing on the base, as drawn");
+        BellTower.UnderBell(lm, w.Up, R).Should().BeTrue();
+
+        // Jump and twirl under the bell: the boost's apex stays clear of the bell's mouth, and you land back on the base.
+        var apex = 0f;
+        for (var f = 0; f < 60; f++) w.Update(SphereWalkInput.None, Units.Durations.FromSeconds(1 / 60.0)); // come to rest
+        BellTower.UnderBell(lm, w.Up, R).Should().BeTrue("at rest under the bell");
+        w.Update(new SphereWalkInput(Vector3.Zero, false, true, true), Units.Durations.FromSeconds(1 / 60.0));
+        for (var f = 0; f < 240; f++)
+        {
+            var press = f == 30; // near the top of the held jump
+            w.Update(new SphereWalkInput(Vector3.Zero, false, press, true), Units.Durations.FromSeconds(1 / 60.0));
+            apex = MathF.Max(apex, w.Height.Value);
+        }
+
+        w.AirJumps.Should().Be(1);
+        (apex + BellTower.TravellerHeightMetres).Should().BeLessThan(BellTower.BellRimMetres, "the traveller twirls under the bell, not into it");
+        w.Grounded.Should().BeTrue();
+        BellTower.UnderBell(lm, w.Up, R).Should().BeTrue("a twirl in place lands where it took off");
+    }
+
+    [Fact]
+    public void The_bell_tower_s_pillars_are_solid_where_they_are_drawn_and_everything_is_still_reachable()
+    {
+        var (tree, songs) = Songs();
+        var c = PlanetComposer.Compose(tree, songs);
+        var lm = c.Landmark;
+        var R = c.Shape.Radius;
+        lm.Bell.Should().BeTrue();
+        lm.Radius.Should().Be(BellTower.BaseRadiusMetres, "files and scenery keep off the whole base");
+        var solids = lm.Solids!;
+        solids.Should().HaveCount(5).And.OnlyContain(o => c.Surface.Obstacles.Contains(o));
+        c.Surface.Obstacles.Should().NotContain(o => o.Direction == lm.Direction && o.Top > BellTower.BaseTopMetres, "no solid over the axis any more");
+        foreach (var pillar in solids.Skip(1))
+        {
+            (PlanetShape.Angle(pillar.Direction, lm.Direction) * R).Should().BeApproximately(BellTower.PillarOffsetMetres * MathF.Sqrt(2), 0.01f, "where it is drawn");
+            pillar.Top.Should().BeGreaterThan(5f);
+            // Walk straight at the pillar from outside the base: it stops you at its collar.
+            var dir = pillar.Direction - lm.Direction * Vector3.Dot(pillar.Direction, lm.Direction);
+            var start = PlanetFrame.Move(lm.Direction, Vector3.Normalize(dir), 4.5f, R);
+            var w = new SphereWalker();
+            w.Teleport(c.Surface, start, -dir);
+            var closest = WalkTowards(w, pillar.Direction, 4f);
+            closest.Should().BeGreaterThan(pillar.Radius + 0.3f, "the pillar is solid");
+            closest.Should().BeLessThan(pillar.Radius + 0.4f, "and only as wide as its collar");
+        }
+
+        // Nothing else stands on the base, and every launcher, item and the overlook are still walked to.
+        foreach (var it in c.Items) c.Surface.SurfaceDistance(it.Direction, lm.Direction).Should().BeGreaterThan(lm.Radius + it.Radius);
+        foreach (var l in c.Launchers) c.Surface.SurfaceDistance(l.Direction, lm.Direction).Should().BeGreaterThan(lm.Radius + l.PadRadius + 1f);
+        ShouldBeReachable(c);
+        // Other landmarks keep their one cylinder.
+        PlanetComposer.Compose(Modest(), 0).Landmark.Should().Match<PlanetLandmark>(l => !l.Bell && l.Solids == null);
+    }
+
     // ------------------------------------------------------------------ determinism and signature
 
     [Fact]

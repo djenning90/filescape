@@ -174,8 +174,11 @@ public partial class PlanetVisual : Node3D
 
         if (comp.Landmark is { } lm)
         {
-            if (!LandmarkMeshes.TryGetValue(comp.Theme, out var mesh)) LandmarkMeshes[comp.Theme] = mesh = PlanetArt.Landmark(comp.Theme);
-            AddChild(new MeshInstance3D { Name = "Landmark", Mesh = mesh, Transform = Stand(surf, lm.Direction, PlanetFrame.North(lm.Direction), 1f, sink: 0.15f) });
+            // The bell tower's bell hangs on its own so it can swing (PLANET-56, PlanetVisual.Bell.cs).
+            if (!LandmarkMeshes.TryGetValue(comp.Theme, out var mesh)) LandmarkMeshes[comp.Theme] = mesh = PlanetArt.Landmark(comp.Theme, withBell: !lm.Bell);
+            var landmarkNode = new MeshInstance3D { Name = "Landmark", Mesh = mesh, Transform = Stand(surf, lm.Direction, PlanetFrame.North(lm.Direction), 1f, sink: BellTower.SinkMetres) };
+            AddChild(landmarkNode);
+            if (lm.Bell) HangBell(landmarkNode, comp.Theme);
         }
 
         var tGround = sw.Elapsed.TotalMilliseconds;
@@ -266,7 +269,9 @@ public partial class PlanetVisual : Node3D
         if (_comp.Overlook is not { } ov) return;
         // On a repository world the overlook is the workbench (AD-50).
         var mesh = _character.Kind == WorldKind.Repository ? Shared($"workbench-{ov.Top:0.00}", () => PlanetArt.Workbench(_pal, ov.Top)) : _overlookMesh ??= PlanetArt.Overlook();
-        AddChild(new MeshInstance3D { Name = _character.Kind == WorldKind.Repository ? "Workbench" : "Overlook", Mesh = mesh, Transform = Stand(surf, ov.Direction, PlanetFrame.North(ov.Direction), ov.Radius / PlanetArt.OverlookRadiusMetres, sink: 0.1f) });
+        var at = Stand(surf, ov.Direction, PlanetFrame.North(ov.Direction), ov.Radius / PlanetArt.OverlookRadiusMetres, sink: 0.1f);
+        AddChild(new MeshInstance3D { Name = _character.Kind == WorldKind.Repository ? "Workbench" : "Overlook", Mesh = mesh, Transform = at });
+        if (_character.Kind != WorldKind.Repository) BuildTelescopeCue(at); // PLANET-55: "E · Telescope" over it on approach
         var i = 0;
         foreach (var step in ov.Steps)
         {
@@ -462,6 +467,8 @@ public partial class PlanetVisual : Node3D
         if (_cursor != null) _cursor.Visible = (_time % CursorBlinkPeriodSeconds) < CursorOnSeconds; // the terminal's cursor blinks
         AnimateRootMarkCue(dt);
         if (!_full) return;
+        AnimateBell(dt); // PLANET-56: the bell tower's bell swings when rung (PlanetVisual.Bell.cs)
+        AnimateTelescopeCue(dt); // PLANET-55: the telescope's sign on approach (PlanetVisual.Telescope.cs)
         var surf = _comp.Surface;
         foreach (var (id, node) in _launchers)
         {

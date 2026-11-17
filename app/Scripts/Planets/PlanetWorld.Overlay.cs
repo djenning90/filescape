@@ -514,6 +514,7 @@ public partial class PlanetWorld
         }
 
         AddBenchSigns(tree);
+        AddTelescopeSign(); // PLANET-55 (PlanetWorld.Bell.cs)
         var blocked = _s.Hud.BlockingRects.ToList();
         if (_benchPanel.Visible) blocked.Add(_benchPanel.GetGlobalRect());
         if (_previewPanel.Visible) blocked.Add(_previewPanel.GetGlobalRect());

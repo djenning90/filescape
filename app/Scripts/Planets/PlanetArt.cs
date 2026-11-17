@@ -112,6 +112,9 @@ public static partial class PlanetArt
     /// </summary>
     internal const float OverlookRadiusMetres = 2.2f;
 
+    /// <summary>The overlook mesh's platform top, metres (the composer's default <see cref="PlanetParams.OverlookTop"/>); the telescope stands on it.</summary>
+    internal const float OverlookTopMeshMetres = 2.4f;
+
     // ------------------------------------------------------------------ palettes
 
     /// <summary>A colour from sRGB channels 0–1 (opaque: alpha 1 also means "not glowing", see <see cref="Glowing"/>).</summary>
@@ -1034,7 +1037,7 @@ public static partial class PlanetArt
     {
         var accent = palette?.Accent ?? C(0.93f, 0.40f, 0.44f);
         var glow = palette?.Glow ?? C(1.0f, 0.8f, 0.45f);
-        const float h = 2.4f, r = OverlookRadiusMetres;
+        const float h = OverlookTopMeshMetres, r = OverlookRadiusMetres;
         var b = new MeshBuilder();
         b.Lathe([new(0, -0.3f), new(r * 1.12f, -0.3f), new(r * 1.12f, 0.2f), new(r * 1.0f, 0.5f), new(r * 0.92f, 1.4f), new(r * 0.96f, h - 0.35f), new(r * 0.96f, h - 0.35f), new(r + 0.06f, h - 0.25f), new(r + 0.06f, h - 0.05f), new(r, h), new(r, h), new(0, h)],
             (_, i) => i < 3 ? StoneDark : i < 6 ? Stone : i < 10 ? accent.Lerp(Stone, 0.4f) : Cream.Lerp(Stone, 0.4f), 28);
@@ -1088,8 +1091,12 @@ public static partial class PlanetArt
 
     // ------------------------------------------------------------------ landmarks
 
-    /// <summary>A planet's landmark (≈ 8–12 m; Quiet's is a little 5 m arch): one distinct silhouette per theme, base at y = 0.</summary>
-    public static ArrayMesh Landmark(PlanetTheme theme)
+    /// <summary>
+    /// A planet's landmark (≈ 8–12 m; Quiet's is a little 5 m arch): one distinct silhouette per theme, base at y = 0.
+    /// <paramref name="withBell"/> false leaves the bell tower's bell out: the planet hangs it separately
+    /// (<see cref="BellTowerBell"/>) so it can swing when rung (PLANET-56).
+    /// </summary>
+    public static ArrayMesh Landmark(PlanetTheme theme, bool withBell = true)
     {
         var p = Palette(theme);
         var b = new MeshBuilder();
@@ -1099,7 +1106,10 @@ public static partial class PlanetArt
             case PlanetTheme.Meadow: FlowerTree(b, p); break;
             case PlanetTheme.Workshop: Chimney(b, p); break;
             case PlanetTheme.Library: BookTower(b, p); break;
-            case PlanetTheme.Chime: BellTower(b, p); break;
+            case PlanetTheme.Chime:
+                BellTowerFrame(b, p);
+                if (withBell) Bell(b, p, new Vector3(0, BellTower.BellPivotMeshMetres, 0));
+                break;
             case PlanetTheme.Theatre: TentArch(b, p); break;
             case PlanetTheme.Vault: DomedVault(b, p); break;
             case PlanetTheme.Crystal: CrystalSpire(b, p); break;
@@ -1271,16 +1281,21 @@ public static partial class PlanetArt
         b.Lathe([new(0, y), new(0.45f, y), new(0.45f, y), new(0.45f, y + 0.12f), new(0, y + 0.12f)], (_, _) => Brass.Darkened(0.2f), 14, origin: new Vector3(0.4f, 0, 0));
     }
 
-    /// <summary>Chime's landmark: an open bell tower with a pyramid roof (≈ 10.2 m) and a big bell hanging inside.</summary>
-    private static void BellTower(MeshBuilder b, PlanetPalette p)
+    /// <summary>
+    /// Chime's landmark: an open bell tower with a pyramid roof (≈ 10.2 m); the big bell inside is <see cref="Bell"/>. The
+    /// base, pillars and bell are drawn from <see cref="BellTower"/>'s measurements, which are also its collision
+    /// (PLANET-56): change them there, not here.
+    /// </summary>
+    private static void BellTowerFrame(MeshBuilder b, PlanetPalette p)
     {
-        // Four posts on a round base, a swooping roof with chimes at its corners, and a big bell with a glowing clapper.
-        b.Lathe([new(0, 0), new(2.3f, 0), new(2.3f, 0.35f), new(2.1f, 0.45f), new(0, 0.45f)], (_, i) => i < 2 ? StoneDark : Stone, 20);
+        // Four posts on a round base, a swooping roof with chimes at its corners.
+        const float baseR = BellTower.BaseRadiusMetres, baseTop = BellTower.BaseTopMeshMetres, postTop = BellTower.PillarTopMeshMetres;
+        b.Lathe([new(0, 0), new(baseR, 0), new(baseR, baseTop - 0.1f), new(baseR - 0.2f, baseTop), new(0, baseTop)], (_, i) => i < 2 ? StoneDark : Stone, 20);
         var post = p.Accent.Darkened(0.15f);
-        foreach (var (x, z) in new[] { (-1.5f, -1.5f), (1.5f, -1.5f), (-1.5f, 1.5f), (1.5f, 1.5f) })
+        foreach (var (x, z) in BellTower.Pillars)
         {
-            b.Cylinder(new Vector3(x, 0.45f, z), new Vector3(x, 6.6f, z), 0.18f, 0.15f, post, 8);
-            b.Ellipsoid(new Vector3(x, 0.55f, z), new Vector3(0.28f, 0.14f, 0.28f), Brass, 8, 4);
+            b.Cylinder(new Vector3(x, baseTop, z), new Vector3(x, postTop, z), BellTower.PillarRadiusMetres, 0.15f, post, 8);
+            b.Ellipsoid(new Vector3(x, baseTop + 0.1f, z), new Vector3(BellTower.PillarSolidRadiusMetres, 0.14f, BellTower.PillarSolidRadiusMetres), Brass, 8, 4);
         }
 
         b.RoundBox(new Vector3(0, 6.5f, -1.5f), new Vector3(3.4f, 0.3f, 0.3f), 0.4f, post.Darkened(0.1f));
@@ -1295,11 +1310,32 @@ public static partial class PlanetArt
             b.Ellipsoid(new Vector3(x, 5.94f, z), new Vector3(0.06f, 0.06f, 0.06f), Glowing(p.Glow), 6, 4);
         }
 
+    }
+
+    /// <summary>
+    /// The bell tower's bell with its rope and glowing clapper, hanging from <paramref name="pivot"/> (its mouth
+    /// <see cref="BellTower.BellRimRadiusMetres"/> wide, <see cref="BellTower.BellDropMetres"/> below the pivot).
+    /// </summary>
+    private static void Bell(MeshBuilder b, PlanetPalette p, Vector3 pivot)
+    {
+        // The profile as first drawn (a 1.3 m mouth, 2.05 m tall), scaled to the measured mouth and drop.
+        const float sx = BellTower.BellRimRadiusMetres / 1.3f, sy = BellTower.BellDropMetres / 2.05f;
         Vector2[] bell = [new(0, 0), new(0.35f, -0.05f), new(0.65f, -0.4f), new(0.75f, -1.1f), new(0.9f, -1.6f), new(1.25f, -1.95f), new(1.3f, -2.05f)];
-        b.Lathe(bell, (_, i) => C(1.0f, 0.86f, 0.5f).Lightened(0.04f * i), 20, origin: new Vector3(0, 6.35f, 0));
-        b.Lathe(bell.Select(q => new Vector2(q.X * 0.88f, q.Y - 0.05f)).ToArray(), (_, _) => C(0.75f, 0.55f, 0.3f), 20, origin: new Vector3(0, 6.35f, 0), inward: true);
-        b.Cylinder(new Vector3(0, 6.3f, 0), new Vector3(0, 4.6f, 0), 0.05f, 0.05f, Ink, 4);
-        b.Ellipsoid(new Vector3(0, 4.45f, 0), new Vector3(0.28f, 0.28f, 0.28f), Glowing(p.Glow), 10, 6);
+        bell = bell.Select(q => new Vector2(q.X * sx, q.Y * sy)).ToArray();
+        b.Lathe(bell, (_, i) => C(1.0f, 0.86f, 0.5f).Lightened(0.04f * i), 20, origin: pivot);
+        b.Lathe(bell.Select(q => new Vector2(q.X * 0.88f, q.Y - 0.05f)).ToArray(), (_, _) => C(0.75f, 0.55f, 0.3f), 20, origin: pivot, inward: true);
+        // The rope and the glowing clapper, its tip just below the mouth (where a twirl underneath points at it).
+        const float clapper = 0.22f, clapperAt = BellTower.BellDropMetres - 0.1f;
+        b.Cylinder(pivot + new Vector3(0, -0.05f, 0), pivot + new Vector3(0, -clapperAt + clapper * 0.5f, 0), 0.05f, 0.05f, Ink, 4);
+        b.Ellipsoid(pivot + new Vector3(0, -clapperAt, 0), new Vector3(clapper, clapper, clapper), Glowing(p.Glow), 10, 6);
+    }
+
+    /// <summary>The bell tower's bell alone, its pivot (where it hangs from) at the origin: the planet swings it when rung (PLANET-56).</summary>
+    public static ArrayMesh BellTowerBell(PlanetTheme theme)
+    {
+        var b = new MeshBuilder();
+        Bell(b, Palette(theme), Vector3.Zero);
+        return Commit(b);
     }
 
     /// <summary>Theatre's landmark: a striped tent arch (≈ 10.5 m to the pennant, ≈ 7.4 m across) with a string of bulbs, open along Z.</summary>

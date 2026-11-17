@@ -154,6 +154,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         { nameof(SkySynth.Open), true },
         { nameof(SkySynth.Deny), true },
         { nameof(SkySynth.Chime), true },
+        { nameof(SkySynth.BellToll), true },
     };
 
     private static void Fire(SkySynth s, string name)
@@ -173,6 +174,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
             case nameof(SkySynth.Open): s.Open(); break;
             case nameof(SkySynth.Deny): s.Deny(); break;
             case nameof(SkySynth.Chime): s.Chime(2); break;
+            case nameof(SkySynth.BellToll): s.BellToll(); break;
             default: throw new ArgumentException(name);
         }
     }
