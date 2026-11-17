@@ -448,6 +448,9 @@ try {
   Drag-Turns 'left' 'left-drag on the sky' | Out-Null
   Check ((State).selected -eq $sel0) "a left-drag leaves the selection alone (selected=$((State).selected))"
   $s = State; $wo = $s.planets.worldOnScreen
+  # From the higher arrival camera (PLANET-42, it looks down more) the sky's worlds may all be out of view: turn with the
+  # arrow keys until one is (a player would look round for it too), letting the turn settle each time.
+  for ($k = 0; $k -lt 12 -and -not $wo; $k++) { Hold-Key 'Left' 250; Start-Sleep -Milliseconds 1200; $wo = (State).planets.worldOnScreen }
   if ($wo) {
     Log "a world on screen: $($wo[0]) at ($($wo[1]), $($wo[2]))"
     $a = Heading

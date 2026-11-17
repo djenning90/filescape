@@ -26,6 +26,7 @@ public static class FsInput {
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out int pid);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
@@ -65,7 +66,8 @@ function Find-FileScapeWindow {
 # over it; otherwise the probe stops. What is held is remembered so Release-All-Held (call it in finally) lets go of it.
 $script:HeldKeys = New-Object System.Collections.Generic.HashSet[string]
 $script:HeldButtons = New-Object System.Collections.Generic.HashSet[string]
-function Guard { if ($script:w -and [FsInput]::GetForegroundWindow() -ne $script:w) { throw "FileScape is not the foreground window: stopping before any input goes elsewhere" } }
+function Foreground-Name { $h = [FsInput]::GetForegroundWindow(); $id = 0; [void][FsInput]::GetWindowThreadProcessId($h, [ref]$id); try { (Get-Process -Id $id -ErrorAction Stop).ProcessName } catch { "pid $id" } }
+function Guard { if ($script:w -and [FsInput]::GetForegroundWindow() -ne $script:w) { throw "FileScape is not the foreground window ($(Foreground-Name) is): stopping before any input goes elsewhere" } }
 function Guard-Pointer {
   Guard
   if (-not $script:w) { return }

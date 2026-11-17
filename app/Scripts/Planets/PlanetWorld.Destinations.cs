@@ -550,22 +550,29 @@ public partial class PlanetWorld
     }
 
     /// <summary>
-    /// The first row the keyboard can land on. While filtering, the first row whose name matches (a deep match comes after
-    /// the folders that lead to it, and ↓ or Enter should reach the match, not its ancestor).
+    /// The first row the keyboard can land on. While filtering, the best matching row (a deep match comes after the folders
+    /// that lead to it, and ↓ or Enter should reach the match, not its ancestor): a whole-name match first, then a name that
+    /// starts with the filter, then the shallowest, then list order — so "lantern" picks Lantern Workshop here before
+    /// Lantern Moth three levels down (real-input route, 2026-11-17: A→Z order alone flew to the deep one).
     /// </summary>
     private TreeItem? FirstSelectable(bool preferMatch = false)
     {
         var filter = _contentsFilter.Text.Trim();
-        TreeItem? first = null;
+        TreeItem? first = null, best = null;
+        var bestScore = int.MaxValue;
         for (var it = _destTree.GetRoot()?.GetFirstChild(); it != null; it = it.GetNextVisible())
         {
             if (RowOf(it) is not { } r || r.Kind == DestinationRowKind.Note) continue;
             first ??= it;
             if (!preferMatch || filter.Length == 0) return first;
-            if (r.Kind != DestinationRowKind.Section && r.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase)) return it;
+            if (r.Kind == DestinationRowKind.Section || !r.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase)) continue;
+            // Lower is better: whole name 0, prefix 1, elsewhere 2; then depth (a strict order, ties keep list order).
+            var kind = string.Equals(r.Name, filter, StringComparison.CurrentCultureIgnoreCase) ? 0 : r.Name.StartsWith(filter, StringComparison.CurrentCultureIgnoreCase) ? 1 : 2;
+            var score = kind * 1000 + Math.Min(r.Depth, 999);
+            if (score < bestScore) { bestScore = score; best = it; }
         }
 
-        return first;
+        return best ?? first;
     }
 
     // ------------------------------------------------------------------ commit
