@@ -138,6 +138,9 @@ try {
     Shot 'play-repo-arrival' | Out-Null
     # 2 · a real double-click on the solution's object: opened through Open, no jump (PLANET-43).
     for ($k = 0; $k -lt 14 -and -not (State).nav.sln; $k++) { Hold-Key 'Right' 260; Start-Sleep -Milliseconds 250 }
+    # The camera's turn eases on after the key is let go: let it settle, then read where the solution stands.
+    Start-Sleep -Milliseconds 1500
+    for ($k = 0; $k -lt 6 -and -not (State).nav.sln; $k++) { Hold-Key 'Left' 120; Start-Sleep -Milliseconds 1200 }
     $s = State
     Check ($null -ne $s.nav.sln) "the solution file stands on the planet in view (at $($s.nav.sln))"
     if ($s.nav.sln) {
@@ -154,10 +157,10 @@ try {
     for ($i = 0; $i -lt 30 -and -not (State).nav.tripActive; $i++) { Start-Sleep -Milliseconds 100 }
     $s = State; $hops = [int]$s.nav.tripHops
     Check ($s.nav.tripActive -and $hops -ge 3 -and -not $s.nav.listOpen) "Enter on Old Bridge starts a trip of $hops hops; the list steps aside"
-    $seen = @(); $shot = $false
+    $seen = @(); $tookShot = $false
     for ($i = 0; $i -lt 400 -and (State).nav.tripActive; $i++) {
       $s = State; if ($seen -notcontains $s.currentName) { $seen += $s.currentName }
-      if (-not $shot -and [int]$s.nav.tripReached -ge 2 -and $s.nav.phase -eq 'Flying') { Shot 'play-trip-hop' | Out-Null; $shot = $true; Log "  trip panel: $($s.nav.tripText -replace '\n', ' ')" }
+      if (-not $tookShot -and [int]$s.nav.tripReached -ge 2 -and $s.nav.phase -eq 'Flying') { Shot 'play-trip-hop' | Out-Null; $tookShot = $true; Log "  trip panel: $($s.nav.tripText -replace '\n', ' ')" }
       Start-Sleep -Milliseconds 150
     }
     $s = Wait-Walking-At 'Old Bridge'
@@ -194,6 +197,9 @@ try {
       $s = Wait-Walking-At 'Music Box'
       Check ($s.currentName -eq 'Music Box') "landed on Music Box ($($s.currentName))"
     }
+    Log "OS planets probe: $fails failure(s)"
+    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
   }
 
   if ($Hazard) {
