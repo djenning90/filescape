@@ -122,7 +122,23 @@ public partial class SkyAudio : Node
     public double QueueLowSeconds { get; private set; } = double.MaxValue;
 
     /// <summary>Starts a new <see cref="QueueLowSeconds"/> measurement.</summary>
-    public void ResetQueueLow() => QueueLowSeconds = double.MaxValue;
+    public void ResetQueueLow()
+    {
+        QueueLowSeconds = double.MaxValue;
+        LoopGapMaxMs = 0;
+        MixGapMaxMs = 0;
+    }
+
+    /// <summary>
+    /// The diagnostics as a JSON object for the state file (FOLLOW-2): underruns, queue, the audio thread's longest wake gap,
+    /// the mixer's longest gap, the runtime's collections and total pause time, and the first underruns' log.
+    /// </summary>
+    public string DiagnosticsJson()
+    {
+        var log = string.Join(",", SkipLog.Select(l => "\"" + l.Replace("\"", "'") + "\""));
+        var low = QueueLowSeconds == double.MaxValue ? -1 : QueueLowSeconds * 1000;
+        return System.FormattableString.Invariant($"{{\"skips\":{Skips},\"audible\":{AudibleSkips},\"queuedMs\":{QueuedSeconds * 1000:0},\"lowMs\":{low:0},\"loopGapMaxMs\":{LoopGapMaxMs:0.#},\"mixGapMaxMs\":{MixGapMaxMs:0.#},\"gc0\":{GC.CollectionCount(0)},\"gc1\":{GC.CollectionCount(1)},\"gc2\":{GC.CollectionCount(2)},\"gcPauseMs\":{GC.GetTotalPauseDuration().TotalMilliseconds:0},\"latencyMs\":{AudioServer.GetOutputLatency() * 1000:0},\"recordS\":{RecordSeconds:0.000},\"recordOverruns\":{RecordOverruns},\"log\":[{log}]}}");
+    }
 
     public override void _Ready()
     {
@@ -152,6 +168,69 @@ public partial class SkyAudio : Node
                 Fill(); // primed before the audio server mixes its first block (an empty first block was a gap)
             }
         }
+
+        StartOutputRecording();
+    }
+
+    // ---------------------------------------------------------------- output recording (FOLLOW-2 diagnostics)
+
+    /// <summary>
+    /// When FILESCAPE_AUDIO_RECORD names a .wav path (probes only), what the audio server actually mixed on the Master bus
+    /// is captured (an <see cref="AudioEffectCapture"/>) and written there when the node leaves the tree, so a gap a person
+    /// hears can be looked for in the output itself, not only in the generator's counters (2026-11-17: the real resize
+    /// glitch with 0 skips). Off otherwise: nothing is added to the bus and nothing is stored.
+    /// </summary>
+    private string? _recordPath;
+    private AudioEffectCapture? _capture;
+    private readonly List<float> _recorded = [];
+    private readonly Stopwatch _recordClock = new();
+
+    /// <summary>The most a recording keeps, seconds of output (≈ 23 MB at 48 kHz stereo floats).</summary>
+    private const int MaxRecordSeconds = 60;
+
+    private void StartOutputRecording()
+    {
+        var path = System.Environment.GetEnvironmentVariable("FILESCAPE_AUDIO_RECORD");
+        if (string.IsNullOrEmpty(path)) return;
+        _recordPath = path;
+        _capture = new AudioEffectCapture { BufferLength = 1f };
+        AudioServer.AddBusEffect(0, _capture);
+        _recordClock.Restart();
+    }
+
+    /// <summary>Wall-clock seconds since the recording started (probes write it next to their phases to place a gap).</summary>
+    public double RecordSeconds => _recordClock.Elapsed.TotalSeconds;
+
+    /// <summary>Times the capture's buffer was found full (frames lost from the recording, not from the output).</summary>
+    public int RecordOverruns { get; private set; }
+
+    /// <summary>Drains the capture into the recording (the audio thread, after each fill).</summary>
+    private void DrainCapture()
+    {
+        if (_capture == null) return;
+        var n = _capture.GetFramesAvailable();
+        if (n <= 0) return;
+        if (n >= (int)(AudioServer.GetMixRate() * 0.95f)) RecordOverruns++;
+        var frames = _capture.GetBuffer(n);
+        if (_recorded.Count / 2 > MaxRecordSeconds * AudioServer.GetMixRate()) return;
+        foreach (var f in frames)
+        {
+            _recorded.Add(f.X);
+            _recorded.Add(f.Y);
+        }
+    }
+
+    /// <summary>Writes the recording as a 16-bit stereo WAV at the mix rate.</summary>
+    private void WriteRecording()
+    {
+        if (_recordPath == null) return;
+        var rate = (int)AudioServer.GetMixRate();
+        using var w = new System.IO.BinaryWriter(System.IO.File.Create(_recordPath));
+        var bytes = _recorded.Count * 2;
+        w.Write("RIFF"u8); w.Write(36 + bytes); w.Write("WAVE"u8); w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2);
+        w.Write(rate); w.Write(rate * 4); w.Write((short)4); w.Write((short)16); w.Write("data"u8); w.Write(bytes);
+        foreach (var v in _recorded) w.Write((short)Math.Clamp((int)(v * 32767f), -32768, 32767));
+        _recordPath = null;
     }
 
     /// <summary>Starts the audio thread (it tops up the buffer while active; see <see cref="Fill"/>).</summary>
@@ -166,16 +245,29 @@ public partial class SkyAudio : Node
     /// <summary>The audio thread: top up, sleep, until the node leaves the tree.</summary>
     private void AudioLoop()
     {
+        var wake = Stopwatch.StartNew();
         while (_running)
         {
+            // FOLLOW-2 diagnostics (2026-11-17, the real resize gap): how late this thread woke, and how long since the
+            // audio server last mixed, so a gap can be placed in this thread, the runtime's pauses or the driver's mixer.
+            LoopGapMaxMs = Math.Max(LoopGapMaxMs, wake.Elapsed.TotalMilliseconds);
+            wake.Restart();
+            MixGapMaxMs = Math.Max(MixGapMaxMs, AudioServer.GetTimeSinceLastMix() * 1000);
             lock (_gate)
             {
                 if (_active) Fill();
+                DrainCapture();
             }
 
             System.Threading.Thread.Sleep(FillIntervalMs);
         }
     }
+
+    /// <summary>The longest interval between two wakes of the audio thread since <see cref="ResetQueueLow"/>, milliseconds (diagnostics).</summary>
+    public double LoopGapMaxMs { get; private set; }
+
+    /// <summary>The longest time since the audio server's last mix seen by the audio thread since <see cref="ResetQueueLow"/>, milliseconds (diagnostics).</summary>
+    public double MixGapMaxMs { get; private set; }
 
     private bool _active;
 
@@ -265,6 +357,7 @@ public partial class SkyAudio : Node
         _running = false;
         _thread?.Join(200);
         _thread = null;
+        lock (_gate) WriteRecording();
         lock (_gate)
         {
             _player?.Stop();
@@ -284,7 +377,7 @@ public partial class SkyAudio : Node
         var available = _playback.GetFramesAvailable();
         var queued = _capacityFrames - available;
         var skipsNow = _playback.GetSkips();
-        if (skipsNow != _lastSkips && SkipLog.Count < 20) SkipLog.Add($"+{skipsNow - _lastSkips} at {_sinceStart.Elapsed.TotalSeconds:0.000} s (queued {queued * 1000 / MixRateHz} ms, last fill {(_sinceFill.IsRunning ? _sinceFill.Elapsed.TotalMilliseconds : -1):0} ms ago)");
+        if (skipsNow != _lastSkips && SkipLog.Count < 40) SkipLog.Add($"+{skipsNow - _lastSkips} at {_sinceStart.Elapsed.TotalSeconds:0.000} s (queued {queued * 1000 / MixRateHz} ms, last fill {(_sinceFill.IsRunning ? _sinceFill.Elapsed.TotalMilliseconds : -1):0} ms ago, mix {AudioServer.GetTimeSinceLastMix() * 1000:0} ms ago, gc2 {GC.CollectionCount(2)})");
         if (_sinceStart.Elapsed > FirstSoundDuration) AudibleSkips += skipsNow - _lastSkips;
         _lastSkips = skipsNow;
         _sinceFill.Restart();

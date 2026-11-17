@@ -29,7 +29,7 @@
 
   .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard | -Play | -Audio]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio)
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Play, [switch]$Audio, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -83,8 +83,10 @@ $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
-  $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', '--root=sample', '--vis=planets', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
+  $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "--root=$(if ($Audio) { $AudioRoot } else { 'sample' })", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
   if ($Play) { $a += '--test-shell=record' }
+  # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
+  if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
   return Start-Process -FilePath $Exe -ArgumentList $a -PassThru
 }
@@ -124,31 +126,70 @@ try {
 
   if ($Audio) {
     function Skips { [long](State).planets.audioSkips }
+    function Diag($what) { $a = (State).planets.audio; Log "  audio after ${what}: $($a | ConvertTo-Json -Compress -Depth 4)" }
+    function Mark($what) { Log ("  mark {0:0.000} s {1} (wall {2})" -f [double](State).planets.audio.recordS, $what, (Get-Date).ToString("HH:mm:ss.fff")) }
     function Win-Rect { Guard; $r = New-Object FsInput+RECT; [void][FsInput]::GetWindowRect($script:w, [ref]$r); return $r }
     # Drags with the left button from (x, y) by (dx, dy) over the given time, pausing at the far end, then back.
     function Drag-Native([int]$x, [int]$y, [int]$dx, [int]$dy, [int]$ms, [int]$holdMs) {
       [void][FsInput]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 200
-      Left-Down; # Guard-Pointer: FileScape in front and under the cursor (its title bar or border), or the probe stops Start-Sleep -Milliseconds 150
-      $steps = [Math]::Max(1, [int]($ms / 20))
-      for ($i = 1; $i -le $steps; $i++) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
-      Start-Sleep -Milliseconds $holdMs
-      for ($i = $steps - 1; $i -ge 0; $i--) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
-      Left-Up; Start-Sleep -Milliseconds 600
+      # Left-Down runs Guard-Pointer: FileScape in front and under the cursor (its title bar or border), or the probe stops.
+      Left-Down; Start-Sleep -Milliseconds 150
+      try {
+        $steps = [Math]::Max(1, [int]($ms / 20))
+        # Guard on every step: if FileScape stops being the foreground window the button is released and the probe stops.
+        for ($i = 1; $i -le $steps; $i++) { Guard; [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
+        Start-Sleep -Milliseconds $holdMs
+        for ($i = $steps - 1; $i -ge 0; $i--) { Guard; [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
+      } finally { Left-Up }
+      Start-Sleep -Milliseconds 600
     }
     Start-Sleep -Seconds 2
     $s0 = Skips; Start-Sleep -Seconds 4; $s1 = Skips
     Check ($s1 -eq $s0) "steady play before: no gaps in 4 s (+$($s1 - $s0))"
     $r = Win-Rect
+    Mark 'title-bar move starts'
     Drag-Native ($r.Left + 260) ($r.Top + 16) 240 120 1500 1500
     $s2 = Skips; $r2 = Win-Rect
     Log "  window moved by its title bar and back (it went to $($r2.Left),$($r2.Top) at the end)"
     Check ($s2 -eq $s1) "moving the window by its title bar (1.5 s out, held 1.5 s, back): no gaps (+$($s2 - $s1))"
     $r = Win-Rect
+    Mark 'corner resize starts'
     Drag-Native ($r.Right - 5) ($r.Bottom - 5) -160 -90 1500 2000
     $s3 = Skips
     Check ($s3 -eq $s2) "an active resize from the corner (1.5 s, held 2 s, back): no gaps (+$($s3 - $s2))"
+    Diag 'move and resize'
+    # Sustained (DJ heard the gap while stretching the window, 2026-11-17): the corner held in an active resize and
+    # wiggled for 8 s, then the title bar dragged round in circles for 8 s, as a person does.
+    function Sustain([int]$x, [int]$y, [int]$ax, [int]$ay, [int]$ms) {
+      [void][FsInput]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 200
+      Left-Down; Start-Sleep -Milliseconds 150
+      try {
+        $steps = [int]($ms / 16)
+        for ($i = 1; $i -le $steps; $i++) { Guard; $t = $i / $steps * 2 * [Math]::PI * 4; [void][FsInput]::SetCursorPos($x + [int]($ax * [Math]::Sin($t)), $y + [int]($ay * (1 - [Math]::Cos($t)) / 2)); Start-Sleep -Milliseconds 16 }
+        [void][FsInput]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 100
+      } finally { Left-Up }
+      Start-Sleep -Milliseconds 600
+    }
+    $r = Win-Rect; $q0 = Skips
+    Mark 'sustained resize starts'
+    Sustain ($r.Right - 5) ($r.Bottom - 5) -200 -120 8000
+    $q1 = Skips; Diag 'sustained corner resize'
+    Check ($q1 -eq $q0) "sustained corner resize (8 s wiggling): no gaps (+$($q1 - $q0))"
+    # A big stretch: the corner pulled out 600 x 350 px over 3 s, held 2 s, and back (the render size grows by ~60 %).
+    $r = Win-Rect; $q1b = Skips
+    Mark 'big stretch starts'
+    Drag-Native ($r.Right - 5) ($r.Bottom - 5) 600 350 3000 2000
+    $q1 = Skips; Diag 'big stretch'
+    Check ($q1 -eq $q1b) "a big stretch (600 x 350 px out and back): no gaps (+$($q1 - $q1b))"
+    $r = Win-Rect
+    Mark 'sustained move starts'
+    Sustain ($r.Left + 260) ($r.Top + 16) 200 120 8000
+    $q2 = Skips; Diag 'sustained title-bar move'
+    Check ($q2 -eq $q1) "sustained title-bar move (8 s circling): no gaps (+$($q2 - $q1))"
+    $s3 = $q2
     Start-Sleep -Seconds 2; $s4 = Skips
     Check ($s4 -eq $s3) "steady play after: no gaps (+$($s4 - $s3)); the app kept running ($((State).planets.phase))"
+    Mark 'end'
     Shot 'audio-after-move-resize' | Out-Null
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
