@@ -118,6 +118,12 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
+  # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,
+  # recorded; a faked refusal is reported); the arrival framing in motion; reading a long real README (needs
+  # FILESCAPE_WSL_README, the path tools/make-wsl-fixture.sh --readme prints; without it that step is left out).
+  journey planets-actions planets-actions.log 300 --automate=planets-actions --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  journey planets-arrival planets-arrival.log 300 --automate=planets-arrival --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reading planets-reading.log 200 --automate=planets-reading "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional; fi
   journey planets-route-hub planets-route-hub.log 300 --automate=planets-route-hub --root=hub --vis=planets --test-shell=record --ui-scale=1 "--repo=${FILESCAPE_WSL_FIXTURE:+$FILESCAPE_WSL_FIXTURE\\project}" --tier=functional
 fi
 

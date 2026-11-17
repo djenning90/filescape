@@ -125,3 +125,19 @@ to listen for).
    own uneasy theme, a warning as you near an edge and a falling whoosh. Samples to compare:
    `%LOCALAPPDATA%\FileScape\evidence\2026-11-15-playtest\music\` (README.txt says what to listen for).
 5. **Legacy views.** The toolbar's *Legacy views* menu opens Places and the two maps; V returns to Planets.
+
+## Repository arrivals, file actions and reading (2026-11-16)
+
+1. **Land on Lantern Workshop** (Starter Sky: select it, G). The camera arrives a little higher and looks further ahead:
+   the launchers, the groves and, at about one o'clock on the first ring, the workbench with its sign ("the workbench ·
+   jump on"). Stand still and take it in; the first step (or a jump) eases the camera back in close behind you.
+   Compare a small world (Quiet Moon) and a large one (Music Box).
+2. **Files and folders, one rule.** Click Lantern.sln (its object, or its card over the bench once revealed): it is
+   selected and the card shows its actions. Double-click it: it opens with Windows (the app associated with .sln), as
+   Enter or the card's Open would; nothing hops. Double-click the src card or the src pad: you fly there. If Windows
+   cannot open a file, a red message says which file, why (no app for .sln, gone, access denied) and Windows' error.
+3. **Twirl by a file.** Walk up to Lantern.csproj: the prompt says "E · look closer · or twirl (Space, Space) to preview".
+   Twirl: its preview opens; nothing is launched. On the bench the spin still reads the README.
+4. **Read.** On the bench, spin (or E): the README preview is rendered Markdown. Press R (or Read ⤢): the whole file in
+   a wide reading view that scrolls; Esc closes it. A .txt file stays plain text. Links are shown, not followed; images
+   are their description, never loaded.
