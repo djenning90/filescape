@@ -1,8 +1,42 @@
 # Implementation status
 
-Last updated: 2026-11-15, after the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-17, after the second playtest iteration (PLANET-38..48); before that 2026-11-15, the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
+
+## Second playtest iteration (2026-11-16/17, PLANET-38..48)
+
+DJ's playtest of `c29785d9b32a`: the walkthrough's target was lost by step two; denser, deeper navigation with trips;
+the repository workbench on arrival and a consistent double-click; a developer purpose for the root landmarks; Hazard
+Worlds that look hazardous; a sound-off control and more drama in the music; a sketch of the next worlds. Built as six
+parallel streams and merged; decisions AD-55..61; playthrough sections in `docs/planets-playthrough.md`.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Walkthrough cues (PLANET-38, AD-55): lime beacon and ground ring, pinned chevron, horizon chevron, edge arrow ("behind you"), approach pill, key caps for key-only steps, text hint kept | **Demonstrated** in-app; real input: see the run below | `planets-tutorial-cues` 53/0 (fresh prefs; turned away on purpose, behind the curve, approach, advance, Leave); `planets-tutorial` 30/0 |
+| Destinations tree (PLANET-39): ~20 px rows, open folders in place (▸, → ←), listed on demand, empty / listing… / access denied shown, deep filter; hover submenu rejected (AD-56) | **Demonstrated** in-app | `planets-navigation` 47/0, `planets-navigation-denied` 4/0, `DestinationTreeTests` |
+| Trips (PLANET-40): hop by hop with a Stop panel; stop in the air lands that hop; an unavailable hop stops with the reason; a trip is one Backspace; U unchanged | **Demonstrated** in-app | `planets-navigation` (4-hop trip, stop in the air, Esc in a wind-up, unavailable hop) |
+| Dialogs dismissed on commit, Locations "you are here", ★ favourites and repositories (PLANET-41) | **Demonstrated** in-app (reproduced first: `docs/evidence/2026-11-16-navigation/repro-*.png`) | `planets-navigation`; repositories are remembered only for the session |
+| Workbench in the arrival view, higher arrival camera easing into the follow camera (PLANET-42) | **Demonstrated**; feel: DJ | `planets-arrival` 25/0; `ArrivalCompositionTests` |
+| One click / double-click / Enter rule; double-click opens a file through Open; failed opens say why; twirl previews, never opens (PLANET-43) | **Demonstrated** in-app with the recording shell (defect reproduced first); the real Windows association not exercised | `planets-actions` 27/0 |
+| Markdown README rendering and the reading view (R), plain text otherwise; nothing fetched or followed (PLANET-44) | **Demonstrated** | `MarkdownTextTests`; `planets-reading` 13/0 (needs `FILESCAPE_WSL_README`) |
+| Root landmarks (PLANET-45, AD-58): solid and placed clear of routes; E panel: terminal here, two path forms, places | **Demonstrated**; terminal start folder verified with spaces, `'` and `&` without opening a window | `RootMarkTests`, `DeveloperActionsTests`, `planets-landmarks` 46/0 |
+| Hazard Worlds (PLANET-46, AD-59): islands and bridges round the destinations, ~⅓ walkable, a jump gap, the jet in view on landing, at most 10 pads (the rest moons), "Hazard World" in player text | **Demonstrated** in-app | `HazardWorldTests` (the real walker reaches every launcher); `planets-hazard` 67/0; Debris Field walking p95 16.7 ms |
+| Sound off (PLANET-47): toolbar 🔊 Sound / amber 🔇 Sound off, same as N, saved across launches; planets only | **Demonstrated** (output and Master bus measured silent through travel, chimes, the edge warning and a fall) | `planets-sound` 35/0 at 1.0 and 1.25 |
+| Music drama (PLANET-48, AD-60): DnB breakdown, build and sub drop; festival climax; orchestral pause and tutti; a 152 BPM phrygian hazard score; the old hazard score kept as Abyss | **Demonstrated offline**; by ear: DJ | SkySynth tests incl. per-bar phrase shape; warning ≥ 7.1 dB over the music; samples `%LOCALAPPDATA%\FileScape\evidence\2026-11-16-playtest-2\music\` |
+| Next worlds sketched (AD-61, proposed): Gallery, Reading Room, Arrivals Port (first prototype) | design only | `docs/next-worlds.md` |
+| Full tier on `3dc18d1` | **29 of 29 journeys pass**, Core 541/538 (Windows/WSL) | `%LOCALAPPDATA%\FileScape\evidence\checks\full-20261117-074129\` |
+
+**Merge defects found by the full tier and fixed:** from the higher arrival camera a near and a far launcher line up and
+one name vanished (home on the Ubuntu root): a pinned name may now stack one slot higher on a longer stem; the
+walkthrough's horizon chevron sat above the lesson card from that camera and fell back to a side arrow: it now waits at
+the top of the free area. The sound probe used a hazard helper the new terrain removed.
+
+**Instrument defects fixed:** parallel agents' windows (and a person using the machine) took focus and the app ignored
+injected input (KD-31): under `--automate` a focus loss now leaves input on and held probe keys are pressed again (a
+person's launch is unchanged); the navigation probe now asks for focus loss to be honoured when it tests it. The
+shared Starter Sky in `app_userdata` was rewritten by one stream's sample change while others ran (version 5 now).
+`tools/doc-coverage.py` found nothing inside a worktree (fixed: repo-relative paths).
 
 ## First public playtest (2026-11-15, PLANET-32..37)
 
