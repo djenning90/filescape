@@ -12,7 +12,8 @@ DECL = re.compile(r'^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protecte
 types = {}  # name -> list of (file, line, documented, partial)
 for base in paths:
     for f in sorted(base.rglob('*.cs')):
-        if any(part.startswith('obj') or part.startswith('bin') for part in f.parts) or '.claude' in f.parts: continue
+        rel = f.relative_to(ROOT).parts  # relative, so the check also works inside a worktree under .claude/
+        if any(part.startswith('obj') or part.startswith('bin') for part in rel) or '.claude' in rel: continue
         lines = f.read_text(encoding='utf-8', errors='replace').split('\n')
         in_raw = False  # inside a C# raw string literal (""" … """): sample file contents, not code
         for i, line in enumerate(lines):
