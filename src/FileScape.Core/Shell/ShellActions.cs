@@ -43,8 +43,21 @@ public sealed class RecordingShellActions : IShellActions
 
     public IReadOnlyList<string> Log => _log;
 
+    /// <summary>
+    /// A Win32 error code the next <see cref="Open"/> fails with, as Windows would (then cleared): how a probe checks
+    /// that a refused open is reported (PLANET-43). The failure is logged as <c>open-failed</c>; nothing is launched.
+    /// </summary>
+    public int? FailNextOpenWith { get; set; }
+
     public ShellResult Open(string path)
     {
+        if (FailNextOpenWith is { } code)
+        {
+            FailNextOpenWith = null;
+            _log.Add("open-failed " + path);
+            return new(false, false, "TEST — " + ShellErrors.OpenFailed(path, code, new Win32Exception(code).Message));
+        }
+
         _log.Add("open " + path);
         return new(true, false, $"TEST — would open {path} with its default program (nothing was started).");
     }
@@ -59,6 +72,38 @@ public sealed class RecordingShellActions : IShellActions
     {
         _log.Add("start " + program);
         return new(true, false, $"TEST — would start {program} {string.Join(' ', args)}");
+    }
+}
+
+/// <summary>
+/// What to tell the user when Windows refuses to open something (PLANET-43, DJ 2026-11-16: "If an open fails, tell me
+/// what happened"): the item's name, the likely reason in plain words for the common errors, and Windows' own text and
+/// code for the record. Pure, so the wording is tested.
+/// </summary>
+public static class ShellErrors
+{
+    // Win32 error codes (winerror.h), fixed by Windows.
+    private const int FileNotFound = 2, PathNotFound = 3, AccessDenied = 5, NoAssociation = 1155, Cancelled = 1223;
+
+    /// <summary>"Could not open Lantern.sln: no app is set to open .sln files on this PC. (Windows: … error 1155)".</summary>
+    public static string OpenFailed(string path, int code, string windowsText)
+    {
+        // Split by hand: Windows paths are named the same on any OS these tests run on ('\\' and '/').
+        var trimmed = path.TrimEnd('\\', '/');
+        var name = trimmed[(trimmed.LastIndexOfAny(['\\', '/']) + 1)..];
+        if (name.Length == 0) name = path;
+        var ext = Path.GetExtension(name);
+        var why = code switch
+        {
+            NoAssociation => ext.Length > 0
+                ? $"no app is set to open {ext.ToLowerInvariant()} files on this PC (choose one in Windows: right-click the file, Open with)"
+                : "no app is set to open this kind of item on this PC",
+            FileNotFound or PathNotFound => "it is no longer there (moved, renamed or deleted since FileScape listed it)",
+            AccessDenied => "Windows denied access to it",
+            Cancelled => "the open was cancelled",
+            _ => "Windows refused",
+        };
+        return $"Could not open {name}: {why}. (Windows: {windowsText.TrimEnd('.')}; error {code}.)";
     }
 }
 
@@ -110,7 +155,7 @@ public sealed class WindowsShellActions : IShellActions
         }
 
         var error = Marshal.GetLastWin32Error();
-        return new ShellResult(false, false, $"Windows could not open the item (error {error}: {new Win32Exception(error).Message}).");
+        return new ShellResult(false, false, ShellErrors.OpenFailed(path, error, new Win32Exception(error).Message));
     }
 
     /// <summary>

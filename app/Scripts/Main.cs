@@ -286,6 +286,14 @@ public partial class Main : Node3D
 
     /// <summary>What the recording test shell was asked to do (probes; empty with the real shell).</summary>
     public IReadOnlyList<string> ShellLog => (_shell as FileScape.Core.Shell.RecordingShellActions)?.Log ?? [];
+
+    /// <summary>Test instrument (PLANET-43): under <c>--test-shell=record</c>, the next Open fails with this Win32 error code.</summary>
+    public bool ProbeFailNextOpen(int win32Error)
+    {
+        if (_shell is not FileScape.Core.Shell.RecordingShellActions rec) return false;
+        rec.FailNextOpenWith = win32Error;
+        return true;
+    }
     private bool _closing;
 
     /// <summary>
@@ -1493,6 +1501,7 @@ public partial class Main : Node3D
     {
         if (_tree == null || _selection.Selected < 0)
         {
+            if (_tree != null) _hud.Toast("Nothing is selected to open: click a file or folder first."); // PLANET-43: never a silent no-op
             return;
         }
 
@@ -1550,13 +1559,18 @@ public partial class Main : Node3D
         _hud.Toast("Path copied to the clipboard.");
     }
 
-    /// <summary>Logs a shell action's outcome and toasts it for 6 s: amber when simulated (sample data), green on success, red on failure.</summary>
+    /// <summary>Logs a shell action's outcome and toasts it: amber when simulated (sample data), green on success (6 s),
+    /// red on failure (<see cref="ShellFailureToastSeconds"/>, long enough to read why: PLANET-43).</summary>
     private void ReportShell(ShellResult r)
     {
         LastShellMessage = r.Message;
         GD.Print($"[shell] succeeded={r.Succeeded} mock={r.WasMock} {r.Message}");
-        _hud.Toast(r.Message, r.WasMock ? new Color(1f, 0.85f, 0.45f) : r.Succeeded ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f), 6);
+        var failed = !r.Succeeded && !r.WasMock;
+        _hud.Toast(r.Message, r.WasMock ? new Color(1f, 0.85f, 0.45f) : r.Succeeded ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f), failed ? ShellFailureToastSeconds : 6);
     }
+
+    /// <summary>A refused open or reveal stays on screen this long, seconds (its reason is a sentence to read).</summary>
+    private const double ShellFailureToastSeconds = 10;
 
     /// <summary>Probe access: whether a confirmation is showing, and its text; cancelling it runs nothing.</summary>
     public bool ConfirmShowing => _confirm?.Visible == true;
