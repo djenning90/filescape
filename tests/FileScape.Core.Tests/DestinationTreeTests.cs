@@ -108,6 +108,11 @@ public class DestinationTreeTests
         var l1 = t.Find("level-01").Id;
         var l = DestinationTree.Build(t, new DestinationQuery { Current = 0, Filter = "level-02", Expanded = new HashSet<string> { $"f{lwd}", $"f{l1}" } });
         l.Rows.Select(r => r.Name).Should().Equal("Long Way Down", "level-01", "level-02");
+        var found = DestinationTree.Build(t, new DestinationQuery { Current = 0, Filter = "long way", Expanded = new HashSet<string> { $"f{lwd}" } });
+        found.Rows.Select(r => r.Name).Should().Equal(["Long Way Down", "level-01"], "a match opened shows what is inside it, not only more matches");
+        var deep = DestinationTree.Build(t, new DestinationQuery { Current = 0, Filter = "level-04" });
+        deep.Rows.Select(r => r.Name).Should().Equal(["Long Way Down", "level-01", "level-02", "level-03", "level-04"], "typing finds a folder deep down among what is listed, and opens the way to it");
+        deep.NeedsListing.Should().BeEmpty("searching never lists anything");
         var files = DestinationTree.Build(t, new DestinationQuery { Current = 0, Filter = "map" });
         files.Rows.Should().Contain(r => r.Kind == DestinationRowKind.File && r.Name == "map.png", "the files group opens to show a match");
         files.HereCount.Should().Be(1);

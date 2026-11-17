@@ -190,6 +190,7 @@ public partial class Main : Node3D
         if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
 
         _testListDelayMs = args.TestListDelayMs ?? 0;
+        _testListDelayMatch = args.TestListDelayMatch;
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
@@ -262,6 +263,7 @@ public partial class Main : Node3D
     }
 
     private int _testListDelayMs;
+    private string? _testListDelayMatch;
     private bool _recordShell;
 
     /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>

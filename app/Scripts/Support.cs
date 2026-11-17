@@ -50,6 +50,9 @@ public sealed record CommandLine
     /// <summary>--test-list-delay-ms=N (SHUT-01 instrument): every live listing first blocks its worker for N ms, uncancellably, like a stalled share.</summary>
     public int? TestListDelayMs { get; init; }
 
+    /// <summary>--test-list-delay-match=TEXT (instrument, PLANET-39): the delay applies only to folders whose path contains TEXT, so a probe can see one folder "still listing" while the rest list normally.</summary>
+    public string? TestListDelayMatch { get; init; }
+
     /// <summary>--test-max-islands=N (AERIAL-07 instrument): a deliberately small aerial display budget, so a journey can put
     /// the current place outside the breadth-first selection and exercise landing and recovery.</summary>
     public int? TestMaxIslands { get; init; }
@@ -98,6 +101,7 @@ public sealed record CommandLine
             TestMaxIslands = Get("test-max-islands") is { } mi ? int.Parse(mi, CultureInfo.InvariantCulture) : null,
             TestShellRecord = Get("test-shell") == "record",
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
+            TestListDelayMatch = Get("test-list-delay-match"),
         };
     }
 }

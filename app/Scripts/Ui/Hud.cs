@@ -95,6 +95,9 @@ public partial class Hud : CanvasLayer
     private bool _legendInPlaces, _legendInMaps = true;
 
     private bool _placesMode = true;
+
+    /// <summary>Planets is the experience (the ☰ button opens the planet's list: <see cref="PlanetsDestinationsToggle"/>).</summary>
+    private bool _planetsMode;
     private bool _scanning;
     public bool LegendVisible => _legendPanel.Visible;
     public Rect2 KeyButtonRect => _keyButton.GetGlobalRect();
@@ -662,6 +665,7 @@ public partial class Hud : CanvasLayer
         _overviewButton.TooltipText = places ? "Rise above this place to see its neighbourhood. The whole filesystem is on the maps (M)." : "Bird's-eye view of the whole tree (B).";
         _placePanel.Visible = places;
         _placesMode = places;
+        _planetsMode = planets;
         _destPanel.Visible = places && _destOpen;
         ApplyLegendVisibility();
         if (!places) SetInspectorCard(false, true, "", null);

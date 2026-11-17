@@ -102,6 +102,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-camera-trace") await CameraTraceRun();
         else if (Mode == "planets-tutorial") await TutorialRun();
         else if (Mode == "planets-hazard") await HazardTour(); // PlanetsProbe.Hazard.cs
+        else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
+        else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

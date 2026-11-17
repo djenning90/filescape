@@ -97,7 +97,7 @@ public partial class PlanetWorld : Node3D
     }
 
     /// <summary>True while a launch (wind-up, flight or landing) is in progress: one place change at a time.</summary>
-    public bool Busy => _phase != Phase.Walking;
+    public bool Busy => _phase != Phase.Walking || _trip != null; // a trip (PlanetWorld.Trip) is busy between its hops too
 
     public SphereWalker Walker => _walker;
     public PlanetComposition? Composition => _current?.Comp;
@@ -164,6 +164,7 @@ public partial class PlanetWorld : Node3D
         EndOrbit();
         ClosePreview(); // stops a sound preview and restores the music
         _contentsPanel.Visible = false;
+        if (_trip != null) EndTrip("stopped"); // where it got to (PlanetWorld.Trip)
         _phase = Phase.Walking;
         _transfer = null;
         _hop = null;
@@ -265,6 +266,8 @@ public partial class PlanetWorld : Node3D
         }
 
         UpdateOverlay(dt);
+        UpdateTrip(dt); // PlanetWorld.Trip
+        UpdateDestinationsPanel(); // PlanetWorld.Destinations
         UpdateHazardScreen(dt);
         UpdateSigns(tree);
         UpdateThumbnails();

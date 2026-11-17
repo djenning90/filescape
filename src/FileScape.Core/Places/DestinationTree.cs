@@ -106,8 +106,8 @@ public sealed record DestinationList(IReadOnlyList<DestinationRow> Rows, int Her
 /// <para>
 /// Every folder row says what is behind it before it is opened: its counts, or "empty", "not listed yet", "listing…",
 /// "access denied". A branch whose folder turns out to hold no folders says so in a note instead of looking blank. The
-/// filter matches names (case-insensitive) among the rows the player can already see or has expanded: a folder is kept
-/// when it matches or something below it does, and its branch opens to show the match.
+/// filter matches folder names (case-insensitive) anywhere below where you are among what is already listed (bounded:
+/// <see cref="Search.MaxSearchFolders"/>) and opens the way to each match; files are matched in this folder only.
 /// </para>
 /// Preserve: rows are built in display order; keys are stable for the same node; nothing here costs more than the rows
 /// it returns plus the children of expanded folders (bounded by <see cref="DestinationQuery.MaxBranchRows"/>).
@@ -135,11 +135,12 @@ public static class DestinationTree
 
         var kids = cur.Children.Where(c => tree[c].IsDirectory || tree[c].Kind == NodeKind.Link).Where(c => q.Visible(tree[c]))
             .OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ToList();
+        var search = filtering ? Search.Over(tree, q, filter) : null;
         var shown = 0;
         foreach (var c in kids)
         {
             if (shown >= q.MaxBranchRows && !filtering) break;
-            var block = FolderRows(tree, q, c, 0, filter, needs);
+            var block = FolderRows(tree, q, c, 0, search, needs);
             if (block.Count == 0) continue;
             here++;
             if (shown < q.MaxBranchRows) rows.AddRange(block);
@@ -147,6 +148,7 @@ public static class DestinationTree
         }
 
         if (!filtering && kids.Count > shown) rows.Add(Note("more-here", 0, $"… {kids.Count - shown:N0} more worlds: type to filter"));
+        if (search is { Truncated: true }) rows.Add(Note("more-search", 0, $"searched the first {Search.MaxSearchFolders:N0} folders below here"));
 
         var files = cur.Children.Where(c => tree[c].Kind == NodeKind.File && q.Visible(tree[c]))
             .Where(c => !filtering || Match(tree[c].Name)).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ToList();
@@ -173,24 +175,87 @@ public static class DestinationTree
         return new DestinationList(rows, here, needs);
     }
 
-    /// <summary>A folder's row and, when it is open, its branch (empty when the filter rules it out).</summary>
-    private static List<DestinationRow> FolderRows(FsTree tree, DestinationQuery q, int id, int depth, string filter, List<int> needs)
+    /// <summary>
+    /// While filtering: the folders below where you are whose names match, and every folder on the way to one
+    /// (<see cref="Keep"/>), found among what is already listed — breadth first, at most <see cref="MaxSearchFolders"/>
+    /// folders, so typing stays instant on a large tree. Nothing is listed to search.
+    /// </summary>
+    private sealed class Search
+    {
+        /// <summary>The most folders one filter looks through below where you are (well under a frame; rationale: a frame's budget with room to spare).</summary>
+        public const int MaxSearchFolders = 20_000;
+
+        public required string Filter;
+        public readonly HashSet<int> Keep = [];
+        public bool Truncated;
+
+        public bool Matches(string name) => name.Contains(Filter, StringComparison.CurrentCultureIgnoreCase);
+
+        public static Search Over(FsTree tree, DestinationQuery q, string filter)
+        {
+            var s = new Search { Filter = filter };
+            var queue = new Queue<int>();
+            queue.Enqueue(q.Current);
+            var seen = 0;
+            while (queue.Count > 0)
+            {
+                var id = queue.Dequeue();
+                foreach (var c in tree[id].Children)
+                {
+                    var n = tree[c];
+                    if (!(n.IsDirectory || n.Kind == NodeKind.Link) || !q.Visible(n)) continue;
+                    if (++seen > MaxSearchFolders)
+                    {
+                        s.Truncated = true;
+                        return s;
+                    }
+
+                    if (s.Matches(n.Name))
+                    {
+                        // The match and the folders on the way to it (stops early where an earlier match already marked the way).
+                        for (var a = c; a >= 0 && a != q.Current && s.Keep.Add(a); a = tree[a].ParentId)
+                        {
+                        }
+                    }
+
+                    if (n.IsDirectory) queue.Enqueue(c);
+                }
+            }
+
+            return s;
+        }
+    }
+
+    /// <summary>
+    /// A folder's row and, when it is open, its branch (empty when the filter rules it out). While filtering, a folder on
+    /// the way to a match opens by itself to show the way; a match the player opened shows its branch whole (you found
+    /// it; now look inside).
+    /// </summary>
+    private static List<DestinationRow> FolderRows(FsTree tree, DestinationQuery q, int id, int depth, Search? search, List<int> needs)
     {
         var n = tree[id];
-        var filtering = filter.Length > 0;
+        if (search != null && !search.Keep.Contains(id)) return [];
         var state = Listing.Of(n);
         var isLink = n.Kind == NodeKind.Link;
         var subCount = isLink ? 0 : n.Children.Count(c => (tree[c].IsDirectory || tree[c].Kind == NodeKind.Link) && q.Visible(tree[c]));
         var unknown = state is ListingState.Unlisted or ListingState.NotScanned or ListingState.Pending or ListingState.Listing;
         var canExpand = !isLink && (subCount > 0 || unknown);
         var userOpen = canExpand && q.Expanded.Contains($"f{id}");
+        var matches = search == null || search.Matches(n.Name);
+        var leadsOn = search != null && !isLink && n.Children.Any(search.Keep.Contains);
         var branch = new List<DestinationRow>();
-        if (userOpen) branch = Branch(tree, q, id, depth + 1, filter, needs);
-        var branchMatches = branch.Any(r => r.Kind is DestinationRowKind.Folder or DestinationRowKind.Link);
-        var matches = !filtering || n.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
-        if (!matches && !branchMatches) return [];
-        if (filtering && !branchMatches) branch.Clear();
-        var open = userOpen && (!filtering || branch.Count > 0);
+        var open = false;
+        if (userOpen && matches)
+        {
+            branch = Branch(tree, q, id, depth + 1, null, needs);
+            open = true;
+        }
+        else if (leadsOn)
+        {
+            branch = Branch(tree, q, id, depth + 1, search, needs);
+            open = true;
+        }
+
         var row = new DestinationRow($"f{id}", isLink ? DestinationRowKind.Link : DestinationRowKind.Folder, id, depth, n.Name, Detail(n, state),
             CanExpand: canExpand, Expanded: open, State: state, IsHere: id == q.Current, IsRepository: q.Repositories.Contains(id),
             Warning: state is ListingState.Denied or ListingState.Failed or ListingState.Unavailable);
@@ -200,12 +265,12 @@ public static class DestinationTree
     }
 
     /// <summary>An open folder's own folders (bounded), or a note saying why there are none to show.</summary>
-    private static List<DestinationRow> Branch(FsTree tree, DestinationQuery q, int id, int depth, string filter, List<int> needs)
+    private static List<DestinationRow> Branch(FsTree tree, DestinationQuery q, int id, int depth, Search? search, List<int> needs)
     {
         var rows = new List<DestinationRow>();
         var n = tree[id];
         var state = Listing.Of(n);
-        var filtering = filter.Length > 0;
+        var filtering = search != null;
         if (state is ListingState.Unlisted or ListingState.NotScanned)
         {
             needs.Add(id);
@@ -219,7 +284,7 @@ public static class DestinationTree
         foreach (var c in subs)
         {
             if (shown >= q.MaxBranchRows) break;
-            var block = FolderRows(tree, q, c, depth, filter, needs);
+            var block = FolderRows(tree, q, c, depth, search, needs);
             if (block.Count == 0) continue;
             rows.AddRange(block);
             shown++;

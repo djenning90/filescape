@@ -28,6 +28,7 @@ public partial class Main : IWorldSession
     {
         _planets = new PlanetWorld(this) { Name = "Planets" };
         AddChild(_planets);
+        ConnectPlanetsDestinations(); // Main.Navigation
     }
 
     // ---------------------------------------------------------------- IWorldSession

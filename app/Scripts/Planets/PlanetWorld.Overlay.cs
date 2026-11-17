@@ -32,11 +32,6 @@ public partial class PlanetWorld
     private Label _previewTitle = null!, _previewMeta = null!;
     private TextureRect _previewImage = null!;
     private RichTextLabel _previewText = null!;
-    private LineEdit _contentsFilter = null!;
-    private ItemList _contentsList = null!;
-    private Label _contentsTitle = null!;
-    private readonly List<int> _contentsIds = [];
-    private FileCategory? _contentsCategory;
     /// <summary>The full-screen warp light (its colour and cap are <see cref="FlashColor"/> and <see cref="FlashPeakOpacity"/>).</summary>
     private ColorRect _flash = null!;
 
@@ -45,11 +40,9 @@ public partial class PlanetWorld
     private AudioStreamPlayer _previewPlayer = null!;
 
     public bool PreviewOpen => _previewPanel.Visible;
-    public bool ListOpen => _contentsPanel.Visible;
     public string TitleText => _title.Text;
     public bool PreviewHasImage => _previewImage.Visible && _previewImage.Texture != null;
     public bool PreviewHasText => _previewText.Visible && _previewText.Text.Length > 0;
-    public int ListCount => _contentsIds.Count;
 
     // ---- how long the screen texts stay, seconds (by eye; rationale not recorded)
     /// <summary>The arrival title card: fully shown for 2.8 s, then fading over <see cref="TitleFadeSeconds"/> (gone at 3.6 s).</summary>
@@ -103,7 +96,8 @@ public partial class PlanetWorld
         _promptBox = pb;
 
         BuildPreviewPanel(root);
-        BuildContentsPanel(root);
+        BuildContentsPanel(root); // PlanetWorld.Destinations
+        BuildTripPanel(root); // PlanetWorld.Trip
         BuildBenchPanel(root);
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
@@ -159,43 +153,6 @@ public partial class PlanetWorld
         v.AddChild(_previewImage);
         v.AddChild(_previewText);
         v.AddChild(row);
-    }
-
-    private void BuildContentsPanel(Control root)
-    {
-        _contentsPanel = new PanelContainer { Visible = false };
-        _contentsPanel.AddThemeStyleboxOverride("panel", PanelStyle());
-        _contentsPanel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
-        _contentsPanel.OffsetLeft = 12; _contentsPanel.OffsetRight = 452; _contentsPanel.OffsetTop = 150; _contentsPanel.OffsetBottom = -70;
-        root.AddChild(_contentsPanel);
-        var v = new VBoxContainer();
-        v.AddThemeConstantOverride("separation", 6);
-        _contentsPanel.AddChild(v);
-        _contentsTitle = MakeLabel(17, new Color(1f, 0.93f, 0.75f), HorizontalAlignment.Left, outline: 0);
-        _contentsFilter = new LineEdit { PlaceholderText = "Type to filter by name…", ClearButtonEnabled = true };
-        _contentsFilter.TextChanged += _ => FillContents();
-        _contentsFilter.GuiInput += e =>
-        {
-            if (e is InputEventKey { Pressed: true, Keycode: Key.Escape }) { _contentsPanel.Visible = false; _contentsFilter.ReleaseFocus(); _contentsFilter.AcceptEvent(); }
-            if (e is InputEventKey { Pressed: true, Keycode: Key.Down } && _contentsList.ItemCount > 0) { _contentsList.GrabFocus(); _contentsList.Select(0); _contentsFilter.AcceptEvent(); }
-        };
-        _contentsList = new ItemList { SizeFlagsVertical = Control.SizeFlags.ExpandFill, SelectMode = ItemList.SelectModeEnum.Single, FixedIconSize = new Vector2I(18, 18) };
-        _contentsList.ItemSelected += i => { if (i >= 0 && i < _contentsIds.Count) { _s.Select(_contentsIds[(int)i]); _audio.Select(); } };
-        _contentsList.ItemActivated += i =>
-        {
-            if (i < 0 || i >= _contentsIds.Count) return;
-            var id = _contentsIds[(int)i];
-            _contentsPanel.Visible = false;
-            _contentsList.ReleaseFocus();
-            Activate(id, sky: false);
-        };
-        var hint = new Label { Text = "Click: select (the card shows it) · double-click or Enter: go there (a world) or stand by it (a file) · Esc closes", AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        hint.AddThemeFontSizeOverride("font_size", 12);
-        hint.AddThemeColorOverride("font_color", new Color(0.7f, 0.76f, 0.9f));
-        v.AddChild(_contentsTitle);
-        v.AddChild(_contentsFilter);
-        v.AddChild(_contentsList);
-        v.AddChild(hint);
     }
 
     /// <summary>The point is over one of the planet's own open panels (preview, list, bench).</summary>
@@ -395,59 +352,6 @@ public partial class PlanetWorld
         _previewPanel.Visible = false;
         _previewPlayer.Stop();
         _audio.Duck(false);
-    }
-
-    // ------------------------------------------------------------------ the planet's list (J, a pile, the telescope)
-
-    /// <summary>The list shows at most this many rows (it is refilled on every keystroke of the filter; the number's
-    /// rationale is not recorded). The title then says to type to filter, and that text says "5,000": change both together.</summary>
-    private const int MaxListRows = 5000;
-
-    /// <summary>J: the planet's list, open or closed.</summary>
-    public void ToggleContents()
-    {
-        if (_contentsPanel.Visible) _contentsPanel.Visible = false;
-        else OpenContents(null);
-    }
-
-    /// <summary>Opens the list (all of it, or one kind of file for a pile) with an empty filter that has keyboard focus.</summary>
-    private void OpenContents(FileCategory? category)
-    {
-        _contentsCategory = category;
-        _contentsFilter.Text = "";
-        ClosePreview();
-        _contentsPanel.Visible = true;
-        FillContents();
-        _contentsFilter.GrabFocus();
-    }
-
-    /// <summary>Lists the visible children here (folders and links first, then files, in natural name order), filtered,
-    /// up to <see cref="MaxListRows"/> (a filter narrows the rest).</summary>
-    private void FillContents()
-    {
-        var tree = _s.Tree;
-        if (tree == null || _current == null) return;
-        var folder = tree[_current.FolderId];
-        var filter = _contentsFilter.Text.Trim();
-        _contentsIds.Clear();
-        _contentsList.Clear();
-        var all = folder.Children.Select(c => tree[c]).Where(_s.IsVisible).ToList();
-        var rows = all
-            .Where(n => _contentsCategory == null || (n.Kind == NodeKind.File && FileCategories.Of(n.Name) == _contentsCategory))
-            .Where(n => filter.Length == 0 || n.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(n => n.IsDirectory || n.Kind == NodeKind.Link ? 0 : 1).ThenBy(n => n.Name, NaturalNameOrder.Instance)
-            .Take(MaxListRows)
-            .ToList();
-        foreach (var n in rows)
-        {
-            var detail = n.IsDirectory ? _s.Summary(n.Id) : n.Kind == NodeKind.Link ? PlaceText.LinkShort(tree, n) : SizeFormat.Short(n.Size);
-            var i = _contentsList.AddItem($"{n.Name}    {detail}", FileIcons.Get(FileIcons.For(n)));
-            _contentsList.SetItemTooltip(i, tree.FullPath(n.Id));
-            _contentsIds.Add(n.Id);
-        }
-
-        var what = _contentsCategory is { } c ? PlaceText.CategoryName(c).ToLowerInvariant() : "worlds and files";
-        _contentsTitle.Text = $"{tree.DisplayName(_current.FolderId)} · {rows.Count:N0} {what}" + (rows.Count >= MaxListRows ? " (first 5,000: type to filter)" : "") + (folder.IsListingIncomplete ? " · partly listed" : "");
     }
 
     // ------------------------------------------------------------------ names in the sky (the shared sign layer)

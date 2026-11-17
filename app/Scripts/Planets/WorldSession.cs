@@ -85,4 +85,22 @@ public interface IWorldSession
 
     /// <summary>Whether a folder is prominent (a mark shown before its name), and the mark.</summary>
     ProminenceInfo ProminenceOf(int id);
+
+    /// <summary>
+    /// A destination was committed: close the dialogs that would cover the flight (Open Location, the HUD's Destinations
+    /// drawer, the problem list). Panels that guide the sequence (a trip, the walkthrough) are the world's and stay (PLANET-41).
+    /// </summary>
+    void DismissNavigationDialogs();
+
+    /// <summary>Goes to a full path, as Go to path does (the connected world finds it; the world animates the change).</summary>
+    void GoToPath(string path);
+
+    /// <summary>
+    /// The places the player cares about (PLANET-41): their pins, then the repositories found so far, and the repository
+    /// set (to mark rows). Reading it advances the repository index by a bounded step.
+    /// </summary>
+    (IReadOnlyList<FavouritePlace> Places, IReadOnlySet<int> Repositories) Favourites();
+
+    /// <summary>True when the favourites have changed since <see cref="Favourites"/> was last read (advances discovery a bounded step).</summary>
+    bool FavouritesChanged { get; }
 }

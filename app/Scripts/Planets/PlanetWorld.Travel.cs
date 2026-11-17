@@ -134,7 +134,8 @@ public partial class PlanetWorld
     /// <summary>Space on a launcher pad: wind up towards its world, then release.</summary>
     private void BeginLaunch(int targetId, NVector3 padDirection, bool fromPad)
     {
-        if (Busy || _current == null || _s.Tree == null) return;
+        // One transfer at a time; during a trip only the trip launches (its hop is marked InHop just before).
+        if (_phase != Phase.Walking || _trip is { InHop: false } || _current == null || _s.Tree == null) return;
         _hop = null;
         _transfer = new Transfer { LaunchTarget = targetId, FromPad = fromPad, PadDirection = padDirection };
         _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
@@ -167,6 +168,7 @@ public partial class PlanetWorld
         {
             _arriveFromSky = false;
             _hop = null;
+            CloseOverlays();
             // T = the whole rise: the warp builds the new world on its first frame and descends (no rise from the overview).
             _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = true, From = Gd(_walker.Feet), FromUp = Gd(_walker.Up), T = WarpRiseSeconds };
             _transfer.ArriveFrom = _s.Tree is { } t ? ArrivalFrom(t, change, _current?.FolderId ?? -1) : -1;
@@ -395,7 +397,7 @@ public partial class PlanetWorld
         if (!lift.IsFinite() || lift.LengthSquared() < 0.1f) lift = tr.FromUp; // the two ups (nearly) opposite: lift along the departure's up
         // Raised away from both worlds; parametrised linearly, the arc is fastest leaving and arriving, slowest at the top.
         tr.Control = (tr.From + tr.To) / 2 + lift * dist * ArcLiftFraction;
-        tr.Flight = Mathf.Clamp(FlightBaseSeconds + dist / FlightMetresPerExtraSecond, MinFlightSeconds, MaxFlightSeconds);
+        tr.Flight = Mathf.Clamp(FlightBaseSeconds + dist / FlightMetresPerExtraSecond, MinFlightSeconds, MaxFlightSeconds) * (_trip != null ? TripFlightScale : 1f);
         tr.MaxSpeed = 0;
         MaxFrameCameraStepInFlight = 0;
         _phase = Phase.Flying;
