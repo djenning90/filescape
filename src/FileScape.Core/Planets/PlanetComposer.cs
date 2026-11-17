@@ -362,6 +362,30 @@ public static class PlanetComposer
     /// <summary>See <see cref="HillAmplitudeMin"/>, metres.</summary>
     private const float HillAmplitudeSpread = 0.3f;
 
+    // ---- ordinary worlds' relief (PLANET-59, AD-64; Hazard Worlds keep the two values above): amplitude =
+    // (RollingAmplitudeMin + RollingAmplitudeSpread × a fraction from the name) × ReliefScale(radius), where ReliefScale
+    // grows linearly from 1 on the smallest world (16 m) to 1 + ReliefGrowthAtLargest on the largest (34 m). So a small
+    // world's hills are 0.75–1.1 m (were 0.6–0.9) and a large world's 1.2–1.76 m. Every slope stays within
+    // PlanetShape.MaxWalkSlopeDegrees (PlanetReliefTests).
+    /// <summary>Hill height on the smallest ordinary world, before the spread, metres.</summary>
+    private const float RollingAmplitudeMin = 0.75f;
+
+    /// <summary>Up to this much more from the name, metres (same fraction as the classic spread).</summary>
+    private const float RollingAmplitudeSpread = 0.35f;
+
+    /// <summary>The largest world's relief is this much more than the smallest's, as a fraction (0.6 = ×1.6).</summary>
+    private const float ReliefGrowthAtLargest = 0.6f;
+
+    /// <summary>
+    /// Comparison instrument (<c>--test-relief=classic</c>, PLANET-59): every world composed with the classic hills and
+    /// heights it had before 2026-11-17, so before/after screenshots come from one build. Off unless the app sets it.
+    /// </summary>
+    public static bool ClassicReliefForComparison { get; set; }
+
+    /// <summary>1 on the smallest world, 1 + <see cref="ReliefGrowthAtLargest"/> on the largest, linear in radius between.</summary>
+    private static float ReliefScale(float radius) =>
+        1f + ReliefGrowthAtLargest * Math.Clamp((radius - MinPlanetRadius) / (MaxPlanetRadius - MinPlanetRadius), 0f, 1f);
+
     // ---- where the landmark stands
     /// <summary>Clear ground between the outermost ring's pads and the landmark's foot, metres.</summary>
     private const float LandmarkBeyondRings = 4.5f;
@@ -508,7 +532,13 @@ public static class PlanetComposer
         if (hazard != null) radius = MathF.Max(radius, HazardMinPlanetRadius);
         var seed = NameSeed(name);
         // Frac's salts (1 here, 4 for the belt) pick independent "random" fractions from the one name seed.
-        var hillAmplitude = theme is PlanetTheme.Quiet or PlanetTheme.Veiled ? QuietHillAmplitude : HillAmplitudeMin + HillAmplitudeSpread * Frac(seed, 1);
+        // Ordinary worlds (PLANET-59, AD-64): a little more relief, growing with the world (a gentle rise reads on a big
+        // world's horizon), hills drawn Rolling. A Hazard World keeps the classic hills and heights it was designed on.
+        var classic = hazard != null || ClassicReliefForComparison;
+        var relief = classic ? PlanetRelief.Classic : PlanetRelief.Rolling;
+        var hillAmplitude = theme is PlanetTheme.Quiet or PlanetTheme.Veiled ? QuietHillAmplitude
+            : classic ? HillAmplitudeMin + HillAmplitudeSpread * Frac(seed, 1)
+            : (RollingAmplitudeMin + RollingAmplitudeSpread * Frac(seed, 1)) * ReliefScale(radius);
 
         // ---- arrival, landmark, overlook and its steps
         var pole = Vector3.UnitY;
@@ -773,7 +803,7 @@ public static class PlanetComposer
         foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + PadFlatMargin));
         foreach (var g in groves) flats.Add((g.CentreDirection, GroveFlatRadius));
         if (rootMark != null) flats.Add((rootMark.Direction, RootMarkLayout.Footprint(rootMark.Kind) + PadFlatMargin)); // its round base sits level
-        var shape = new PlanetShape(radius, seed, hillAmplitude, flats);
+        var shape = new PlanetShape(radius, seed, hillAmplitude, flats, relief);
 
         // ---- decorations
         var decorations = Decorate(theme, radius, seed, groves, Free, solids, p);

@@ -131,6 +131,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   [[ -z "$ROOTLIKE" ]] && "$REPO/tools/make-wsl-fixture.sh" --root-like >/dev/null && ROOTLIKE="$(ls -1d /tmp/filescape-wsl-fixtures/rootlike-* 2>/dev/null | sort | tail -1)"
   journey planets-near-far-root planets-near-far.log 200 --automate=planets-near-far "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}${ROOTLIKE//\//\\}" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-near-far-sample planets-near-far.log 250 --automate=planets-near-far --root=sample --world=Constellations --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # PLANET-59: ordinary worlds' relief on a small and a large Starter Sky world: pads and landings level, feet on the
+  # ground every frame of a walk up the highest nearby rise.
+  journey planets-relief planets-relief.log 250 --automate=planets-relief --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,
