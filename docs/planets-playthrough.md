@@ -278,3 +278,22 @@ On the sample world (Sample world in the toolbar, or `--root=sample`):
    from the twirl itself. A plain jump at the mark does nothing; a few steps away a twirl is only a twirl.
 5. **Judge by feel and ear:** the bell's toll and swing, whether twelve wheel notches feel long, and whether the twirl
    then Enter at a root is quicker than E then 1.
+
+## Near and far, relief, sky motion (2026-11-17, PLANET-58..60, AD-64)
+
+**Launch:** the sample world (`--root=sample --vis=planets`), and for a crowded root a fixture made by
+`tools/make-wsl-fixture.sh --root-like` (it prints the `\\wsl.localhost\…` path to open with Ctrl+L).
+
+1. **Near and far.** Fly to Constellations (J, type "const", Enter). From the arrival, drag slowly round: where a pad
+   on the inner ring lines up with one on the outer ring, the nearer name is larger and sits in front; the farther one
+   stands just above it on a longer stem, and its stem passes behind the nearer name. Walk towards the near pad: its
+   name grows a little, smoothly, and stops growing about when you reach the pad (never larger than 19 px). Click either
+   name: it selects that destination (double-click flies there). On the root-like fixture, "etc" and "var" line up
+   like this when you turn about 60° left from the arrival.
+2. **Relief.** On Constellations, walk out past the outer ring towards the highest ground: long low rises and shallow
+   dips, the horizon's outline no longer a perfect arc; pads, the arrival meadow and the spot where you land beside a
+   pad stay level. Compare with `--test-relief=classic` (the hills as they were).
+3. **Sky.** Stand still for a minute or two: about once a minute (40–90 s) a faint shooting star crosses the upper part
+   of the view in under a second. Nothing appears for 10 s after a landing or in the overview (T). The stars turn
+   about 1° a minute: invisible while you watch, but after a few minutes the galaxies and nebulae have moved on a
+   little. A short recording: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-sky\sky-clip.avi`.

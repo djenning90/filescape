@@ -2,6 +2,7 @@
 # Creates a small, synthetic WSL fixture for LOC-03 / LINK-01 checks and prints its \\wsl.localhost path.
 #   tools/make-wsl-fixture.sh [parent]     default parent: /tmp/filescape-wsl-fixtures
 #   tools/make-wsl-fixture.sh --readme [parent]   a repository with a long real README (for --automate=planets-reading)
+#   tools/make-wsl-fixture.sh --root-like [parent]  a crowded world shaped like a distribution root (PLANET-58)
 #   tools/make-wsl-fixture.sh --delete <dir>
 # Contents: case pairs (Notes/notes, README.md/readme.md), Linux symlinks (to a folder, a file, a missing target,
 # an absolute path, a loop, and /mnt/c), a FIFO, an executable script (never run by FileScape), and a small project
@@ -41,6 +42,25 @@ if [[ "${1:-}" == "--readme" ]]; then
     for i in $(seq 1 60); do printf '## Section %d\n\nParagraph %d of the guide, long enough to wrap in the narrow preview and to make the whole document scroll.\n\n' "$i" "$i"; done
     printf '## The last section\n\nYou reached the end.\n\nEND-OF-GUIDE\n'
   } > "$root/guide.md"
+  distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
+  echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
+  exit 0
+fi
+if [[ "${1:-}" == "--root-like" ]]; then
+  # PLANET-58: a crowded world shaped like a Linux distribution's root (the same 21 top-level folders as an Ubuntu
+  # root, a few files each, plus the usual root files and links), so the near/far launcher check runs on a fixture
+  # instead of a real root. Nothing here is copied from the real system.
+  parent="${2:-/tmp/filescape-wsl-fixtures}"
+  root="$parent/rootlike-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$root"
+  touch "$root/.filescape-wsl-fixture"
+  for d in bin boot dev etc home lib lib64 lost+found media mnt opt proc root run sbin snap srv sys tmp usr var; do
+    mkdir -p "$root/$d"
+    for i in 1 2 3; do echo "$d $i" > "$root/$d/item-$i.txt"; done
+  done
+  mkdir -p "$root/home/fixture-user" "$root/usr/share" "$root/var/log"
+  echo "fixture" > "$root/init"
+  ln -s usr/lib "$root/lib32"
   distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
   echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
   exit 0

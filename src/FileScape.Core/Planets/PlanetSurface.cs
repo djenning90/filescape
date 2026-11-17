@@ -43,17 +43,42 @@ public enum PlanetTheme
 }
 
 /// <summary>
+/// How a planet's hills are drawn (PLANET-59, AD-64). <see cref="Classic"/> is the shape every planet had before
+/// 2026-11-17 and is kept for Hazard Worlds (their islands are designed on it, AD-59) and placeholders;
+/// <see cref="Rolling"/> is an ordinary world's: the same seven hills, hollows shallower, and a few broad gentle rises
+/// added after them (drawn after, so the seven keep their places and the world still looks like itself).
+/// </summary>
+public enum PlanetRelief
+{
+    /// <summary>Seven hills, every third a hollow half as deep as a hill is high.</summary>
+    Classic,
+
+    /// <summary>The seven hills with hollows a third as deep, plus <c>RiseCount</c> broad, low rises.</summary>
+    Rolling,
+}
+
+/// <summary>
 /// The solid shape of a planet in its own frame (centre at the origin, metres): a sphere of <see cref="Radius"/> with
 /// gentle deterministic hills, flattened around <see cref="FlatSpots"/> (where launchers, the arrival meadow and file
 /// groves stand) so footing there is clear. Walking, collision and the rendered mesh all use <see cref="HeightAt"/>,
-/// so what you see is what you stand on.
+/// so what you see is what you stand on. A change must keep that one function the only source of height (the mesh,
+/// the walker and the composer's placement read it) and every walked slope within <see cref="MaxWalkSlopeDegrees"/>.
 /// </summary>
 /// <param name="Radius">Base radius, metres.</param>
 /// <param name="Seed">Chooses the hills (deterministic per folder).</param>
 /// <param name="HillAmplitude">Tallest hill, metres (0 = a perfect sphere).</param>
 /// <param name="FlatSpots">Unit directions and surface radii (metres) kept flat.</param>
-public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IReadOnlyList<(Vector3 Direction, float Radius)> FlatSpots)
+/// <param name="Relief">How the hills are drawn (<see cref="PlanetRelief"/>).</param>
+public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IReadOnlyList<(Vector3 Direction, float Radius)> FlatSpots, PlanetRelief Relief = PlanetRelief.Classic)
 {
+    /// <summary>
+    /// The steepest ground an ordinary world may have anywhere, degrees from level (PLANET-59). The walker has no slope
+    /// limit of its own (it follows the height field), so this is the design limit the composer's relief is tested
+    /// against: under it, walking reads as a stroll over rises, not a climb, and things standing on the ground (≈ 1 m
+    /// across) stand within ≈ 0.2 m of level across their footing.
+    /// </summary>
+    public const float MaxWalkSlopeDegrees = 20f;
+
     // ---- the hills: HillCount Gaussian bumps a·exp(−(angle/width)²) at random directions from Seed
     private const int HillCount = 7;
 
@@ -69,6 +94,33 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
 
     /// <summary>Every third hill (i % 3 == 2) is a hollow, half as deep as a hill would be high: gentle dips among the swells.</summary>
     private const float HollowFactor = -0.5f;
+
+    /// <summary>On a <see cref="PlanetRelief.Rolling"/> world a hollow is a third as deep as a hill would be high (shallower, PLANET-59).</summary>
+    private const float RollingHollowFactor = -0.33f;
+
+    /// <summary>Broad gentle rises added on a <see cref="PlanetRelief.Rolling"/> world, after the seven hills.</summary>
+    private const int RiseCount = 3;
+
+    /// <summary>A rise's width (1/e angular radius) is this plus up to <see cref="RiseWidthSpreadRadians"/>: ≈ 34°…54°, a long low swell.</summary>
+    private const float RiseWidthMinRadians = 0.6f;
+
+    private const float RiseWidthSpreadRadians = 0.35f;
+
+    /// <summary>A rise's height is this fraction of <see cref="HillAmplitude"/> plus up to <see cref="RiseAmplitudeSpreadFraction"/>.</summary>
+    private const float RiseAmplitudeMinFraction = 0.3f;
+
+    private const float RiseAmplitudeSpreadFraction = 0.3f;
+
+    /// <summary>
+    /// Beyond a flat spot the hills fade back in over this many metres per metre of <see cref="HillAmplitude"/> on a
+    /// <see cref="PlanetRelief.Rolling"/> world (never less than <see cref="FlatFadeMetres"/>). A smoothstep fade is at most
+    /// 1.5 × height / fade steep, so 5 m per metre keeps a rim under ≈ 17° however tall the hills (2026-11-17: 3.9 m per
+    /// metre, the classic ratio at 0.9 m, let rims reach 21°; the classic worlds measured 12–18°).
+    /// </summary>
+    public const float FlatFadePerReliefMetre = 5f;
+
+    /// <summary>The fade beyond a flat spot on this planet, metres (see <see cref="FlatFadePerReliefMetre"/>).</summary>
+    public float FlatFade => Relief == PlanetRelief.Rolling ? MathF.Max(FlatFadeMetres, HillAmplitude * FlatFadePerReliefMetre) : FlatFadeMetres;
 
     /// <summary>
     /// Hills are ignored beyond this many widths from their centre: exp(−3.2²) = exp(−10.24) ≈ 4·10⁻⁵ of their height,
@@ -88,12 +140,22 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
         {
             if (_hills != null) return _hills;
             var rng = new Random(Seed);
-            var hills = new (Vector3, float, float)[HillAmplitude > 0 ? HillCount : 0];
+            var rolling = Relief == PlanetRelief.Rolling;
+            var hills = new (Vector3, float, float)[HillAmplitude > 0 ? HillCount + (rolling ? RiseCount : 0) : 0];
             for (var i = 0; i < hills.Length; i++)
             {
                 var d = RandomDirection(rng);
+                if (i >= HillCount)
+                {
+                    // A broad gentle rise (Rolling only), drawn after the seven so they keep their places.
+                    var riseWidth = RiseWidthMinRadians + (float)rng.NextDouble() * RiseWidthSpreadRadians;
+                    hills[i] = (d, riseWidth, HillAmplitude * (RiseAmplitudeMinFraction + RiseAmplitudeSpreadFraction * (float)rng.NextDouble()));
+                    continue;
+                }
+
                 var width = HillWidthMinRadians + (float)rng.NextDouble() * HillWidthSpreadRadians;
-                var amp = HillAmplitude * (HillAmplitudeMinFraction + HillAmplitudeSpreadFraction * (float)rng.NextDouble()) * (i % 3 == 2 ? HollowFactor : 1f); // some gentle hollows
+                var hollow = rolling ? RollingHollowFactor : HollowFactor;
+                var amp = HillAmplitude * (HillAmplitudeMinFraction + HillAmplitudeSpreadFraction * (float)rng.NextDouble()) * (i % 3 == 2 ? hollow : 1f); // some gentle hollows
                 hills[i] = (d, width, amp);
             }
 
@@ -128,17 +190,24 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
             if (d < cosOuter) continue;
             if (d >= cosInner) return 0; // inside a flat spot
             var sMetres = MathF.Acos(Math.Clamp(d, -1f, 1f)) * Radius;
-            mask = MathF.Min(mask, SmoothStep(r, r + FlatFadeMetres, sMetres));
+            // Classic: the nearest spot's fade (a minimum, which leaves a crease where two fades meet). Rolling: the fades
+            // multiplied, which is smooth where they overlap (2026-11-17: the creases between pads put the drawn ground up
+            // to 19 cm off the walked ground and made the steepest slopes on every world).
+            var fade = SmoothStep(r, r + cache.Fade, sMetres);
+            mask = Relief == PlanetRelief.Rolling ? mask * fade : MathF.Min(mask, fade);
         }
 
+        // Rolling: where hills and rises overlap, the sum is eased under the amplitude (tanh: unchanged near 0, ≈ 0.76 of
+        // the amplitude where the sum reaches it) rather than cut off, so tops stay rounded with no crease in the ground.
+        if (Relief == PlanetRelief.Rolling) return HillAmplitude * MathF.Tanh(h / HillAmplitude) * mask;
         return Math.Clamp(h, -HillAmplitude, HillAmplitude) * mask;
     }
 
     /// <summary>How far beyond a flat spot's radius the hills fade back in, metres.</summary>
     public const float FlatFadeMetres = 3.5f;
 
-    /// <summary>The hills and flat spots with their precomputed cut-off cosines, and the flat-spot list they were built from.</summary>
-    private sealed record ShapeCache(object FlatSource, (Vector3 C, float W, float A, float CosCut)[] Hills, (Vector3 Dir, float R, float CosInner, float CosOuter)[] Flats);
+    /// <summary>The hills and flat spots with their precomputed cut-off cosines, the flat-spot list they were built from, and the fade (metres).</summary>
+    private sealed record ShapeCache(object FlatSource, (Vector3 C, float W, float A, float CosCut)[] Hills, (Vector3 Dir, float R, float CosInner, float CosOuter)[] Flats, float Fade);
 
     private ShapeCache? _cache;
 
@@ -149,8 +218,9 @@ public sealed record PlanetShape(float Radius, int Seed, float HillAmplitude, IR
         {
             if (_cache != null && ReferenceEquals(_cache.FlatSource, FlatSpots)) return _cache;
             var hills = Hills.Select(hh => (hh.Centre, hh.WidthRadians, hh.Amplitude, MathF.Cos(MathF.Min(MathF.PI, hh.WidthRadians * HillCutoffWidths)))).ToArray();
-            var flats = FlatSpots.Select(f => (f.Direction, f.Radius, MathF.Cos(MathF.Min(MathF.PI, f.Radius / Radius)), MathF.Cos(MathF.Min(MathF.PI, (f.Radius + FlatFadeMetres) / Radius)))).ToArray();
-            return _cache = new ShapeCache(FlatSpots, hills, flats);
+            var fade = FlatFade;
+            var flats = FlatSpots.Select(f => (f.Direction, f.Radius, MathF.Cos(MathF.Min(MathF.PI, f.Radius / Radius)), MathF.Cos(MathF.Min(MathF.PI, (f.Radius + fade) / Radius)))).ToArray();
+            return _cache = new ShapeCache(FlatSpots, hills, flats, fade);
         }
     }
 

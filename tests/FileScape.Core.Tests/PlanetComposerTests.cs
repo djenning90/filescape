@@ -120,7 +120,8 @@ public class PlanetComposerTests
         var c = PlanetComposer.Compose(tree, 0);
         var R = c.Shape.Radius;
         R.Should().BeInRange(16f, 34f); // the composer clamps every planet's radius to 16–34 m
-        c.Shape.HillAmplitude.Should().BeInRange(0.6f, 0.9f);
+        c.Shape.HillAmplitude.Should().BeInRange(0.75f, 1.1f * 1.6f); // PLANET-59: 0.75–1.1 m on the smallest world, up to ×1.6 on the largest
+        c.Shape.Relief.Should().Be(PlanetRelief.Rolling);
         c.Arrival.Up.Should().Be(Vector3.UnitY);
         c.Arrival.Facing.Should().Be(-Vector3.UnitZ);
         c.Shape.FlatSpots.Should().Contain(f => f.Direction == Vector3.UnitY && f.Radius >= 3.5f, "the arrival meadow is flat");

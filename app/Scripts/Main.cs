@@ -192,6 +192,7 @@ public partial class Main : Node3D
 
         if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
 
+        FileScape.Core.Planets.PlanetComposer.ClassicReliefForComparison = args.TestClassicRelief;
         _testListDelayMs = args.TestListDelayMs ?? 0;
         _testListDelayMatch = args.TestListDelayMatch;
         _recordShell = args.TestShellRecord;

@@ -53,6 +53,9 @@ public sealed record CommandLine
     /// <summary>--test-list-delay-match=TEXT (instrument, PLANET-39): the delay applies only to folders whose path contains TEXT, so a probe can see one folder "still listing" while the rest list normally.</summary>
     public string? TestListDelayMatch { get; init; }
 
+    /// <summary>--test-relief=classic (comparison instrument, PLANET-59): ordinary worlds keep the hills they had before 2026-11-17, for before/after screenshots in one build.</summary>
+    public bool TestClassicRelief { get; init; }
+
     /// <summary>--test-max-islands=N (AERIAL-07 instrument): a deliberately small aerial display budget, so a journey can put
     /// the current place outside the breadth-first selection and exercise landing and recovery.</summary>
     public int? TestMaxIslands { get; init; }
@@ -102,6 +105,7 @@ public sealed record CommandLine
             TestShellRecord = Get("test-shell") == "record",
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
             TestListDelayMatch = Get("test-list-delay-match"),
+            TestClassicRelief = Get("test-relief") == "classic",
         };
     }
 }

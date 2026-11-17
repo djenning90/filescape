@@ -183,6 +183,21 @@ public partial class PlanetWorld
         if (Busy) { TraceClick($"{how} at ({at.X:0},{at.Y:0}): ignored (travelling)"); return; }
         var tile = PickBenchTile(at);
         if (ClickedBenchTile(at, doubleClick)) { TraceClick($"{how} at ({at.X:0},{at.Y:0}): bench card #{tile} → {ActionWord(tile, doubleClick)}"); return; }
+        // A name on screen is what you see at that point, so a click on it acts on what it names (PLANET-58): where a
+        // near and a far pad line up, each name selects its own destination.
+        if (SignTarget(at) is { } named)
+        {
+            TraceClick($"{how} at ({at.X:0},{at.Y:0}): the name of #{named} → {ActionWord(named, doubleClick)}");
+            if (doubleClick) DoubleClickOn(named, false);
+            else
+            {
+                _s.Select(named);
+                _audio.Select();
+            }
+
+            return;
+        }
+
         var hit = Pick(at);
         if (hit.Id < 0)
         {
@@ -198,6 +213,17 @@ public partial class PlanetWorld
             _s.Select(hit.Id);
             _audio.Select();
         }
+    }
+
+    /// <summary>
+    /// The folder or file named by the sign drawn topmost at a point, or null: a node's own id for a pad, object or moon,
+    /// the folder for a world's name (<c>−100 000 − id</c>); grove and workbench names are left to their own handling.
+    /// </summary>
+    private int? SignTarget(Vector2 at)
+    {
+        if (_s.Signs.IdAt(at) is not { } id || _s.Tree is not { } tree) return null;
+        var node = id >= 0 ? id : id <= -100_000 && id > -200_000 ? -100_000 - id : -1;
+        return node >= 0 && tree.Contains(node) ? node : null;
     }
 
     /// <summary>Ends a drag (or a pending press): releases the mouse and puts the cursor back where the drag began.</summary>

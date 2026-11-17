@@ -1,7 +1,23 @@
 // Planets ("Lantern Cosmos", original art): the deep indigo-violet sky. A vertical gradient, two layers of twinkling
 // stars, soft nebulae concentrated along a tilted band, darker dust lanes, and a few small distant spiral galaxies.
 // The radiance (cubemap) pass draws only the gradient and nebulae, so it stays cheap.
+// Sky motion (PLANET-60, AD-64; driven by PlanetWorld.Sky.cs): the celestial sphere (stars, nebulae, galaxies, the
+// commit graph) turns extremely slowly by sky_turn, while the world-fixed details (gradient, dawn, aurora, panes,
+// scanlines) stay put; and now and then one faint shooting star crosses part of the sky (meteor_*).
 shader_type sky;
+
+// The celestial sphere's turn: world direction → sky direction (identity = unturned).
+uniform mat3 sky_turn = mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0));
+// A shooting star: it starts at meteor_from (a world direction), travels meteor_arc radians along the great circle
+// whose tangent there is meteor_along, over meteor_seconds; meteor_age < 0 means none is showing.
+uniform vec3 meteor_from = vec3(0.0, 1.0, 0.0);
+uniform vec3 meteor_along = vec3(1.0, 0.0, 0.0);
+uniform float meteor_age = -1.0;
+uniform float meteor_seconds = 0.8;
+uniform float meteor_arc = 0.24;
+uniform float meteor_trail = 0.1;      // trail length behind the head, radians
+uniform float meteor_width = 0.0016;   // the streak's half-width, radians (≈ 1 px at the walking camera's 62°)
+uniform float meteor_strength = 1.0;
 
 uniform vec3 top_color : source_color = vec3(0.05, 0.04, 0.16);
 uniform vec3 bottom_color : source_color = vec3(0.03, 0.02, 0.09);
@@ -132,13 +148,34 @@ vec3 graph(vec3 dir, float time) {
 	return graph_color * (g * 0.35 + beads * 0.9 * pulse);
 }
 
+// The shooting star's light in direction dir: a thin streak whose head moves along its great circle, brightest at
+// the head and fading along the trail, rising and falling over its life (sin of the life fraction).
+vec3 meteor(vec3 dir) {
+	float u = meteor_age / meteor_seconds;
+	if (u < 0.0 || u > 1.0) return vec3(0.0);
+	vec3 a = normalize(meteor_from);
+	vec3 t = normalize(meteor_along - a * dot(meteor_along, a));
+	vec3 n = cross(a, t);
+	float off = abs(dot(dir, n));
+	if (off > meteor_width * 4.0) return vec3(0.0);
+	float ang = atan(dot(dir, t), dot(dir, a));
+	float head = meteor_arc * u;
+	float behind = head - ang;
+	if (behind < -meteor_width * 2.0 || behind > meteor_trail) return vec3(0.0);
+	float along = 1.0 - clamp(behind / meteor_trail, 0.0, 1.0);
+	float across = exp(-pow(off / meteor_width, 2.0));
+	float life = sin(3.14159 * u);
+	return vec3(1.0, 0.94, 0.84) * along * along * across * life * meteor_strength;
+}
+
 void sky() {
 	vec3 dir = EYEDIR;
+	vec3 sdir = sky_turn * dir; // on the turning celestial sphere
 	vec3 col = mix(bottom_color, top_color, 0.5 + 0.5 * dot(dir, normalize(vec3(0.35, 0.62, 0.7))));
 	vec3 bn = normalize(band_normal);
-	float band = exp(-pow(dot(dir, bn) / 0.45, 2.0));
-	float n1 = fbm(dir * 2.1 + vec3(3.1, 0.4, 7.0));
-	float n2 = fbm(dir * 4.3 + vec3(7.7, 2.2, 1.3));
+	float band = exp(-pow(dot(sdir, bn) / 0.45, 2.0));
+	float n1 = fbm(sdir * 2.1 + vec3(3.1, 0.4, 7.0));
+	float n2 = fbm(sdir * 4.3 + vec3(7.7, 2.2, 1.3));
 	float neb = smoothstep(0.42, 0.85, n1 * (0.55 + 0.7 * band));
 	vec3 ncol = mix(nebula_a, nebula_b, smoothstep(0.3, 0.7, n2));
 	col += ncol * neb * nebula_strength * (0.6 + 0.4 * n2);
@@ -167,13 +204,14 @@ void sky() {
 			float glow = smoothstep(-0.1, 0.5, dir.y) * (1.0 - smoothstep(0.5, 0.95, dir.y));
 			col += aurora_color * scan * glow * 0.05 * scan_strength;
 		}
-		if (graph_strength > 0.0) col += graph(dir, t) * graph_strength;
-		col += stars(dir, 55.0, 0.93, 0.06, t) * star_brightness;
-		col += stars(dir, 130.0, 0.86, 0.075, t * 0.7) * star_brightness * 0.4 * (0.5 + 0.9 * band);
-		col += galaxy(dir, vec3(0.62, 0.55, -0.56), vec3(0.2, 1.0, 0.1), 0.045, 0.42);
-		col += galaxy(dir, vec3(-0.7, 0.3, 0.65), vec3(1.0, 0.3, 0.0), 0.03, 0.6) * 0.8;
-		col += galaxy(dir, vec3(0.1, 0.85, 0.52), vec3(0.0, 0.2, 1.0), 0.025, 0.3) * 0.7;
-		col += galaxy(dir, vec3(-0.35, -0.2, -0.9), vec3(0.6, 1.0, 0.0), 0.035, 0.5) * 0.7;
+		if (graph_strength > 0.0) col += graph(sdir, t) * graph_strength;
+		col += stars(sdir, 55.0, 0.93, 0.06, t) * star_brightness;
+		col += stars(sdir, 130.0, 0.86, 0.075, t * 0.7) * star_brightness * 0.4 * (0.5 + 0.9 * band);
+		col += galaxy(sdir, vec3(0.62, 0.55, -0.56), vec3(0.2, 1.0, 0.1), 0.045, 0.42);
+		col += galaxy(sdir, vec3(-0.7, 0.3, 0.65), vec3(1.0, 0.3, 0.0), 0.03, 0.6) * 0.8;
+		col += galaxy(sdir, vec3(0.1, 0.85, 0.52), vec3(0.0, 0.2, 1.0), 0.025, 0.3) * 0.7;
+		col += galaxy(sdir, vec3(-0.35, -0.2, -0.9), vec3(0.6, 1.0, 0.0), 0.035, 0.5) * 0.7;
+		if (meteor_age >= 0.0) col += meteor(dir);
 	}
 	COLOR = col;
 }
