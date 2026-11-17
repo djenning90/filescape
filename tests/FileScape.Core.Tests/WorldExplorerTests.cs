@@ -230,6 +230,22 @@ public sealed class WorldExplorerTests : IDisposable
     }
 
     [PosixFact]
+    public void Expanding_in_the_list_lists_that_folder_only_not_its_children()
+    {
+        // PLANET-39, AD-56: opening a folder in the Destinations tree lists exactly it; its own folders stay unlisted
+        // (a visit would have listed them ahead).
+        using var h = new Harness(Arrival);
+        var arrival = h.Await(WorldExplorer.ArrivalTicket).NodeId;
+        var parent = h.Tree[arrival].ParentId;
+        h.Pump(() => h.Idle);
+        h.Tree[parent].ScanState.Should().Be(DirScanState.Unlisted);
+        h.Explorer.Expand(parent);
+        h.Pump(() => h.Idle && h.Tree[parent].ScanState == DirScanState.Complete);
+        var outside = h.Child(parent, "outside");
+        h.Tree[outside].ScanState.Should().Be(DirScanState.Unlisted, "only the folder the player opened is listed");
+    }
+
+    [PosixFact]
     public void Revealing_lists_a_folder_from_the_air_but_never_a_location_root()
     {
         // AERIAL-04: the aerial world may list a folder it shows (the app limits which); a drive or distribution is

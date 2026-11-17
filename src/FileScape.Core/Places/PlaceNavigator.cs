@@ -155,6 +155,20 @@ public sealed class PlaceNavigator
         return true;
     }
 
+    /// <summary>
+    /// Makes the last <paramref name="moves"/> moves one step of history (AD-56, PLANET-40): a multi-hop trip records a
+    /// visit per hop as it flies, and when it ends (arrived or stopped) only the entry for where it started is kept, so
+    /// Backspace returns to the start of the trip. The caller guarantees those moves were the trip's own (nothing else
+    /// moved meanwhile); entries trimmed from the front by <see cref="MaxHistory"/> do not matter, only the newest are removed.
+    /// </summary>
+    public void MergeLastMoves(int moves)
+    {
+        for (var i = 1; i < moves && _history.Count > 1; i++)
+        {
+            _history.RemoveAt(_history.Count - 1);
+        }
+    }
+
     /// <summary>Records the current folder in history, moves to <paramref name="to"/> and raises <see cref="Changed"/>; false (and nothing changes) when already there.</summary>
     private bool Move(int to, PlaceMove move, int via = -1)
     {

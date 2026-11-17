@@ -178,6 +178,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// <summary>From <see cref="Reveal"/>.</summary>
     private sealed record RevealRequest(int Id) : Request;
 
+    /// <summary>From <see cref="Expand"/>.</summary>
+    private sealed record ExpandRequest(int Id) : Request;
+
     /// <summary>From <see cref="FollowLink"/>.</summary>
     private sealed record FollowRequest(int Ticket, int LinkId) : Request;
 
@@ -246,6 +249,14 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// caller decides which folders may be revealed (the app limits it to the arrival subtree and visited places).
     /// </summary>
     public void Reveal(int dirId) => Post(new RevealRequest(dirId));
+
+    /// <summary>
+    /// Lists one folder because the player opened it in the Destinations tree (PLANET-39, AD-56): at the urgent priority
+    /// (they are looking at it), but without counting it as visited, so its own child folders are not listed ahead and
+    /// no context is spent on it. Only a folder that was never listed (or failed and was retried) is listed; a queued one
+    /// moves ahead. Location roots are listed too: opening one in the list is as deliberate as going there.
+    /// </summary>
+    public void Expand(int dirId) => Post(new ExpandRequest(dirId));
 
     /// <summary>Follows a link deliberately (LINK-02). The reply carries the destination id, or why not.</summary>
     public int FollowLink(int linkId)
@@ -386,6 +397,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 if (d.State == DirState.Unlisted && !d.Retry) Enqueue(d, Priority.Prefetch);
                 break;
             case RevealRequest:
+                break;
+            case ExpandRequest x when x.Id != 0 && _dirs.TryGetValue(x.Id, out var d):
+                if (d.State is DirState.Unlisted or DirState.Queued) Enqueue(d, Priority.Urgent);
+                break;
+            case ExpandRequest:
                 break;
             case FollowRequest f:
                 Follow(f.Ticket, f.LinkId);
