@@ -76,6 +76,36 @@ public partial class PlanetWorld
         _s.OpenSelection();
     }
 
+    /// <summary>Twirls that previewed a file or listed a pile (probes).</summary>
+    public int TwirlPreviews { get; private set; }
+
+    /// <summary>
+    /// The twirl's contextual action (PLANET-43, AD-57): a twirl (the air jump) with a file in focus — the object the prompt
+    /// names, "or twirl (Space, Space) to preview" — selects it and shows its preview, as E does, without turning you or
+    /// moving you (you are in the air); with a pile in focus it lists that pile. It never opens anything: a twirl is
+    /// movement, and an external program must never start from movement. The workbench's spin (README) is handled first
+    /// by <see cref="UpdateBench"/>. Away from files a twirl is only a twirl.
+    /// </summary>
+    private void TwirlNearFile()
+    {
+        if (_focusItem is not { } it || _s.Tree is not { } tree) return;
+        if (it.Kind == PlanetItemKind.Pile)
+        {
+            OpenContents(it.Category);
+            _audio.Inspect();
+            TwirlPreviews++;
+            return;
+        }
+
+        if (it.NodeId < 0 || !tree.Contains(it.NodeId) || tree[it.NodeId].IsDirectory) return;
+        if (_previewPanel.Visible && _s.Selection.Selected == it.NodeId) return; // already showing it: a second twirl changes nothing
+        _s.Select(it.NodeId);
+        _audio.Inspect();
+        ShowPreview(tree, tree[it.NodeId]);
+        TwirlPreviews++;
+        GD.Print($"[planets] twirl by {tree[it.NodeId].Name}: preview");
+    }
+
     /// <summary>Where a standing object's pick sphere is centred (the same point <see cref="Pick"/> tests), or null.</summary>
     public Godot.Vector3? ItemCentre(int nodeId)
     {

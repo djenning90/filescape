@@ -400,7 +400,8 @@ public partial class PlanetWorld
             {
                 var n = tree[it2.NodeId];
                 var sel = _s.Selection.Selected == n.Id;
-                SetPrompt(sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
+                // The twirl's preview is named before you do it (PLANET-43); opening stays Enter (or a double-click).
+                SetPrompt(sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
             }
         }
         else if (_focusTelescope && OnBenchWorld)

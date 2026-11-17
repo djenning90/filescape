@@ -158,10 +158,12 @@ public partial class PlanetWorld
         _benchEntries = entries;
     }
 
-    /// <summary>Per frame while walking: landing on the bench reveals; a twirl from it reads the README.</summary>
-    private void UpdateBench(float dt, Core.Movement.JumpEventKind ev)
+    /// <summary>Per frame while walking: landing on the bench reveals; a twirl from it reads the README. True when this
+    /// frame's twirl was the bench's (so the twirl by a file, <see cref="TwirlNearFile"/>, does not also act).</summary>
+    private bool UpdateBench(float dt, Core.Movement.JumpEventKind ev)
     {
-        if (!OnBenchWorld) return;
+        if (!OnBenchWorld) return false;
+        var took = false;
         var onBench = StandingOnBench();
         if (onBench && !_wasOnBench) RevealBench("landed");
         // A jump leaves the ground in the frame it is reported: whether it left from the bench is last frame's answer.
@@ -171,12 +173,14 @@ public partial class PlanetWorld
         {
             _jumpFromBench = false;
             ReadReadme("spin");
+            took = true;
         }
 
         if (ev == Core.Movement.JumpEventKind.Land && !onBench) _jumpFromBench = false;
         if (_benchRevealed) _benchReveal01 = MathF.Min(1, _benchReveal01 + dt / BenchRevealSeconds);
         UpdateBenchTiles(dt);
         if (_benchLamp != null) _benchLamp.LightEnergy = Mathf.Lerp(_benchLamp.LightEnergy, onBench ? BenchLampOnEnergy : BenchLampOffEnergy, 1 - MathF.Exp(-BenchLampRatePerSecond * dt));
+        return took;
     }
 
     /// <summary>

@@ -75,6 +75,52 @@ public partial class PlanetsProbe
         Check(sln >= 0 && src >= 0, "the workshop has Lantern.sln and src");
 
         await FileActions(workshop, sln, src);
+        await TwirlActions(workshop);
+    }
+
+    /// <summary>
+    /// PLANET-43: a twirl by a file previews it (named first in the prompt) and never opens it; a twirl with nothing in
+    /// reach is only a twirl; the bench's spin still reads the README.
+    /// </summary>
+    private async Task TwirlActions(int workshop)
+    {
+        var csproj = Child(workshop, "Lantern.csproj");
+        var item = P.Composition!.Items.FirstOrDefault(i => i.NodeId == csproj);
+        Check(item != null, "Lantern.csproj stands on the planet");
+        if (item == null) return;
+        App.Selection.Select(-1);
+        await StandFacing(item.Direction, 2.2f);
+        await Frames(5);
+        Check(P.FocusNodeId == csproj && P.PromptText.Contains("twirl"), $"by Lantern.csproj the prompt names the twirl's preview first: \"{P.PromptText}\"");
+        await Shot("twirl-prompt");
+        var before = App.ShellLog.Count;
+        var previews = P.TwirlPreviews;
+        await Key(Godot.Key.Space);
+        await Seconds(0.2);
+        await Key(Godot.Key.Space);
+        await Until(() => P.PreviewOpen, 2);
+        await Until(() => P.Walker.Grounded, 3);
+        await Seconds(0.5);
+        Check(P.PreviewOpen && App.Selection.Selected == csproj && P.TwirlPreviews == previews + 1, $"a twirl by Lantern.csproj previews it (selected {Sel}, preview {P.PreviewOpen})");
+        Check(App.ShellLog.Count == before, $"the twirl opened nothing ({App.ShellLog.Count - before} shell requests)");
+        await Shot("twirl-preview");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+
+        // Away from every file: a twirl is only a twirl.
+        P.Walker.Teleport(P.Composition.Surface, P.Composition.Arrival.Up, P.Composition.Arrival.Facing); // [direct] the arrival meadow
+        await Seconds(0.5);
+        if (P.FocusNodeId < 0)
+        {
+            previews = P.TwirlPreviews;
+            await Key(Godot.Key.Space);
+            await Seconds(0.2);
+            await Key(Godot.Key.Space);
+            await Until(() => P.Walker.Grounded, 3);
+            await Seconds(0.3);
+            Check(!P.PreviewOpen && P.TwirlPreviews == previews && App.ShellLog.Count == before, "a twirl on the open meadow previews and opens nothing");
+        }
+        else Log($"(the meadow has {Tree[P.FocusNodeId].Name} in reach; the empty-twirl check is skipped)");
     }
 
     private string Sel => App.Selection.Selected >= 0 ? Tree[App.Selection.Selected].Name : "-";
