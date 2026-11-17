@@ -205,6 +205,7 @@ public partial class Main : Node3D
         // folder; explicit --vis and --root always win. Automated journeys keep their historical defaults (Places on a
         // synthetic tree, maps for the evidence scripts) so their expectations stay valid.
         var personLaunch = args.Automation == null;
+        _automationIgnoresFocus = !personLaunch;
         _experience = args.Experience ?? (legacyScript ? Experience.Classic : personLaunch ? Experience.Planets : Experience.Places);
         if (_experience != Experience.Places) _visIndex = _experience == Experience.Classic ? 0 : 1;
         ApplyExperience(frame: false);
@@ -989,6 +990,12 @@ public partial class Main : Node3D
     private double _lastHitchMs, _lastHitchAtMs, _lookBeganMs = -1;
     private TimeSpan _lastStateWrite;
     private bool _windowFocused = true;
+
+    /// <summary>The OS window's real focus. Under --automate input ignores its loss (<see cref="_windowFocused"/> stays true):
+    /// injected probe input must not depend on what a person does elsewhere on the machine (KD-31). A person's launch
+    /// never has --automate, so for a player focus loss still releases everything and pauses input.</summary>
+    private bool _osFocused = true;
+    private bool _automationIgnoresFocus;
     private Vector2 _flyStartMouse;
     private int _consumedEscapes;
 
@@ -1005,6 +1012,7 @@ public partial class Main : Node3D
     public bool ModalOpen => _welcomeOpen || (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
 
     public bool WindowFocused => _windowFocused;
+    public bool OsWindowFocused => _osFocused;
     public bool IsDragging => _pressButton != MouseButton.None;
     public IEnumerable<string> HeldActionNames => InputBindings.MovementActions.Where(_held.IsHeld);
 
@@ -1768,11 +1776,14 @@ public partial class Main : Node3D
         else if (what is (int)NotificationApplicationFocusOut or (int)NotificationWMWindowFocusOut)
         {
             // Alt-Tab and similar: release capture and forget held keys, so nothing is stuck on return.
+            _osFocused = false;
+            if (_automationIgnoresFocus) return;
             _windowFocused = false;
             if (_rig != null) ReleaseAllInput();
         }
         else if (what is (int)NotificationApplicationFocusIn or (int)NotificationWMWindowFocusIn)
         {
+            _osFocused = true;
             _windowFocused = true;
         }
     }

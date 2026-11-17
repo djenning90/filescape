@@ -69,7 +69,16 @@ public abstract partial class ProbeBase : Node
     /// One key event with the logical and the physical code set alike, so a binding to either matches. A letter also carries its
     /// lower-case character, as a real keyboard's would, so text fields and shortcuts both see it.
     /// </summary>
-    protected static void Key1(Key key, bool pressed, bool ctrl = false) =>
+    /// <summary>Keys a probe holds down now: re-pressed after the OS takes focus away (Godot releases pressed input then).</summary>
+    private static readonly HashSet<Key> HeldKeys = [];
+
+    protected static void Key1(Key key, bool pressed, bool ctrl = false)
+    {
+        if (pressed) HeldKeys.Add(key); else HeldKeys.Remove(key);
+        Key1Raw(key, pressed, ctrl);
+    }
+
+    private static void Key1Raw(Key key, bool pressed, bool ctrl = false) =>
         Inject(new InputEventKey
         {
             Keycode = key,
@@ -78,6 +87,12 @@ public abstract partial class ProbeBase : Node
             CtrlPressed = ctrl,
             Unicode = pressed && !ctrl && key is >= Godot.Key.A and <= Godot.Key.Z ? char.ToLowerInvariant((char)key) : 0,
         });
+
+    /// <summary>Re-presses every key the probe holds (after a focus change released them), without counting them again.</summary>
+    private static void RepressHeldKeys()
+    {
+        foreach (var k in HeldKeys) Key1Raw(k, true);
+    }
 
     /// <summary>Holds or releases a key (both its logical and physical code).</summary>
     protected static void HoldKey(Key key, bool down) => Key1(key, down);
@@ -127,10 +142,14 @@ public abstract partial class ProbeBase : Node
         _simSeconds += delta;
         // KD-31 diagnostics: injected input does nothing while the window is not focused (by design), so every focus
         // change is logged; a failure next to "lost focus" is the environment, not the product.
-        if (App.WindowFocused != _lastFocused)
+        // Under --automate the app keeps taking injected input while the OS window is unfocused (Main: focus loss is
+        // ignored for input, 2026-11-17), so a person using the machine no longer breaks a probe; the change is still
+        // logged, and keys held across it are pressed again because Godot releases pressed input on a focus change.
+        if (App.OsWindowFocused != _lastFocused)
         {
-            _lastFocused = App.WindowFocused;
-            Log(_lastFocused ? "window focus regained" : "window focus LOST (injected input is ignored until it returns)");
+            _lastFocused = App.OsWindowFocused;
+            Log(_lastFocused ? "window focus regained" : App.WindowFocused ? "window focus lost (input continues under automation)" : "window focus LOST (injected input is ignored until it returns)");
+            RepressHeldKeys();
         }
     }
 

@@ -316,7 +316,7 @@ public partial class PlanetsProbe
     /// </summary>
     private async Task AwaitFocus()
     {
-        if (App.WindowFocused) return;
+        if (App.WindowFocused) return; // always under --automate now (Main ignores focus loss for injected input)
         var start = Time.GetTicksMsec();
         await Until(() => App.WindowFocused, 60);
         Log(F($"  (waited {(Time.GetTicksMsec() - start) / 1000.0:0.0} s for the window's focus: {(App.WindowFocused ? "back" : "still away")})"));
