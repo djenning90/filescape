@@ -9,24 +9,71 @@ namespace FileScape.App.Planets;
 /// <summary>
 /// The Planets experience's sound: plays <see cref="SkySynth"/> (original, fully synthesised music and effects; no
 /// samples) through an <see cref="AudioStreamPlayer"/> fed by an <see cref="AudioStreamGenerator"/> (44 100 Hz,
-/// stereo, a 0.12 s ring buffer). Every <c>_Process</c> it renders just enough frames to keep
-/// <see cref="TargetFill"/> queued, so an effect called this frame is heard after roughly that much (plus the
-/// driver's own output latency), while a hitch shorter than the buffer still does not underrun.
+/// stereo, a 0.5 s ring buffer). Its own audio thread (FOLLOW-2, 2026-11-17) wakes every few milliseconds and renders
+/// just enough frames to keep <see cref="TargetFill"/> queued, so an effect called this frame is heard after roughly
+/// that much (plus the driver's own output latency). The thread does not depend on Godot's frame callback: the music
+/// keeps flowing while the main loop stalls — loading a world, compiling shaders at startup, and the Windows move and
+/// resize loop, which stop <c>_Process</c>. (Filled from <c>_Process</c> with 50 ms queued, every frame longer than
+/// that was a gap: 206 at startup, 144 in three hops, 8–163 per 60–500 ms stall; planets-audio-gaps.)
+/// <para>
+/// Threading: the synth is touched under <see cref="_gate"/> by both threads (the audio thread renders a chunk of at
+/// most <see cref="PushChunkFrames"/> under it, ≈ 0.3 ms; every effect call takes it briefly), so a change must keep
+/// every <c>_synth</c> access inside the lock.
+/// </para>
 /// <para>
 /// Cost: ≈ 735 frames per 60 Hz frame. The synth renders 1 s of its busiest world (the underglow inside a project, drums and
 /// flight arpeggio) with six effects in ≈ 26 ms (Debug build, SkySynthTests, 2026-11-14), so ≈ 0.45 ms per frame, plus one
 /// span push; each AD-52 arrangement (2026-11-15) with a flight build, a fall, the edge warning and six effects in 26–27 ms.
 /// Nothing allocates per frame.
 /// </para>
-/// Call the effect methods from the main thread (the same thread as <c>_Process</c>).
+/// Call the effect methods from the main thread.
 /// </summary>
 public partial class SkyAudio : Node
 {
     /// <summary>The generator's mix rate, frames per second (the synth renders at the same rate; Godot resamples to the device).</summary>
     public const int MixRateHz = SkySynth.DefaultSampleRateHz;
 
-    /// <summary>The generator's ring buffer: room for hitches up to ≈ 0.12 s.</summary>
-    public static readonly TimeSpan BufferLength = TimeSpan.FromSeconds(0.12);
+    /// <summary>The generator's ring buffer: the most that could be queued (the audio thread keeps only TargetFill in it).</summary>
+    public static readonly TimeSpan BufferLength = TimeSpan.FromSeconds(0.5);
+
+    /// <summary>How long the audio thread sleeps between top-ups, milliseconds (Windows rounds short sleeps up to its
+    /// timer, ≈ 1–16 ms; well inside TargetFill either way).</summary>
+    private const int FillIntervalMs = 4;
+
+    /// <summary>
+    /// Startup headroom (FOLLOW-2): for the first 8 s of playback 0.2 s stays queued instead of <see cref="TargetFill"/>.
+    /// With the audio thread alone, 3 gaps remained at startup (frames up to 0.56 s while the first worlds load; the
+    /// runtime's garbage collections pause this thread as well). Effects in those seconds are heard ≈ 0.15 s later.
+    /// </summary>
+    private static readonly TimeSpan StartupFill = TimeSpan.FromSeconds(0.2), StartupHeadroomDuration = TimeSpan.FromSeconds(8);
+
+    private readonly Stopwatch _sinceStart = new();
+    private readonly Stopwatch _sinceFill = new();
+    private long _lastSkips;
+
+    /// <summary>
+    /// Underruns after the first <see cref="FirstSoundDuration"/> of playback: each is a gap in sound already playing. The
+    /// generator counts a few empty blocks as playback starts (+3 at 10 ms in every run, with 0.2 s already queued
+    /// by the next top-up): silence before the first sound, not a gap.
+    /// </summary>
+    public long AudibleSkips { get; private set; }
+
+    /// <summary>The start of playback where the generator's own empty first blocks fall, 0.1 s.</summary>
+    private static readonly TimeSpan FirstSoundDuration = TimeSpan.FromSeconds(0.1);
+
+    /// <summary>When underruns were noticed (diagnostics, FOLLOW-2): time since playback began, what was queued, the gap since the previous top-up.</summary>
+    public List<string> SkipLog { get; } = [];
+
+    /// <summary>The player's volume while sound is on, dB (+5: the mix sat at ≈ −28 dBFS RMS, quiet for a game, 2026-11-11).</summary>
+    private const float PlayerVolumeDb = 5f;
+
+    /// <summary>The player's volume while muted, dB: Godot's floor, silent.</summary>
+    private const float MutedVolumeDb = -80f;
+
+    /// <summary>Guards the synth and the playback between the main thread and the audio thread.</summary>
+    private readonly object _gate = new();
+    private System.Threading.Thread? _thread;
+    private volatile bool _running;
 
     /// <summary>Frames rendered and pushed per step (the scratch buffers' size, so nothing allocates per frame).</summary>
     private const int PushChunkFrames = 512;
@@ -62,11 +109,20 @@ public partial class SkyAudio : Node
     /// <summary>The synth itself (render cursor, key, voices), for diagnostics and probes.</summary>
     public SkySynth Synth => _synth;
 
-    /// <summary>Time spent rendering and pushing audio in the last <c>_Process</c>.</summary>
+    /// <summary>Time spent rendering and pushing audio in the audio thread's last top-up.</summary>
     public TimeSpan LastProcessCost { get; private set; }
 
     /// <summary>Buffer underruns reported by the generator since playback started (each is an audible gap).</summary>
-    public long Skips => _playback?.GetSkips() ?? 0;
+    public long Skips => _playback is { } pb ? pb.GetSkips() : 0;
+
+    /// <summary>Audio queued ahead of playback at the last fill, before topping up, seconds (FOLLOW-2 diagnostics).</summary>
+    public double QueuedSeconds { get; private set; }
+
+    /// <summary>The least audio found queued at a fill since <see cref="ResetQueueLow"/>, seconds: 0 means it ran dry.</summary>
+    public double QueueLowSeconds { get; private set; } = double.MaxValue;
+
+    /// <summary>Starts a new <see cref="QueueLowSeconds"/> measurement.</summary>
+    public void ResetQueueLow() => QueueLowSeconds = double.MaxValue;
 
     public override void _Ready()
     {
@@ -77,24 +133,48 @@ public partial class SkyAudio : Node
             BufferLength = BufferLength.ToSecondsF(),
         };
         // +5 dB (2026-11-11): measured in a recorded reel, the mix sat at ≈ −28 dBFS RMS (peaks ≤ 0.32), quiet for a game.
-        _player = new AudioStreamPlayer { Name = "SkyAudioPlayer", Stream = generator, VolumeDb = 5 };
+        _player = new AudioStreamPlayer { Name = "SkyAudioPlayer", Stream = generator, VolumeDb = Muted ? MutedVolumeDb : PlayerVolumeDb };
         AddChild(_player);
-        _player.Play();
-        _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
-        _capacityFrames = _playback?.GetFramesAvailable() ?? 0;
-        if (!_active)
+        lock (_gate)
         {
-            _player.Stop();
-            _playback = null;
-            _synth.Mute(true);
+            _player.Play();
+            _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
+            _capacityFrames = _playback?.GetFramesAvailable() ?? 0;
+            _sinceStart.Restart();
+            if (!_active)
+            {
+                _player.Stop();
+                _playback = null;
+                _synth.Mute(true);
+            }
+            else
+            {
+                Fill(); // primed before the audio server mixes its first block (an empty first block was a gap)
+            }
         }
     }
 
-    /// <summary>Tops up the buffer while active (see <see cref="Fill"/>).</summary>
-    public override void _Process(double delta)
+    /// <summary>Starts the audio thread (it tops up the buffer while active; see <see cref="Fill"/>).</summary>
+    public override void _EnterTree()
     {
-        if (!_active) return;
-        Fill();
+        if (_thread != null) return;
+        _running = true;
+        _thread = new System.Threading.Thread(AudioLoop) { IsBackground = true, Name = "FileScape audio", Priority = System.Threading.ThreadPriority.AboveNormal };
+        _thread.Start();
+    }
+
+    /// <summary>The audio thread: top up, sleep, until the node leaves the tree.</summary>
+    private void AudioLoop()
+    {
+        while (_running)
+        {
+            lock (_gate)
+            {
+                if (_active) Fill();
+            }
+
+            System.Threading.Thread.Sleep(FillIntervalMs);
+        }
     }
 
     private bool _active;
@@ -107,18 +187,24 @@ public partial class SkyAudio : Node
     {
         if (_active == active) return;
         _active = active;
-        _synth.Mute(!active || Muted);
+        lock (_gate) _synth.Mute(!active || Muted);
         if (_player == null) return;
         if (active)
         {
-            if (!_player.Playing) _player.Play();
-            _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
-            Fill();
+            lock (_gate)
+            {
+                if (!_player.Playing) { _player.Play(); _sinceStart.Restart(); }
+                _playback = _player.GetStreamPlayback() as AudioStreamGeneratorPlayback;
+                Fill(); // primed at once, before the first frame that might stall
+            }
         }
         else
         {
-            _player.Stop();
-            _playback = null;
+            lock (_gate)
+            {
+                _player.Stop();
+                _playback = null;
+            }
         }
     }
 
@@ -133,7 +219,10 @@ public partial class SkyAudio : Node
     public void SetMuted(bool muted)
     {
         Muted = muted;
-        _synth.Mute(Muted || !_active);
+        lock (_gate) _synth.Mute(Muted || !_active);
+        // The player too, at once: the audio thread keeps up to 0.2 s queued ahead (FOLLOW-2), so muting the synth alone
+        // let that much already-rendered sound play on after the click.
+        if (_player != null) _player.VolumeDb = muted ? MutedVolumeDb : PlayerVolumeDb;
     }
 
     /// <summary>Flips <see cref="Muted"/>.</summary>
@@ -153,7 +242,7 @@ public partial class SkyAudio : Node
     private const float DuckedMusicVolume = 0.2f;
 
     /// <summary>Lowers the music under a sound preview (and restores it).</summary>
-    public void Duck(bool ducked) => _synth.MusicVolume = ducked ? DuckedMusicVolume : 1f;
+    public void Duck(bool ducked) { lock (_gate) _synth.MusicVolume = ducked ? DuckedMusicVolume : 1f; }
 
     /// <summary>Bell flowers rung since start (probes).</summary>
     public int ChimeCount { get; private set; }
@@ -166,14 +255,21 @@ public partial class SkyAudio : Node
     /// </summary>
     public float AlignToSixteenth(float seconds, float maxShiftSeconds)
     {
-        var aligned = _synth.AlignToGrid(Durations.FromSeconds(seconds), Durations.FromSeconds(maxShiftSeconds));
+        TimeSpan aligned;
+        lock (_gate) aligned = _synth.AlignToGrid(Durations.FromSeconds(seconds), Durations.FromSeconds(maxShiftSeconds));
         return MathF.Max(0.1f, aligned.ToSecondsF()); // never shorter than 0.1 s, whatever the grid says
     }
 
     public override void _ExitTree()
     {
-        _player?.Stop();
-        _playback = null;
+        _running = false;
+        _thread?.Join(200);
+        _thread = null;
+        lock (_gate)
+        {
+            _player?.Stop();
+            _playback = null;
+        }
     }
 
     /// <summary>
@@ -187,7 +283,17 @@ public partial class SkyAudio : Node
         _cost.Restart();
         var available = _playback.GetFramesAvailable();
         var queued = _capacityFrames - available;
-        var target = Math.Min(_capacityFrames, (int)Math.Round(TargetFill.TotalSeconds * MixRateHz));
+        var skipsNow = _playback.GetSkips();
+        if (skipsNow != _lastSkips && SkipLog.Count < 20) SkipLog.Add($"+{skipsNow - _lastSkips} at {_sinceStart.Elapsed.TotalSeconds:0.000} s (queued {queued * 1000 / MixRateHz} ms, last fill {(_sinceFill.IsRunning ? _sinceFill.Elapsed.TotalMilliseconds : -1):0} ms ago)");
+        if (_sinceStart.Elapsed > FirstSoundDuration) AudibleSkips += skipsNow - _lastSkips;
+        _lastSkips = skipsNow;
+        _sinceFill.Restart();
+        QueuedSeconds = (double)queued / MixRateHz;
+        QueueLowSeconds = Math.Min(QueueLowSeconds, QueuedSeconds);
+        // Startup headroom: for the first StartupHeadroomDuration of playback keep StartupFill queued (the app loads its
+        // first worlds and compiles shaders then, and the runtime's collections pause every thread, this one too).
+        var fill = _sinceStart.IsRunning && _sinceStart.Elapsed < StartupHeadroomDuration ? StartupFill : TargetFill;
+        var target = Math.Min(_capacityFrames, (int)Math.Round(fill.TotalSeconds * MixRateHz));
         var needed = Math.Min(available, target - queued);
         while (needed > 0)
         {
@@ -220,52 +326,52 @@ public partial class SkyAudio : Node
     /// first). The new world starts on the next beat at its own tempo; hops and returns stay musical (see
     /// <see cref="SkySynth.SetWorld"/>).
     /// </summary>
-    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits) => _synth.SetWorld(theme, character, visits);
+    public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits) { lock (_gate) _synth.SetWorld(theme, character, visits); }
 
     /// <summary>Changes the key to a planet theme's and keeps the current world's character (see <see cref="SetWorld"/>).</summary>
-    public void SetTheme(PlanetTheme theme) => _synth.SetTheme(theme);
+    public void SetTheme(PlanetTheme theme) { lock (_gate) _synth.SetTheme(theme); }
 
     /// <summary>Flight intensity 0..1 (adds the rising arpeggio layer); set it every frame during a launch arc.</summary>
-    public void SetFlight(float intensity01) => _synth.SetFlight(intensity01);
+    public void SetFlight(float intensity01) { lock (_gate) _synth.SetFlight(intensity01); }
 
     /// <summary>Overall level 0..1 (linear amplitude, default 0.8).</summary>
-    public void SetMasterVolume(float volume01) => _synth.SetMasterVolume(volume01);
+    public void SetMasterVolume(float volume01) { lock (_gate) _synth.SetMasterVolume(volume01); }
 
     /// <summary>Silences, or restores, all sound with a short ramp; never louder than <see cref="Muted"/> allows (it does not change Muted).</summary>
-    public void Mute(bool muted) => _synth.Mute(muted || Muted || !_active);
+    public void Mute(bool muted) { lock (_gate) _synth.Mute(muted || Muted || !_active); }
 
     // ---------------------------------------------------------------- effects (see SkySynth for each sound)
 
     /// <summary>A footstep, intensity 0..1 (walk ≈ 0.5, run ≈ 1). Immediate.</summary>
-    public void Step(float intensity) => _synth.Step(intensity);
+    public void Step(float intensity) { lock (_gate) _synth.Step(intensity); }
 
     /// <summary>A jump. Immediate.</summary>
-    public void Jump() => _synth.Jump();
+    public void Jump() { lock (_gate) _synth.Jump(); }
 
     /// <summary>An air jump: a sparkly upward flourish. Immediate.</summary>
-    public void AirJump() => _synth.AirJump();
+    public void AirJump() { lock (_gate) _synth.AirJump(); }
 
     /// <summary>A landing; <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown. Immediate.</summary>
-    public void Land(float impactMetersPerSecond) => _synth.Land(impactMetersPerSecond);
+    public void Land(float impactMetersPerSecond) { lock (_gate) _synth.Land(impactMetersPerSecond); }
 
     /// <summary>A launcher wind-up that peaks exactly <paramref name="duration"/> from now (call <see cref="Launch"/> then). Immediate.</summary>
-    public void WindUp(TimeSpan duration) => _synth.WindUp(duration);
+    public void WindUp(TimeSpan duration) { lock (_gate) _synth.WindUp(duration); }
 
     /// <summary>The same, for a wind-up length in float seconds (as <see cref="AlignToSixteenth"/> returns it).</summary>
-    public void WindUp(float seconds) => _synth.WindUp(Durations.FromSeconds(seconds));
+    public void WindUp(float seconds) { lock (_gate) _synth.WindUp(Durations.FromSeconds(seconds)); }
 
     /// <summary>The launch whoosh and glissando. Immediate.</summary>
-    public void Launch() => _synth.Launch();
+    public void Launch() { lock (_gate) _synth.Launch(); }
 
     /// <summary>The flight wind for arc progress 0..1; call every frame while flying. Immediate.</summary>
-    public void Fly(float progress01) => _synth.Fly(progress01);
+    public void Fly(float progress01) { lock (_gate) _synth.Fly(progress01); }
 
     /// <summary>
     /// Arrival: a warm chord and a softer chime ≈ 120 ms later. Tempo-locked (≤ 80 ms at every tempo). After a flight out of
     /// a festival world (the trails, AD-52), it also releases the build the flight played: the drop lands on the first beat
     /// at least 0.15 s later. Call it after <see cref="SetWorld"/>, as now; nothing else is needed for the drop.
     /// </summary>
-    public void Arrive() => _synth.Arrive();
+    public void Arrive() { lock (_gate) _synth.Arrive(); }
 
     // ---------------------------------------------------------------- hazard cues (AD-52)
 
@@ -274,33 +380,33 @@ public partial class SkyAudio : Node
     /// the edge). Self-throttling (a pulse every 1 s … 0.25 s on the beat grid, a rumble that follows the nearness) and cheap;
     /// silent below 0.05 and within 0.3 s of the last call.
     /// </summary>
-    public void HazardWarning(float nearness01) => _synth.HazardWarning(nearness01);
+    public void HazardWarning(float nearness01) { lock (_gate) _synth.HazardWarning(nearness01); }
 
     /// <summary>The ground gives way: a crack, falling shards, a drop; the music ducks deep for the fall. Immediate.</summary>
-    public void FallStart() => _synth.FallStart();
+    public void FallStart() { lock (_gate) _synth.FallStart(); }
 
     /// <summary>The fall or spiral for progress 0..1 (a whoosh falling three octaves, circling left and right ever faster); call every frame while falling. Immediate.</summary>
-    public void Fall(float progress01) => _synth.Fall(progress01);
+    public void Fall(float progress01) { lock (_gate) _synth.Fall(progress01); }
 
     /// <summary>Back at the parent after a fall: an upward pop and a bright chord, and the music returns. Immediate; <see cref="Arrive"/> may follow as usual.</summary>
-    public void FallReturn() => _synth.FallReturn();
+    public void FallReturn() { lock (_gate) _synth.FallReturn(); }
 
     /// <summary>Selection tick. Tempo-locked.</summary>
-    public void Select() => _synth.Select();
+    public void Select() { lock (_gate) _synth.Select(); }
 
     /// <summary>Inspection (E). Tempo-locked.</summary>
-    public void Inspect() => _synth.Inspect();
+    public void Inspect() { lock (_gate) _synth.Inspect(); }
 
     /// <summary>Opening a file or folder. Tempo-locked.</summary>
-    public void Open() => _synth.Open();
+    public void Open() { lock (_gate) _synth.Open(); }
 
     /// <summary>A gentle refusal. Tempo-locked.</summary>
-    public void Deny() => _synth.Deny();
+    public void Deny() { lock (_gate) _synth.Deny(); }
 
     /// <summary>A bell-flower note at scale degree <paramref name="index"/>. Tempo-locked.</summary>
     public void Chime(int index)
     {
         ChimeCount++;
-        _synth.Chime(index);
+        lock (_gate) _synth.Chime(index);
     }
 }

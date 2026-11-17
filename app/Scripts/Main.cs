@@ -1012,6 +1012,9 @@ public partial class Main : Node3D
     public bool ModalOpen => _welcomeOpen || (_confirm?.Visible ?? false) || (_folderDialog?.Visible ?? false) || (_hud?.LocationsVisible ?? false) || (_hud?.SettingsVisible ?? false);
 
     public bool WindowFocused => _windowFocused;
+
+    /// <summary>The longest frame time seen since the last state write, milliseconds (diagnostics for probes).</summary>
+    public double LastHitchMs => _lastHitchMs;
     public bool OsWindowFocused => _osFocused;
 
     /// <summary>Test instrument: a probe that checks what focus loss does sets this, so the app honours it under --automate.</summary>

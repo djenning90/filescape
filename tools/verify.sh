@@ -100,6 +100,8 @@ if [[ "$TIER" != fast ]]; then
   # 2026-11-17 (FOLLOW-1): the overview from the routes into the sample draws worlds you can see (DJ saw it blank).
   journey planets-overview-sample planets-overview.log 300 --automate=planets-overview-routes --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-overview-hub planets-overview.log 300 --automate=planets-overview-routes --root=hub --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # FOLLOW-2: no audio gaps at startup, in travel, or while the main loop stalls (the Windows move/resize loop).
+  journey planets-audio-gaps planets-audio.log 300 --automate=planets-audio-gaps --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-hazard planets-hazard.log 300 --automate=planets-hazard --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   # 2026-11-16 (PLANET-47): the sound button and N; travel, inspect, the warning and a fall measured silent while muted.
   journey planets-sound planets-sound.log 300 --automate=planets-sound --root=sample --vis=planets --test-shell=record --ui-scale=1.25 "${F[@]}"
