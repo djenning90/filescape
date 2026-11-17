@@ -55,6 +55,9 @@ public enum MelodyPart
 
     /// <summary>A world's own motif between returns: the band motif, the repository's commit figure, a typed command, a gateway call.</summary>
     Motif,
+
+    /// <summary>A folder band's second theme between returns (AD-66: the lantern song or the trail call, SkySynth.SecondThemes.cs).</summary>
+    SecondTheme,
 }
 
 /// <summary>A melody note as it is scheduled (diagnostics: <see cref="SkySynth.MelodyObserver"/>).</summary>
@@ -145,7 +148,9 @@ public enum MusicIdentity
 /// (<see cref="ThemeMelody"/>, 8 bars: a 2-bar motif, its answer, the motif raised, a cadence; written in scale degrees so it
 /// fits every key and mode) on the world's lead instrument, then 8 bars of the world's own material (the hub's music box
 /// and rising "journeys", the band motif — the theme's motif made bouncy and varied per band —, the repository's commit
-/// figure, a typed command and its answer, a gateway call). Each return is a <see cref="ThemeVariation"/>. In the hub the
+/// figure, a typed command and its answer, a gateway call). In the folder bands, bars 8–11 of every odd cycle (and of a
+/// fresh revisit's first free section) play a second theme instead of the band motif (AD-66, SkySynth.SecondThemes.cs: the
+/// lantern song in the outskirts and the deep woods, the trail call in the trails and the underglow). Each return is a <see cref="ThemeVariation"/>. In the hub the
 /// theme's cadence is replaced by a rising question that stays open. Under it: a pad (a progression per mode), a bass line
 /// and, outside the hub, a synthesised drum kit (kick, snare or clap, hats, toms, ticks) per identity; while
 /// <see cref="SetFlight"/> is above zero, a rising arpeggio joins and the kick and snare thin out.
