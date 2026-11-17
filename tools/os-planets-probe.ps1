@@ -315,7 +315,9 @@ try {
     for ($k = 0; $k -lt 12; $k++) { $s = State; $b = [double]$s.targetBearing; if ([Math]::Abs($b) -ge 150) { break }; Hold-Key ($(if ($b -gt 0) { 'Left' } else { 'Right' })) 300; Start-Sleep -Milliseconds 150 }
     Start-Sleep -Milliseconds 400; $s = State; $b = [double]$s.targetBearing
     $side = if ($b -gt 0) { 0 } else { 180 }; $edgeX = if ($b -gt 0) { 1600 } else { 0 }
-    Check ([Math]::Abs($b) -ge 120 -and $s.cue.mode -eq 'edge' -and [int]$s.cue.angle -eq $side -and [Math]::Abs([double]$s.cue.x - $edgeX) -le 100) "target behind (bearing $([int]$b)°): an edge arrow at x $($s.cue.x), pointing $($s.cue.angle)° (mode $($s.cue.mode))"
+    # Near straight behind (|bearing| > 170°) the arrow keeps the side it had (AD-55: it must not flip), so either side counts.
+    $sideOk = if ([Math]::Abs($b) -gt 170) { ([int]$s.cue.angle -eq 0 -and [double]$s.cue.x -ge 1500) -or ([int]$s.cue.angle -eq 180 -and [double]$s.cue.x -le 100) } else { [int]$s.cue.angle -eq $side -and [Math]::Abs([double]$s.cue.x - $edgeX) -le 100 }
+    Check ([Math]::Abs($b) -ge 120 -and $s.cue.mode -eq 'edge' -and $sideOk) "target behind (bearing $([int]$b)°): an edge arrow at x $($s.cue.x), pointing $($s.cue.angle)° (mode $($s.cue.mode))"
     Shot 'cue-behind' | Out-Null
     for ($k = 0; $k -lt 12; $k++) { $s = State; $b = [double]$s.targetBearing; if ([Math]::Abs($b) -le 20) { break }; Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(60, [Math]::Min(450, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150 }
     Start-Sleep -Milliseconds 400; $s = State
