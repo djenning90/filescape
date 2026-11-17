@@ -29,6 +29,18 @@ public partial class PlanetVisual
 
     private const float CrumbMinMetres = 0.05f, CrumbMaxMetres = 0.16f, CrumbLifetimeSeconds = 2.2f, CrumbFromWarning = 0.15f;
 
+    /// <summary>
+    /// A leap's markers (PLANET-61, AD-65; by eye): at each end of its gap, two glowing amber posts at the corners of the
+    /// take-off board, this tall and this thick (metres), this far in from the ledge's edge (metres), pulsing gently: the
+    /// "this one takes your twirl" sign, readable from across the open sky.
+    /// </summary>
+    private const float LeapPostMetres = 0.85f, LeapPostThicknessMetres = 0.09f, LeapPostInsetMetres = 0.3f, LeapPostEnergy = 2.2f, LeapPostPulse = 0.35f;
+
+    private static readonly Color LeapPostColour = new(1f, 0.62f, 0.12f);
+
+    /// <summary>Leap posts placed on this world (probes).</summary>
+    public int LeapPosts { get; private set; }
+
     private ShaderMaterial? _rimGlow;
     private CpuParticles3D? _crumbs;
     private PlanetArt.RimOutline? _rim;
@@ -58,9 +70,39 @@ public partial class PlanetVisual
         _rimGlow.SetShaderParameter("pulse", 0.25f);
         _rimGlow.SetShaderParameter("pulse_speed", 3f);
         if (rim != null && rim.Segments.Length > 0) AddChild(RimLine(rim));
+        AddLeapPosts(shell);
         HazardStats = rim == null ? "" : $"outline {rim.Points.Length} points, {rim.Segments.Length / 2} segments";
         _crumbs = Crumbs();
         AddChild(_crumbs);
+    }
+
+    /// <summary>Two glowing posts at the corners of each take-off board of every leap (see <see cref="LeapPostMetres"/>).</summary>
+    private void AddLeapPosts(BrokenShell shell)
+    {
+        var mesh = new CylinderMesh { TopRadius = LeapPostThicknessMetres / 2, BottomRadius = LeapPostThicknessMetres / 2, Height = LeapPostMetres, RadialSegments = 8, Rings = 1 };
+        var material = PlanetArt.GlowMaterial(LeapPostColour, LeapPostEnergy, LeapPostPulse);
+        foreach (var s in shell.Spans)
+        {
+            if (s.GapClass != ShellGapClass.Advanced || s.Gaps.Count == 0) continue;
+            var (g0, g1) = s.Gaps[0];
+            foreach (var (along, sign) in new[] { (g0 - 0.15f, 1f), (g0 - 0.15f, -1f), (g1 + 0.15f, 1f), (g1 + 0.15f, -1f) })
+            {
+                var side = sign * (s.HalfWidthMetres + ShellSpan.AdvancedLedgeMetres - LeapPostInsetMetres);
+                var up = s.PointAt(along, side);
+                var groundRadius = _comp.Shape.GroundRadius(up);
+                var u = new Vector3(up.X, up.Y, up.Z);
+                var basis = BlackHoleArt.AxisBasis(up);
+                AddChild(new MeshInstance3D
+                {
+                    Name = "LeapPost",
+                    Mesh = mesh,
+                    MaterialOverride = material,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                    Transform = new Transform3D(basis, u * (groundRadius + LeapPostMetres / 2)),
+                });
+                LeapPosts++;
+            }
+        }
     }
 
     /// <summary>The glowing edge line: the ribbon along the whole outline (made on the ground worker: <see cref="PlanetArt.RimOutline"/>), uploaded here.</summary>

@@ -34,6 +34,16 @@ public static partial class PlanetArt
     /// </summary>
     private const float RouteStripeInnerMetres = 0.12f, RouteStripeOuterMetres = 0.38f, RouteStripeAmount = 0.7f, RouteStripeGlow = 0.18f;
 
+    // ---- the gaps' ledges (PLANET-61, AD-65; by eye): read from the ground, before you get there.
+    /// <summary>A step's ledges (both sides of the gap, ShellSpan.LedgeLengthMetres long) are this much of a pale lip colour: a place to land.</summary>
+    private const float StepLedgeAmount = 0.45f;
+
+    /// <summary>A leap's take-off boards (the last this-many metres before each end of its gap) glow amber at this much and this glow (vertex alpha); the rest of its ledges are this much amber.</summary>
+    private const float LeapBoardMetres = 1.0f, LeapBoardAmount = 0.85f, LeapBoardGlow = 0.55f, LeapLedgeAmount = 0.35f;
+
+    private static readonly Color StepLedge = C(0.86f, 0.78f, 0.62f);
+    private static readonly Color LeapBoard = C(1.0f, 0.62f, 0.12f);
+
     /// <summary>The rim's rows, as fractions of <see cref="BrokenShell.CrustMetres"/> below the ground (the last is pushed lower or higher per sample: a ragged bottom).</summary>
     private static readonly float[] RimDepths = [0f, 0.1f, 0.32f, 0.55f, 0.78f, 1f];
 
@@ -208,18 +218,45 @@ public static partial class PlanetArt
     {
         c = c.Lerp(scorch, ScorchAmount * (1 - Smooth(ScorchInnerMetres, ScorchOuterMetres, edgeMetres)));
         var near = float.PositiveInfinity;
-        foreach (var s in shell.Spans)
+        for (var si = 0; si < shell.Spans.Count; si++)
         {
+            var s = shell.Spans[si];
             if (PlanetShape.Angle(up, s.Mid) > s.BoundRadians) continue;
             var (along, side) = s.Measure(up);
             if (along < 0 || along > s.LengthMetres) continue;
-            near = MathF.Min(near, MathF.Abs(side));
+            if (s.Gaps.Count > 0 && edgeMetres > 0 && MathF.Abs(side) <= s.HalfWidthAt(along, side > 0)) c = LedgeColour(c, s, along);
+            if (shell.OnRoute(si)) near = MathF.Min(near, MathF.Abs(side));
         }
 
         var k = 1 - Smooth(RouteStripeInnerMetres, RouteStripeOuterMetres, near);
         if (k <= 0) return c;
         var lit = c.Lerp(stripe, RouteStripeAmount * k);
         return new Color(lit.R, lit.G, lit.B, Mathf.Lerp(c.A, 1f - RouteStripeGlow, k));
+    }
+
+    /// <summary>
+    /// A ground colour on a bridge with a gap, <paramref name="along"/> metres along it (AD-65): near a step, its ledges take
+    /// a pale lip colour; near a leap, the last <see cref="LeapBoardMetres"/> before each end of the gap are a glowing amber
+    /// take-off board and the rest of its ledges are amber, so a leap is told from a step (and from open sky) at a glance.
+    /// </summary>
+    private static Color LedgeColour(Color c, ShellSpan s, float along)
+    {
+        foreach (var (g0, g1) in s.Gaps)
+        {
+            var d = along < g0 ? g0 - along : along > g1 ? along - g1 : -1;
+            if (d < 0 || d > ShellSpan.LedgeLengthMetres + ShellSpan.LedgeTaperMetres) continue;
+            var k = 1 - Smooth(ShellSpan.LedgeLengthMetres, ShellSpan.LedgeLengthMetres + ShellSpan.LedgeTaperMetres, d);
+            if (s.GapClass != ShellGapClass.Advanced) return c.Lerp(Linear(StepLedge), StepLedgeAmount * k);
+            if (d <= LeapBoardMetres)
+            {
+                var lit = c.Lerp(Linear(LeapBoard), LeapBoardAmount);
+                return new Color(lit.R, lit.G, lit.B, Mathf.Min(c.A, 1f - LeapBoardGlow));
+            }
+
+            return c.Lerp(Linear(LeapBoard), LeapLedgeAmount * k);
+        }
+
+        return c;
     }
 
     /// <summary>

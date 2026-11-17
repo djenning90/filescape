@@ -236,6 +236,16 @@ public partial class PlanetWorld
                 _audio.AirJump();
                 _avatar.Twirl();
                 break;
+            case Core.Movement.JumpEventKind.Recovery: // a Hazard World's catch (PLANET-62): the twirl, higher and quicker
+                _audio.RecoveryTwirl();
+                _avatar.Twirl();
+                Mark("recovery");
+                break;
+            case Core.Movement.JumpEventKind.LastEffort: // too late or too far: a flail before the fall
+                _audio.LastEffort();
+                _avatar.Flail();
+                Mark("last-effort");
+                break;
             case Core.Movement.JumpEventKind.Land:
                 _audio.Land(ev.ImpactSpeed.Value);
                 _avatar.Land(ev.ImpactSpeed.Value);
