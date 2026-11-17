@@ -106,6 +106,7 @@ public partial class PlanetWorld
         BuildPreviewPanel(root);
         BuildContentsPanel(root);
         BuildBenchPanel(root);
+        BuildRootMarkPanel(root); // PLANET-45 (PlanetWorld.RootMark.cs)
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
     }
@@ -202,7 +203,8 @@ public partial class PlanetWorld
 
     /// <summary>The point is over one of the planet's own open panels (preview, list, bench).</summary>
     private bool OverOverlay(Vector2 p) =>
-        (_previewPanel.Visible && _previewPanel.GetGlobalRect().HasPoint(p)) || (_contentsPanel.Visible && _contentsPanel.GetGlobalRect().HasPoint(p)) || (_benchPanel.Visible && _benchPanel.GetGlobalRect().HasPoint(p));
+        (_previewPanel.Visible && _previewPanel.GetGlobalRect().HasPoint(p)) || (_contentsPanel.Visible && _contentsPanel.GetGlobalRect().HasPoint(p)) || (_benchPanel.Visible && _benchPanel.GetGlobalRect().HasPoint(p))
+        || (_rootPanel.Visible && _rootPanel.GetGlobalRect().HasPoint(p));
 
     // ------------------------------------------------------------------ title card, prompt, hint
 

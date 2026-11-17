@@ -25,7 +25,8 @@ namespace FileScape.App;
 /// traveller's screen position across each landing (it must not jump: there is no cut).
 /// <para>
 /// Other modes: planets-discover, planets-flows (the three flows from DJ's 2026-11-11 playtest), planets-route and
-/// planets-route-hub (PLANET-27..30, world characters), planets-reel (a short recording) and planets-camera-trace (a
+/// planets-route-hub (PLANET-27..30, world characters), planets-landmarks (PLANET-45, the root landmarks' terminal,
+/// path and places panel; <c>PlanetsProbe.Landmarks.cs</c>), planets-reel (a short recording) and planets-camera-trace (a
 /// frame-by-frame trace of the overview camera for comparing a refactor). Timing: waits use <see cref="ProbeBase"/>'s
 /// clock, which is simulated time while a movie is written, so the same thresholds hold for a recording; frame times
 /// are judged only outside the functional tier.
@@ -105,8 +106,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-actions") await ActionsTour(); // PlanetsProbe.Actions.cs
         else if (Mode == "planets-arrival") await ArrivalTour(); // PlanetsProbe.Actions.cs
         else if (Mode == "planets-reading") await ReadingTour(); // PlanetsProbe.Actions.cs
-
         else if (Mode == "planets-sound") await SoundRun(); // PlanetsProbe.Sound.cs (PLANET-47)
+        else if (Mode == "planets-landmarks") await LandmarksRun(); // PlanetsProbe.Landmarks.cs (PLANET-45)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

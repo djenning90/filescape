@@ -359,7 +359,9 @@ public partial class PlanetWorld : Node3D
     // ------------------------------------------------------------------ building planets
 
     private PlanetComposition Compose(FsTree tree, int folderId) =>
-        PlanetComposer.Compose(tree, folderId, PlanetParams.Default, _s.IsVisible);
+        PlanetComposer.Compose(tree, folderId, PlanetParams.Default, _s.IsVisible,
+            // A probe's root look on the current folder stands that root's landmark too (PLANET-45).
+            rootMarkKind: ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind : null);
 
     /// <summary>
     /// Makes <paramref name="folderId"/> the current planet at the origin with its children and parent around it.

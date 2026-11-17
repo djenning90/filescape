@@ -427,7 +427,9 @@ public static class PlanetComposer
     /// (<see cref="RepositoryBenchTop"/>) and has no stones.
     /// </summary>
     /// <param name="visible">The visibility filter (hidden files and the like): hidden entries are counted, not shown.</param>
-    public static PlanetComposition Compose(FsTree tree, int folderId, PlanetParams? parameters = null, Func<FsNode, bool>? visible = null)
+    /// <param name="rootMarkKind">The filesystem-root landmark to stand (PLANET-45): null to decide from the tree
+    /// (<see cref="RootMarkLayout.KindOf"/>); probes pass a kind to show a root's look on a fixture folder.</param>
+    public static PlanetComposition Compose(FsTree tree, int folderId, PlanetParams? parameters = null, Func<FsNode, bool>? visible = null, WorldKind? rootMarkKind = null)
     {
         var p = parameters ?? PlanetParams.Default;
         var folder = tree[folderId];
@@ -634,6 +636,10 @@ public static class PlanetComposer
             paths.Add(new PlanetPath(-1, [pole, foot]));
         }
 
+        // ---- a filesystem root's landmark (PLANET-45, AD-58): solid, so it stands clear of every walking route
+        var markKind = rootMarkKind ?? RootMarkLayout.KindOf(tree, folder);
+        var rootMark = markKind is WorldKind.WindowsRoot or WorldKind.WslRoot ? PlaceRootMark(markKind.Value, radius, rings, launchers, paths, landmarkDir, overlookDir, complexRadius, p) : null;
+
         // ---- exclusion zones (no items or solid scenery)
         var keepOut = new List<Solid>
         {
@@ -642,6 +648,7 @@ public static class PlanetComposer
             new(overlookDir, complexRadius + p.SolidGap),
         };
         foreach (var l in launchers) keepOut.Add(new Solid(l.Direction, p.LauncherClearRadius));
+        if (rootMark != null) keepOut.Add(new Solid(rootMark.Direction, RootMarkLayout.Footprint(rootMark.Kind) + p.SolidGap));
 
         // ---- a hazard world's broken shell (PLANET-34, AD-53): holes off the route, then nothing stands near them
         var shell = hazard != null ? CarveShell(radius, seed, rings, launchers, paths, landmarkDir, overlookDir, complexRadius, p) : null;
@@ -732,6 +739,7 @@ public static class PlanetComposer
         var flats = new List<(Vector3 Direction, float Radius)> { (pole, p.ArrivalRadius), (overlookDir, complexRadius + OverlookFlatMargin) };
         foreach (var l in launchers) flats.Add((l.Direction, p.PadRadius + PadFlatMargin));
         foreach (var g in groves) flats.Add((g.CentreDirection, GroveFlatRadius));
+        if (rootMark != null) flats.Add((rootMark.Direction, RootMarkLayout.Footprint(rootMark.Kind) + PadFlatMargin)); // its round base sits level
         var shape = new PlanetShape(radius, seed, hillAmplitude, flats);
 
         // ---- decorations
@@ -744,6 +752,7 @@ public static class PlanetComposer
             new(overlookDir, p.OverlookRadius, p.OverlookTop),
         };
         obstacles.AddRange(steps);
+        if (rootMark != null) obstacles.AddRange(rootMark.Solids);
         foreach (var l in launchers) obstacles.Add(new SurfaceObstacle(l.Direction, l.PadRadius, l.PadTop, l.TargetId));
         foreach (var it in items) obstacles.Add(new SurfaceObstacle(it.Direction, it.Radius, it.Top, it.NodeId));
         foreach (var d in decorations.Where(d => d.Collides))
@@ -760,6 +769,7 @@ public static class PlanetComposer
             Shape = shape,
             Surface = new PlanetSurface(shape, obstacles, shell),
             Hazard = hazard,
+            RootMark = rootMark,
             State = state,
             Summary = FolderSummary.Place(folder, state),
             Arrival = new PlanetPose(pole, -Vector3.UnitZ),
@@ -778,6 +788,38 @@ public static class PlanetComposer
             TreeVersion = tree.Version,
             Signature = Signature(tree, folderId),
         };
+    }
+
+    /// <summary>
+    /// Where a root's landmark stands (<see cref="RootMarkLayout.Place"/>): clear of the straight walk to every launcher
+    /// (the way back included) and to the overlook and the landmark, of every launcher's clear area, the landmark and the
+    /// overlook with their margins, the rings and the meadow; tried at the original spot's distance first, then halfway
+    /// between rings and half a ring gap beyond the last.
+    /// </summary>
+    private static PlanetRootMark PlaceRootMark(WorldKind kind, float radius, List<RingSlot> rings, List<PlanetLauncher> launchers, List<PlanetPath> paths,
+        Vector3 landmarkDir, Vector3 overlookDir, float complexRadius, PlanetParams p)
+    {
+        var pole = Vector3.UnitY;
+        var routes = new List<(Vector3, Vector3)>();
+        foreach (var path in paths)
+        {
+            for (var k = 1; k < path.Points.Count; k++) routes.Add((path.Points[k - 1], path.Points[k]));
+        }
+
+        foreach (var l in launchers.Where(l => l.IsParent)) routes.Add((pole, l.Direction)); // the way back has no drawn path
+        routes.Add((pole, landmarkDir));
+        var zones = new List<RootMarkLayout.Zone>
+        {
+            new(landmarkDir, p.LandmarkRadius + p.SolidGap),
+            new(overlookDir, complexRadius + p.SolidGap),
+        };
+        foreach (var l in launchers) zones.Add(new RootMarkLayout.Zone(l.Direction, p.LauncherClearRadius));
+        // Where the rings actually are (on a small planet the outer rings share the largest ring angle).
+        var ringDistances = rings.Select(r => MathF.Round(PlanetFrame.PolarOf(r.Direction) * radius, 3)).Distinct().OrderBy(d => d).ToList();
+        var outer = new List<float>();
+        for (var i = 0; i + 1 < ringDistances.Count; i++) outer.Add((ringDistances[i] + ringDistances[i + 1]) / 2);
+        if (ringDistances.Count > 0) outer.Add(ringDistances[^1] + p.RingGap / 2);
+        return RootMarkLayout.Place(kind, radius, routes, zones, ringDistances, p.PathHalfWidth, p.ArrivalRadius, outer);
     }
 
     private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);

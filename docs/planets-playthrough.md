@@ -157,3 +157,10 @@ to listen for).
 3. **The drama elsewhere.** Go deeper down the Long Way Down: the trails' drop ends on a climax and a stop before its
    breakdown; the deep woods roll into a general pause and a tutti horn call; the underglow drops out, builds, and hits a
    sub drop. Samples, before and after: `%LOCALAPPDATA%\FileScape\evidence\2026-11-16-playtest-2\music\` (README.txt).
+
+## Root landmarks (2026-11-16): the gateway and the monolith do something
+
+1. From This computer, fly to your Linux distribution (Ubuntu). Its terminal monolith stands near the arrival, a faint amber ring of light round its foot. (On a root with many folders it stands a little further out, between the first two rings of launchers, so that no straight walk to a launcher runs into it.)
+2. Walk up to it: the ring brightens, a warm light comes up on its face and the prompt says **E · terminal here · copy path · places**. Walk into it: it is solid; you slide off round it as round any pillar.
+3. Press **E**: a small panel. **1** opens a shell of that distribution in `/`; **2** copies `/`; **3** copies `\\wsl.localhost\Ubuntu-24.04\`; then places: **~ home**, **/tmp**, **/mnt/c** (the Windows C: drive, opened as `C:\`). Choosing a place travels there. E or Esc closes the panel; walking away closes it too. Nothing starts until you press a number or click a row.
+4. On a Windows drive the pane gateway does the same in blue: **1** opens Windows Terminal (or PowerShell if Windows Terminal is not installed) in that drive's root, **2** copies `D:\`, **3** copies `/mnt/d`, and the places are the drive's root, Home, Desktop, Documents and Downloads.

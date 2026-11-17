@@ -53,8 +53,9 @@ public partial class PlanetVisual : Node3D
 
     /// <summary>
     /// The arrival mark's place, metres along the surface from the arrival: ahead and then to the left. Root marks (the
-    /// gateway, the monolith) are bigger, so they stand farther out than a waymarker; all are inside the first launcher
-    /// ring (9 m).
+    /// gateway, the monolith) are bigger, so they stood farther out than a waymarker; since PLANET-45 a root's mark stands
+    /// where the composer puts it (<see cref="PlanetComposition.RootMark"/>, the same spot unless a route is in the way)
+    /// and these root values are only the fallback.
     /// </summary>
     private const float RootMarkAheadMetres = 4.6f, RootMarkLeftMetres = 3.6f, WaymarkerAheadMetres = 3.4f, WaymarkerLeftMetres = 2.6f;
 
@@ -218,6 +219,14 @@ public partial class PlanetVisual : Node3D
         // The tangent at the mark that points back towards the arrival (or the arrival's facing if they coincide).
         var towardArrival = up - dir * NVector3.Dot(up, dir);
         towardArrival = towardArrival.LengthSquared() > 1e-8f ? NVector3.Normalize(towardArrival) : facing;
+        // A root's mark is solid and the composer chose its place clear of the routes (PLANET-45, AD-58).
+        if (root && _comp.RootMark is { } rm)
+        {
+            dir = rm.Direction;
+            towardArrival = rm.Facing;
+            BuildRootMarkCue(surf, rm);
+        }
+
         switch (_character.Kind)
         {
             case WorldKind.Folder:
@@ -451,6 +460,7 @@ public partial class PlanetVisual : Node3D
     {
         _time += dt;
         if (_cursor != null) _cursor.Visible = (_time % CursorBlinkPeriodSeconds) < CursorOnSeconds; // the terminal's cursor blinks
+        AnimateRootMarkCue(dt);
         if (!_full) return;
         var surf = _comp.Surface;
         foreach (var (id, node) in _launchers)
