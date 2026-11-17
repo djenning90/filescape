@@ -67,7 +67,12 @@ function Find-FileScapeWindow {
 $script:HeldKeys = New-Object System.Collections.Generic.HashSet[string]
 $script:HeldButtons = New-Object System.Collections.Generic.HashSet[string]
 function Foreground-Name { $h = [FsInput]::GetForegroundWindow(); $id = 0; [void][FsInput]::GetWindowThreadProcessId($h, [ref]$id); try { (Get-Process -Id $id -ErrorAction Stop).ProcessName } catch { "pid $id" } }
-function Guard { if ($script:w -and [FsInput]::GetForegroundWindow() -ne $script:w) { throw "FileScape is not the foreground window ($(Foreground-Name) is): stopping before any input goes elsewhere" } }
+# No handle means no FileScape window to check against: refuse (2026-11-17: a mode's steps ran before the window existed,
+# the old "if ($script:w -and …)" let the input through, and drags moved and resized another app's window).
+function Guard {
+  if (-not $script:w -or $script:w -eq 0) { throw "no FileScape window handle yet: refusing input" }
+  if ([FsInput]::GetForegroundWindow() -ne $script:w) { throw "FileScape is not the foreground window ($(Foreground-Name) is): stopping before any input goes elsewhere" }
+}
 function Guard-Pointer {
   Guard
   if (-not $script:w) { return }

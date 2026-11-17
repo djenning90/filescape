@@ -84,39 +84,6 @@ if (Test-Path $prefs) { Remove-Item $prefs }
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', '--root=sample', '--vis=planets', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Audio) {
-    function Skips { [long](State).planets.audioSkips }
-    function Win-Rect { $r = New-Object FsInput+RECT; [void][FsInput]::GetWindowRect($script:w, [ref]$r); return $r }
-    # Drags with the left button from (x, y) by (dx, dy) over the given time, pausing at the far end, then back.
-    function Drag-Native([int]$x, [int]$y, [int]$dx, [int]$dy, [int]$ms, [int]$holdMs) {
-      [void][FsInput]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 200
-      Left-Down; Start-Sleep -Milliseconds 150
-      $steps = [Math]::Max(1, [int]($ms / 20))
-      for ($i = 1; $i -le $steps; $i++) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
-      Start-Sleep -Milliseconds $holdMs
-      for ($i = $steps - 1; $i -ge 0; $i--) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
-      Left-Up; Start-Sleep -Milliseconds 600
-    }
-    Start-Sleep -Seconds 2
-    $s0 = Skips; Start-Sleep -Seconds 4; $s1 = Skips
-    Check ($s1 -eq $s0) "steady play before: no gaps in 4 s (+$($s1 - $s0))"
-    $r = Win-Rect
-    Drag-Native ($r.Left + 260) ($r.Top + 16) 240 120 1500 1500
-    $s2 = Skips; $r2 = Win-Rect
-    Log "  window moved by its title bar and back (it went to $($r2.Left),$($r2.Top) at the end)"
-    Check ($s2 -eq $s1) "moving the window by its title bar (1.5 s out, held 1.5 s, back): no gaps (+$($s2 - $s1))"
-    $r = Win-Rect
-    Drag-Native ($r.Right - 5) ($r.Bottom - 5) -160 -90 1500 2000
-    $s3 = Skips
-    Check ($s3 -eq $s2) "an active resize from the corner (1.5 s, held 2 s, back): no gaps (+$($s3 - $s2))"
-    Start-Sleep -Seconds 2; $s4 = Skips
-    Check ($s4 -eq $s3) "steady play after: no gaps (+$($s4 - $s3)); the app kept running ($((State).planets.phase))"
-    Shot 'audio-after-move-resize' | Out-Null
-    Log "OS planets probe: $fails failure(s)"
-    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
-    exit $fails
-  }
-
   if ($Play) { $a += '--test-shell=record' }
   if (Test-Path $state) { Remove-Item $state }
   return Start-Process -FilePath $Exe -ArgumentList $a -PassThru
@@ -154,6 +121,39 @@ try {
   Start-Sleep -Seconds 3 # the establishing shot
   $s = State
   Check ($s.planets -and $s.planets.phase -eq 'Walking') "arrives on the Starter Sky on foot (phase=$($s.planets.phase))"
+
+  if ($Audio) {
+    function Skips { [long](State).planets.audioSkips }
+    function Win-Rect { Guard; $r = New-Object FsInput+RECT; [void][FsInput]::GetWindowRect($script:w, [ref]$r); return $r }
+    # Drags with the left button from (x, y) by (dx, dy) over the given time, pausing at the far end, then back.
+    function Drag-Native([int]$x, [int]$y, [int]$dx, [int]$dy, [int]$ms, [int]$holdMs) {
+      [void][FsInput]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 200
+      Left-Down; # Guard-Pointer: FileScape in front and under the cursor (its title bar or border), or the probe stops Start-Sleep -Milliseconds 150
+      $steps = [Math]::Max(1, [int]($ms / 20))
+      for ($i = 1; $i -le $steps; $i++) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
+      Start-Sleep -Milliseconds $holdMs
+      for ($i = $steps - 1; $i -ge 0; $i--) { [void][FsInput]::SetCursorPos($x + [int]($dx * $i / $steps), $y + [int]($dy * $i / $steps)); Start-Sleep -Milliseconds 20 }
+      Left-Up; Start-Sleep -Milliseconds 600
+    }
+    Start-Sleep -Seconds 2
+    $s0 = Skips; Start-Sleep -Seconds 4; $s1 = Skips
+    Check ($s1 -eq $s0) "steady play before: no gaps in 4 s (+$($s1 - $s0))"
+    $r = Win-Rect
+    Drag-Native ($r.Left + 260) ($r.Top + 16) 240 120 1500 1500
+    $s2 = Skips; $r2 = Win-Rect
+    Log "  window moved by its title bar and back (it went to $($r2.Left),$($r2.Top) at the end)"
+    Check ($s2 -eq $s1) "moving the window by its title bar (1.5 s out, held 1.5 s, back): no gaps (+$($s2 - $s1))"
+    $r = Win-Rect
+    Drag-Native ($r.Right - 5) ($r.Bottom - 5) -160 -90 1500 2000
+    $s3 = Skips
+    Check ($s3 -eq $s2) "an active resize from the corner (1.5 s, held 2 s, back): no gaps (+$($s3 - $s2))"
+    Start-Sleep -Seconds 2; $s4 = Skips
+    Check ($s4 -eq $s3) "steady play after: no gaps (+$($s4 - $s3)); the app kept running ($((State).planets.phase))"
+    Shot 'audio-after-move-resize' | Out-Null
+    Log "OS planets probe: $fails failure(s)"
+    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
 
   if ($Play) {
     function Type-Line($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ($(if ($ch -eq ' ') { 'Space' } else { [string]$ch })) 30; Start-Sleep -Milliseconds 40 } }
