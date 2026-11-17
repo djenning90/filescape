@@ -194,17 +194,8 @@ public partial class Main
         var path = _tree.FullPath(file.Id);
         var title = $"{_tree.DisplayName(folder)} · {file.Name}";
         _hud.Toast($"Reading {file.Name}…");
-        // A deliberate, bounded read off the main thread (a slow share must not freeze the world).
-        Task.Run(() => Readme.Read(path)).ContinueWith(t => Callable.From(() =>
-        {
-            var r = t.Result;
-            LastReadme = r;
-            GD.Print($"[readme] {path}: {r.Text.Length} chars, truncated={r.Truncated}, error={r.Error ?? "-"}");
-            var body = r.Error != null ? $"[color=#ffb070]{r.Error.Replace("[", "[lb]")}[/color]" : Readme.ToBbcode(r.Text, r.Format == "markdown");
-            var footer = $"{r.Format} · shown as text: links are not followed, images not loaded, nothing is run" + (r.Truncated ? $" · only the first {Readme.MaxBytes / 1024} KB / {Readme.MaxLines:N0} lines" : "");
-            ReleaseAllInput();
-            _hud.ShowReadme(title, body, footer);
-        }).CallDeferred());
+        // A deliberate, bounded read off the main thread (a slow share must not freeze the world); links usable (Main.Reader).
+        ShowDocument(path, title);
     }
 
     /// <summary>One of the card's editor options: launched only after the user confirms (DEV-03).</summary>

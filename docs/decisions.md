@@ -574,6 +574,57 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   wrong too often).
 - **Revisit if:** DJ ranks the Gallery first, or wants these worlds as themes rather than identities.
 
+## AD-62 The keyboard belongs to what you are typing or reading; links go only where you click (amends AD-57) (2026-11-17)
+
+- **Problem:** DJ's playtest of the second iteration (PLANET-51..53): typing a name after J "interpreted a letter as a
+  shortcut and changed what I was doing"; the wheel over the README reader zoomed the game; Enter in the reader "showed
+  nothing"; Markdown links were inert text (AD-57 kept them so).
+- **What was reproduced (in-app, injected key events with key code, physical code and character, before any fix):**
+  letters typed right after J, after the ☰ button, after travel, in the overview, during a flight and with the pointer
+  resting over the list all reached the filter. Keys typed *in the results* did not: Backspace (History back), Home
+  (back to the arrival), PageUp (Up: it flew out of the Starter Sky with the list open) and Tab (switch view) went to
+  the game's shortcuts, because the tree does not use them and the game takes every key no control takes. Separately,
+  Enter from the filter went to a row left selected from an earlier filter (a trip to Constellations for "Lantern").
+  The reader's panel was not in the HUD's blocking rectangles, so the planets' pre-GUI input took the wheel (camera
+  7.20 → 9.58 m, text unscrolled); its toasts were added before it and drawn behind it. DJ's exact keystrokes on the real
+  keyboard were not reproduced; `os-planets-probe.ps1 -InputFocus` types as he did and is the check.
+- **Decision — the open list owns typed keys:** while Destinations is open, every key press that no control used goes
+  to the list before any shortcut (`PlanetWorld.PanelKey` → `ListKey`): a character goes into the filter (the filter
+  takes the keyboard back), Backspace edits it, ↓ or Tab moves into the results, Enter goes, and the other keys
+  (PageUp, Home, arrows…) do nothing. J (to close it when the filter does not have the keyboard), Esc, Ctrl/Alt chords and
+  the F keys still reach the game. In the results Backspace edits the filter, Tab returns to it, Home/End/Page keys move
+  within them. The filter enters Godot's edit mode explicitly when it takes the keyboard. A filter change lets go of the
+  chosen row, so Enter from the filter goes to the best match for what is typed now.
+- **Decision — the reader owns the pointer and the keys over it:** the reading view is a blocking rectangle (wheel and
+  clicks are its own), its text takes the keyboard (arrows, Page keys, Home/End scroll), and while it is open no other key
+  reaches a shortcut: Enter opens the file with Windows, R or Esc closes it. Toasts are moved above it, and a status line
+  under the text repeats what Open or a link did. The Expand icon sits in the preview's upper-right corner; expanding
+  replaces the preview, closing brings it back while you are still on that file.
+- **Decision — usable links (amends AD-57):** `MarkdownText.Render` emits `[url=N]` where N is only the link's index (no
+  text from the file ever enters a tag) and lists each heading's GitHub anchor with the paragraph it starts (as
+  RichTextLabel counts paragraphs: a table is one). `MarkdownLinks.Resolve` decides what a click means: an anchor scrolls;
+  a relative path (percent-decoded, `<with spaces>`, `../` never above the drive or share, a leading `/` from the
+  repository root) is checked on disk only on the click, then read in the reader (text), gone to (a folder), or its
+  folder with it selected (another file); http, https and mailto go to the shell's Open (the browser or mail program;
+  recorded under `--test-shell=record`); every other scheme is refused with the reason. Images stay alt text, remote or
+  local: nothing is fetched. The inert `ToBbcode` is unchanged for any view that does not follow links.
+- **Decision — the opened app may come forward:** before ShellExecuteEx, when FileScape is the foreground app (a person
+  just pressed Enter or clicked Open), it calls `AllowSetForegroundWindow(ASFW_ANY)`, passing on its own right to take
+  the foreground: an already-running viewer that receives the file can come forward instead of flashing on the taskbar.
+  It never takes the foreground from another app; the right ends at the next input. Alt+Tab returns to FileScape.
+- **Alternatives:** blocking shortcuts by checking `GuiGetFocusOwner` in the shortcut handler (a click on the world while
+  the list is open would let letters through again); a modal list (DJ likes looking around with it open); following
+  links on hover or showing previews of web pages (fetches); `[url=<address>]` tags (the address would be markup from the
+  file); waiting for the launched process and calling SetForegroundWindow on it (Windows refuses it from a background
+  process, and it does not apply to a viewer that was already open).
+- **Known limits:** keys are judged as Godot delivers them; DJ's own keyboard sequence is checked by the real-input mode,
+  not yet run. An anchor in a block quote's heading is not listed; HTML anchors (`<a name>`) are not either. The foreground
+  hand-over is at Windows' discretion (focus assist, a full-screen app) and was not exercised here.
+- **Evidence:** `planets-destinations-keys`, `planets-reader`, Core `MarkdownLinksTests`; the reproductions in
+  `docs/evidence/2026-11-17-input/`.
+- **Revisit if:** DJ wants J to type a "j" even when the filter has lost the keyboard, a web link to ask first, local
+  images shown, or the preview kept beside the reader.
+
 ## AD-66 The orchestra a little quicker; two second themes for the folder bands (amends AD-52) (2026-11-17)
 
 - **Problem:** DJ (PLANET-64, PLANET-65): "Keep the musical character. The track I heard in

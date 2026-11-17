@@ -219,3 +219,33 @@ Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh 
    beside its launcher, on solid ground.
 7. **Judge by feel:** bridge widths (1.8–3 m), the gap lengths (1.4–2.2 m), the higher camera on Hazard Worlds, the turn
    to the jet on landing, the warning sound on bridges (the edge is never far there), and the frame rate on Debris Field.
+
+## Typing in Destinations and reading READMEs (2026-11-17, PLANET-51..53, AD-62)
+
+**Launch** from source: `tools/fs.sh run -- --root=sample --vis=planets` for the list; for the reader, a repository
+with a README, or the fixture `tools/make-wsl-fixture.sh --readme` prints (`tools/fs.sh run -- "--root=<that path>"
+--vis=planets`). About four minutes.
+
+1. **Type at once.** Press **J** and type a name straight away, capitals and all ("Lantern"): every letter lands in
+   *Type to filter*, and nothing else happens (L is Locations, N is sound, T the overview… none of them fire). The same
+   with the ☰ Destinations button, and again after you have travelled somewhere.
+2. **Into the results and back, without the mouse.** **↓** or **Tab** moves into the results, on the best match.
+   **→** opens a folder in place and → again steps into it; **←** steps out and closes it. **Backspace** in the results
+   edits the filter (it no longer takes you back a world); **Home**, **End**, **Page Up/Down** move within the list (Page
+   Up no longer flies you up a level). **Tab** or ↑ on the first row returns to the filter. **Enter** goes.
+3. **Click away, keep typing.** With the list open, click the world (to look around), then type: the letters still go
+   into the filter. **Esc** or **J** closes the list; then your keys are the game's again.
+4. **The small preview.** Walk to a README or a .md file and press **E**. Its preview shows an excerpt (a long file
+   ends "… an excerpt"); the wheel over it scrolls the text, not the camera. Its links work: click one.
+5. **Expand.** Click **⤢ Expand (R)** in the preview's top-right corner, or press **R**: the reading view replaces the
+   preview. The wheel scrolls it to the end (never the camera); the arrows, Page Up/Down, Home and End scroll it; other
+   keys do nothing while you read. **Esc**, **R** or **Close** returns to the preview.
+6. **Links.** In the reading view: a "#section" link scrolls to that heading; a link to another document in the
+   project (even one with a space in its name) opens it here; a link to a folder takes you there; a web link opens your
+   browser (only when you click it; the line under the text says where a link goes as you point at it); a missing target
+   says *Not found*. Pictures stay their description: nothing is downloaded.
+7. **Open with Windows.** **Enter** in the preview or the reading view, or the **Open with Windows** button, opens the
+   file with its usual app; the message appears above the reader and on its status line, and if Windows refuses it says
+   why. The app that opens it should come to the front (Windows decides); Alt+Tab returns to FileScape.
+8. **Judge:** whether typing after J ever does anything else on your keyboard; the Expand button's place and look; the
+   reading view's feel with the wheel; whether the opened app comes forward on your machine.

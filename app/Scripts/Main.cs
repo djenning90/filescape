@@ -137,6 +137,9 @@ public partial class Main : Node3D
     public int VisualizationIndex => _visIndex;
     public Quality Quality => _quality;
     public string? LastShellMessage { get; private set; }
+
+    /// <summary>The last shell action's result (the reader's status line says whether it worked).</summary>
+    public ShellResult? LastShellResult { get; private set; }
     public int LabelsShown => _labels.LastShown;
     public IReadOnlyList<Rect2> LabelRects => _labels.ShownRects;
 
@@ -287,6 +290,26 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Key presses that reached the game's shortcuts (<see cref="_UnhandledInput"/> on the planets), newest last, at most
+    /// <see cref="UnhandledKeyLogLength"/> (probes, PLANET-51: while you type in a text field none may arrive here).
+    /// </summary>
+    public readonly List<string> UnhandledKeys = [];
+
+    /// <summary>The unhandled-key log keeps this many entries (enough for one probe step's typing).</summary>
+    private const int UnhandledKeyLogLength = 64;
+
+    private void NoteUnhandledKey(InputEventKey k)
+    {
+        if (k.Keycode is Key.Shift or Key.Ctrl or Key.Alt or Key.Meta) return; // held modifiers, never a shortcut on their own
+        if (UnhandledKeys.Count >= UnhandledKeyLogLength) UnhandledKeys.RemoveAt(0);
+        UnhandledKeys.Add(OS.GetKeycodeString(k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode) + (k.Echo ? "(echo)" : ""));
+        UnhandledKeyCount++;
+    }
+
+    /// <summary>Every key press that reached the game's shortcuts so far (the log above keeps only the newest).</summary>
+    public int UnhandledKeyCount { get; private set; }
+
     /// <summary>What the recording test shell was asked to do (probes; empty with the real shell).</summary>
     public IReadOnlyList<string> ShellLog => (_shell as FileScape.Core.Shell.RecordingShellActions)?.Log ?? [];
 
@@ -398,6 +421,7 @@ public partial class Main : Node3D
         _hud.OpenLocationRequested += ShowLocations;
         _hud.PinToggled += TogglePin;
         _hud.ReadmeRequested += ShowReadme;
+        ConnectReader(); // Main.Reader: the reading view's links and Open with Windows
         _hud.EditorRequested += RequestEditor;
         // "Sample world" opens the bundled Starter Sky (real sample files FileScape writes for itself) in Planets; the
         // synthetic tree remains for the legacy maps and automation (--synthetic=N).
@@ -1124,6 +1148,9 @@ public partial class Main : Node3D
         if (_experimentOnly) return;
         if (_experience == Experience.Planets)
         {
+            if (ReaderKey(@event)) return; // the reading view owns the keys while it is open (PLANET-52, Main.Reader)
+            if (_planets.PanelKey(@event)) return; // a trip's Esc, the open Destinations list's typing (PLANET-51)
+            if (@event is InputEventKey { Pressed: true } seen) NoteUnhandledKey(seen);
             if (_planets.UnhandledInput(@event)) return;
             if (@event is InputEventMouseButton { Pressed: true }) GetViewport().GuiReleaseFocus();
             if (@event is InputEventKey { Pressed: true, Echo: false } pk) HandleCommand(pk);
@@ -1138,6 +1165,8 @@ public partial class Main : Node3D
             case InputEventMouseMotion mm:
                 HandleMouseMotion(mm);
                 break;
+            case InputEventKey { Pressed: true } key when ReaderKey(key):
+                break; // the reading view owns the keys while it is open (Main.Reader)
             case InputEventKey { Pressed: true } key:
                 foreach (var a in InputBindings.MovementActions)
                 {
@@ -1416,7 +1445,7 @@ public partial class Main : Node3D
             StateJsonTutorial() +
             System.FormattableString.Invariant($"\"experience\":\"{_experience}\",\"current\":{_nav.Current},\"currentName\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.DisplayName(_nav.Current) : "")}\",\"transition\":{(_transition != null ? "true" : "false")},\"transitions\":{_transitions},\"gates\":{_place?.Gates.Count ?? -1},\"selectedName\":\"{JsonEscape(_tree != null && _selection.Selected >= 0 ? _tree[_selection.Selected].Name : "")}\",\"lastShell\":\"{JsonEscape(LastShellMessage ?? "")}\",") +
             System.FormattableString.Invariant($"\"locomotion\":\"{_locomotion}\",\"grounded\":{(_walker.Grounded ? "true" : "false")},\"support\":{_walker.Support.Value:0.###},\"feetY\":{_walker.Feet.Y:0.###},\"lookCaptured\":{(_placeLook ? "true" : "false")},\"jumps\":{_walker.Jumps},\"relocations\":{_relocations},\"landing\":{(_landing != null ? "true" : "false")},\"guided\":{(_guided ? "true" : "false")},\"showHidden\":{(_showHidden ? "true" : "false")},\"locationsOpen\":{(_hud.LocationsVisible ? "true" : "false")},\"via\":{_nav.CurrentVia},\"currentPath\":\"{JsonEscape(_tree != null && _tree.Count > 0 ? _tree.FullPath(_nav.Current) : "")}\",") +
-            StateJsonNavigation() + StateJsonSettings() + _planets.StateJson() + "}";
+            StateJsonNavigation() + StateJsonInput() + StateJsonSettings() + _planets.StateJson() + "}";
     }
 
     /// <summary>Escapes a string for the state file's JSON: backslash, quote and the control characters (a trip panel's
@@ -1582,6 +1611,7 @@ public partial class Main : Node3D
     private void ReportShell(ShellResult r)
     {
         LastShellMessage = r.Message;
+        LastShellResult = r;
         GD.Print($"[shell] succeeded={r.Succeeded} mock={r.WasMock} {r.Message}");
         var failed = !r.Succeeded && !r.WasMock;
         _hud.Toast(r.Message, r.WasMock ? new Color(1f, 0.85f, 0.45f) : r.Succeeded ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f), failed ? ShellFailureToastSeconds : 6);

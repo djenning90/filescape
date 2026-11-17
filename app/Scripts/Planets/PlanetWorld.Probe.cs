@@ -23,6 +23,20 @@ public partial class PlanetWorld
     public bool PreviewPlaying => _previewPlayer.Playing;
     public int ThumbnailsShown => _current?.Visual?.ThumbnailsShown ?? 0;
 
+    /// <summary>The chase camera's distance, metres (the wheel zooms it; PLANET-52: the wheel over a reader must not).</summary>
+    public float ChaseDistanceMetres => _camDistance;
+
+    /// <summary>The small preview's panel and its text on screen, viewport units (probes aim the wheel and clicks here).</summary>
+    public Rect2 PreviewRect => _previewPanel.GetGlobalRect();
+
+    public Rect2 PreviewTextRect => _previewText.GetGlobalRect();
+
+    /// <summary>The preview text's scroll position, pixels from the top (probes: the wheel over it scrolls it).</summary>
+    public double PreviewScroll => _previewText.GetVScrollBar().Value;
+
+    /// <summary>The preview's Expand button on screen (an empty rectangle while it is hidden).</summary>
+    public Rect2 PreviewExpandRect => _expandButton.IsVisibleInTree() ? _expandButton.GetGlobalRect() : new Rect2();
+
     /// <summary>Worlds in the sky whose centre is on screen and in front of the camera (research E1: you can see where to go).</summary>
     public List<int> WorldsInView()
     {

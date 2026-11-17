@@ -114,6 +114,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-audio-gaps") await AudioGaps(); // PlanetsProbe.Audio.cs (FOLLOW-2)
         else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
+        else if (Mode == "planets-destinations-keys") await DestinationsKeysRun(); // PlanetsProbe.Input.cs (PLANET-51)
+        else if (Mode == "planets-reader") await ReaderRun(); // PlanetsProbe.Reader.cs (PLANET-52/53)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

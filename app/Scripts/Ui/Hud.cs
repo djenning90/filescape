@@ -588,6 +588,8 @@ public partial class Hud : CanvasLayer
             _toastPanel.Visible = false;
         }
 
+        UpdateReader(); // Hud.Reader: a heading to scroll to once the text is laid out
+
         // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it, and
         // Destinations stops above the legend; the hint sits between the legend and the inspector (VISI-01). All in
         // viewport units, so it holds at any UI scale (checked at 1.0 and 1.25).

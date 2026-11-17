@@ -144,6 +144,11 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # held "still listing" by the delay instrument; then the fixture's inaccessible folder as the list shows it.
   journey planets-navigation planets-navigation.log 300 --automate=planets-navigation --root=sample --vis=planets --test-shell=record --ui-scale=1 --test-list-delay-ms=12000 "--test-list-delay-match=Pressed Flowers" --tier=functional
   journey planets-navigation-denied planets-navigation-denied.log 200 --automate=planets-navigation-denied "--root=$R" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # 2026-11-17 (PLANET-51..53): typing in Destinations never reaches a shortcut, the keyboard route through its results;
+  # the reader at both sizes (wheel, keys, Expand, Enter/Open, links). The reader needs FILESCAPE_WSL_README (from
+  # tools/make-wsl-fixture.sh --readme, which now also writes guide.md); without it that step is left out.
+  journey planets-destinations-keys planets-destinations-keys.log 300 --automate=planets-destinations-keys --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reader planets-reader.log 200 --automate=planets-reader "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional; fi
 fi
 
 if [[ "$TIER" == release ]]; then
