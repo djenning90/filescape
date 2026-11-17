@@ -694,7 +694,8 @@ public partial class PlanetWorld
         {
             if (RowOf(it) is not { } row) continue;
             var rect = DestinationRowRect(row.Key);
-            if (rect.Size.Y > 0) yield return (row.Name, rect, DestinationArrowPoint(row.Key));
+            // Only rows inside the list's visible area (a row scrolled out of view has a rectangle off the panel).
+            if (rect.Size.Y > 0 && _destTree.GetGlobalRect().HasPoint(rect.GetCenter())) yield return (row.Name, rect, DestinationArrowPoint(row.Key));
         }
     }
 }

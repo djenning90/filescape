@@ -124,10 +124,10 @@ try {
     function Row-At($name) { $s = State; foreach ($r in $s.nav.rows) { if ($r.name -eq $name) { return $r } }; return $null }
     function List-Pick($typed, $name) {
       Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line $typed; Start-Sleep -Milliseconds 900
-      $r = Row-At $name
-      if ($r) { Click-At $r.at; Start-Sleep -Milliseconds 300 } else { Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200 }
+      # The keyboard way, as the walkthrough teaches it: the filter's first match, then Enter.
+      Hold-Key 'Down' 60; Start-Sleep -Milliseconds 250
+      $s = State; Log "  list: typed '$typed', selected row $(@($s.nav.rows | Where-Object { $_.name -eq $name }).Count) visible"
       Hold-Key 'Enter' 60
-      return $r
     }
     $start = (State).currentName
     # 1 · the repository by the list; the workbench is in the arrival view (PLANET-42).
