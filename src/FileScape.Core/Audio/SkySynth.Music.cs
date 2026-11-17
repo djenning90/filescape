@@ -1633,9 +1633,11 @@ public sealed partial class SkySynth
             Hits(Silent), SnareKind.Clap, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Pluck, ArpKind.None, Rungs(Silent),
             0.55f, 1f, 0.12f, 1, Arrangement.Festival, PumpDepth: 0.6f, Level: 1f),
-        // Band 3, the deep woods, the orchestral arrangement (AD-52): dorian, a broad half-time theme (72 BPM) over the
-        // string ostinato's eighths (144); the cellos carry the band motif and the flute echoes it.
-        new(MusicIdentity.DeepWoods, 144f, 0f, Dorian, [0, 2, 6, 3], "dorian (orchestral)", Lead.Cello, 1.0f,
+        // Band 3, the deep woods, the orchestral arrangement (AD-52): dorian, a broad half-time theme over the string
+        // ostinato's eighths; the cellos carry the band motif and the flute echoes it. AD-66 lifted it 144 → 156 BPM (the
+        // theme 72 → 78, +8.3 %): DJ heard it in a deep project folder and asked for a modest lift keeping its feel; its
+        // long tails scale with the tempo (OrchestraTails), so they keep their length in beats.
+        new(MusicIdentity.DeepWoods, OrchestraBpm, 0f, Dorian, [0, 2, 6, 3], "dorian (orchestral)", Lead.Cello, 1.0f,
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Deep, ArpKind.None, Rungs(Silent),
             0.65f, 1f, 0.3f, 1, Arrangement.Orchestral, HalfTime: true, Level: 0.85f),

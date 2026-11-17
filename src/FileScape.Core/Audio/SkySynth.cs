@@ -92,7 +92,7 @@ public enum MusicIdentity
     /// <summary>
     /// Folder band 3 (the deep woods), the orchestral arrangement (AD-52): strings, horns, woodwinds, timpani and harp in
     /// dorian, the theme passed between them with dynamics that rise and fall across the cycle; a broad half-time theme
-    /// over an eighth-note string ostinato.
+    /// over an eighth-note string ostinato (156 BPM under a 78 BPM theme since AD-66; 144 under 72 before).
     /// </summary>
     DeepWoods,
 
@@ -124,10 +124,10 @@ public enum MusicIdentity
 /// The Planets experience's original procedural audio ("Lantern Cosmos"): generative music and pitched sound effects,
 /// synthesised from scratch in plain C# (no engine types, no samples), so it can be rendered offline and tested.
 /// <para>
-/// <b>Worlds (AD-49, AD-52, AD-60).</b> The music has a family of ten identities (<see cref="MusicIdentity"/>), nine chosen from
+/// <b>Worlds (AD-49, AD-52, AD-60, AD-66).</b> The music has a family of ten identities (<see cref="MusicIdentity"/>), nine chosen from
 /// a world's <see cref="WorldCharacter"/> by <see cref="IdentityOf"/> (the tenth, the abyss, is AD-52's hazard score kept for a
 /// future world type), each with its own tempo (<see cref="TempoFor"/>: the hub 94 BPM, roots 112–116, the repository 126,
-/// folder bands 120 → 172, the hazard world 152), groove, instruments and motif. Three folder bands are AD-52's arrangements
+/// folder bands 120 → 126 → 156 → 172 (the orchestra lifted from 144 by AD-66), the hazard world 152), groove, instruments and motif. Three folder bands are AD-52's arrangements
 /// (SkySynth.Arrangements.cs, with AD-60's breaks, builds, drops and climaxes): the trails a festival drop and build, the deep
 /// woods an orchestra, the underglow drum and bass; the hazard world plays AD-60's frenetic phrygian score
 /// (SkySynth.Escape.cs); the orchestra, drum and bass and the abyss

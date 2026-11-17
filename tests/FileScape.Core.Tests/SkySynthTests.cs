@@ -400,9 +400,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
         SkySynth.TempoFor(MusicIdentity.Repository).Should().BeInRange(122, 128);
         var bands = new[] { MusicIdentity.Outskirts, MusicIdentity.Trails, MusicIdentity.DeepWoods, MusicIdentity.Underglow }.Select(SkySynth.TempoFor).ToList();
         bands.Should().BeInAscendingOrder("deeper is more adventurous, not slower").And.OnlyContain(b => b >= 120);
-        // AD-52: the festival at big-room tempo, the orchestra's ostinato at 144 under a 72 BPM theme, drum and bass at 172 under an 86 BPM theme.
+        // AD-52: the festival at big-room tempo, the orchestra's ostinato at 144 under a 72 BPM theme (AD-66: 156 under 78), drum and bass at 172 under an 86 BPM theme.
         SkySynth.TempoFor(MusicIdentity.Trails).Should().BeInRange(124, 128);
-        SkySynth.TempoFor(MusicIdentity.DeepWoods).Should().BeInRange(136, 150);
+        SkySynth.TempoFor(MusicIdentity.DeepWoods).Should().BeInRange(150, 162, "AD-66 lifted the orchestra from 144 by a modest 8 %");
         SkySynth.TempoFor(MusicIdentity.Underglow).Should().BeInRange(170, 175);
         SkySynth.ThemeTempoFor(MusicIdentity.Underglow).Should().Be(SkySynth.TempoFor(MusicIdentity.Underglow) / 2, "drum and bass: the theme at half time");
         SkySynth.ThemeTempoFor(MusicIdentity.Trails).Should().Be(SkySynth.TempoFor(MusicIdentity.Trails));
