@@ -250,6 +250,7 @@ public partial class PlanetWorld : Node3D
         if (_universe != null)
         {
             UpdateUniverse(tree, dt, blockedKeys);
+            FadeTitle(dt); // the arrival title makes way for the map (PlanetWorld.Overlay)
             return;
         }
 

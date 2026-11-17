@@ -337,4 +337,14 @@ public partial class PlanetWorld
 
     /// <summary>The overview's orbit angle, radians (the walkthrough checks that you looked round it).</summary>
     public float UniverseYaw => _uniYaw;
+
+    /// <summary>The overview camera's distance, metres: where it is now (it eases) and where the wheel has sent it (the
+    /// walkthrough's zoom step, PLANET-54, waits for both: you asked to see more, and you see it).</summary>
+    public (float Now, float Target) UniverseZoom => (_uniDistance, _uniDistanceTarget);
+
+    /// <summary>The arrival title's opacity now, 0–1 (probes: it must not linger over the overview).</summary>
+    public float TitleOpacity => _titleBox.Modulate.A;
+
+    /// <summary>The overview's worlds drawn in view now (the walkthrough's zoom step counts how many more you see).</summary>
+    public int UniverseWorldsInView => _universe == null ? 0 : UniverseOnScreen().Count;
 }

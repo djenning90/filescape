@@ -123,6 +123,10 @@ public partial class PlanetsProbe
         await Until(() => App.TutorialStep == 12, 4);
         Check(App.TutorialStep == 12, $"orbited the overview → {App.TutorialTitle}");
         await Shot("tutorial-overview");
+
+        // 5 · Zoom out (PLANET-54): the wheel, measured — the camera pulls back and more worlds come into view.
+        await ZoomOutStep(12);
+
         await Key(Godot.Key.Escape);
         await Until(() => App.TutorialTitle == "done", 8);
         Check(App.TutorialTitle == "done", "Esc back where you stood: the walkthrough is done and offers This computer");
@@ -138,6 +142,52 @@ public partial class PlanetsProbe
         await Click(App.LessonButtonRect("leave").GetCenter());
         await Frames(3);
         Check(!App.TutorialActive, "Leave closes the walkthrough mid-lesson");
+    }
+
+    /// <summary>
+    /// The walkthrough's zoom step (PLANET-54) at index <paramref name="step"/>: it shows the wheel's key cap and waits (a
+    /// wheel up, zooming in, does not complete it); then wheel notches down, one at a time, each logged with the camera's
+    /// distance and the worlds drawn in view, until the step completes; the camera must be well out and more worlds seen.
+    /// </summary>
+    private async Task ZoomOutStep(int step)
+    {
+        await Until(() => App.TutorialStep == step && !App.LessonHint.StartsWith('✓'), 4);
+        await Seconds(1.2); // the overview's opening pull-back settles
+        Check(App.TutorialStep == step && App.TutorialTitle.Contains("Zoom out") && App.TutorialKeys == "wheel ↓", $"step {step + 1}: \"{App.TutorialTitle}\", key cap '{App.TutorialKeys}'");
+        var (d0, _) = P.UniverseZoom;
+        var w0 = P.UniverseWorldsInView;
+        Check(P.TitleOpacity < 0.05f, F($"the arrival title has made way for the map (opacity {P.TitleOpacity:0.00})"));
+        await Shot("tutorial-zoom-before");
+        await Wheel(up: true, 2);
+        await Seconds(1.0);
+        Check(App.TutorialStep == step && !App.LessonHint.StartsWith('✓'), F($"zooming in does not complete it ({P.UniverseZoom.Now:0} m)"));
+        var notches = 0;
+        for (; notches < 30 && App.TutorialStep == step && !App.LessonHint.StartsWith('✓'); notches++)
+        {
+            await Wheel(up: false, 1);
+            await Seconds(0.35);
+            Log(F($"  wheel ↓ {notches + 1}: camera {P.UniverseZoom.Now:0} m (target {P.UniverseZoom.Target:0}), {P.UniverseWorldsInView} worlds in view; card: \"{App.LessonHint}\""));
+            if (notches == 5) { Check(App.LessonHint.StartsWith("Keep scrolling", StringComparison.Ordinal), $"part way, the card says to keep going: \"{App.LessonHint}\""); await Shot("tutorial-zoom-progress"); }
+        }
+
+        var (d1, _) = P.UniverseZoom;
+        var w1 = P.UniverseWorldsInView;
+        await Shot("tutorial-zoom-after");
+        Check(App.LessonHint.StartsWith('✓') || App.TutorialStep == step + 1, F($"wheel ↓ ×{notches} zoomed out: camera {d0:0} → {d1:0} m, worlds in view {w0} → {w1} → {App.TutorialTitle}"));
+        Check(d1 >= 3f * d0 && w1 >= w0 + 10, F($"the overview shows more of the system: ×{d1 / d0:0.0} as far, {w1 - w0} more worlds"));
+        await Until(() => App.TutorialStep == step + 1, 4);
+    }
+
+    /// <summary>Wheel notches at the view centre, a few frames apart (each a press and a release, as Godot reports a wheel).</summary>
+    private async Task Wheel(bool up, int notches)
+    {
+        var at = ToWindow(App.GetViewport().GetVisibleRect().Size / 2 + new Vector2(0, 120));
+        for (var i = 0; i < notches; i++)
+        {
+            Mouse(up ? MouseButton.WheelUp : MouseButton.WheelDown, true, at);
+            Mouse(up ? MouseButton.WheelUp : MouseButton.WheelDown, false, at);
+            await Frames(3);
+        }
     }
 
     /// <summary>A left-drag in the middle of the view (the walkthrough's look control).</summary>

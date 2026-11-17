@@ -198,12 +198,22 @@ public partial class PlanetWorld
         _hintTime = HintSeconds;
     }
 
+    /// <summary>
+    /// The arrival title counts down and fades. Also called in the overview (whose frames skip <see cref="UpdateOverlay"/>):
+    /// opening it shortens the title to 0.3 s, but without this the title stayed frozen over the map (seen in the
+    /// walkthrough's zoom step, 2026-11-17).
+    /// </summary>
+    private void FadeTitle(float dt)
+    {
+        _titleTime = MathF.Max(0, _titleTime - dt);
+        _titleBox.Modulate = new Color(1, 1, 1, Mathf.Clamp(_titleTime / TitleFadeSeconds, 0, 1));
+    }
+
     /// <summary>Per frame on a planet: fades the title and hint, hides the prompt while travelling, draws the flash, and
     /// during travel titles the destination with how you are going there.</summary>
     private void UpdateOverlay(float dt)
     {
-        _titleTime = MathF.Max(0, _titleTime - dt);
-        _titleBox.Modulate = new Color(1, 1, 1, Mathf.Clamp(_titleTime / TitleFadeSeconds, 0, 1));
+        FadeTitle(dt);
         _hintTime = MathF.Max(0, _hintTime - dt);
         _hint.Modulate = new Color(1, 1, 1, Mathf.Clamp(_hintTime / HintFadeSeconds, 0, 1));
         _promptBox.Visible = !Busy;
