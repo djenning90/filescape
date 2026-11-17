@@ -9,7 +9,7 @@ decisions that are DJ's to make, and the exact remaining steps. Nothing has been
 | Item | State | Where |
 |---|---|---|
 | Off-machine backup (GitHub, private) | **ready, needs DJ's account**: no remote exists and no GitHub access is configured in WSL (no `gh`, no SSH key); Git for Windows has Git Credential Manager 2.9 for a browser sign-in | `tools/backup-snapshot.sh`, [Backup](#backup-private-off-machine) |
-| Local safety copy | **done**: a verified git bundle of `main`, `backup/working-tree` (the uncommitted edits) and every tag on the Windows disk (same machine, not off-machine) | `%LOCALAPPDATA%\FileScape\backup\filescape-*.bundle` |
+| Local safety copy | **done** (246 commits): a verified git bundle of `main`, `backup/working-tree` (the uncommitted edits) and every tag on the Windows disk (same machine, not off-machine) | `%LOCALAPPDATA%\FileScape\backup\filescape-*.bundle` |
 | History review | **done**: 216 commits, no secrets, no private folder contents; one identity to rewrite | [History](#history-what-it-exposes-and-the-smallest-cleanup) |
 | Publication candidate | **built for review** with placeholder identity; rerun with your GitHub noreply address | `tools/publication-candidate.sh` → `../filescape-publication-candidate` |
 | Windows ZIP | **checked from a clean extraction**: 74 MB zip, 196 files, `README.txt` quick start (Codex), licences, no logs, smoke launch passes | [Windows ZIP](#windows-zip) |
@@ -69,9 +69,10 @@ reads correctly but points at the old hash; `../filescape-publication-candidate-
 
 `tools/publication-candidate.sh --name NAME --email ID+USER@users.noreply.github.com --with-working-tree [--license-holder "NAME"] [--drop PATH]`
 builds the candidate in a **separate clone** (`../filescape-publication-candidate`); this repository and its history are
-never changed. Its check on 2026-11-17 (placeholder identity): 217 commits (215 + the working-tree commit + the proposed
-LICENSE), 159 trees identical and the other 56 differing only in `docs/publishing.md`, the old email in 0 commit headers,
-messages or files. Rerun it after the final merge with your real noreply address (GitHub → Settings → Emails).
+never changed. Its check on 2026-11-17 (placeholder identity, on `main` at the end of the session): 247 commits (245 +
+the working-tree commit + the proposed LICENSE), 162 trees identical and the others differing only in the copies of this
+file and of the script's own early versions that spelled the email out, the old email in 0 commit headers, messages or
+files. Rerun it after the final merge with your real noreply address (GitHub → Settings → Emails).
 
 ## Backup (private, off-machine)
 
