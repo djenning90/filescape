@@ -21,7 +21,7 @@
 # mapping in DIR/../filescape-publication-candidate-map.txt.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-OLD_EMAIL="the original author email (removed)"
+OLD_EMAIL="${OLD_EMAIL:-$(git -C "$REPO" log --reverse --format=%ae main | sed -n 1p)}"  # the original author (the first commit's), never spelled out here
 NAME="" EMAIL="" OUT="$(dirname "$REPO")/filescape-publication-candidate" WT=0 HOLDER="" DROPS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
