@@ -1,6 +1,7 @@
 using FileScape.App.Planets;
 using FileScape.Core.Model;
 using FileScape.Core.Planets;
+using FileScape.Core.Scanning;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
 
@@ -193,6 +194,87 @@ public partial class PlanetsProbe
         // (The eye's height over the ground below it is not compared: on a small world the ground falls away under any camera.)
         Check(P.ArrivalFraming < 0.01f && P.CameraToTraveller() < 8.6f,
             $"{name}: once moving the camera is back in close ({State()})");
+    }
+
+    /// <summary>
+    /// <c>--automate=planets-reading --root=&lt;a repository with a long README&gt;</c> (PLANET-44; the WSL fixture
+    /// <c>/tmp/filescape-wsl-fixtures/readme-project</c> holds a copy of FileScape's own README): the workbench is in view on
+    /// arrival; a spin on it previews the README rendered as Markdown; R expands it into the reading view, which scrolls and
+    /// closes with Esc; a plain text file (notes.txt) is shown as plain text, markup and all; nothing is opened or fetched.
+    /// </summary>
+    private async Task ReadingTour()
+    {
+        await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
+        await Until(() => !P.Busy && Tree[App.Navigator.Current].ScanState == DirScanState.Complete, 15);
+        await WaitSettled();
+        await Seconds(3.2); // the opening glides into the arrival framing
+        var repo = App.Navigator.Current;
+        Check(P.OnBenchWorld, $"{Tree[repo].Name} is a repository with a workbench ({P.Character.Describe()})");
+        Check(P.BenchOnScreen() != null, "the workbench is in view from the arrival");
+        await Shot("reading-arrival");
+
+        // Onto the bench with a real jump, then the spin.
+        var ov = P.Composition!.Overlook;
+        await StandFacing(ov.Direction, ov.Radius + 1.4f);
+        HoldKey(Godot.Key.W, true);
+        await Frames(6);
+        await Key(Godot.Key.Space);
+        await Until(() => P.BenchRevealed, 3);
+        HoldKey(Godot.Key.W, false);
+        await Until(() => P.Walker.Grounded, 2);
+        await Seconds(1.0);
+        if (!P.StandingOnBench()) { P.ProbeStandOn(ov.Direction, ov.Top); await Frames(10); } // [direct] if the jump fell short
+        await Key(Godot.Key.Space);
+        await Seconds(0.2);
+        await Key(Godot.Key.Space);
+        await Until(() => P.PreviewOpen && P.PreviewExpandable, 3);
+        await Seconds(0.5);
+        var shown = P.PreviewShownText;
+        Check(P.PreviewOpen && P.PreviewIsMarkdown && Tree[App.Selection.Selected].Name == "README.md", $"the spin previews README.md rendered as Markdown (selected {Sel})");
+        Check(!shown.Contains("## ", StringComparison.Ordinal) && !shown.Contains("```", StringComparison.Ordinal) && !shown.Contains("](", StringComparison.Ordinal),
+            $"no Markdown syntax is left showing: “{shown[..Math.Min(120, shown.Length)].ReplaceLineEndings(" ")}…”");
+        await Shot("reading-preview-markdown");
+
+        // R: the reading view.
+        var before = App.ShellLog.Count;
+        await Key(Godot.Key.R);
+        await Until(() => App.Hud.ReadmeVisible, 5);
+        await Frames(5);
+        var full = App.Hud.ReadmeShownText;
+        Check(App.Hud.ReadmeVisible && P.ReadingViews == 1 && full.Contains("FileScape", StringComparison.Ordinal), $"R expands it into the reading view ({full.Length} characters shown)");
+        Check(App.Hud.ReadmeScrolls, "it is long enough to scroll");
+        Check(full.Contains("(image: ", StringComparison.Ordinal) && !full.Contains(".png)", StringComparison.Ordinal), "images are their alt text, never loaded");
+        await Shot("reading-view-top");
+        App.Hud.ScrollReadme(1.2f); // [direct] the wheel's effect
+        await Frames(3);
+        Check(App.Hud.ReadmeScroll > 0, F($"it scrolls (at {App.Hud.ReadmeScroll:0} px)"));
+        await Shot("reading-view-scrolled");
+        App.Hud.ScrollReadme(20f);
+        await Frames(3);
+        await Shot("reading-view-end");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+        Check(!App.Hud.ReadmeVisible, "Esc closes the reading view");
+        Check(App.ShellLog.Count == before, "reading opened nothing with Windows");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+
+        // A plain text file: shown as written.
+        var notes = Child(repo, "notes.txt");
+        if (notes < 0) { Check(false, "the fixture has notes.txt"); return; }
+        P.Approach(notes); // [direct] as Enter in the planet's list: hop there and look closer
+        await Until(() => P.PreviewOpen && P.PreviewExpandable, 4);
+        await Seconds(0.3);
+        Check(!P.PreviewIsMarkdown && P.PreviewShownText.Contains("*not emphasis*", StringComparison.Ordinal) && P.PreviewShownText.Contains("[b]not bold[/b]", StringComparison.Ordinal),
+            $"notes.txt is plain text, markup and all: “{P.PreviewShownText.ReplaceLineEndings(" ")}”");
+        await Shot("reading-plain-text");
+        await Key(Godot.Key.R);
+        await Until(() => App.Hud.ReadmeVisible, 5);
+        await Frames(3);
+        Check(App.Hud.ReadmeShownText.Contains("# not a heading", StringComparison.Ordinal), "its reading view is plain text too");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+        Check(App.ShellLog.Count == before, "still nothing opened");
     }
 
     private string Sel => App.Selection.Selected >= 0 ? Tree[App.Selection.Selected].Name : "-";

@@ -54,6 +54,7 @@ public partial class Main : IWorldSession
     {
         if (key.IsAction(InputBindings.RootPlace) || key.CtrlPressed) return false; // Ctrl+Home (root), Ctrl+L, Ctrl+O: shared
         if (key.IsAction(InputBindings.Home)) { _planets.ReturnToArrival(); return true; }
+        if (key.IsAction(InputBindings.Readme) && _planets.ExpandPreview()) return true; // R with a text preview open: read it in full (PLANET-44)
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
