@@ -1,0 +1,73 @@
+[22:31:01.836] planets-navigation probe: adapter=AMD Radeon(TM) 890M Graphics api=12_0 window=(1600, 900) ui_scale=1
+[22:31:06.245] PASS the Long Way Down is in the sample, six levels deep
+[22:31:06.376] PASS J opens the Destinations list
+[22:31:06.379] PASS denser rows: 20 px a row (the previous list: 27 px); 24 rows fit at 1600×900
+[22:31:06.379] PASS more destinations at once: 24 rows fit where the previous pitch fitted 17
+[22:31:06.379] PASS every entry here is reachable from the list (14 of 14)
+[22:31:06.417] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/01-list-dense.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:31:06.420] PASS an empty folder says so before it is opened: Quiet Moon “empty”, no ▸
+[22:31:06.477] PASS clicking ▸ opens Garden Photos in place
+[22:31:06.479] Pressed Flowers: Pending, row “listing…”
+[22:31:06.479] PASS a folder still loading says so: Pressed Flowers “listing…” (Pending; if Complete the instrument missed its window)
+[22:31:06.579] PASS opened while listing, its branch says “listing…”
+[22:31:06.618] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/02-list-still-listing.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:31:14.420] PASS when the listing arrives the row updates in place: “4 files” (files only: nothing further down)
+[22:31:14.464] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/03-list-listed.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=-
+[22:31:14.581] PASS clicking ▸ again closes it
+[22:31:14.773] PASS ↓ from the filter lands on the match (f18)
+[22:31:14.946] PASS → opens Long Way Down, → again steps into it: Meadow Gate (1 levels in)
+[22:31:15.146] PASS → opens Meadow Gate, → again steps into it: Fern Trail (2 levels in)
+[22:31:15.361] PASS → opens Fern Trail, → again steps into it: Old Bridge (3 levels in)
+[22:31:15.400] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/04-list-keyboard-deep.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=Old Bridge
+[22:31:15.462] PASS ← on a closed row steps up to its folder
+[22:31:15.529] PASS ← on an open row closes it
+[22:31:15.700] PASS Old Bridge chosen in the list
+[22:31:15.765] PASS Enter starts a trip of 4 hops and the list steps aside
+[22:31:16.714] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/05-trip-hop-1.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down selected=Long Way Down
+[22:31:18.879] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/06-trip-hop-2.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate selected=Meadow Gate
+[22:31:21.007] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/07-trip-hop-3.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail selected=Fern Trail
+[22:31:23.171] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/08-trip-hop-4.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail\Old Bridge selected=Old Bridge
+[22:31:23.711] PASS the trip panel guides it: “Trip to Old Bridge · hop 4 of 4 Long Way Down › Meadow Gate › Fern Trail › Old Bridge”
+[22:31:23.748] PASS arrived at Old Bridge (Old Bridge, arrived)
+[22:31:23.749] PASS four launches and landings, one per level (4)
+[22:31:23.754] trip phases: trip windup release flight land windup release flight land windup release flight land windup release flight land trip-arrived
+[22:31:23.793] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/09-trip-arrived.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail\Old Bridge selected=Old Bridge
+[22:31:26.360] PASS U after the trip: the parent of where you are (Fern Trail)
+[22:31:28.292] PASS Backspace undoes the U (Old Bridge)
+[22:31:30.340] PASS Backspace again: the whole trip was one step, back to where it began (Starter Sky)
+[22:31:30.655] PASS typing “hollow oak” and ↓ reaches Hollow Oak, six levels down (f1774)
+[22:31:30.694] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/10-list-filter-deep.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=Hollow Oak
+[22:31:30.754] PASS Go: a trip of 6 hops
+[22:31:35.597] PASS Stop in the air: “Trip to Hollow Oak · hop 3 of 6 · stopping after this landing Long Way Down › Meadow Gate › Fern Trail › Old Bridge › Deep Woods › Hollow Oak”
+[22:31:35.635] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/11-trip-stopping.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail selected=Fern Trail
+[22:31:36.695] PASS the hop in the air lands and the trip ends there: Fern Trail (stopped)
+[22:31:36.731] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/12-trip-stopped.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail selected=Fern Trail
+[22:31:38.642] PASS Backspace after a stopped trip: back to where it began
+[22:31:41.320] PASS Esc in a wind-up cancels that launch: you stay on Long Way Down
+[22:31:44.024] PASS and Backspace returns to the start
+[22:31:51.007] PASS a hop that has become unavailable: the trip stops on Fern Trail and says “Trip stopped at Fern Trail · Old Bridge: it is no longer there · Backspace: back to Starter Sky”
+[22:31:51.049] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/13-trip-unavailable.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail selected=Fern Trail
+[22:31:54.135] PASS Locations marks where you are and disables it: “●  ★  Arrival: Starter Sky   ·  you are here”
+[22:31:54.173] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/14-locations-here.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=Long Way Down
+[22:31:54.433] PASS choosing it does nothing (no trip to where you are)
+[22:31:54.567] PASS Esc closes Locations
+[22:31:54.832] before commit: locations=True list=True drawer=False
+[22:31:54.870] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/15-dialogs-both-open.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky selected=Long Way Down
+[22:31:55.982] in flight: locations=False list=False drawer=False phase=Flying
+[22:31:56.019] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/16-dialogs-during-flight.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Music Box selected=Music Box
+[22:31:56.019] PASS committing a destination dismisses Open Location and the list before the flight
+[22:31:57.050] PASS the commit went to Music Box (Music Box)
+[22:31:57.346] PASS ☰ Destinations opens the planet's list (Locations still open)
+[22:31:57.977] PASS the way back chosen with the mouse: both dialogs gone for the flight
+[22:32:00.416] PASS and it went up to the Starter Sky
+[22:32:06.781] PASS a trip three levels down to Fern Trail first (Fern Trail)
+[22:32:07.014] favourites: Music Box (pinned · in Starter Sky), Lantern Workshop (repository · in Starter Sky)
+[22:32:07.014] PASS ★ Favourites & repositories lists the pin (Music Box) and the repository FileScape found (Lantern Workshop)
+[22:32:07.050] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/17-favourites.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Long Way Down\Meadow Gate\Fern Trail selected=Fern Trail
+[22:32:09.181] PASS the repository is one warp away from three levels down (Lantern Workshop, Repository)
+[22:32:09.209] screenshot C:/Users/David/AppData/Local/FileScape/evidence/2026-11-16-navigation/final/18-favourite-repository.png current=C:\Users\David\AppData\Roaming\Godot\app_userdata\FileScape\samples\Starter Sky\Lantern Workshop selected=Fern Trail
+[22:32:11.506] PASS typing finds the pin as well: Music Box
+[22:32:13.555] PASS Backspace after a favourite: back where you were
+[22:32:13.555] PASS the list stays responsive: 25 rebuilds, the slowest 13.4 ms after the first (22.0 ms, with JIT); one frame is 16.7 ms
+[22:32:13.555] folders listed because the list opened them: 0 ()
+[22:32:13.561] done failures=0

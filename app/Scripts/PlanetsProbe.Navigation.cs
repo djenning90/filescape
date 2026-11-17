@@ -194,10 +194,10 @@ public partial class PlanetsProbe
     private async Task StoppedTrips(int root, int lwd, int fern, int oak)
     {
         await OpenList();
-        await TypeText("hollow");
+        await TypeText("hollow oak");
         await Frames(4);
         await Key(Godot.Key.Down);
-        Check(P.SelectedDestinationKey == Key0(oak), $"typing “hollow” and ↓ reaches Hollow Oak, six levels down ({P.SelectedDestinationKey})");
+        Check(P.SelectedDestinationKey == Key0(oak), $"typing “hollow oak” and ↓ reaches Hollow Oak, six levels down ({P.SelectedDestinationKey})");
         await Shot("list-filter-deep");
         await Click(P.DestinationGoRect.GetCenter());
         await Until(() => P.TripActive, 2);
@@ -216,7 +216,7 @@ public partial class PlanetsProbe
         Check(App.Navigator.Current == root, "Backspace after a stopped trip: back to where it began");
 
         await OpenList();
-        await TypeText("hollow");
+        await TypeText("hollow oak");
         await Frames(4);
         await Key(Godot.Key.Down);
         await Key(Godot.Key.Enter);
@@ -235,7 +235,7 @@ public partial class PlanetsProbe
     {
         P.TripTestUnavailable = bridge; // [direct]: the next hop's check treats it as gone (a real folder is never touched)
         await OpenList();
-        await TypeText("hollow");
+        await TypeText("hollow oak");
         await Frames(4);
         await Key(Godot.Key.Down);
         await Key(Godot.Key.Enter);
