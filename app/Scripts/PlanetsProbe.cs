@@ -114,6 +114,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-audio-gaps") await AudioGaps(); // PlanetsProbe.Audio.cs (FOLLOW-2)
         else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
+        else if (Mode == "planets-near-far") await NearFarRun(); // PlanetsProbe.NearFar.cs (PLANET-58)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
@@ -873,10 +874,11 @@ public partial class PlanetsProbe : ProbeBase
                 var a = P.Camera.UnprojectPosition(anchor);
                 var vp = App.GetViewport().GetVisibleRect();
                 var clamped = rect.Position.X <= vp.Position.X + 3 || rect.End.X >= vp.End.X - 3 || rect.Position.Y <= vp.Position.Y + 3;
-                // A pinned name may be raised one slot (its height + 4) on a longer stem when another name holds its place
-                // (SignLayer.PinnedSlots, 2026-11-17): either height counts as on its pad.
+                // A pinned name may be raised straight up on a longer stem when another name holds its place (one slot,
+                // SignLayer.PinnedSlots, 2026-11-17; or just over the names in its way, PLANET-58): anywhere from its own
+                // slot up to the longest stem counts as on its pad; lower, or sideways, does not.
                 var dy = rect.End.Y + 16 - a.Y;
-                var gapY = MathF.Min(MathF.Abs(dy), MathF.Abs(dy + rect.Size.Y + 4));
+                var gapY = dy > 0 ? dy : MathF.Max(0, a.Y - rect.End.Y - Ui.SignLayer.PinnedMaxStemPx);
                 if (!clamped) maxOffset = MathF.Max(maxOffset, MathF.Max(MathF.Abs(rect.GetCenter().X - a.X), gapY));
             }
 

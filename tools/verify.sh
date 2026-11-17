@@ -125,6 +125,12 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey planets-fixture planets-fixture.log 300 --automate=planets-fixture "--root=$W" --vis=planets --test-shell=record --ui-scale=1 "--wsl-root=${FILESCAPE_WSL_FIXTURE:-}" --tier=functional
   # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home).
   journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # PLANET-58: a near and a far launcher lined up on a crowded world (a fixture shaped like a distribution's root, made
+  # if missing, and Constellations on the Starter Sky): both named, attached, the near one larger, both clickable.
+  ROOTLIKE="$(ls -1d /tmp/filescape-wsl-fixtures/rootlike-* 2>/dev/null | sort | tail -1)"
+  [[ -z "$ROOTLIKE" ]] && "$REPO/tools/make-wsl-fixture.sh" --root-like >/dev/null && ROOTLIKE="$(ls -1d /tmp/filescape-wsl-fixtures/rootlike-* 2>/dev/null | sort | tail -1)"
+  journey planets-near-far-root planets-near-far.log 200 --automate=planets-near-far "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}${ROOTLIKE//\//\\}" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  journey planets-near-far-sample planets-near-far.log 250 --automate=planets-near-far --root=sample --world=Constellations --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,
