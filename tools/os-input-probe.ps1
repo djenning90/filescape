@@ -110,7 +110,7 @@ function Right-Down { Guard-Pointer; [void]$script:HeldButtons.Add('right'); [Fs
 function Right-Up { [FsInput]::Mouse(0x0010, 0, 0, 0); [void]$script:HeldButtons.Remove('right') }
 function Middle-Down { Guard-Pointer; [void]$script:HeldButtons.Add('middle'); [FsInput]::Mouse(0x0020, 0, 0, 0) }
 function Middle-Up { [FsInput]::Mouse(0x0040, 0, 0, 0); [void]$script:HeldButtons.Remove('middle') }
-function Wheel([int]$notches) { Guard-Pointer; [FsInput]::Mouse(0x0800, 0, 0, [uint32]([int]($notches * 120) -band 0xFFFFFFFF)) }
+function Wheel([int]$notches) { Guard-Pointer; [FsInput]::Mouse(0x0800, 0, 0, [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]($notches * 120)), 0)) }
 function Drag-Relative([int]$dx, [int]$dy, [int]$steps = 10) { for ($i = 0; $i -lt $steps; $i++) { Mouse-Move ([int]($dx / $steps)) ([int]($dy / $steps)); Start-Sleep -Milliseconds 16 } }
 
 function Save-WindowShot($h, $path) {
