@@ -184,6 +184,8 @@ public sealed partial class SkySynth
         d.CycleReady = false;
         d.FillFrom = long.MinValue;
         d.CounterDegree = 2;
+        d.SecondThemeHeard = false;
+        d.SecondThemeCycle = -1;
         d.DroneUntil = long.MinValue;
         d.ResetMelody();
     }
@@ -527,6 +529,13 @@ public sealed partial class SkySynth
         var free = bar - 8; // bars 8–15 of the cycle: four 2-bar phrases
         var phrase = free / 2;
         var first = free % 2 == 0 && inBar == 0;
+        if (SecondTheme(d, bar, inBar, cycle, frame, chord))
+        {
+            // The second theme has bars 8–11 (AD-66): the band motif rests; the revisit's counter-line goes on under it.
+            if (d.Development >= 2 && inBar % 8 == 0) CounterNote(d, frame, chord, inBar == 0 ? 1f : 0.8f);
+            return;
+        }
+
         switch (d.Identity)
         {
             case MusicIdentity.Hub:
@@ -1633,9 +1642,11 @@ public sealed partial class SkySynth
             Hits(Silent), SnareKind.Clap, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Pluck, ArpKind.None, Rungs(Silent),
             0.55f, 1f, 0.12f, 1, Arrangement.Festival, PumpDepth: 0.6f, Level: 1f),
-        // Band 3, the deep woods, the orchestral arrangement (AD-52): dorian, a broad half-time theme (72 BPM) over the
-        // string ostinato's eighths (144); the cellos carry the band motif and the flute echoes it.
-        new(MusicIdentity.DeepWoods, 144f, 0f, Dorian, [0, 2, 6, 3], "dorian (orchestral)", Lead.Cello, 1.0f,
+        // Band 3, the deep woods, the orchestral arrangement (AD-52): dorian, a broad half-time theme over the string
+        // ostinato's eighths; the cellos carry the band motif and the flute echoes it. AD-66 lifted it 144 → 156 BPM (the
+        // theme 72 → 78, +8.3 %): DJ heard it in a deep project folder and asked for a modest lift keeping its feel; its
+        // long tails scale with the tempo (OrchestraTails), so they keep their length in beats.
+        new(MusicIdentity.DeepWoods, OrchestraBpm, 0f, Dorian, [0, 2, 6, 3], "dorian (orchestral)", Lead.Cello, 1.0f,
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Deep, ArpKind.None, Rungs(Silent),
             0.65f, 1f, 0.3f, 1, Arrangement.Orchestral, HalfTime: true, Level: 0.85f),
@@ -1807,6 +1818,14 @@ public sealed partial class SkySynth
         public bool RestBar;
         public int MelodyDegree;
         public int CounterDegree = 2;
+
+        /// <summary>
+        /// The second theme (AD-66): whether this visit has heard it yet (a revisit plays it in its first free section), the
+        /// cycle it plays in (−1: this cycle's bars 8–11 keep the band motif), and its last note's scale index (it is voice-led).
+        /// </summary>
+        public bool SecondThemeHeard;
+        public long SecondThemeCycle = -1;
+        public int SecondDegree;
         public int Chord;
         public ThemeVariation Variation;
         public int ThemeBars = ThemeLengthBars;

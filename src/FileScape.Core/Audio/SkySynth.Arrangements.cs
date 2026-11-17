@@ -452,6 +452,24 @@ public sealed partial class SkySynth
     // ---------------------------------------------------------------- the orchestra (band 3, the deep woods)
 
     /// <summary>
+    /// The orchestra's pulse, BPM (the theme at half: 78). AD-66 (PLANET-64): lifted from the written 144 by +8.3 % at DJ's
+    /// request ("a modest tempo lift while keeping what made it feel that way"); the score, its phrasing, the harmonic
+    /// rhythm (a chord per bar) and the drama are unchanged, so everything measured in sixteenths simply runs 8 % sooner.
+    /// </summary>
+    private const float OrchestraBpm = 156f;
+
+    /// <summary>The tempo the orchestra was written and balanced at (AD-52), BPM: the reference for <see cref="OrchestraTails"/>.</summary>
+    private const float OrchestraWrittenBpm = 144f;
+
+    /// <summary>
+    /// The factor on the orchestra's long tails (the sections' and basses' releases over the chord change, the horns', the
+    /// harp's ring and the bar-5 cymbal's), written in seconds at 144 BPM: 144 / the tempo (0.92 at 156), so a tail lasts
+    /// as many beats as it did and the chords overlap as before. Attacks and the percussion's own decays stay in seconds
+    /// (they are the instruments' physics, not the phrasing); the reverb is shared by every world and unchanged.
+    /// </summary>
+    private static float OrchestraTails(Deck d) => OrchestraWrittenBpm / d.Style.Bpm;
+
+    /// <summary>
     /// The orchestra's dynamics per bar, 0..1 (pp ≈ 0.4 … ff 1): through the theme a crescendo from the woodwind's solo to
     /// the tutti cadence; between returns soft (the cellos' motif), then a second wave (horn call, answer, a tutti climax on
     /// bar 14) and a diminuendo into the next statement.
@@ -515,7 +533,8 @@ public sealed partial class SkySynth
         var dyn = OrchestraDynamics(d, bar);
         var next = OrchestraDynamics(d, bar < 0 ? 0 : (bar + 1) % CycleBars);
         var pause = bar == OrchestraClimaxBar - 1; // the sections stop for the general pause (AD-60)
-        var release = pause ? 0.12f : 0.9f;
+        var tails = OrchestraTails(d);
+        var release = pause ? 0.12f : 0.9f * tails;
         if (pause) hold = MathF.Max(0.1f, hold - (float)((16 - OrchestraPauseSixteenth) * d.FramesPerSixteenth / _rate) - 0.05f);
         ReadOnlySpan<(int Tone, int Octave, float Pan)> section = [(0, 0, 0.15f), (2, 12, -0.3f), (4, 12, -0.1f)];
         foreach (var (tone, octave, pan) in section)
@@ -530,12 +549,12 @@ public sealed partial class SkySynth
 
         Enqueue(frame, NoteSpec.Saw(MidiHz(p.Root - 12 + BassSemitones(p, chord)), 2, 5f, 500f + 500f * dyn) with
         {
-            Attack = 0.2f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = pause ? release : 0.8f, Gain = 0.03f * (0.5f + 0.5f * dyn), Pan = 0.45f, Send = 0.45f, Group = d.Group,
+            Attack = 0.2f, Decay = 2f, Sustain = 0.85f, Hold = hold, Release = pause ? release : 0.8f * tails, Gain = 0.03f * (0.5f + 0.5f * dyn), Pan = 0.45f, Send = 0.45f, Group = d.Group,
         });
         if (dyn < 0.8f) return;
         foreach (var tone in (ReadOnlySpan<int>)[2, 4])
         {
-            Enqueue(frame, LeadSpec(Lead.Horn, MidiHz(p.Root + ScaleNote(p.Scale, chord + tone)), hold) with { Attack = 0.25f, Gain = 0.018f * dyn, Pan = 0.25f, Group = d.Group, Release = pause ? release : 0.45f });
+            Enqueue(frame, LeadSpec(Lead.Horn, MidiHz(p.Root + ScaleNote(p.Scale, chord + tone)), hold) with { Attack = 0.25f, Gain = 0.018f * dyn, Pan = 0.25f, Group = d.Group, Release = pause ? release : 0.45f * tails });
         }
     }
 
@@ -593,7 +612,7 @@ public sealed partial class SkySynth
             if (inBar == 0) Timpani(d, frame, 0, 0.8f); // and the tonic under it: the climax's weight
         }
 
-        if (inBar == 0 && bar == 5) CymbalSwell(d, frame, 16, 0.8f);
+        if (inBar == 0 && bar == 5) CymbalSwell(d, frame, 16, 0.8f * OrchestraTails(d));
         if (inBar == 0 && bar == OrchestraClimaxBar - 1) CymbalSwell(d, frame, OrchestraPauseSixteenth, 0.1f); // choked for the general pause
         if (inBar == 0 && (bar == 6 || bar == 14)) Crash(frame, 0.8f, g);
         if (bar == CycleBars - 1 && inBar < 8) Harp(d, frame, chord, 7 - inBar, 0.8f);
@@ -677,7 +696,7 @@ public sealed partial class SkySynth
     {
         var p = d.Profile;
         var midi = p.Root + 12 + ScaleNote(p.Scale, LadderDegree(p, chord, rung));
-        Enqueue(at, NoteSpec.Bell(MidiHz(midi), ratio: 2f, index: 0.8f, indexDecay: 0.05f) with { Attack = 0.002f, Decay = 1.2f, Gain = 0.04f * vel, Pan = 0.4f, Send = 0.6f, ToneHz = 5000, Group = d.Group });
+        Enqueue(at, NoteSpec.Bell(MidiHz(midi), ratio: 2f, index: 0.8f, indexDecay: 0.05f) with { Attack = 0.002f, Decay = 1.2f * OrchestraTails(d), Gain = 0.04f * vel, Pan = 0.4f, Send = 0.6f, ToneHz = 5000, Group = d.Group });
     }
 
     /// <summary>The orchestra's first downbeat: a harp glissando up the chord, a timpani stroke and a soft cymbal.</summary>

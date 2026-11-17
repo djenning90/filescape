@@ -55,6 +55,9 @@ public enum MelodyPart
 
     /// <summary>A world's own motif between returns: the band motif, the repository's commit figure, a typed command, a gateway call.</summary>
     Motif,
+
+    /// <summary>A folder band's second theme between returns (AD-66: the lantern song or the trail call, SkySynth.SecondThemes.cs).</summary>
+    SecondTheme,
 }
 
 /// <summary>A melody note as it is scheduled (diagnostics: <see cref="SkySynth.MelodyObserver"/>).</summary>
@@ -92,7 +95,7 @@ public enum MusicIdentity
     /// <summary>
     /// Folder band 3 (the deep woods), the orchestral arrangement (AD-52): strings, horns, woodwinds, timpani and harp in
     /// dorian, the theme passed between them with dynamics that rise and fall across the cycle; a broad half-time theme
-    /// over an eighth-note string ostinato.
+    /// over an eighth-note string ostinato (156 BPM under a 78 BPM theme since AD-66; 144 under 72 before).
     /// </summary>
     DeepWoods,
 
@@ -124,10 +127,10 @@ public enum MusicIdentity
 /// The Planets experience's original procedural audio ("Lantern Cosmos"): generative music and pitched sound effects,
 /// synthesised from scratch in plain C# (no engine types, no samples), so it can be rendered offline and tested.
 /// <para>
-/// <b>Worlds (AD-49, AD-52, AD-60).</b> The music has a family of ten identities (<see cref="MusicIdentity"/>), nine chosen from
+/// <b>Worlds (AD-49, AD-52, AD-60, AD-66).</b> The music has a family of ten identities (<see cref="MusicIdentity"/>), nine chosen from
 /// a world's <see cref="WorldCharacter"/> by <see cref="IdentityOf"/> (the tenth, the abyss, is AD-52's hazard score kept for a
 /// future world type), each with its own tempo (<see cref="TempoFor"/>: the hub 94 BPM, roots 112–116, the repository 126,
-/// folder bands 120 → 172, the hazard world 152), groove, instruments and motif. Three folder bands are AD-52's arrangements
+/// folder bands 120 → 126 → 156 → 172 (the orchestra lifted from 144 by AD-66), the hazard world 152), groove, instruments and motif. Three folder bands are AD-52's arrangements
 /// (SkySynth.Arrangements.cs, with AD-60's breaks, builds, drops and climaxes): the trails a festival drop and build, the deep
 /// woods an orchestra, the underglow drum and bass; the hazard world plays AD-60's frenetic phrygian score
 /// (SkySynth.Escape.cs); the orchestra, drum and bass and the abyss
@@ -145,7 +148,9 @@ public enum MusicIdentity
 /// (<see cref="ThemeMelody"/>, 8 bars: a 2-bar motif, its answer, the motif raised, a cadence; written in scale degrees so it
 /// fits every key and mode) on the world's lead instrument, then 8 bars of the world's own material (the hub's music box
 /// and rising "journeys", the band motif — the theme's motif made bouncy and varied per band —, the repository's commit
-/// figure, a typed command and its answer, a gateway call). Each return is a <see cref="ThemeVariation"/>. In the hub the
+/// figure, a typed command and its answer, a gateway call). In the folder bands, bars 8–11 of every odd cycle (and of a
+/// fresh revisit's first free section) play a second theme instead of the band motif (AD-66, SkySynth.SecondThemes.cs: the
+/// lantern song in the outskirts and the deep woods, the trail call in the trails and the underglow). Each return is a <see cref="ThemeVariation"/>. In the hub the
 /// theme's cadence is replaced by a rising question that stays open. Under it: a pad (a progression per mode), a bass line
 /// and, outside the hub, a synthesised drum kit (kick, snare or clap, hats, toms, ticks) per identity; while
 /// <see cref="SetFlight"/> is above zero, a rising arpeggio joins and the kick and snare thin out.
