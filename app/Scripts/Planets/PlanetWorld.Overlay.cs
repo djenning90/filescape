@@ -149,9 +149,16 @@ public partial class PlanetWorld
         open.Pressed += () => _s.OpenSelection();
         var row = new HBoxContainer();
         row.AddChild(open);
-        row.AddChild(MakeExpandButton()); // PlanetWorld.Reading: the expanded reading view
         row.AddChild(close);
-        v.AddChild(_previewTitle);
+        // The title row: the name, and in the upper-right corner the Expand icon (PLANET-52; PlanetWorld.Reading).
+        var titleRow = new HBoxContainer();
+        _previewTitle.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _previewTitle.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        titleRow.AddChild(_previewTitle);
+        titleRow.AddChild(MakeExpandButton());
+        _previewText.MetaClicked += meta => OnPreviewLink(meta.AsString()); // PlanetWorld.Reading: links in the excerpt
+        _previewText.MetaUnderlined = false;
+        v.AddChild(titleRow);
         v.AddChild(_previewMeta);
         v.AddChild(_previewImage);
         v.AddChild(_previewText);
@@ -288,7 +295,7 @@ public partial class PlanetWorld
             {
                 var r = t.Result;
                 if (r.Error != null) PreviewSays(id, r.Error);
-                else PreviewText(id, name, r.Truncated ? r.Text + "\n…" : r.Text);
+                else PreviewText(id, name, r.Text, excerpt: r.Truncated);
             }));
         }
         else

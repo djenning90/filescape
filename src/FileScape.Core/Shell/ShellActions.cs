@@ -149,6 +149,7 @@ public sealed class WindowsShellActions : IShellActions
             nShow = SwShowNormal,
         };
         _ = CoInitializeEx(IntPtr.Zero, CoinitApartmentThreaded | CoinitDisableOle1Dde);
+        LetTheViewerComeForward();
         if (ShellExecuteExW(ref info))
         {
             return new ShellResult(true, false, $"Opened with Windows: {path}");
@@ -226,7 +227,34 @@ public sealed class WindowsShellActions : IShellActions
         }
     }
 
+    /// <summary>
+    /// PLANET-52: lets the app that opens the file take the foreground, so it comes forward instead of only flashing on
+    /// the taskbar (an app that was already running, such as an editor receiving the file, is otherwise refused by
+    /// Windows' foreground lock). Only when FileScape itself is the foreground app, which it is when a person has just
+    /// pressed Enter or clicked Open: FileScape passes on its own right and never takes the foreground from anyone else.
+    /// The right lasts until the next input (AllowSetForegroundWindow, ASFW_ANY); Alt+Tab returns to FileScape as usual.
+    /// </summary>
+    private static void LetTheViewerComeForward()
+    {
+        try
+        {
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return;
+            _ = GetWindowThreadProcessId(fg, out var pid);
+            if (pid != (uint)Environment.ProcessId) return;
+            if (AllowSetForegroundWindow(AsfwAny)) ViewerAllowedForward++;
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // Not Windows' user32 (never on Windows): opening goes on without it.
+        }
+    }
+
+    /// <summary>Opens for which FileScape was the foreground app and passed on its right to come forward (diagnostics, logged by the app).</summary>
+    public static int ViewerAllowedForward { get; private set; }
+
     // Win32 values (shellapi.h, winuser.h, objbase.h), fixed by Windows.
+    private const uint AsfwAny = 0xFFFFFFFF;
     private const uint SeeMaskNoAsync = 0x00000100;
     private const uint SeeMaskFlagNoUi = 0x00000400;
     private const int SwShowNormal = 1;
@@ -260,5 +288,14 @@ public sealed class WindowsShellActions : IShellActions
 
     [DllImport("ole32.dll")]
     private static extern int CoInitializeEx(IntPtr reserved, uint coInit);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 #pragma warning restore SYSLIB1054
 }

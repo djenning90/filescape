@@ -46,6 +46,8 @@ public partial class Main : IWorldSession
     void IWorldSession.Select(int id) => Select(id);
     void IWorldSession.OpenSelection() => RequestOpen();
     void IWorldSession.Toast(string text) => _hud.Toast(text);
+    void IWorldSession.ShowDocument(string path, string title, string? anchor) => ShowDocument(path, title, anchor);
+    void IWorldSession.FollowLink(string documentPath, FileScape.Core.Shell.MarkdownLink link) => FollowReaderLink(new Ui.ReaderDocument("", "", "", documentPath), link);
     bool IWorldSession.ShowReadme() { ShowReadme(); return true; }
     string IWorldSession.Summary(int id) => _tree == null ? "" : PlaceText.Summary(_tree, _tree[id]);
     TimeSpan IWorldSession.Now => _clock.Elapsed;

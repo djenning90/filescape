@@ -77,6 +77,12 @@ public interface IWorldSession
     /// <summary>Shows the current folder's README (Main's implementation always returns true).</summary>
     bool ShowReadme();
 
+    /// <summary>Reads a file into the HUD's reading view (bounded, off the main thread; Markdown with usable links; PLANET-52/53).</summary>
+    void ShowDocument(string path, string title, string? anchor = null);
+
+    /// <summary>Follows a link clicked in a document's preview, as a click in the reading view does (Main.Reader).</summary>
+    void FollowLink(string documentPath, Core.Shell.MarkdownLink link);
+
     /// <summary>A short message on the HUD.</summary>
     void Toast(string text);
 

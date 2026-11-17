@@ -25,6 +25,22 @@ if [[ "${1:-}" == "--readme" ]]; then
   cp "$repo/docs/units.md" "$root/docs/units.md"
   printf 'namespace Demo;\npublic static class Program { public static void Main() { } }\n' > "$root/src/Program.cs"
   printf 'Plain notes: *not emphasis*, # not a heading, [b]not bold[/b].\nSecond line.\n' > "$root/notes.txt"
+  # PLANET-52/53: guide.md has every kind of link the reader handles (an anchor, relative links with a space written
+  # both ways, a folder, a file#section, a web link, a missing target) and a remote image that must never be fetched;
+  # long enough that the anchor's jump and the end of the document are measurable. Ends with END-OF-GUIDE.
+  printf '# Getting started\n\nStart here: open the docs, then come back.\n' > "$root/docs/getting started.md"
+  {
+    printf '# Guide\n\n![Build badge](https://img.shields.io/badge/build-passing-green.svg)\n\n'
+    printf -- '- [Jump to the last section](#the-last-section)\n'
+    printf -- '- [Getting started](docs/getting%%20started.md)\n'
+    printf -- '- [Getting started, written with a space](<docs/getting started.md>)\n'
+    printf -- '- [The source folder](src/)\n'
+    printf -- '- [Units: angles](docs/units.md#angles)\n'
+    printf -- '- [FileScape on the web](https://example.com/filescape)\n'
+    printf -- '- [A missing page](docs/missing.md)\n\n'
+    for i in $(seq 1 60); do printf '## Section %d\n\nParagraph %d of the guide, long enough to wrap in the narrow preview and to make the whole document scroll.\n\n' "$i" "$i"; done
+    printf '## The last section\n\nYou reached the end.\n\nEND-OF-GUIDE\n'
+  } > "$root/guide.md"
   distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
   echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
   exit 0
