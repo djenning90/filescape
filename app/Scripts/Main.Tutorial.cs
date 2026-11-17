@@ -1,3 +1,4 @@
+using FileScape.App.Planets;
 using FileScape.Core.Planets;
 using FileScape.Core.Samples;
 using Godot;
@@ -16,8 +17,12 @@ namespace FileScape.App;
 /// </summary>
 public partial class Main
 {
-    /// <summary>One step of the walkthrough: what to do, where (the folder it happens in), what to aim at, and how we know it is done.</summary>
-    private sealed record Lesson(string Title, string Instruction, Func<int> Folder, Func<(NVector3 Dir, string Label, float Lift)?> Target, Func<bool> Done, Action? Enter = null);
+    /// <summary>
+    /// One step of the walkthrough: what to do, the keys it uses (shown as key caps on the card), where (the folder it
+    /// happens in), where to go (a <see cref="TutorialTarget"/>, or null for a step with no place to go: the card's key
+    /// caps are then the cue, AD-55), and how we know it is done.
+    /// </summary>
+    private sealed record Lesson(string Title, string Instruction, string[] Keys, Func<int> Folder, Func<TutorialTarget?> Target, Func<bool> Done, Action? Enter = null);
 
     private List<Lesson>? _lessons;
     private int _lesson = -1;
@@ -47,6 +52,19 @@ public partial class Main
     /// edge of the 62° view plus a margin.</summary>
     private const float TurnHintDegrees = 50f;
 
+    /// <summary>Beyond this bearing, degrees, the card's hint says the beacon is behind you (the edge arrow says the same).</summary>
+    private const float BehindHintDegrees = 120f;
+
+    /// <summary>Where the screen chevron floats over a spot on open ground, a launcher pad and the bench, metres above the spot.</summary>
+    private const float MarkerOverGroundMetres = 3.2f, MarkerOverPadMetres = 3f, MarkerOverBenchMetres = 2.6f;
+
+    /// <summary>The ring round the tower, metres beyond its footprint: a little inside <see cref="LandmarkReachMetres"/>,
+    /// so stepping into the ring always completes the step.</summary>
+    private const float LandmarkRingMetres = 2.2f;
+
+    /// <summary>The bench's ring, metres beyond the deck's radius (standing on its rim counts as there).</summary>
+    private const float BenchRimMetres = 0.6f;
+
     /// <summary>How far the overview must be orbited, radians (≈ 34°).</summary>
     private const float OverviewOrbitRadians = 0.6f;
 
@@ -55,6 +73,7 @@ public partial class Main
 
     private PanelContainer _lessonCard = null!;
     private Label _lessonTitle = null!, _lessonText = null!, _lessonFeedback = null!;
+    private HBoxContainer _lessonKeys = null!;
     private Button _lessonBack = null!, _lessonSkip = null!, _lessonRestart = null!, _lessonLeave = null!, _lessonExplore = null!, _lessonStay = null!;
     private PanelContainer _welcome = null!;
     private bool _welcomeOpen;
@@ -69,6 +88,12 @@ public partial class Main
     public string TutorialTitle => _lesson >= 0 && _lessons != null ? _lessons[_lesson].Title : _tutorialFinished ? "done" : "";
 
     public bool TutorialOffRoute => _lessonBack.Visible;
+
+    /// <summary>The lesson card's rectangle, viewport units (probes check the cue stays clear of it).</summary>
+    public Rect2 LessonCardRect => _lessonCard.GetGlobalRect();
+
+    /// <summary>The card's hint line as shown ("" when hidden): the turn hint, the text backup for the cue (probes).</summary>
+    public string LessonHint => _lessonFeedback.Visible ? _lessonFeedback.Text : "";
 
     public bool WelcomeOpen => _welcomeOpen;
 
@@ -94,10 +119,17 @@ public partial class Main
         _lessonTitle = new Label();
         _lessonTitle.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.45f));
         _lessonTitle.AddThemeFontSizeOverride("font_size", 15);
-        _lessonText = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(540, 0) };
+        _lessonText = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(400, 0), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _lessonText.AddThemeFontSizeOverride("font_size", 17);
+        // The step's keys as key caps beside the instruction: the cue for a step with no place to go (AD-55).
+        _lessonKeys = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        _lessonKeys.AddThemeConstantOverride("separation", 4);
+        var textRow = new HBoxContainer();
+        textRow.AddThemeConstantOverride("separation", 10);
+        textRow.AddChild(_lessonText);
+        textRow.AddChild(_lessonKeys);
         _lessonFeedback = new Label { Visible = false };
-        _lessonFeedback.AddThemeColorOverride("font_color", new Color(0.6f, 1f, 0.7f));
+        _lessonFeedback.AddThemeColorOverride("font_color", TutorialCue.CueColor);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 6);
         Button B(string text, Action act, string tip)
@@ -119,7 +151,7 @@ public partial class Main
         _lessonStay = B("Stay in the sample world", EndTutorial, "Close the walkthrough and keep playing here.");
         _lessonLeave = B("Leave", EndTutorial, "Close the walkthrough (Help → Learn to play brings it back).");
         v.AddChild(_lessonTitle);
-        v.AddChild(_lessonText);
+        v.AddChild(textRow);
         v.AddChild(_lessonFeedback);
         v.AddChild(row);
 
@@ -217,7 +249,7 @@ public partial class Main
         _tutorialFinished = false;
         _lessonCard.Visible = false;
         _planets.SetTutorialTarget(null);
-        _planets.MakeRoomForLesson(false);
+        _planets.MakeRoomForLesson(0);
     }
 
     /// <summary>The lessons, built against the Starter Sky that is loaded now (folder ids are looked up by name).</summary>
@@ -229,44 +261,48 @@ public partial class Main
         var workshop = Child("Lantern Workshop");
         var musicBox = Child("Music Box");
         int Here() => _nav.Current;
-        (NVector3, string, float)? Pad(int target, string label) =>
-            _planets.Composition?.Launchers.FirstOrDefault(l => l.TargetId == target) is { } l ? (l.Direction, label, 0.35f) : null;
+        TutorialTarget? Pad(int target, string action) =>
+            _planets.Composition?.Launchers.FirstOrDefault(l => l.TargetId == target) is { } l ? new TutorialTarget(l.Direction, action, l.PadTop, l.PadRadius, MarkerOverPadMetres) : null;
+        // The bench's ring stands on the ground round it (a ring round the raised deck floats in the air); you count as
+        // there on the deck's rim too.
+        TutorialTarget? Bench(string action) =>
+            _planets.Composition?.Overlook is { } ov ? new TutorialTarget(ov.Direction, action, 0f, ov.Radius + BenchRimMetres, ov.Top + MarkerOverBenchMetres) : null;
 
         return
         [
-            new("1 · Look around", "Hold the left mouse button and drag to look around.", () => root, () => null,
+            new("1 · Look around", "Hold the left mouse button and drag to look around.", ["drag", "← →"], () => root, () => null,
                 () => _tutHeadingTurned >= LookAroundDegrees,
                 () => { _tutHeadingTurned = 0; _tutLastHeading = _planets.CameraHeadingDegrees(); }),
-            new("1 · Walk to the tower", "Walk to the glowing marker with W A S D. You run where the camera looks.", () => root,
-                () => _planets.Composition?.Landmark is { } lm ? (lm.Direction, "Walk here", 0f) : null,
+            new("1 · Walk to the tower", "Walk into the green ring round the tower with W A S D. You run where the camera looks.", ["W A S D"], () => root,
+                () => _planets.Composition?.Landmark is { } lm ? new TutorialTarget(lm.Direction, "Walk into the ring", 0f, lm.Radius + LandmarkRingMetres, lm.Top + MarkerOverGroundMetres) : null,
                 () => _planets.Composition?.Landmark is { } lm && _planets.DistanceTo(lm.Direction) <= lm.Radius + LandmarkReachMetres),
-            new("2 · Jump", "Press Space to jump. Press it again in the air to twirl higher.", () => root, () => null,
+            new("2 · Jump", "Press Space to jump. Press it again in the air to twirl higher.", ["Space"], () => root, () => null,
                 () => _planets.Walker.Jumps > _tutJumps0,
                 () => _tutJumps0 = _planets.Walker.Jumps),
-            new("2 · Fly to a folder", "Folders hang in the sky above flower launchers. Stand on the Lantern Workshop launcher and press Space.", () => root,
-                () => Pad(workshop, "Lantern Workshop launcher"),
+            new("2 · Fly to a folder", "Folders hang in the sky above flower launchers. Follow the green beacon to the Lantern Workshop launcher, stand on it and press Space.", ["Space"], () => root,
+                () => Pad(workshop, "Stand here · press Space to fly"),
                 () => Here() == workshop && !_planets.Busy),
-            new("3 · A software project", "Lantern Workshop is a project, so its lookout is a workbench. Jump onto the bench.", () => workshop,
-                () => _planets.Composition?.Overlook is { } ov ? (ov.Direction, "Workbench", ov.Top) : null,
+            new("3 · A software project", "Lantern Workshop is a project, so its lookout is a workbench. Follow the beacon and jump onto the bench.", ["Space"], () => workshop,
+                () => Bench("Run at it and press Space"),
                 () => _planets.BenchRevealed),
-            new("3 · Read the README", "Press E on the bench to read the project's README. (Feeling playful? Spin: Space, then Space again in the air.)", () => workshop,
-                () => _planets.Composition?.Overlook is { } ov ? (ov.Direction, "Workbench", ov.Top) : null,
+            new("3 · Read the README", "Press E on the bench to read the project's README. (Feeling playful? Spin: Space, then Space again in the air.)", ["E"], () => workshop,
+                () => Bench("Press E to read the README"),
                 () => _planets.PreviewOpen && _selection.Selected >= 0 && t.Contains(_selection.Selected) && t[_selection.Selected].Name.StartsWith("README", StringComparison.OrdinalIgnoreCase)),
-            new("4 · Up a level", "Press U to go up to the parent world: the Starter Sky.", () => workshop, () => null,
+            new("4 · Up a level", "Press U to go up to the parent world: the Starter Sky.", ["U"], () => workshop, () => null,
                 () => Here() == root && !_planets.Busy),
-            new("4 · Straight to a folder", "Press J for this world's list, then choose Music Box (double-click, or ↓ and Enter).", () => root, () => null,
+            new("4 · Straight to a folder", "Press J for this world's list, then choose Music Box (double-click, or ↓ and Enter).", ["J", "↓", "Enter"], () => root, () => null,
                 () => Here() == musicBox && !_planets.Busy),
-            new("4 · Up is the parent", "Press U. Up always goes to the folder above: the Starter Sky.", () => musicBox, () => null,
+            new("4 · Up is the parent", "Press U. Up always goes to the folder above: the Starter Sky.", ["U"], () => musicBox, () => null,
                 () => Here() == root && !_planets.Busy),
-            new("4 · Back is your history", "Now press Backspace. Back retraces your steps: to Music Box, where you just were — not further up.", () => root, () => null,
+            new("4 · Back is your history", "Now press Backspace. Back retraces your steps: to Music Box, where you just were — not further up.", ["Backspace"], () => root, () => null,
                 () => Here() == musicBox && !_planets.Busy),
-            new("5 · The overview", "Press T to see every folder you know as star systems.", () => musicBox, () => null,
+            new("5 · The overview", "Press T to see every folder you know as star systems.", ["T"], () => musicBox, () => null,
                 () => _planets.UniverseOpen,
                 () => _tutFeetBeforeOverview = _planets.Walker.Feet),
-            new("5 · Look round it", "Drag with the left mouse button to orbit. Click a world to select it if you like.", () => musicBox, () => null,
+            new("5 · Look round it", "Drag with the left mouse button to orbit. Click a world to select it if you like.", ["drag"], () => musicBox, () => null,
                 () => _planets.UniverseOpen && MathF.Abs(_planets.UniverseYaw - _tutYaw0) >= OverviewOrbitRadians,
                 () => _tutYaw0 = _planets.UniverseYaw),
-            new("5 · Back where you stood", "Press Esc to come back down to the exact spot you left.", () => musicBox, () => null,
+            new("5 · Back where you stood", "Press Esc to come back down to the exact spot you left.", ["Esc"], () => musicBox, () => null,
                 () => !_planets.UniverseOpen && !_planets.Busy && NVector3.Distance(_planets.Walker.Feet, _tutFeetBeforeOverview) <= BackWhereYouStoodMetres),
         ];
     }
@@ -275,7 +311,7 @@ public partial class Main
     private void TickTutorial(float dt)
     {
         if (!TutorialActive) return;
-        _planets.MakeRoomForLesson(_lessonCard.Visible);
+        _planets.MakeRoomForLesson(_lessonCard.Visible ? _lessonCard.GetGlobalRect().End.Y : 0);
         if (_tutorialWaiting)
         {
             if (!InStarterSkyRoot() || _planets.Composition == null || _planets.Busy || _nav.Current != _nav.Root) return;
@@ -311,15 +347,17 @@ public partial class Main
         }
 
         var target = _nav.Current == lesson.Folder() && !_planets.UniverseOpen ? lesson.Target() : null;
-        if (target is { } tg) _planets.SetTutorialTarget(tg.Dir, tg.Label, tg.Lift);
-        else _planets.SetTutorialTarget(null);
+        _planets.SetTutorialTarget(target);
 
-        // Which way to turn when the marker is out of view (beyond ≈ 50° of the camera's heading): one line, no arrow
-        // floating in the world to chase.
+        // The text backup for the beacon and the edge arrow (AD-55): which way to turn when the beacon is out of view
+        // (beyond ≈ 50° of the camera's heading), and that it is behind you beyond 120°.
         if (target is { } t2 && _lessonDoneFor <= 0)
         {
-            var bearing = _planets.CameraTurnTo(t2.Dir);
-            _lessonFeedback.Text = MathF.Abs(bearing) > TurnHintDegrees ? (bearing > 0 ? "The marker is to your right →  (drag, or press →)" : "←  The marker is to your left  (drag, or press ←)") : "";
+            var bearing = _planets.CameraTurnTo(t2.Direction);
+            var behind = MathF.Abs(bearing) > BehindHintDegrees;
+            _lessonFeedback.Text = MathF.Abs(bearing) <= TurnHintDegrees ? ""
+                : bearing > 0 ? (behind ? "The green beacon is behind you: turn right →  (drag, or press →)" : "The green beacon is to your right →  (drag, or press →)")
+                : (behind ? "←  The green beacon is behind you: turn left  (drag, or press ←)" : "←  The green beacon is to your left  (drag, or press ←)");
             _lessonFeedback.Visible = _lessonFeedback.Text.Length > 0;
         }
 
@@ -346,7 +384,31 @@ public partial class Main
         _offRouteFor = 0;
         _lessonBack.Visible = false;
         ShowLesson($"Learn to play · {lesson.Title}", lesson.Instruction, $"step {_lesson + 1} of {_lessons.Count}", feedback: null);
+        ShowKeys(lesson.Keys);
     }
+
+    /// <summary>The step's keys as key caps on the card (dark caps with a lime edge and lime letters).</summary>
+    private void ShowKeys(string[] keys)
+    {
+        foreach (var c in _lessonKeys.GetChildren()) c.QueueFree();
+        foreach (var k in keys)
+        {
+            var cap = new Label { Text = k, VerticalAlignment = VerticalAlignment.Center };
+            cap.AddThemeFontSizeOverride("font_size", 15);
+            cap.AddThemeColorOverride("font_color", TutorialCue.CueColor);
+            var box = new StyleBoxFlat { BgColor = new Color(0.08f, 0.12f, 0.08f), BorderColor = TutorialCue.CueColor, ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 2, ContentMarginBottom = 3 };
+            box.SetBorderWidthAll(1);
+            box.BorderWidthBottom = 3; // a key's front edge
+            box.SetCornerRadiusAll(5);
+            cap.AddThemeStyleboxOverride("normal", box);
+            _lessonKeys.AddChild(cap);
+        }
+
+        _lessonKeys.Visible = keys.Length > 0;
+    }
+
+    /// <summary>The current step's keys as shown on the card, joined with "+" (probes and the state file).</summary>
+    public string TutorialKeys => _lesson >= 0 && _lessons != null ? string.Join("+", _lessons[_lesson].Keys) : "";
 
     private void AdvanceLesson(bool celebrate)
     {
@@ -359,6 +421,7 @@ public partial class Main
             _lesson = -1;
             _tutorialFinished = true;
             _planets.SetTutorialTarget(null);
+            ShowKeys([]);
             ShowLesson("Learn to play · done", "You've got the basics: look, run, jump, fly, read a project's README, go up and back, and the overview. Explore your own computer next?", "", feedback: "✓ All done!");
             return;
         }
@@ -403,12 +466,19 @@ public partial class Main
         var distance = -1f;
         if (_lessons != null && _lesson >= 0 && _experience == Experience.Planets && _nav.Current == _lessons[_lesson].Folder() && _lessons[_lesson].Target() is { } tg)
         {
-            bearing = _planets.CameraTurnTo(tg.Dir);
-            distance = _planets.DistanceTo(tg.Dir);
+            bearing = _planets.CameraTurnTo(tg.Direction);
+            distance = _planets.DistanceTo(tg.Direction);
         }
 
+        // The screen cue (AD-55): mode none|onscreen|horizon|edge, where it is drawn (window pixels), the edge arrow's
+        // screen angle (degrees, 0 = right, 90 = down, 180 = left), distance to the spot's edge (m), phase far|near|here.
+        var cue = _experience == Experience.Planets ? _planets.TutorialCue : TutorialCueState.Hidden;
+        var cueAt = cue.Anchor * scale;
+        var cueJson = System.FormattableString.Invariant(
+            $"\"cue\":{{\"mode\":\"{cue.Mode.ToString().ToLowerInvariant()}\",\"x\":{cueAt.X:0},\"y\":{cueAt.Y:0},\"angle\":{cue.AngleDegrees:0},\"distance\":{cue.DistanceMetres:0.##},\"phase\":\"{cue.Phase.ToString().ToLowerInvariant()}\",\"overHorizon\":{(cue.OverHorizon ? "true" : "false")},\"action\":\"{JsonEscape(cue.Action)}\",\"keys\":\"{JsonEscape(TutorialKeys)}\"}},");
+
         return System.FormattableString.Invariant(
-            $"\"welcome\":{(_welcomeOpen ? "true" : "false")},\"showWelcomePref\":{(_prefs.ShowWelcome ? "true" : "false")},\"atHub\":{(atHub ? "true" : "false")},\"tutorialActive\":{(TutorialActive ? "true" : "false")},\"tutorialStep\":{_lesson},\"tutorialTitle\":\"{JsonEscape(TutorialTitle)}\",\"offRoute\":{(TutorialOffRoute ? "true" : "false")},\"helpOpen\":{(_hud.HelpVisible ? "true" : "false")},\"targetBearing\":{bearing:0.#},\"targetDistance\":{distance:0.##},") +
+            $"\"welcome\":{(_welcomeOpen ? "true" : "false")},\"showWelcomePref\":{(_prefs.ShowWelcome ? "true" : "false")},\"atHub\":{(atHub ? "true" : "false")},\"tutorialActive\":{(TutorialActive ? "true" : "false")},\"tutorialStep\":{_lesson},\"tutorialTitle\":\"{JsonEscape(TutorialTitle)}\",\"offRoute\":{(TutorialOffRoute ? "true" : "false")},\"helpOpen\":{(_hud.HelpVisible ? "true" : "false")},\"targetBearing\":{bearing:0.#},\"targetDistance\":{distance:0.##},") + cueJson +
             $"\"welcomeLearn\":{At(WelcomeButtonRect(0))},\"welcomeOwn\":{At(WelcomeButtonRect(1))},\"welcomeNever\":{At(WelcomeButtonRect(2))},\"helpLearn\":{At(_hud.LearnToPlayButtonRect)},\"lessonLeave\":{At(LessonButtonRect("leave"))},\"lessonBack\":{At(LessonButtonRect("back"))},\"legacyMenu\":{At(_hud.LegacyMenuButtonRect)},\"legacyItem0\":{At(_hud.VisualizationButtonRect(-1))},";
     }
 }

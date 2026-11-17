@@ -187,3 +187,15 @@ to listen for).
    repositories with the repositories; choose one and it is one warp away.
 7. **Dialogs out of the way.** Press **L** (Open a location): the row for where you are is marked *you are here* and
    cannot be chosen. Leave it open, press J and pick a world: Open Location and the list close before you fly.
+
+## Walkthrough cues (2026-11-16): finding the target
+
+Start the walkthrough (Help → Learn to play, or the welcome dialog on a fresh profile) and try to lose the target:
+
+1. **Step 1 (look):** no beacon. The card shows the keys: `drag` and `← →`.
+2. **Step 2 (the tower):** a lime column rises from the tower, with a lime ring round its base. Turn away until the tower is behind you: a big lime arrow appears at the screen's edge, pointing the way to turn, with "behind you · 20 m" under it. The card's line says the same. Keep turning: the arrow swaps sides. Face the tower from across the planet and the chevron waits at the horizon. Walk on and it pins over the tower's top. Within 6 m it grows and a lime pill says "Walk into the ring".
+3. **Step 4 (the launcher):** the cue moves to the Lantern Workshop pad when the step begins. Walk away until the pad is behind the curve ("over the horizon"), then come back: on the pad the pill says "Stand here · press Space to fly" and the column fades so it doesn't fill the view.
+4. **Steps 5 and 6 (the bench):** after the flight the cue is the workbench on the new world. On the deck the pill says "Press E to read the README".
+5. **Steps 7 to 13:** key caps only (U, J ↓ Enter, U, Backspace, T, drag, Esc).
+6. **Leave** at any time: the column, the ring and the arrow disappear.
+

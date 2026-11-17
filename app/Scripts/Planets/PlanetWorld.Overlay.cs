@@ -514,7 +514,6 @@ public partial class PlanetWorld
         }
 
         AddBenchSigns(tree);
-        AddBeaconSign();
         var blocked = _s.Hud.BlockingRects.ToList();
         if (_benchPanel.Visible) blocked.Add(_benchPanel.GetGlobalRect());
         if (_previewPanel.Visible) blocked.Add(_previewPanel.GetGlobalRect());
