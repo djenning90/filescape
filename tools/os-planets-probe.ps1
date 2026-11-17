@@ -131,9 +131,9 @@ try {
     }
     $start = (State).currentName
     # 1 · the repository by the list; the workbench is in the arrival view (PLANET-42).
-    List-Pick 'lantern' 'Lantern Workshop' | Out-Null
+    List-Pick 'lantern workshop' 'Lantern Workshop' | Out-Null
     $s = Wait-Walking-At 'Lantern Workshop'; Start-Sleep -Milliseconds 500; $s = State
-    Check ($s.currentName -eq 'Lantern Workshop' -and $s.planets.benchWorld) "J, 'lantern', Enter: landed on the repository ($($s.currentName))"
+    Check ($s.currentName -eq 'Lantern Workshop' -and $s.planets.benchWorld) "J, 'lantern workshop', Enter: landed on the repository ($($s.currentName))"
     Check ([Math]::Abs([double]$s.planets.benchBearing) -le 50) "the workbench is in the arrival view (bearing $($s.planets.benchBearing)°, $($s.planets.benchDistance) m)"
     Shot 'play-repo-arrival' | Out-Null
     # 2 · a real double-click on the solution's object: opened through Open, no jump (PLANET-43).

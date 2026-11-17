@@ -27,7 +27,9 @@ public partial class Main
             foreach (var item in comp.Items)
             {
                 if (!_tree.Contains(item.NodeId) || !_tree[item.NodeId].Name.EndsWith(".sln", System.StringComparison.OrdinalIgnoreCase)) continue;
-                if (p.ItemCentre(item.NodeId) is { } c && !p.Camera.IsPositionBehind(c)) sln = Px(p.Camera.UnprojectPosition(c));
+                // Only when it is inside the window (with a 40-unit margin), not merely in front of the camera.
+                if (p.ItemCentre(item.NodeId) is { } c && !p.Camera.IsPositionBehind(c) && GetViewport().GetVisibleRect().Grow(-40).HasPoint(p.Camera.UnprojectPosition(c)))
+                    sln = Px(p.Camera.UnprojectPosition(c));
                 break;
             }
         }
