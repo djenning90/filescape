@@ -1797,7 +1797,9 @@ public partial class Main : Node3D
             $"nodes {_tree?.Count:N0} · instances {InstanceCount:N0} · draw calls {draw:0} · labels {_labels.LastShown}\n" +
             $"last layout {LastLayoutMs:0.0} ms · build {LastBuildMs:0.0} ms · relayout every ≥{_layoutInterval.TotalSeconds:0.00}s while scanning\n" +
             $"managed {GC.GetTotalMemory(false) / (1024 * 1024):N0} MB · process private {_processPrivateBytes / (1024 * 1024):N0} MB · video {vmem:0} MB\n" +
-            $"{RenderingServer.GetVideoAdapterName()} · {RenderingServer.GetVideoAdapterApiVersion()} · {_quality} · {ActiveVisualization.Name}",
+            $"{RenderingServer.GetVideoAdapterName()} · {RenderingServer.GetVideoAdapterApiVersion()} · {_quality} · {ActiveVisualization.Name}" +
+            // FOLLOW-2 (2026-11-17): a gap a person hears with this count unchanged is not FileScape's (the device or its driver).
+            (_experience == Experience.Planets ? $"\naudio: {_planets.Audio.AudibleSkips} gaps since start · queued {_planets.Audio.QueuedSeconds * 1000:0} ms · audio thread's longest wake {_planets.Audio.LoopGapMaxMs:0} ms" : ""),
             true);
     }
 

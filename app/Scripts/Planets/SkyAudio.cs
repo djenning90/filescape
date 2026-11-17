@@ -245,6 +245,7 @@ public partial class SkyAudio : Node
     /// <summary>The audio thread: top up, sleep, until the node leaves the tree.</summary>
     private void AudioLoop()
     {
+        var mmcss = JoinProAudioClass();
         var wake = Stopwatch.StartNew();
         while (_running)
         {
@@ -261,7 +262,62 @@ public partial class SkyAudio : Node
 
             System.Threading.Thread.Sleep(FillIntervalMs);
         }
+
+        LeaveProAudioClass(mmcss);
     }
+
+    // ---------------------------------------------------------------- Windows scheduling (FOLLOW-2, 2026-11-17)
+
+    /// <summary>
+    /// On Windows the audio thread joins the multimedia scheduler's "Pro Audio" class (MMCSS, as audio apps' threads do) and
+    /// asks for 1 ms timer resolution, so it wakes on time when the machine is busy: under a 24-thread CPU load its longest
+    /// wake gap reached 33 ms against the 50 ms queued. DJ still heard a gap while resizing that no measurement here
+    /// reproduced (0 skips, a clean mix and a clean device loopback in five runs), so this is margin, not a proven fix.
+    /// Both are undone when the thread ends; elsewhere nothing happens.
+    /// </summary>
+    private static IntPtr JoinProAudioClass()
+    {
+        if (!OperatingSystem.IsWindows()) return IntPtr.Zero;
+        try
+        {
+            _ = TimeBeginPeriod(TimerResolutionMs);
+            uint index = 0;
+            return AvSetMmThreadCharacteristics("Pro Audio", ref index);
+        }
+        catch (Exception)
+        {
+            return IntPtr.Zero; // an older or restricted system: the thread keeps its AboveNormal priority
+        }
+    }
+
+    private static void LeaveProAudioClass(IntPtr handle)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            if (handle != IntPtr.Zero) _ = AvRevertMmThreadCharacteristics(handle);
+            _ = TimeEndPeriod(TimerResolutionMs);
+        }
+        catch (Exception)
+        {
+            // nothing to undo
+        }
+    }
+
+    /// <summary>The timer resolution the audio thread asks for while it runs, milliseconds.</summary>
+    private const uint TimerResolutionMs = 1;
+
+    [System.Runtime.InteropServices.DllImport("avrt.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern IntPtr AvSetMmThreadCharacteristics(string taskName, ref uint taskIndex);
+
+    [System.Runtime.InteropServices.DllImport("avrt.dll")]
+    private static extern bool AvRevertMmThreadCharacteristics(IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint periodMs);
+
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint periodMs);
 
     /// <summary>The longest interval between two wakes of the audio thread since <see cref="ResetQueueLow"/>, milliseconds (diagnostics).</summary>
     public double LoopGapMaxMs { get; private set; }
