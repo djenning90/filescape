@@ -108,12 +108,12 @@ public static class HazardTerrain
 
     /// <summary>
     /// A leap (an advanced gap) is at least this long, metres: beyond the best plain jump at walking pace (5.2 m) and the
-    /// plain jump saved by a recovery twirl (6.7 m) (HazardMovementTests).
+    /// plain jump saved by a recovery twirl (6.8 m with the catch's 1.5 m reach, 2026-11-17; leaps were 6.7–7.0 m with 1.1 m) (HazardMovementTests).
     /// </summary>
-    public const float LeapMinMetres = 6.7f;
+    public const float LeapMinMetres = 6.9f;
 
     /// <summary>The longest leap, metres: a twirl at the top of a walking jump clears it with room (7.9 m; HazardMovementTests).</summary>
-    public const float LeapMaxMetres = 7.0f;
+    public const float LeapMaxMetres = 7.2f;
 
     /// <summary>A leap keeps at least this much bridge before and after it, metres, and at most <see cref="LeapShoulderMaxMetres"/>: a run-up and a ledge.</summary>
     private const float LeapShoulderMinMetres = 1.4f, LeapShoulderMaxMetres = 4.5f;

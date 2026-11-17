@@ -757,7 +757,7 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   - **Steps** (`ShellGapClass.Plain`): 1.4–2.2 m on the tree's bridges, their ends jagged (up to +0.2 m each,
     `ShellSpan.GapJagMetres`), and the bridge widens 0.6 m each side for 1.8 m either side of the gap (a ledge), drawn a
     pale lip colour. Any plain jump clears one.
-  - **Leaps** (`ShellGapClass.Advanced`): 6.7–7.0 m, only on an extra bridge where the walk round is at least 1.6× its
+  - **Leaps** (`ShellGapClass.Advanced`): 6.9–7.2 m (6.7–7.0 before the real-input tuning below), only on an extra bridge where the walk round is at least 1.6× its
     straight way plus 6 m (`ShellLink.Advanced`: the route never takes one, so every launcher stays reachable by walking
     and steps), with 4 m of open sky round its stretch. The bridge widens 1 m each side by the gap; the last metre before
     each end is a glowing amber take-off board with two pulsing amber posts at its corners. No plain jump at walking pace
@@ -775,7 +775,7 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   - **Timed twirl:** a twirl at the top of the jump (vertical speed within ±3 m/s) leans forward 2.2 m/s instead of
     1 m/s, up to the run speed. Walking jump and twirl: 10.2 m at best.
   - **Recovery twirl:** falling faster than 4 m/s, or with the feet below a rim's level, the twirl is the catch. With the
-    twirl unused, within 0.3 s of dropping below the rim and no deeper than 1.1 m, and ground within 1.1 m: a lift to
+    twirl unused, within 0.3 s of dropping below the rim and no deeper than 1.1 m, and ground within 1.5 m (1.1 m until the real-keyboard run, see below): a lift to
     0.35 m above the rim (at least 3 m/s, full gravity whether Space is held or tapped) and a carry towards that ground,
     aiming 0.7 m inside it, over ≈ 0.4 s, at most 6.5 m/s. After a jump that falls short the window is in practice the
     first ≈ 0.1 s below the rim (the depth closes it); walking off a rim, 0.12–0.2 s after leaving it (after the coyote
@@ -805,6 +805,10 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   trial, not by hand; the real-input recovery steps are written but not run (another session had the desktop).
 - **Revisit if:** DJ still finds gaps that look jumpable (then the ray audit is the measure to drive down), the recovery
   too easy or too strict, or wants leaps on every Hazard World.
+- **Tuned after the real-keyboard run (2026-11-17):** three real walk-offs with Space about 0.15 s after the edge all came
+  too late: the catch's 1.1 m reach closed it ≈ 0.18 s after the edge, before its 0.3 s window. The reach is now 1.5 m
+  (≈ 0.25 s); a plain jump saved by the catch then reaches 6.8 m, so the leaps moved from 6.7–7.0 m to 6.9–7.2 m (the
+  timed twirl still clears them; HazardMovementTests 88/88). DJ judges whether the window feels fair.
 
 ## AD-66 The orchestra a little quicker; two second themes for the folder bands (amends AD-52) (2026-11-17)
 

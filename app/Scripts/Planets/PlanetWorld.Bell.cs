@@ -154,7 +154,11 @@ public partial class PlanetWorld
         var (tb, td) = c?.Comp.Overlook is { } ov && !OnBenchWorld ? (CameraTurnTo(ov.Direction), OverlookEdgeMetres() ?? -1) : (0f, -1f);
         var (bb, bd) = c?.Comp.Landmark is { Bell: true } lm ? (CameraTurnTo(lm.Direction), PlanetShape.Angle(_walker.Up, lm.Direction) * c.Comp.Shape.Radius) : (0f, -1f);
         var (zoom, _) = UniverseZoom;
-        return System.FormattableString.Invariant($"\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},");
+        // The overlook's stepping stones in climbing order, each [bearing, metres to its centre] (the real-input probe climbs them).
+        var stones = c?.Comp.Overlook is { } ov2 && !OnBenchWorld
+            ? string.Join(",", ov2.Steps.Select(st => System.FormattableString.Invariant($"[{CameraTurnTo(st.Direction):0.#},{PlanetShape.Angle(_walker.Up, st.Direction) * c.Comp.Shape.Radius:0.##}]")))
+            : "";
+        return System.FormattableString.Invariant($"\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},");
     }
 
     /// <summary>Where the bell tower's axis is and a point <paramref name="metres"/> out from it towards the arrival (probes walk in from there), or null without a bell.</summary>

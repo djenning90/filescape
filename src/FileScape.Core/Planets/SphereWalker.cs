@@ -133,8 +133,13 @@ public sealed record HazardMoveParams
     /// <summary>No deeper than this below the rim's level, metres (deeper, the lift needed is no longer "brief").</summary>
     public Meters MaxDepth { get; init; } = Meters.Of(1.1f);
 
-    /// <summary>Ground must be within this of the walker's centre, measured along the surface, metres ("close enough").</summary>
-    public Meters Reach { get; init; } = Meters.Of(1.1f);
+    /// <summary>
+    /// Ground must be within this of the walker's centre, measured along the surface, metres ("close enough"). 1.5 m
+    /// (2026-11-17, was 1.1): walking off at run speed the walker was 1.1 m out ≈ 0.18 s after the edge, so Reach closed the
+    /// catch before <see cref="Window"/> and three real-keyboard tries all came too late; 1.5 m gives ≈ 0.25 s. 1.8 m let a
+    /// plain jump saved by the catch clear a leap (HazardTerrain.LeapMinMetres), so the leaps moved out to 6.9–7.2 m instead.
+    /// </summary>
+    public Meters Reach { get; init; } = Meters.Of(1.5f);
 
     /// <summary>The lift takes the feet this far above the rim's level at its top, metres (just enough to step back on).</summary>
     public Meters Clearance { get; init; } = Meters.Of(0.35f);

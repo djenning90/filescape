@@ -93,7 +93,10 @@ public partial class Main
     private bool ZoomedOutEnough()
     {
         var (now, target) = _planets.UniverseZoom;
-        return target >= _tutZoom0 * ZoomOutFactor && now >= target * ZoomSettledShare && _planets.UniverseWorldsInView >= _tutWorlds0 + ZoomMoreWorlds;
+        // When the overview opened already showing nearly the whole sky (found with real input, 2026-11-17: skipping to the
+        // overview step framed all 93 worlds from 1256 m, 84 in view), ten more cannot come into view: then the zoom alone counts.
+        var more = Math.Min(_tutWorlds0 + ZoomMoreWorlds, Math.Max(_tutWorlds0, _planets.UniverseBodyCount - ZoomMoreWorlds));
+        return target >= _tutZoom0 * ZoomOutFactor && now >= target * ZoomSettledShare && _planets.UniverseWorldsInView >= more;
     }
 
     private PanelContainer _lessonCard = null!;

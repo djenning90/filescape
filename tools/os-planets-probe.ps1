@@ -390,7 +390,22 @@ try {
     Start-Sleep -Milliseconds 600; $s = (State).planets
     Check ($s.telescopeSign -and $s.prompt -match 'telescope') "walking up, the telescope's sign shows and the prompt points to it (edge $($s.overlookEdge) m): '$($s.prompt)'"
     Shot 'landmarks-telescope-approach' | Out-Null
-    for ($k = 0; $k -lt 4 -and -not (State).planets.onOverlook; $k++) { Jump-Twirl -Forward; Start-Sleep -Milliseconds 500 }
+    # Up the stepping stones in order, as a player does (the prompt says "Up the steps"): steer to each stone, jumping
+    # onto it when walking stops gaining; then on to the platform. (Jumping at the wall itself bounced off: 2026-11-17.)
+    $nStones = @((State).planets.stones).Count
+    for ($i = 0; $i -lt $nStones -and -not (State).planets.onOverlook; $i++) {
+      $last = [double]::MaxValue; $stuck = 0
+      for ($t = 0; $t -lt 40; $t++) {
+        $st = @((State).planets.stones)[$i]; $b = [double]$st[0]; $d = [double]$st[1]
+        if ($d -le 0.45 -or (State).planets.onOverlook) { break }
+        if ([Math]::Abs($b) -gt 12) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000)); Start-Sleep -Milliseconds 100; continue }
+        Hold-Key 'W' ([int][Math]::Min(350, 90 + $d * 60))
+        $stuck = if ($d -gt $last - 0.05) { $stuck + 1 } else { 0 }; $last = $d
+        if ($stuck -ge 2) { Jump-Twirl -Forward; $stuck = 0 }
+        Start-Sleep -Milliseconds 100
+      }
+    }
+    for ($k = 0; $k -lt 4 -and -not (State).planets.onOverlook; $k++) { $s = Steer-By 'overlookBearing' 'overlookEdge' 0.3 12; Jump-Twirl -Forward; Start-Sleep -Milliseconds 500 }
     Start-Sleep -Milliseconds 800; $s = (State).planets
     Check ($s.onOverlook -and $s.prompt -like 'E · Telescope*') "up on the overlook (a real jump and twirl): '$($s.prompt)'"
     Hold-Key 'E' 60; Start-Sleep -Milliseconds 700
@@ -436,7 +451,7 @@ try {
     for (; $n -lt 30 -and (State).tutorialStep -eq 12; $n++) { Client-Pos $script:w 800 620; Wheel -1; Start-Sleep -Milliseconds 350 }
     Start-Sleep -Milliseconds 500; $s = State
     Log "  after $n real wheel notches: camera $z0 -> $($s.planets.uniZoom) m, worlds in view $w0 -> $($s.planets.uniWorlds)"
-    Check ($s.tutorialStep -ge 13 -and [double]$s.planets.uniZoom -ge 3 * $z0 -and [int]$s.planets.uniWorlds -ge $w0 + 10) "the real wheel zoomed out and the step completed ($($s.tutorialTitle))"
+    Check ($s.tutorialStep -ge 13 -and [double]$s.planets.uniZoom -ge 3 * $z0 -and ([int]$s.planets.uniWorlds -ge $w0 + 10 -or $w0 -ge 60)) "the real wheel zoomed out and the step completed ($($s.tutorialTitle); when it opened with most of the sky in view, the zoom alone counts)"
     Shot 'landmarks-zoom-after' | Out-Null
     Hold-Key 'Escape' 60; $s = Wait-Step 99 8000
     Check ($s.tutorialTitle -eq 'done') "Esc back where you stood: walkthrough complete"
@@ -626,19 +641,29 @@ try {
         if ([Math]::Abs($b) -gt 5) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(30, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 300; $s = State }
         $d = [double]$s.planets.holeDistance
         if ($d -lt 0) { return $s }
-        $toEdgeMs = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond))
-        Key-Down 'W'
-        try { Start-Sleep -Milliseconds $toEdgeMs } finally { Key-Up 'W' }
-        Start-Sleep -Milliseconds $afterMs
-        Hold-Key 'Space' 120
+        # A negative $afterMs reacts as a player does: W held until the state file shows the feet below the rim, then
+        # Space at once (the state is written every frame; the reaction is one read, ≈ 20–60 ms). Otherwise by time.
+        if ($afterMs -lt 0) {
+          $limit = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond)) + 1500; $sw = [Diagnostics.Stopwatch]::StartNew(); $seen = -1
+          Key-Down 'W'
+          try { while ($sw.ElapsedMilliseconds -lt $limit) { $p0 = (State).planets; if ([double]$p0.belowRimSeconds -ge 0) { $seen = [double]$p0.belowRimSeconds; break }; Start-Sleep -Milliseconds 5 } } finally { Key-Up 'W' }
+          Hold-Key 'Space' 120
+          Log ("  below the rim seen at {0:0.000} s; Space pressed at once" -f $seen)
+        } else {
+          $toEdgeMs = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond))
+          Key-Down 'W'
+          try { Start-Sleep -Milliseconds $toEdgeMs } finally { Key-Up 'W' }
+          Start-Sleep -Milliseconds $afterMs
+          Hold-Key 'Space' 120
+        }
         Start-Sleep -Milliseconds 1500
         return State
       }
-      # A recovery: Space 0.15 s after the feet leave the rim (after the 0.12 s coyote jump, inside the 0.3 s window).
+      # A recovery: Space as soon as the feet are seen below the rim (a player's reaction), inside the 0.3 s window.
       $rec0 = [int]$s.planets.recoveries; $recovered = $false
       for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
         $f = [int](State).planets.fallsStarted
-        $s = Slip 150
+        $s = Slip -1
         $recovered = [int]$s.planets.recoveries -gt $rec0 -and [int]$s.planets.fallsStarted -eq $f
         Log "  recovery try $try`: recoveries $($s.planets.recoveries), falls $($s.planets.fallsStarted - $f), last efforts $($s.planets.lastEfforts)"
         if (-not $recovered -and [int]$s.planets.fallsStarted -gt $f) { $s = Back-In }
