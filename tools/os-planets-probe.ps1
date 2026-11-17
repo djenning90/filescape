@@ -221,10 +221,21 @@ try {
     # 1 look (real left-drags), walk to the tower.
     Client-Pos $script:w 800 560; Drag 'left' 420 0; Drag 'left' 420 0
     $s = Wait-Step 1; Check ($s.tutorialStep -ge 1) "left-drag look: lesson passes ($($s.tutorialTitle))"
+    # PLANET-38: turn away on purpose until the tower is behind the camera: the edge arrow shows on the side to turn to.
+    for ($k = 0; $k -lt 12; $k++) { $s = State; $b = [double]$s.targetBearing; if ([Math]::Abs($b) -ge 150) { break }; Hold-Key ($(if ($b -gt 0) { 'Left' } else { 'Right' })) 300; Start-Sleep -Milliseconds 150 }
+    Start-Sleep -Milliseconds 400; $s = State; $b = [double]$s.targetBearing
+    $side = if ($b -gt 0) { 0 } else { 180 }; $edgeX = if ($b -gt 0) { 1600 } else { 0 }
+    Check ([Math]::Abs($b) -ge 120 -and $s.cue.mode -eq 'edge' -and [int]$s.cue.angle -eq $side -and [Math]::Abs([double]$s.cue.x - $edgeX) -le 100) "target behind (bearing $([int]$b)°): an edge arrow at x $($s.cue.x), pointing $($s.cue.angle)° (mode $($s.cue.mode))"
+    Shot 'cue-behind' | Out-Null
+    for ($k = 0; $k -lt 12; $k++) { $s = State; $b = [double]$s.targetBearing; if ([Math]::Abs($b) -le 20) { break }; Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(60, [Math]::Min(450, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150 }
+    Start-Sleep -Milliseconds 400; $s = State
+    Check ($s.cue.mode -eq 'onscreen' -or $s.cue.mode -eq 'horizon') "facing it again: the cue is in the view (mode $($s.cue.mode))"
     $s = Steer-To-Target 2.5; $s = Wait-Step 2
     Check ($s.tutorialStep -ge 2) "walked to the tower with the keyboard ($($s.tutorialTitle))"
     Hold-Key 'Space' 80; $s = Wait-Step 3; Check ($s.tutorialStep -ge 3) "jumped ($($s.tutorialTitle))"
     $s = Steer-To-Target 0.6
+    Start-Sleep -Milliseconds 300; $s = State
+    Check ($s.cue.phase -eq 'here' -and $s.cue.action -match 'Space') "on the pad: the cue says here ($($s.cue.phase): $($s.cue.action))"
     Hold-Key 'Space' 80; Start-Sleep -Seconds 3
     $s = Wait-Step 4 9000; Check ($s.tutorialStep -ge 4 -and $s.currentName -eq 'Lantern Workshop') "stood on the launcher and flew to Lantern Workshop ($($s.tutorialTitle))"
     Shot 'lesson-bench' | Out-Null
@@ -244,6 +255,7 @@ try {
     Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 300
     Hold-Key 'U' 60; Start-Sleep -Seconds 4
     $s = Wait-Step 7; Check ($s.tutorialStep -ge 7) "U went up ($($s.tutorialTitle))"
+    Check ($s.cue.mode -eq 'none' -and $s.cue.keys) "a key-only step: no beacon, the card shows its keys ($($s.cue.keys))"
     Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text 'music'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
     Start-Sleep -Seconds 4; $s = Wait-Step 8; Check ($s.tutorialStep -ge 8) "J, typed 'music', Enter: straight to Music Box ($($s.tutorialTitle))"
     Hold-Key 'U' 60; Start-Sleep -Seconds 4; $s = Wait-Step 9; Check ($s.tutorialStep -ge 9) "U: up to the Starter Sky ($($s.tutorialTitle))"
@@ -259,7 +271,7 @@ try {
     Hold-Key 'F1' 60; Start-Sleep -Milliseconds 700; $s = State; Click-At $s.helpLearn
     for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.tutorialStep -eq 0) { break }; Start-Sleep -Milliseconds 250 }
     Start-Sleep -Milliseconds 500; $s = State; Click-At $s.lessonLeave; Start-Sleep -Milliseconds 500
-    $s = State; Check (-not $s.tutorialActive) "Leave exits mid-lesson (step was 0)"
+    $s = State; Check (-not $s.tutorialActive -and $s.cue.mode -eq 'none') "Leave exits mid-lesson (step was 0) and the cue clears (mode $($s.cue.mode))"
     # A legacy view from the menu, then V back to Planets.
     Click-At $s.legacyMenu; Start-Sleep -Milliseconds 500; $s = State; Click-At $s.legacyItem0; Start-Sleep -Seconds 3
     $s = State; Check ($s.experience -eq 'Places') "Legacy views -> Places opens the flat world ($($s.experience))"
