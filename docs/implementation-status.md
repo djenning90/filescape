@@ -4,6 +4,24 @@ Last updated: 2026-11-17 (night), after the third playtest follow-up (PLANET-49.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fourth playtest follow-up (2026-11-19)
+
+### Musical modes: the theme in seven modes, a Mixolydian launcher, arrangements for places (PLANET-79..80, AD-72)
+
+DJ asked for modes studied from two 8-bit Music Theory videos (notes, and what could be reached: titles, descriptions
+and chapter lists only, no audio or transcript: `docs/music-modes-notes.md`) and used for original music. Core gained a
+mode abstraction (`DiatonicMode`, `Modes`), written sketches (`SketchScore`, `SketchWriter`, `ModeSketches`) and an
+offline renderer on SkySynth's own instruments (`SkySynth.RenderSketch`, `SkySynth.Sketches.cs`). Samples and README:
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-19-modes\` (rendered by `SKYSYNTH_MODES_DIR=<folder> tools/fs.sh test-wsl
+--filter Render_the_mode_sketches`).
+
+| Area | Status | Evidence |
+|---|---|---|
+| The FileScape theme (motif and cadence, two ornaments so it reaches fa and ti) in all seven modes, only pitch differing; reel Ionian → Locrian, 10.7 s each and a 1.6 s gap (PLANET-79) | **Demonstrated** (measured); by ear: DJ | `SkySynthTests.Modes.cs` (7 tests); `modes-reel.wav` 87 s, silence only in the six gaps; `single/theme-<mode>.wav` |
+| Launcher phrase in major and Mixolydian, identical but for ti → te; developed take-off (PLANET-80) | **Demonstrated** (measured); by ear: DJ | `launcher-major.wav`, `launcher-mixolydian.wav` (21 s each), `launcher-takeoff.wav` (30 s) |
+| Arrangements: Lydian overlook, Aeolian empty moon, the mode-shift journey (Ionian → Mixolydian at launch → Lydian flight → Dorian landed → Phrygian hazard world) (PLANET-80) | **Demonstrated** offline; by ear: DJ | `arrangement-*.wav` (47–55 s), peaks ≤ 0.50, −26 to −28 LUFS, no silent windows |
+| Existing music unchanged; nothing integrated in-game | **Demonstrated** | behaviour baseline and whole-cycle hashes of every score at visits 1–3 identical before/after; Core 707 passed, 26 skipped (WSL); doc coverage 100 % |
+
 ## Third playtest follow-up (2026-11-17, PLANET-49..66)
 
 DJ's follow-ups on `6b9b60c` and the staged `a9d2e7e`: the blank Overview and audio gaps (FOLLOW-1/2), then keyboard

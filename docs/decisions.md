@@ -891,3 +891,55 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
+
+## AD-72 The FileScape theme in seven modes; a Mixolydian launcher; arrangements for places and moments (offline sketches, nothing replaced) (2026-11-19)
+
+- **Problem:** DJ (PLANET-79, PLANET-80): study how game composers use modes (two 8-bit Music Theory videos; notes and
+  what could be accessed in `docs/music-modes-notes.md`), then: the same FileScape theme in all seven modes with the
+  rest held constant; an original launcher theme that is bright but lets the lowered seventh be heard, as the same phrase
+  in major and Mixolydian, then developed; fuller arrangements of the sketches that suggest a place or a moment, one
+  returning the theme in a new mode at launch, landing and a crossing into a new kind of world; one reel and samples;
+  keep the existing arrangements. Later (coordinator relaying DJ): "Try not to remove good, already working music from
+  the game to make room for new ones. Aim for diversity and surprise instead of conforming to a set number of songs."
+- **Which theme:** the FileScape theme (`SkySynth.ThemeMelody`): the only tune every arrangement plays (the hub, the
+  roots, the repository, the four bands, the hazard scores), written in scale degrees. **Finding:** it uses only do re mi
+  sol la (written to fold into a pentatonic key), so on its own Ionian, Lydian and Mixolydian give the same melody and
+  only the harmony differs. The short version therefore takes the motif (bars 1–2) and the cadence (7–8) as written, with
+  two ornaments the same in every mode: bar 2's long mi becomes a turn mi–fa–mi (Lydian's ♯4 and Locrian's/Phrygian's
+  fa are heard in the tune) and the cadence's long re becomes re–ti–re before do (major's ti, the others' te).
+- **Decision — a mode abstraction in Core:** `DiatonicMode` and `Modes` (`DiatonicMode.cs`): each mode as a rotation of
+  the major scale, the pitch of any degree, triad qualities, the characteristic degree (Ionian ti, Dorian ♮6, Phrygian
+  ♭2, Lydian ♯4, Mixolydian ♭7, Aeolian ♭6, Locrian ♭5). Separate from SkySynth's own scale arrays, which are unchanged.
+- **Decision — written sketches on SkySynth's instruments:** `SketchScore`/`SketchWriter` (notes by bar, sixteenth and
+  degree in a mode; the mode, tempo and tonic can change between sections), `ModeSketches` (the compositions) and
+  `SkySynth.RenderSketch` (`SkySynth.Sketches.cs`): a synth whose decks are stopped plays only the score's notes, on the
+  game's own lead, pad, bass, drum and effect voices, through the same reverb, limiter and clipper. Offline only.
+- **The reel (PLANET-79):** D, 112 BPM, the bell over a soft pad, a round bass, the harp and offbeat hats; a bar that plays
+  the mode's scale up on the harp over the tonic chord, then the short theme over i – characteristic chord – pre-cadence
+  – i: Ionian I IV V I; Dorian i IV ♭VII i; Phrygian i ♭II ♭vii i; Lydian I II vii I; Mixolydian I v ♭VII I; Aeolian i ♭VI
+  ♭VII i; Locrian i° ♭II ♭V i°; a glass bell rings the characteristic degree over the last chord. Only pitch differs
+  between versions (tested note for note).
+- **The launcher (PLANET-80):** an original 4-bar phrase (a leap to the octave and a turn round the seventh; the seventh
+  held over the fifth's chord; a climb to la'; down to the seventh and up to do') over I | V | IV | VII–I, 128 BPM, pluck,
+  pad, saw bass, four on the floor. In major ti, vii°–I; in Mixolydian te, v minor, ♭VII–I. The pair differs in nothing
+  else (tested). The take-off develops the Mixolydian one: a wind-up ending on the horns' te, the launch hit, the phrase
+  on supersaw, again an octave up with the horns holding te against it, a ♭VII–IV–I lift and two bars of flight.
+- **Arrangements (PLANET-80):** the Lydian overlook (84 BPM, flute over I/II on a tonic pedal, harp, the ♯4 on glass:
+  wonder, the overview); the Aeolian empty moon (72 BPM, cellos then clarinet, ♭VI–♭VII–i: loss, the way home); the
+  mode-shift journey (112 BPM throughout): Ionian on the home world → wind-up → Mixolydian at the launch → Lydian in
+  flight → a landing bar → Dorian landed in the deep woods → the edge of a hazard world → Phrygian, closing ♭II–i.
+- **Integration: none (this iteration).** The game's music, its arrangements, themes and cues, and how each is chosen
+  are unchanged: the behaviour baseline and the whole-cycle hash of every score (all 10 identities × visits 1–3) are
+  identical before and after, and nothing in the game calls the new code. Per DJ's guidance, anything taken into the game
+  later is **additive**: a new variation that can turn up alongside the existing ones (for example the mode-shift
+  journey's Mixolydian return as an occasional launch variation on a revisit, the Lydian overlook as a new cue for the
+  overview or telescope, the Aeolian lament for an empty moon), never replacing or removing a working piece; and
+  verified the same way (the existing cases' hashes unchanged, the new piece only adding options).
+- **Measured:** every render below the soft clipper (peaks 0.17–0.50), −26 to −28 LUFS like the game's music samples,
+  silent 50 ms windows only in the reel's six gaps; the voice estimate is within the 40-voice pool except a brief
+  conservative over-count in the take-off (stealing there is click-free). Samples and README:
+  `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-modes\`.
+- **Unknown:** nobody has listened; the judgements in the README are readings of the notes and harmony, not of the sound.
+- **Revisit if:** DJ picks pieces for the game (add them as new options as above), wants a different tonal centre or
+  tempo for the reel (`ModeSketches.TonicMidi`, `ReelBpm`), or wants the plain written theme (without the two
+  ornaments) in the reel.
