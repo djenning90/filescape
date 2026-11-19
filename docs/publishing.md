@@ -4,6 +4,18 @@ A review of what a fresh clone and a release package would expose (2026-11-15, P
 build after the second playtest), what has been fixed, how the history is backed up and prepared for publication, the
 decisions that are DJ's to make, and the exact remaining steps. Nothing has been pushed or published.
 
+## 2026-11-19 refresh at a glance
+
+| Item | State |
+|---|---|
+| Off-machine backup (GitHub, private) | **waiting for DJ's account** (checked 2026-11-19): no remote, no `gh`, no SSH key, no GitHub account stored in Git Credential Manager, no credential helper in WSL git. Steps: [Backup](#backup-private-off-machine) |
+| Local safety copy | **refreshed**: a verified bundle of `main` and the tags (the newest `%LOCALAPPDATA%\FileScape\backup\filescape-*.bundle`); the working tree is clean, so there is no `backup/working-tree` to add this time |
+| Reviewed docs | **committed** (`4d1b6b5`): Codex's README, Windows workflow and `docs/windows-playtest.txt`; a fresh clone now stages and packages by itself (checked on `c200de5`) |
+| Windows ZIP | **checked from a clean extraction** on `cfee25d2b709`: 72 MB, 196 files, smoke launch passes; standard ZIP entry names (`tools/fs.sh package` uses Windows' `tar.exe` since `e6daf54`; `Compress-Archive` wrote backslashes) |
+| Publication candidate | **rebuilt on the final `main`** in a separate clone (placeholder identity, proposed MIT LICENSE as its last commit); the original history is untouched |
+| .NET 10 | unchanged since 2026-11-17: verified in a scratch export, not adopted (see [.NET](#net-version)) |
+| Decisions | [Decisions for DJ](#decisions-for-dj-before-publishing) |
+
 ## 2026-11-17 refresh at a glance
 
 | Item | State | Where |
@@ -102,8 +114,9 @@ an empty folder: `FileScape/FileScape.exe`, `FileScape.console.exe`, `README.txt
 third-party list, the .NET licence and notices); no `smoke/`, no logs; 74 MB zipped, 185 MB extracted, 196 files; the
 extracted copy passes the smoke launch. No machine paths: the only `obj.win` string is the mapped `/_/src/…` PDB path
 (the step 7 grep below now excludes `/_/`). `LICENSE.txt` is added once a `LICENSE` exists. Unsigned: SmartScreen warns.
-Note for review: `docs/windows-playtest.txt` is still untracked while `tools/fs.sh package` (committed) needs it, so a
-fresh clone cannot package until it is committed.
+2026-11-19: `docs/windows-playtest.txt` is committed (`4d1b6b5`) and a fresh clone packages by itself; the ZIP is now
+written by Windows' `tar.exe` with forward-slash entry names (Linux/macOS `unzip` made single files named
+`FileScape\FileScape.exe` from the `Compress-Archive` ZIP).
 
 ## .NET version
 
@@ -115,18 +128,26 @@ set to `net10.0` with Godot 4.7.2 .NET build with 0 errors, export with the .NET
 
 ## Decisions for DJ (before publishing)
 
-1. **Licence (blocker).** No `LICENSE` yet: a public repository would be "all rights reserved". Proposed: **MIT**
-   (simplest; matches Godot and .NET). The candidate can carry it (`--license-holder "<your name>"`); for this repository
-   add `LICENSE` at the root and `tools/fs.sh package` includes it. Alternatives: Apache-2.0, GPL-3.0, MPL-2.0.
-2. **History.** Publish the reviewed history with the identity rewrite (recommended), or as is, or a squashed snapshot
-   (loses the story). Optionally drop the NuGet scans and/or `docs/galaxy-research.md` from history.
-3. **Account and destination.** Personal account or an organisation; the repository name.
-4. **Visibility.** Private first (backup), public only after you have reviewed the candidate and a fresh clone.
-5. **The name.** "FileScape" is used elsewhere: a GPLv2 Python/GTK file manager for Linux on SourceForge (registered
-   2008), an MIT Media Lab project page named "filescape", and similarly named products ("FileScope"). No trademark search
-   was done. Decide whether the overlap matters for a hobby release or pick a distinct name before publishing.
-6. **.NET 10.** Move the app to `net10.0` before the release binary (verified to export and run; above).
-7. **Release artefact.** Source only, or also a GitHub pre-release with the Windows ZIP (`v0.1.0-playtest`).
+Short list (2026-11-19):
+
+1. **Licence and copyright name (blocker).** No `LICENSE` yet, so a public repository would be "all rights reserved".
+   Proposed: **MIT** (simplest; matches Godot and .NET). Needed from you: the licence and the exact copyright holder
+   ("Copyright (c) 2026 <name>"). Then add `LICENSE` at the root; `tools/fs.sh package` puts it in the ZIP.
+2. **GitHub owner and repository name.** Personal account or an organisation, and the name (`filescape` assumed).
+   Note the name overlap: "FileScape" is also a 2008 GPLv2 Linux file manager on SourceForge and an MIT Media Lab
+   project page; "FileScope" products exist. No trademark search was done.
+3. **Author email.** Every commit carries your personal address. Choose: (a) rewrite it to your GitHub noreply
+   address (`<id>+<user>@users.noreply.github.com`; the candidate does exactly this and nothing else; recommended for a
+   public repo), (b) publish as is, or (c) a squashed snapshot (loses the history). For the **private backup**, the
+   original history can be pushed as is unless GitHub's "Block command line pushes that expose my email" is on.
+4. **The public Windows release.** Source only, or also a GitHub pre-release with the ZIP (e.g. `v0.1.0-playtest`);
+   it is unsigned (SmartScreen warns) and targets .NET 8.
+5. **.NET 10.** Trial: app, Core and Fixtures on `net10.0` built, exported with the .NET 10.0.15 runtime, smoke-launched
+   and passed the smoke tier and the Core tests (2026-11-17, scratch worktree, not merged). To make it the release
+   target: change the three `TargetFramework`s, run `fs.sh check full` and the real-input probes on the export, update
+   the README's "targets .NET 8" line, and record it as a decision. .NET 8's support ended 2026-11-10.
+6. **Visibility.** Private first (backup); public only after you have reviewed the candidate from a fresh clone.
+   Optional drops from history: the 2026-11-03 NuGet scans, `docs/galaxy-research.md` (long quotations).
 
 ## Steps (replace `<commit>`, `<owner>`, `<tag>`)
 

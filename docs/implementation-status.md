@@ -1,10 +1,29 @@
 # Implementation status
 
-Last updated: 2026-11-19, the fourth playtest follow-up (landmarks and scenery: PLANET-73..75); before that 2026-11-17 (night), after the third playtest follow-up (PLANET-49..66); before that 2026-11-17, the second playtest iteration (PLANET-38..48); before that 2026-11-15, the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera look, keyboard ownership, Hazard moves, landmarks and scenery, Overview discovery, musical modes; final candidate `cfee25d2b709`); before that 2026-11-17 (night), after the third playtest follow-up (PLANET-49..66); before that 2026-11-17, the second playtest iteration (PLANET-38..48); before that 2026-11-15, the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
 ## Fourth playtest follow-up (2026-11-19)
+
+### The final candidate (`cfee25d2b709`, staged, not installed)
+
+Six streams merged (camera look, keyboard ownership, Hazard moves, landmarks, Overview discovery, musical modes), then
+fixed from the real-input runs. Staged at `%LOCALAPPDATA%\FileScape\staging-20261119-220649-1583361\FileScape.exe`;
+the installed build is still `6b9b60c274af`. ZIP: `%LOCALAPPDATA%\FileScape\FileScape-cfee25d2b709-win-x64.zip`
+(72 MB, 196 files, standard entry names since `e6daf54`), checked from a clean extraction (Expand-Archive into an empty
+folder; the smoke launch passes; README.txt is `docs/windows-playtest.txt`; no logs; no machine paths). A fresh clone of
+`c200de5` staged and packaged by itself (`docs/windows-playtest.txt` committed in `4d1b6b5`).
+
+| Check | Result |
+|---|---|
+| `fs.sh check full` on `78a41f3` (all six merged) | 40 of 41 journeys, Core 736/734 passed (Windows/WSL). The one failure, discovery's "X pauses", failed twice on that export and passed twice on `c200de5` and after: cause not established (**unknown**) |
+| In-app on `cfee25d` | `planets-dialog-keys` 148/0, `planets-navigation` 47/0 (with its listing-delay instrument) |
+| Real input on `cfee25d` (`os-planets-probe.ps1`, Guard on every input) | `-Look` 17/0, `-Dialogs` 79/0, `-Landmarks` 25/0, `-Discovery` 14/0, `-Tutorial` 30/0, `-Play` 15/0, controls 24/0, `-Route` 10/0, `-InputFocus` 14/0, `-Audio` 8/0; `-Hazard -Recovery` 16/1 twice: **the long jump fell** (second press recorded as "buffered" at 0.367 s; it crossed with real input on `6d5229a`) — **provisional**, DJ to try |
+| Real input found and fixed | Esc needed twice for a panel opened by its toolbar button (the button's tooltip under the resting mouse spent the first press; now taken in `Main._Input`); after ⚙ then Esc the toolbar button kept the focus and blocked R and J (released now) — AD-68. Probe defects: state read before written, `$p` reused (left the app running), the Hearth world typed from a world that does not list it, R with an earlier selection |
+| Interruptions | One run was cut short when DJ used the machine: the Guard stopped each probe at the first input with ChatGPT or Notepad in front; nothing went to another window. Those modes were run again |
+| Not run | `-RealOpen` (Windows' own file association: it would open a window in DJ's Notepad) |
+
 
 ### Vertical camera look (PLANET-67..68, AD-67)
 
