@@ -247,13 +247,8 @@ public partial class PlanetWorld
         _camPitchDegrees = Mathf.Clamp(_camPitchDegrees + screenPixels.Y * OrbitPitchDegreesPerPixel, MinCamPitchDegrees, MaxCamPitchDegrees);
     }
 
-    /// <summary>
-    /// From Main._UnhandledInput, before any shortcut: keys an open panel owns — Esc stops a trip (PlanetWorld.Trip), and
-    /// the Destinations list takes typed keys while it is open (PLANET-51, AD-62). True when one of them used the key.
-    /// </summary>
-    public bool PanelKey(InputEvent e) => TripKey(e) || ListKey(e);
-
-    /// <summary>From Main._UnhandledInput after <see cref="PanelKey"/>: Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
+    /// <summary>From Main._UnhandledInput after the panels have had the key (Main.KeyboardOwner, AD-68: a trip's Esc,
+    /// <see cref="ListKey"/>): Space, E, clicks. Returns true when consumed (other keys go to the shared commands).</summary>
     public bool UnhandledInput(InputEvent e)
     {
         if (_universe != null) return UniverseCommand(e);

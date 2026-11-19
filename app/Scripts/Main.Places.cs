@@ -167,6 +167,7 @@ public partial class Main
     public void SetExperience(Experience e)
     {
         if (e == _experience) return;
+        ExperienceChangeCount++;
         if (e == Experience.Planets && (_tree == null || !_tree.Source.IsLive))
         {
             // From the synthetic sample (the default start), the planets open on the curated Starter Sky: real files, so

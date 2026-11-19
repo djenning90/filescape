@@ -1,0 +1,33 @@
+planets-dialog-keys before the fix (2026-11-19): keys that reached the game's shortcuts.
+
+Enumerate pass (instrument Main.ProbeShortcutsInert: logged and dropped), per panel / opener / phase / keyboard owner:
+  Destinations / J / typed at once / keyboard at the filter: Ctrl+B
+  Destinations / J / in the results / keyboard at the results: Ctrl+V Ctrl+Z Ctrl+B
+  Destinations / ☰ Destinations / typed at once / keyboard at the filter: Ctrl+B
+  Destinations / ☰ Destinations / in the results / keyboard at the results: Ctrl+V Ctrl+Z Ctrl+B
+  Locations / L / typed at once / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Locations / L / in the results / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Locations / Locations (L) button / typed at once / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Locations / Locations (L) button / in the results / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Open location / Ctrl+L / typed at once / keyboard at the path field: Ctrl+Tab Ctrl+B
+  Open location / Ctrl+L / in the results / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Open location / Ctrl+O / typed at once / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Open location / Ctrl+O / in the results / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Open location / Open… button / typed at once / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Open location / Open… button / in the results / keyboard at the location rows: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Backspace Delete Home End Up Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Settings / F4 / typed at once / keyboard at nothing: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Tab Shift+Tab Backspace Delete PageDown PageUp Home End Up Down Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Settings / ⚙ Settings button / typed at once / keyboard at nothing: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 Shift+V Shift+Q Tab Shift+Tab Backspace Delete PageDown PageUp Home End Up Down Left Right Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+  Reader / ⤢ Expand on the preview / typed at once / keyboard at RichTextLabel: Ctrl+V Ctrl+Z Ctrl+Tab Ctrl+B
+
+Live pass, leaks that acted (view change to a legacy view, travel started, panel closed):
+  Destinations / J / in the results / keyboard at the results: Ctrl+V → reached the shortcuts [V]; 2 command(s); view changed to Places; closed the panel
+  Destinations / ☰ Destinations / in the results / keyboard at the results: Ctrl+V → reached the shortcuts [V]; 2 command(s); view changed to Places; closed the panel
+  Locations / L / typed at once / keyboard at the location rows: g → reached the shortcuts [G]; 1 command(s); closed the panel
+  Open location / Ctrl+L / typed at once / keyboard at the path field: Ctrl+Tab → reached the shortcuts [Tab]; 2 command(s); view changed to Places
+  Open location / Ctrl+L / in the results / keyboard at the location rows: g → reached the shortcuts [G]; 1 command(s); closed the panel
+  Open location / Open… button / typed at once / keyboard at the location rows: g → reached the shortcuts [G]; 1 command(s); closed the panel
+  Settings / ⚙ Settings button / typed at once / keyboard at nothing: g → reached the shortcuts [G]; 1 command(s)
+  Reader / R / typed at once / keyboard at RichTextLabel: Ctrl+V → reached the shortcuts [V]; 2 command(s); view changed to Places
+  Reader / R / typed at once / keyboard at RichTextLabel: Ctrl+Tab → reached the shortcuts [Tab]; 2 command(s); view changed to Places
+  Reader / ⤢ Expand on the preview / typed at once / keyboard at RichTextLabel: Ctrl+V → reached the shortcuts [V]; 2 command(s); view changed to Places
+  Reader / ⤢ Expand on the preview / typed at once / keyboard at RichTextLabel: Ctrl+Tab → reached the shortcuts [Tab]; 2 command(s); view changed to Places

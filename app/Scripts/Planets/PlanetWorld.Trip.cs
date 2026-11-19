@@ -264,8 +264,8 @@ public partial class PlanetWorld
 
     private static string Bb(string s) => s.Replace("[", "[lb]");
 
-    /// <summary>Esc during a trip stops it (before anything else sees the key); J waits until the trip is over.</summary>
-    private bool TripKey(InputEvent e)
+    /// <summary>Esc during a trip stops it (before anything else sees the key, Main.KeyboardOwner); J waits until the trip is over.</summary>
+    public bool TripKey(InputEvent e)
     {
         if (_trip == null || e is not InputEventKey { Pressed: true, Echo: false } k) return false;
         if (k.Keycode == Key.Escape)

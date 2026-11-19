@@ -46,6 +46,9 @@ public partial class Hud
 
     public bool LocationsVisible => _locPanel.Visible;
 
+    /// <summary>Whether the Locations rows (not the path field) have the keyboard (probes, PLANET-69).</summary>
+    public bool LocationListFocused => _locList.HasFocus();
+
     /// <summary>The place bar's Locations button on screen (the real-input probe opens the panel with it).</summary>
     public Rect2 LocationsButtonRect => _locButton.GetGlobalRect();
 

@@ -28,14 +28,15 @@ namespace FileScape.App.Planets;
 /// </para>
 /// <para>
 /// The keyboard (PLANET-51, AD-62): opening puts the filter in edit mode with the keyboard; while the list is open it owns
-/// every key no control used (<see cref="ListKey"/>, called before any shortcut), so typing never fires a game shortcut,
+/// every key no control used (<see cref="ListKey"/>, called before any shortcut through Main.KeyboardOwner, AD-68), so typing never fires a game shortcut,
 /// even after a click on the world; in the results, Backspace edits the filter and Home/End/Page keys move, never travel.
 /// </para>
 /// Preserve: the panel is rebuilt at most every <see cref="RebuildIntervalSeconds"/> and only when its rows change, with
 /// the open branches and the scroll kept (the selection too, unless the filter changed), so it stays usable while
 /// scanning and discovery go on; the keyboard contract the walkthrough and the OS probes use (J, type, ↓, Enter) is
-/// unchanged; no key typed while the list is open reaches a shortcut except J (when the filter is not focused), Esc,
-/// Ctrl/Alt chords and the F keys.
+/// unchanged; no key typed while the list is open reaches a shortcut except J (when the filter is not focused), Esc (which
+/// closes the list, in the overview too), Ctrl+L, Ctrl+O and the F keys (AD-68: other chords — Ctrl+V once switched to
+/// Places from the results — are kept from the game).
 /// </summary>
 public partial class PlanetWorld
 {
@@ -265,13 +266,14 @@ public partial class PlanetWorld
     }
 
     /// <summary>
-    /// While the list is open it owns the keys that reach the game's shortcuts (AD-62, PLANET-51): from
-    /// <see cref="UnhandledInput"/>, before any shortcut. A typed character goes into the filter (whatever had the
-    /// keyboard: a click on the world, the flat list); Backspace edits the filter; ↓ or Tab moves into the results;
-    /// Enter goes to the chosen row; PageUp, Home and the other keys that would move you are kept from the game. J (to
-    /// close it), Esc, Ctrl/Alt chords and the F keys still reach the game. Returns true when the key was used.
+    /// While the list is open it owns the keys that reach the game's shortcuts (AD-62, PLANET-51): called from
+    /// Main.KeyboardOwner (AD-68) before any shortcut, when the list is the topmost panel. A typed character goes into the
+    /// filter (whatever had the keyboard: a click on the world, the flat list); Backspace edits the filter; ↓ or Tab moves
+    /// into the results; Enter goes to the chosen row; PageUp, Home and the other keys that would move you are kept from
+    /// the game. It leaves J (to close it from the results), Esc, chords and the F keys to the shared rule, which lets
+    /// Esc, J, Ctrl+L, Ctrl+O and the F keys through and drops the rest. Returns true when the key was used.
     /// </summary>
-    private bool ListKey(InputEvent e)
+    public bool ListKey(InputEvent e)
     {
         if (!_contentsPanel.Visible || e is not InputEventKey { Pressed: true } k) return false;
         if (k.CtrlPressed || k.AltPressed || k.MetaPressed) return false;
