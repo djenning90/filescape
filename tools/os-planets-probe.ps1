@@ -60,10 +60,21 @@
   levels after 10 and 30 s, a real click selecting a world and the real wheel zooming during discovery, X pausing and the
   indicator's button resuming it, Enter landing on a world and Backspace returning, and T again keeping what was learned.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen] | -Discovery -DiscoveryRoot <dir>]
+
+  -Look (PLANET-67/68, AD-67, 2026-11-19) drags vertically with the real mouse where DJ found up/down look locked out
+  (playtest of bcde9b33b338): standing on arrival (the arrival framing on), after a short walk, in the overlook view (B),
+  just after a landing (J, "constellations", Enter) and in the overview (T); each drag is judged from the state file's
+  planets.viewPitch (the drawn camera's elevation, degrees, negative looks down; overview: also planets.uniPitch): a drag
+  down tilts the view down, a drag up tilts it up, by at least 8 deg per 200 px, and it stays put for 2 s (nothing levels
+  it back). -LookPrefs writes the probe's own preferences file first: 'default' (none: the app's defaults, both look axes
+  reversed and levelling on), 'usual' (both reverse settings and levelling off) or 'reversed' (both on, levelling off);
+  the planets camera must behave the same under each (it does not use the Places look settings, AD-67).
+
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '')
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -115,6 +126,11 @@ function Drag-Turns($button, $what, [int]$dx = 360, [double]$minDegrees = 30) {
 
 $prefs = Join-Path $Out 'preferences.json'
 if (Test-Path $prefs) { Remove-Item $prefs }
+# -Look -LookPrefs: the saved look settings the run starts with (the app reads this file at launch; keys as Preferences.ToJson).
+if ($Look -and $LookPrefs -ne 'default') {
+  $rev = if ($LookPrefs -eq 'reversed') { 'true' } else { 'false' }
+  "{ `"version`": 1, `"reverseLookHorizontal`": $rev, `"reverseLookVertical`": $rev, `"levelViewOnRelease`": false, `"showWelcome`": false }" | Set-Content -Encoding ascii $prefs
+}
 function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
@@ -308,6 +324,83 @@ try {
     Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 1500
     Check (-not (State).planets.overview) "Esc leaves the overview"
     $log | Set-Content (Join-Path $Out 'os-planets.log')
+    exit $fails
+  }
+  if ($Look) {
+    # Vertical look with the real mouse (PLANET-67/68). Thresholds: a 200 px drag must tilt the view at least 8 deg (the
+    # chase camera keeps aiming at the traveller, so the view turns less than the boom's 30 deg), and it may drift back at
+    # most 1.5 deg in the 2 s after (levelling or a framing undoing the look would show here). The state file is ~0.15 s
+    # old, so each reading waits 1.2 s after the drag for the camera (its follow rates close 63 % in <= 0.13 s) to settle.
+    $minPer200 = 8.0; $maxDrift = 1.5
+    function View { [double](State).planets.viewPitch }
+    function Wait-Settle { Start-Sleep -Milliseconds 1200 }
+    function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ([string]$ch) 30; Start-Sleep -Milliseconds 40 } }
+    $s = State
+    Log "look: saved settings $LookPrefs; state reverseV=$($s.reverseV) levelView=$($s.levelView)"
+    function Look-Check($what, $button, [int]$dy) {
+      Wait-Settle
+      $s0 = State; $a = [double]$s0.planets.viewPitch; $c0 = [double]$s0.planets.camPitch
+      Client-Pos $script:w 800 560
+      Drag $button 0 $dy
+      Wait-Settle
+      $s1 = State; $b = [double]$s1.planets.viewPitch; $c1 = [double]$s1.planets.camPitch
+      Start-Sleep -Seconds 2
+      $c = View
+      $down = $dy -gt 0
+      $tilt = if ($down) { $a - $b } else { $b - $a }
+      # A drag that runs into an end stop cannot tilt further: the requirement shrinks with what the chosen pitch moved.
+      $want = $minPer200 * [Math]::Abs($dy) / 200.0
+      $movedFrac = [Math]::Abs($c1 - $c0) / ([Math]::Abs($dy) * 0.15)
+      if ($movedFrac -lt 0.99) { $want = $want * $movedFrac }
+      Check ($tilt -ge $want -and [Math]::Abs($c - $b) -le $maxDrift) ("look {0}: a real {1}-drag {2} of {3} px tilts the view {2} {4:0.0} deg (at least {5:0.0}): {6:0.0} -> {7:0.0}, {8:0.0} 2 s later (chosen pitch {9:0.0} -> {10:0.0}; arrival framing {11}, overlook {12})" -f $what, $button, $(if ($down) { 'down' } else { 'up' }), [Math]::Abs($dy), $tilt, $want, $a, $b, $c, $c0, $c1, $s1.planets.arrivalFraming, $s1.planets.overlookView)
+    }
+    $s = State
+    if ($null -eq $s.planets.viewPitch) { Check $false "look: the state file has planets.viewPitch (this build predates PLANET-67)"; exit $fails }
+    Check ([double]$s.planets.arrivalFraming -gt 0.99) "look: standing after the opening shot, the arrival framing is on ($($s.planets.arrivalFraming))"
+    Look-Check 'standing on arrival' 'right' 200
+    Shot 'look-arrival-down' | Out-Null
+    Look-Check 'standing on arrival' 'left' -400
+    Shot 'look-arrival-up' | Out-Null
+    $s = State; Check ([double]$s.planets.arrivalFraming -gt 0.99) "look: looking round kept the arrival framing ($($s.planets.arrivalFraming))"
+
+    Hold-Key 'W' 1200
+    for ($i = 0; $i -lt 30 -and [double](State).planets.arrivalFraming -gt 0; $i++) { Start-Sleep -Milliseconds 150 }
+    $s = State; Check ([double]$s.planets.arrivalFraming -le 0) "look: a short walk released the arrival framing ($($s.planets.arrivalFraming))"
+    Look-Check 'after walking' 'right' 200
+    Look-Check 'after walking' 'left' -200
+
+    Hold-Key 'B' 60; Start-Sleep -Milliseconds 1200
+    $s = State; Check ([double]$s.planets.overlookView -ge 0.99) "look: B, the overlook view ($($s.planets.overlookView))"
+    Look-Check 'in the overlook view' 'right' 200
+    Look-Check 'in the overlook view' 'left' -200
+    Hold-Key 'B' 60; Start-Sleep -Milliseconds 1200
+
+    $from = (State).planets.folder
+    Hold-Key 'J' 60; Start-Sleep -Milliseconds 500
+    Type-Text 'constellations'; Start-Sleep -Milliseconds 300
+    Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+    for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.planets.folder -ne $from) { break }; Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Milliseconds 1500
+    $s = State
+    Check ($s.planets.folder -ne $from -and [double]$s.planets.arrivalFraming -gt 0.99) "look: J, 'constellations', Enter: landed on $($s.currentName) with the arrival framing on ($($s.planets.arrivalFraming))"
+    Look-Check 'just after a landing' 'left' 200
+    Shot 'look-landed-down' | Out-Null
+    Look-Check 'just after a landing' 'right' -200
+
+    Hold-Key 'T' 60; Start-Sleep -Milliseconds 2500
+    $s = State; Check ($s.planets.overview) "look: T opens the overview"
+    foreach ($d in @(@('right', 100), @('left', -200))) {
+      $s0 = State; $u0 = [double]$s0.planets.uniPitch; $v0 = [double]$s0.planets.viewPitch
+      Client-Pos $w 800 600; Drag $d[0] 0 $d[1]
+      Wait-Settle
+      $s1 = State; $u1 = [double]$s1.planets.uniPitch; $v1 = [double]$s1.planets.viewPitch
+      Start-Sleep -Seconds 2; $v2 = View
+      $down = $d[1] -gt 0
+      $tilt = if ($down) { $v0 - $v1 } else { $v1 - $v0 }
+      Check ($tilt -ge $minPer200 -and [Math]::Abs($v2 - $v1) -le $maxDrift) ("look in the overview: a real {0}-drag {1} tilts the view {1} {2:0.0} deg: {3:0.0} -> {4:0.0}, {5:0.0} 2 s later (orbit elevation {6:0.00} -> {7:0.00} rad)" -f $d[0], $(if ($down) { 'down' } else { 'up' }), $tilt, $v0, $v1, $v2, $u0, $u1)
+    }
+    Shot 'look-overview' | Out-Null
+    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 2000
     exit $fails
   }
 

@@ -13,6 +13,12 @@ namespace FileScape.App.Planets;
 /// front of you (PlanetComposer). The moment you move (walk, jump, a hop) it eases back into the close follow camera
 /// and stays there until the next arrival; standing still, or looking around with a drag or ← →, keeps it.
 /// <para>
+/// PLANET-67 (AD-67): the framing adds its lift to the pitch you choose and scales the distance you choose; it never
+/// replaces them, so a vertical drag or the wheel works while it holds (it held the whole time you stood still, and
+/// vertical look did nothing). Each arrival starts from the usual pitch, so every landing is framed as designed whatever
+/// you looked at before; the wheel's distance is kept.
+/// </para>
+/// <para>
 /// It is a weight on the chase camera's own boom (<see cref="ArrivalWeight"/>, read by <see cref="UpdateCamera"/>),
 /// not a separate camera: the landing's blend, the roll cap, the eye-clearance rule and the overlook view all apply to
 /// it unchanged, and the flight and the launch are not touched. Its shape scales with the planet's radius (a small world
@@ -51,11 +57,12 @@ public partial class PlanetWorld
     /// <summary>The arrival framing's current weight (probes).</summary>
     public float ArrivalFraming => _arrival01;
 
-    /// <summary>Starts the arrival framing (a landing, a warp's touchdown, the opening shot).</summary>
+    /// <summary>Starts the arrival framing (a landing, a warp's touchdown, the opening shot), from the usual pitch.</summary>
     private void BeginArrivalFraming()
     {
         _arrival01 = 1f;
         _arrivalReleased = false;
+        _camPitchDegrees = StartCamPitchDegrees; // the designed arrival shot every time (AD-67); you tilt from there
     }
 
     /// <summary>Per walking frame: moving (walking, a jump, a hop) releases the framing, which then eases out.</summary>

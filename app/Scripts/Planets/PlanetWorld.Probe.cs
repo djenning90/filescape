@@ -124,6 +124,37 @@ public partial class PlanetWorld
         return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
     }
 
+    /// <summary>
+    /// The look's elevation as the player sees it, degrees (PLANET-67): the angle of the camera's view direction above the
+    /// local horizontal — the traveller's up on a planet, the overview's up in the overview; negative looks down. A
+    /// vertical drag must move this, whatever framing is in force (arrival, overlook, hazard view, edge peek).
+    /// </summary>
+    public float ViewPitchDegrees
+    {
+        get
+        {
+            var up = _universe != null ? Godot.Vector3.Up : Gd(_walker.Up);
+            var fwd = -_camera.GlobalBasis.Z;
+            return Mathf.RadToDeg(MathF.Asin(Mathf.Clamp(fwd.Normalized().Dot(up), -1f, 1f)));
+        }
+    }
+
+    /// <summary>The pitch you chose with drags, degrees above the traveller (the framings add to it; probes).</summary>
+    public float ChosenPitchDegrees => _camPitchDegrees;
+
+    /// <summary>The pitch the chase camera's boom stood at in the last walking frame, degrees above the traveller: the
+    /// chosen pitch with the arrival, overlook, hazard and edge framings applied (probes).</summary>
+    public float BoomPitchDegrees => _boomPitchDegrees;
+
+    /// <summary>The walking camera's usual pitch and the arrival framing's, degrees (probes compare with them).</summary>
+    public const float StartPitch = StartCamPitchDegrees, ArrivalPitch = ArrivalPitchDegrees;
+
+    /// <summary>The overlook view's weight now, 0..1 (probes).</summary>
+    public float OverlookView01 => _overlook01;
+
+    /// <summary>The overview camera's elevation round its focus, degrees (positive: above; probes).</summary>
+    public float UniversePitchDegrees => Mathf.RadToDeg(_uniPitch);
+
     /// <summary>A world in the overview on screen (or null when behind the camera).</summary>
     public Vector2? UniverseScreen(int id)
     {
