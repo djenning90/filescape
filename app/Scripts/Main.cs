@@ -1059,6 +1059,11 @@ public partial class Main : Node3D
     {
         if (_closing) return;
         if (_experimentOnly) return;
+        // Esc for an open keyboard panel is taken here, before the GUI: with the real mouse resting on the toolbar button
+        // that opened the panel, its tooltip is up and the GUI spends the first key press dismissing it, so Esc only
+        // closed the panel the second time (os-planets-probe -Dialogs, 2026-11-19; AD-68). PanelOwnsKey does what
+        // _UnhandledInput would: a trip's Esc first, then the panel's own Esc.
+        if (@event is InputEventKey { Pressed: true, Keycode: Key.Escape } && KeyboardPanel != KeyPanel.None && PanelOwnsKey(@event)) return;
         if (_experience == Experience.Planets)
         {
             _planets.PointerBlocked = !_windowFocused || ModalOpen;

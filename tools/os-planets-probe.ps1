@@ -1018,11 +1018,11 @@ try {
         for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
           $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted
           $s = Slip $case.At -HoldOn:$case.HoldOn
-          $p = $s.planets
-          $recovered = [int]$p.recoveries -gt $rec0 -and [int]$p.fallsStarted -eq $f
-          $inTime = [double]$p.pressAfterSeconds -ge 0 -and [double]$p.pressAfterSeconds -le 0.4
-          Log ("  {0} try {1}: Space {2:0.000} s after the slip -> '{3}'; recoveries +{4}, falls +{5}, efforts {6}" -f $case.Name, $try, [double]$p.pressAfterSeconds, $p.pressWas, ([int]$p.recoveries - $rec0), ([int]$p.fallsStarted - $f), $p.lastEfforts)
-          if (-not $recovered -and [int]$p.fallsStarted -gt $f) { $s = Back-In }
+          $pl = $s.planets
+          $recovered = [int]$pl.recoveries -gt $rec0 -and [int]$pl.fallsStarted -eq $f
+          $inTime = [double]$pl.pressAfterSeconds -ge 0 -and [double]$pl.pressAfterSeconds -le 0.4
+          Log ("  {0} try {1}: Space {2:0.000} s after the slip -> '{3}'; recoveries +{4}, falls +{5}, efforts {6}" -f $case.Name, $try, [double]$pl.pressAfterSeconds, $pl.pressWas, ([int]$pl.recoveries - $rec0), ([int]$pl.fallsStarted - $f), $pl.lastEfforts)
+          if (-not $recovered -and [int]$pl.fallsStarted -gt $f) { $s = Back-In }
         }
         Shot "hazard-recovered-$($case.Name)" | Out-Null
         Check $recovered "a slip off the rim caught by Space $($case.Name) (aimed $($case.At) s after it, W $(if ($case.HoldOn) { 'held on' } else { 'let go' })): back on the ground (last press $($s.planets.pressAfterSeconds) s, '$($s.planets.pressWas)'; in the 0.4 s window: $inTime)"
@@ -1040,10 +1040,10 @@ try {
         if ($fallAt) { Log ("  an uncaught slip: the fall began {0:0.000} s after it" -f [double]$fallAt.airSeconds) }
         Check ($fallAt -and [double]$fallAt.airSeconds -lt 0.55) "an uncaught slip falls promptly (at $(if ($fallAt) { $fallAt.airSeconds } else { 'never' }) s; the catch's window is 0.4 s)"
         [void](Wait-Planets { param($p) [double]$p.airSeconds -ge 0.68 } 3000); Hold-Key 'Space' 120
-        $p1 = (State).planets
+        Start-Sleep -Milliseconds 300; $p1 = (State).planets # the state file is written a few frames later (2026-11-19: read at once, it still showed the press before)
+        Start-Sleep -Milliseconds 200; Hold-Key 'Space' 120
         Start-Sleep -Milliseconds 500; Hold-Key 'Space' 120
-        Start-Sleep -Milliseconds 500; Hold-Key 'Space' 120
-        $p3 = (State).planets
+        Start-Sleep -Milliseconds 300; $p3 = (State).planets
         Log ("  presses in the fall: the first '{0}' at {1:0.000} s, the last '{2}' at {3:0.000} s; fall efforts +{4}" -f $p1.pressWas, [double]$p1.pressAfterSeconds, $p3.pressWas, [double]$p3.pressAfterSeconds, ([int]$p3.fallEfforts - $fe0))
         Check ([int]$p3.fallEfforts - $fe0 -eq 3 -and $p3.pressWas -eq 'fall-effort') "each Space in the fall is a last effort (3 presses, $([int]$p3.fallEfforts - $fe0) efforts, last '$($p3.pressWas)')"
         $back = Wait-Planets { param($p) $p.folder -eq $sky -and $p.phase -eq 'Walking' -and [int]$p.fallReturns -gt $r0 } 10000
