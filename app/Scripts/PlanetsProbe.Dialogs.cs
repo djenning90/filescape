@@ -200,11 +200,12 @@ public partial class PlanetsProbe
         {
             new("Destinations", "J", async () => await Key(Godot.Key.J), () => P.ListOpen, true, true, "j"),
             new("Destinations", "☰ Destinations", async () => await Click(App.Hud.DestinationsButtonRect.GetCenter()), () => P.ListOpen, true, true, "j"),
-            new("Locations", "L", async () => await Key(Godot.Key.L), () => App.Hud.LocationsVisible, false, true, ""),
-            new("Locations", "Locations (L) button", async () => await Click(App.Hud.LocationsButtonRect.GetCenter()), () => App.Hud.LocationsVisible, false, true, ""),
-            new("Open location", "Ctrl+L", async () => await KeyCombo(Godot.Key.L, true), () => App.Hud.LocationsVisible, true, true, ""),
-            new("Open location", "Ctrl+O", async () => await KeyCombo(Godot.Key.O, true), () => App.Hud.LocationsVisible, false, true, ""),
-            new("Open location", "Open… button", async () => await Click(App.Hud.OpenLocationButtonRect.GetCenter()), () => App.Hud.LocationsVisible, false, true, ""),
+            // J from the Locations rows opens Destinations beside them (PLANET-41): a panel key, checked by planets-navigation.
+            new("Locations", "L", async () => await Key(Godot.Key.L), () => App.Hud.LocationsVisible, false, true, "j"),
+            new("Locations", "Locations (L) button", async () => await Click(App.Hud.LocationsButtonRect.GetCenter()), () => App.Hud.LocationsVisible, false, true, "j"),
+            new("Open location", "Ctrl+L", async () => await KeyCombo(Godot.Key.L, true), () => App.Hud.LocationsVisible, true, true, "j"),
+            new("Open location", "Ctrl+O", async () => await KeyCombo(Godot.Key.O, true), () => App.Hud.LocationsVisible, false, true, "j"),
+            new("Open location", "Open… button", async () => await Click(App.Hud.OpenLocationButtonRect.GetCenter()), () => App.Hud.LocationsVisible, false, true, "j"),
             new("Settings", "F4", async () => await Key(Godot.Key.F4), () => App.Hud.SettingsVisible, false, false, ""),
             new("Settings", "⚙ Settings button", async () => await Click(App.Hud.SettingsButtonRect.GetCenter()), () => App.Hud.SettingsVisible, false, false, ""),
         };

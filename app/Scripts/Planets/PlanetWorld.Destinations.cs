@@ -273,6 +273,9 @@ public partial class PlanetWorld
     /// the game. It leaves J (to close it from the results), Esc, chords and the F keys to the shared rule, which lets
     /// Esc, J, Ctrl+L, Ctrl+O and the F keys through and drops the rest. Returns true when the key was used.
     /// </summary>
+    /// <summary>Whether a control is part of the open list (Main.KeyboardOwner: the panel holding the focus owns the keys).</summary>
+    public bool ListHolds(Control c) => _contentsPanel.Visible && _contentsPanel.IsAncestorOf(c);
+
     public bool ListKey(InputEvent e)
     {
         if (!_contentsPanel.Visible || e is not InputEventKey { Pressed: true } k) return false;

@@ -9,7 +9,8 @@ namespace FileScape.App;
 /// one gets the key first (its own handler: <see cref="ReaderKey"/>, <see cref="Planets.PlanetWorld.ListKey"/>), Esc
 /// closes it (<see cref="HandleEscape"/>, never the overview or a gameplay layer behind it), and only these still pass
 /// to the game: the F keys, Ctrl+L and Ctrl+O exactly (they open the navigation panels themselves), and J from the
-/// Destinations results (it closes the list). Every other press, echo or chord — letters, digits, Tab, Backspace, Page
+/// Destinations results (it closes the list) or from the Locations rows (it opens the list beside them, PLANET-41).
+/// "Topmost" is the panel holding the GUI focus, else a fixed order (<see cref="KeyboardPanel"/>). Every other press, echo or chord — letters, digits, Tab, Backspace, Page
 /// and arrow keys, Ctrl+V — stops here, wherever the GUI focus is (the path field, the rows, nothing after a click on
 /// the world), so typing and panel navigation can never travel, jump, toggle a panel or switch to a legacy view.
 /// <para>
@@ -29,13 +30,25 @@ public partial class Main
     /// <summary>The panels that take the keyboard while open, topmost first in <see cref="KeyboardPanel"/>.</summary>
     public enum KeyPanel { None, Reader, Settings, Locations, Destinations }
 
-    /// <summary>The open panel that owns the keyboard (the topmost when several are open), or <see cref="KeyPanel.None"/>.</summary>
+    /// <summary>
+    /// The open panel that owns the keyboard, or <see cref="KeyPanel.None"/>: the one holding the GUI focus (Locations and
+    /// Destinations can be open together, PLANET-41: the one you opened last has the focus), else the topmost in a fixed
+    /// order (after a click on the world nothing has the focus).
+    /// </summary>
     public KeyPanel KeyboardPanel =>
         _hud == null ? KeyPanel.None
+        : GetViewport().GuiGetFocusOwner() is { } f && FocusPanel(f) is var held && held != KeyPanel.None ? held
         : _hud.ReadmeVisible ? KeyPanel.Reader
         : _hud.SettingsVisible ? KeyPanel.Settings
         : _hud.LocationsVisible ? KeyPanel.Locations
         : _experience == Experience.Planets && _planets.ListOpen ? KeyPanel.Destinations
+        : KeyPanel.None;
+
+    private KeyPanel FocusPanel(Control f) =>
+        _hud.ReaderHolds(f) ? KeyPanel.Reader
+        : _hud.SettingsHolds(f) ? KeyPanel.Settings
+        : _hud.LocationsHolds(f) ? KeyPanel.Locations
+        : _experience == Experience.Planets && _planets.ListHolds(f) ? KeyPanel.Destinations
         : KeyPanel.None;
 
     /// <summary>
@@ -69,7 +82,8 @@ public partial class Main
         if (k.Echo) return false;
         if (k.Keycode is >= Key.F1 and <= Key.F12 && !k.CtrlPressed && !k.AltPressed && !k.MetaPressed) return true;
         if (k.IsAction(InputBindings.GoToPath, exactMatch: true) || k.IsAction(InputBindings.OpenFolder, exactMatch: true)) return true;
-        return panel == KeyPanel.Destinations && k.IsAction(InputBindings.Destinations, exactMatch: true);
+        // J: from the Destinations results it closes the list; from Locations it opens the list beside it (PLANET-41).
+        return panel is KeyPanel.Destinations or KeyPanel.Locations && k.IsAction(InputBindings.Destinations, exactMatch: true);
     }
 
     /// <summary>Key presses kept from the game because a panel owned the keyboard (probes and the state file).</summary>

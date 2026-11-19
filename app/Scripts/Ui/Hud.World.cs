@@ -46,6 +46,14 @@ public partial class Hud
 
     public bool LocationsVisible => _locPanel.Visible;
 
+    /// <summary>Whether a control is part of an open keyboard panel of the HUD: the reader, Settings, Locations (AD-68:
+    /// the panel holding the GUI focus owns the keyboard when several are open).</summary>
+    public bool ReaderHolds(Control c) => _readmePanel.Visible && _readmePanel.IsAncestorOf(c);
+
+    public bool SettingsHolds(Control c) => _settingsPanel.Visible && _settingsPanel.IsAncestorOf(c);
+
+    public bool LocationsHolds(Control c) => _locPanel.Visible && _locPanel.IsAncestorOf(c);
+
     /// <summary>Whether the Locations rows (not the path field) have the keyboard (probes, PLANET-69).</summary>
     public bool LocationListFocused => _locList.HasFocus();
 

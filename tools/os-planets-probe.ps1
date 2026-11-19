@@ -304,11 +304,11 @@ try {
       $all = @(
         @('Destinations', 'J', { Hold-Key 'J' 40 }, 'j', $true, $true),
         @('Destinations', 'the Destinations button', { Click-State (State).nav.destButton }, 'j', $true, $true),
-        @('Locations', 'L', { Hold-Key 'L' 40 }, '', $false, $true),
-        @('Locations', 'the Locations (L) button', { Click-State (State).nav.locButton }, '', $false, $true),
-        @('Open location', 'Ctrl+L', { Strike 'Ctrl+L' }, '', $true, $true),
-        @('Open location', 'Ctrl+O', { Strike 'Ctrl+O' }, '', $false, $true),
-        @('Open location', 'the Open... button', { Click-State (In).openButton }, '', $false, $true),
+        @('Locations', 'L', { Hold-Key 'L' 40 }, 'j', $false, $true),
+        @('Locations', 'the Locations (L) button', { Click-State (State).nav.locButton }, 'j', $false, $true),
+        @('Open location', 'Ctrl+L', { Strike 'Ctrl+L' }, 'j', $true, $true),
+        @('Open location', 'Ctrl+O', { Strike 'Ctrl+O' }, 'j', $false, $true),
+        @('Open location', 'the Open... button', { Click-State (In).openButton }, 'j', $false, $true),
         @('Settings', 'F4', { Hold-Key 'F4' 40 }, '', $false, $false),
         @('Settings', 'the Settings button', { Click-State (In).settingsButton }, '', $false, $false))
       if ($reader) {
