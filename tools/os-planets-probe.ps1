@@ -46,10 +46,16 @@
   (bellRings, bellSwing); then Help -> Learn to play, skip to the overview, T, a left-drag, and the real mouse wheel
   until the zoom step completes (uniZoom, uniWorlds), Esc.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
+  -Discovery -DiscoveryRoot <Deep Atlas> (PLANET-76..78, 2026-11-19) opens the overview with T on the deep fixture
+  (FileScape.Fixtures create-deep, or the \\wsl.localhost path tools/make-wsl-fixture.sh --deep prints), started with
+  --test-broad so only discovery lists it, and judges from the state file (planets.discovery): growth in worlds and
+  levels after 10 and 30 s, a real click selecting a world and the real wheel zooming during discovery, X pausing and the
+  indicator's button resuming it, Enter landing on a world and Backspace returning, and T again keeping what was learned.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen] | -Discovery -DiscoveryRoot <dir>]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -105,7 +111,8 @@ function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play -or $Landmarks -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks -or $Discovery -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
@@ -137,6 +144,10 @@ function Steer-To-Target([double]$stop, [int]$tries = 90) {
   return State
 }
 function Wait-Step([int]$step, [int]$ms = 6000) { for ($i = 0; $i -lt $ms / 150; $i++) { $s = State; if ($s.tutorialStep -ge $step -or $s.tutorialTitle -eq 'done') { return $s }; Start-Sleep -Milliseconds 150 }; return State }
+if ($Discovery) {
+  if (-not $DiscoveryRoot) { throw "-Discovery needs -DiscoveryRoot <the deep fixture's Deep Atlas folder>" }
+  $script:LaunchRoot = $DiscoveryRoot
+}
 $p = Launch
 try {
   Await-Window $p
@@ -214,6 +225,81 @@ try {
     Shot 'audio-after-move-resize' | Out-Null
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($Discovery) {
+    # PLANET-76..78 with real input, on the deep fixture treated as a broad place (--test-broad: only discovery lists it).
+    # Judged from the state file (planets.discovery: state, worlds, levels, deepestListed, requested, paused, button,
+    # selected, clickable). Only counts are logged.
+    function Disc { (State).planets.discovery }
+    function Wait-Overview([bool]$open, [int]$ms = 6000) { for ($i = 0; $i -lt $ms / 150; $i++) { $s = State; if ([bool]$s.planets.overview -eq $open -and $s.planets.phase -eq 'Walking') { return $s }; Start-Sleep -Milliseconds 150 }; return State }
+    function Disc-Line($what, $d) { Log "  $what`: $($d.worlds) worlds, $($d.levels) levels drawn, deepest listed $($d.deepestListed), asked $($d.requested), listed $($d.listed), failed $($d.failed), state $($d.state), $($d.relayouts) relayouts (longest $($d.relayoutMsMax) ms)" }
+    $root = (State).current
+    Hold-Key 'T' 60
+    $s = Wait-Overview $true
+    Check ([bool]$s.planets.overview) "T opens the overview"
+    $t0 = Get-Date
+    $d0 = Disc; Disc-Line 'at 0 s' $d0
+    Check ([bool]$d0.indicator) "the discovery indicator is shown ($($d0.state))"
+    Shot 'discovery-0s' | Out-Null
+    while (((Get-Date) - $t0).TotalSeconds -lt 10) { Start-Sleep -Milliseconds 250 }
+    $d10 = Disc; Disc-Line 'at 10 s' $d10
+    Shot 'discovery-10s' | Out-Null
+    Check ([int]$d10.worlds -gt [int]$d0.worlds -and [int]$d10.levels -ge [int]$d0.levels + 2) "waiting reveals worlds and levels without a visit ($($d0.worlds) -> $($d10.worlds) worlds, $($d0.levels) -> $($d10.levels) levels)"
+    # A real click selects a world while discovery runs.
+    $c = $d10.clickable
+    if ($c) {
+      Client-Click $w ([int]$c[1]) ([int]$c[2]); Start-Sleep -Milliseconds 500
+      Check ([int](Disc).selected -eq [int]$c[0]) "a real click selects a world during discovery (#$($c[0]))"
+    } else { Check $false "a world to click in the overview (none was clear of the HUD)" }
+    # The real wheel zooms toward it.
+    Client-Pos $w 800 450
+    $z0 = [double](State).planets.uniZoom
+    for ($n = 0; $n -lt 3; $n++) { Wheel 1; Start-Sleep -Milliseconds 120 }
+    Start-Sleep -Milliseconds 1500
+    $z1 = [double](State).planets.uniZoom
+    Check ($z1 -lt 0.8 * $z0) "the real wheel zooms in during discovery ($([Math]::Round($z0)) -> $([Math]::Round($z1)) m)"
+    while (((Get-Date) - $t0).TotalSeconds -lt 30) { Start-Sleep -Milliseconds 250 }
+    $d30 = Disc; Disc-Line 'at 30 s' $d30
+    Shot 'discovery-30s' | Out-Null
+    Check ([int]$d30.deepestListed -ge [int]$d0.deepestListed + 2) "after 30 s more levels are listed ($($d0.deepestListed) -> $($d30.deepestListed))"
+    # X pauses; the indicator's button resumes.
+    Hold-Key 'X' 60; Start-Sleep -Milliseconds 400
+    $dp = Disc
+    Check ([bool]$dp.paused -and $dp.state -eq 'Paused') "X pauses discovery ($($dp.state))"
+    Start-Sleep -Seconds 2
+    Check ([int](Disc).requested -eq [int]$dp.requested) "nothing more is asked for while paused ($($dp.requested))"
+    Click-At $dp.button; Start-Sleep -Milliseconds 400
+    Check (-not [bool](Disc).paused) "the indicator's button resumes it (a real click)"
+    # Land on a discovered world with Enter, come back with Backspace.
+    $c = (Disc).clickable
+    if ($c) {
+      Client-Click $w ([int]$c[1]) ([int]$c[2]); Start-Sleep -Milliseconds 500
+      $target = [int](Disc).selected
+      Hold-Key 'Enter' 60
+      for ($i = 0; $i -lt 100; $i++) { $s = State; if (-not $s.planets.overview -and $s.planets.phase -eq 'Walking' -and [int]$s.current -eq $target) { break }; Start-Sleep -Milliseconds 150 }
+      Start-Sleep -Milliseconds 1200
+      $s = State
+      Check ([int]$s.current -eq $target -and -not $s.planets.overview) "Enter lands on the selected world during discovery (#$target)"
+      Shot 'discovery-landed' | Out-Null
+      Hold-Key 'Backspace' 60
+      for ($i = 0; $i -lt 100; $i++) { $s = State; if ($s.planets.phase -eq 'Walking' -and [int]$s.current -eq [int]$root) { break }; Start-Sleep -Milliseconds 150 }
+      Start-Sleep -Milliseconds 1200
+      Check ([int](State).current -eq [int]$root) "Backspace returns to the arrival folder"
+    } else { Check $false "a world to land on (none was clear of the HUD)" }
+    # T again: what was learned is still there.
+    Hold-Key 'T' 60
+    $s = Wait-Overview $true
+    Start-Sleep -Milliseconds 800
+    $da = Disc; Disc-Line 'opened again' $da
+    Check ([int]$da.worlds -ge [int]$d30.worlds) "the overview opened again keeps what was learned ($($d30.worlds) -> $($da.worlds) worlds)"
+    # Quiet before closing: pause and let what is in flight arrive.
+    Hold-Key 'X' 60
+    for ($i = 0; $i -lt 100 -and [int](Disc).inFlight -gt 0; $i++) { Start-Sleep -Milliseconds 200 }
+    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 1500
+    Check (-not (State).planets.overview) "Esc leaves the overview"
+    $log | Set-Content (Join-Path $Out 'os-planets.log')
     exit $fails
   }
 

@@ -195,6 +195,7 @@ public partial class Main : Node3D
         FileScape.Core.Planets.PlanetComposer.ClassicReliefForComparison = args.TestClassicRelief;
         _testListDelayMs = args.TestListDelayMs ?? 0;
         _testListDelayMatch = args.TestListDelayMatch;
+        _testBroad = args.TestBroad;
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
@@ -269,6 +270,7 @@ public partial class Main : Node3D
 
     private int _testListDelayMs;
     private string? _testListDelayMatch;
+    private bool _testBroad; // --test-broad (PLANET-76 instrument): no background listing of the arrival folder
     private bool _recordShell;
 
     /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>

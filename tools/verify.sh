@@ -123,6 +123,14 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
   # The same planetary system on the bounded real fixture: links, an empty room, and a WSL folder.
   journey planets-fixture planets-fixture.log 300 --automate=planets-fixture "--root=$W" --vis=planets --test-shell=record --ui-scale=1 "--wsl-root=${FILESCAPE_WSL_FIXTURE:-}" --tier=functional
+  # PLANET-76..78: the overview discovers by itself (deep fixture, treated as a broad place so only discovery lists it):
+  # levels at 0/10/30 s, no jumps, select/zoom/pause/land/return during discovery. FileScape.Fixtures create-deep makes it.
+  DEEP="$(ls -1d "$FIX"/deep-*/"Deep Atlas" 2>/dev/null | sort | tail -1)"
+  if [[ -n "$DEEP" ]]; then
+    journey planets-overview-discovery planets-overview-discovery.log 300 --automate=planets-overview-discovery "--root=$(wslpath -w "$DEEP")" --test-broad --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  else
+    log "SKIP planets-overview-discovery: no deep fixture under $FIX (FileScape.Fixtures create-deep)"
+  fi
   # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home).
   journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   # PLANET-58: a near and a far launcher lined up on a crowded world (a fixture shaped like a distribution's root, made

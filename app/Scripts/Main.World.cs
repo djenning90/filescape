@@ -42,6 +42,7 @@ public partial class Main
         var options = new WorldExplorer.Options
         {
             DefaultDistribution = Locations.DefaultWslDistribution(),
+            Background = _testBroad ? false : null, // --test-broad: as on a drive root, only visits and discovery list
             // SHUT-01 instrument only: an uncancellable stall before each listing, like an unresponsive share.
             // PLANET-39 instrument: --test-list-delay-match limits the stall to matching paths ("still listing" in a probe).
             BeforeEnumerate = delay > 0 ? p => { if (_testListDelayMatch is not { } m || p.Contains(m, StringComparison.OrdinalIgnoreCase)) Thread.Sleep(delay); } : null,
