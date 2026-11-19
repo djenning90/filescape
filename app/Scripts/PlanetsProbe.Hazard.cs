@@ -12,10 +12,12 @@ namespace FileScape.App;
 /// ridge (a narrow bridge with drops on both sides) and over its gap with a real jump; on to the easiest child launcher; a
 /// hop from the list keeps to the route; then deliberately off an edge: the warning and crumbling rock, the fall (it spirals
 /// round the black hole), the return to the Starter Sky beside Event Horizon's launcher by ordinary navigation, and straight
-/// back in. AD-65: the ridge's step is a "step" ahead; a slip off the rim caught by a twirl in time (the recovery); a press
-/// too late is a last effort and the fall goes on. Then Debris Field, the crowded one: no more pads than its ground holds,
-/// the rest as moons reached by G, the frame time while walking there, its leap crossed with a twirl at the top of the
-/// jump, and a fall from it back onto Event Horizon's solid ground. Walking and jumping are real
+/// back in. AD-65, AD-69: the ridge's step is a "step" ahead; slips off the rim caught by Space early (in the coyote
+/// time), mid-window and late (the recovery); an uncaught slip falls within 0.55 s; Space in the fall, early and late, is a
+/// last effort every time and the fall goes on; the fall-to-parent time is measured. Then Debris Field, the crowded one: no
+/// more pads than its ground holds, the rest as moons reached by G, the frame time while walking there, its leap crossed
+/// with a twirl at the top of the jump and again with the twirl late in its window, and the same jump without the twirl
+/// falling short — its fall back onto Event Horizon's solid ground. Walking and jumping are real
 /// input (W and Space); the camera's heading is set [direct] towards the next waypoint, as a player steers with the mouse,
 /// and stand-points for the edge are set [direct]. Screenshots: in the sky, arrival, ridge and gap, launcher, edge,
 /// mid-fall, return, re-entered, Debris Field arrival.
@@ -134,8 +136,8 @@ public partial class PlanetsProbe
         var stand = PlanetFrame.Move(edge, inward, 1.3f, r);
         var toward = -NVector3.Normalize(inward - stand * NVector3.Dot(inward, stand));
 
-        // AD-65: a slip off that rim, caught by a twirl in time (the recovery twirl), then a slip caught too late.
-        await RecoverySlip(comp, stand, toward);
+        // AD-65, AD-69: slips off that rim, caught by Space early, mid-window and late; then a slip not caught at all.
+        await RecoverySlips(comp, stand, toward);
 
         P.Walker.Teleport(comp.Surface, stand, toward); // [direct] stand 1.3 m from the edge, facing it
         P.FaceCameraAlong(toward);
@@ -147,19 +149,33 @@ public partial class PlanetsProbe
         var returns = P.FallReturns;
         var efforts = P.Walker.LastEfforts + P.LateEfforts;
         HoldKey(Godot.Key.W, true);
+        await Until(() => !P.Walker.Grounded, 3);
+        var offMs = Time.GetTicksMsec();
         await Until(() => P.Falling, 3);
+        var fallAfterSlip = P.AirSeconds;
+        var fallMs = Time.GetTicksMsec();
         HoldKey(Godot.Key.W, false);
         Check(P.FallsStarted == started + 1, "walking on past the edge starts a fall");
-        // Space now is too late: a last effort (a flail and its cry), and the fall goes on.
+        // PLANET-71 (AD-69): an uncaught slip falls promptly, as soon as the catch's window has closed.
+        Check(fallAfterSlip < 0.55f, F($"an uncaught slip falls {fallAfterSlip:0.00} s after it (game time; {fallMs - offMs} ms on the clock) — the catch's 0.4 s window and no more"));
+        // Space now is too late: a last effort (a flail, a bump and its cry), and the fall goes on — every press, early
+        // and late in the fall (PLANET-72: there used to be nothing after its first 0.6 s).
         await Seconds(0.15);
         await Key(Godot.Key.Space);
-        Check(P.Walker.LastEfforts + P.LateEfforts == efforts + 1 && P.Falling, $"Space pressed too late is a last effort and the fall goes on ({P.Walker.LastEfforts + P.LateEfforts - efforts} effort(s), falling {P.Falling})");
+        Check(P.Walker.LastEfforts + P.LateEfforts == efforts + 1 && P.Falling && P.LastHazardPress.Was == "fall-effort", $"Space pressed too late is a last effort and the fall goes on ({P.Walker.LastEfforts + P.LateEfforts - efforts} effort(s), falling {P.Falling}, \"{P.LastHazardPress.Was}\")");
         await Shot("hazard-last-effort");
+        await Until(() => P.FallProgress > 0.45f, 4);
+        await Key(Godot.Key.Space);
         await Until(() => P.FallProgress > 0.62f, 4);
         await Shot("hazard-mid-fall");
+        await Key(Godot.Key.Space);
+        Check(P.Walker.LastEfforts + P.LateEfforts == efforts + 3 && P.Falling, F($"Space mid-fall and later is a last effort each time (3 presses, {P.Walker.LastEfforts + P.LateEfforts - efforts} efforts; the last {P.LastHazardPress.AfterSeconds:0.00} s after the slip)"));
         await Until(() => P.FallProgress < 0, 4);
         Check(P.LastFallTurns >= 2f && P.LastFallClosestMetres < 0.3f * r, F($"the fall spirals round the black hole: {P.LastFallTurns:0.00} turns, down to {P.LastFallClosestMetres:0.0} m from the centre"));
         await Until(() => P.FallReturns == returns + 1 && !P.Busy, 8);
+        var returnMs = Time.GetTicksMsec();
+        // The sequence stays prompt (PLANET-72): the fall is ≈ 2.6 s and the return a warp's descent; the presses add nothing.
+        Check(returnMs - fallMs < 6000, F($"slip to fall {fallMs - offMs} ms, fall to standing on the parent {returnMs - fallMs} ms (under 6 s)"));
         await Frames(3);
         Check(App.Navigator.Current == root && P.Composition?.FolderId == root, $"the fall returns you to the parent by ordinary navigation: {Tree.DisplayName(App.Navigator.Current)}");
         var landing = P.Composition!.LauncherFor(eh);
@@ -236,19 +252,33 @@ public partial class PlanetsProbe
             await Fly(Godot.Key.U, debris, "Debris Field");
         }
 
-        // Off the nearest edge: the fall returns to Event Horizon, itself a Hazard World, beside Debris Field's launcher.
+        // PLANET-71: the long jump again, the twirl late in its window; then the same jump without the twirl, which falls
+        // short — that fall returns to Event Horizon, itself a Hazard World, beside Debris Field's launcher. Without a
+        // leap, off the nearest edge instead.
         var returns = P.FallReturns;
-        var open = P.NearestOpenSky();
-        if (open is { } o)
+        var leap = shell.Links.Any(l => l.Advanced) && P.Composition?.FolderId == debris;
+        if (leap)
         {
-            var up = P.Walker.Up;
-            var toward = NVector3.Normalize(o - up * NVector3.Dot(o, up));
-            P.Walker.Teleport(P.Composition!.Surface, up, toward); // [direct] face the nearest open sky
-            P.FaceCameraAlong(toward);
-            await Frames(3);
-            HoldKey(Godot.Key.W, true);
-            await Until(() => P.Falling, 6);
-            HoldKey(Godot.Key.W, false);
+            await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Late);
+            if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Plain);
+            else Log("SKIP the plain jump: not on Debris Field after the late twirl");
+        }
+
+        var open = leap ? null : P.NearestOpenSky();
+        if (leap || open != null)
+        {
+            if (open is { } edge)
+            {
+                var up = P.Walker.Up;
+                var toward = NVector3.Normalize(edge - up * NVector3.Dot(edge, up));
+                P.Walker.Teleport(P.Composition!.Surface, up, toward); // [direct] face the nearest open sky
+                P.FaceCameraAlong(toward);
+                await Frames(3);
+                HoldKey(Godot.Key.W, true);
+                await Until(() => P.Falling, 6);
+                HoldKey(Godot.Key.W, false);
+            }
+
             await Until(() => P.FallReturns == returns + 1 && !P.Busy, 12);
             await Frames(3);
             var back = P.Composition!.LauncherFor(debris);
@@ -259,12 +289,22 @@ public partial class PlanetsProbe
     }
 
     /// <summary>
-    /// AD-65's recovery twirl with the real keys: from <paramref name="stand"/> (1.3 m from an edge, facing it along
-    /// <paramref name="toward"/>), W walks off the rim; W is let go as the feet leave it (a player stops pushing on) and Space
-    /// pressed 0.15 s later — after the coyote time, inside the recovery's window — lifts the traveller back onto the rim.
-    /// The state file says the same (recoveries, belowRimSeconds).
+    /// AD-65's recovery twirl with the real keys, at the three press times AD-69 promises (PLANET-71): from
+    /// <paramref name="stand"/> (1.3 m from an edge, facing it along <paramref name="toward"/>), W walks off the rim and
+    /// Space comes early (0.03 s after the feet leave it, inside the coyote time, W still held: it used to be a coyote jump
+    /// further out), mid-window (0.2 s, W let go) or late (0.35 s, W held) — each lifts the traveller back onto the rim.
+    /// The state file says the same (recoveries, pressAfterSeconds, pressWas).
     /// </summary>
-    private async Task RecoverySlip(PlanetComposition comp, NVector3 stand, NVector3 toward)
+    private async Task RecoverySlips(PlanetComposition comp, NVector3 stand, NVector3 toward)
+    {
+        foreach (var (after, holdOn, what) in new[] { (0.03f, true, "early"), (0.2f, false, "mid-window"), (0.35f, true, "late") })
+        {
+            await RecoverySlip(comp, stand, toward, after, holdOn, what);
+        }
+    }
+
+    /// <summary>One slip of <see cref="RecoverySlips"/>: Space <paramref name="pressAfter"/> s (game time) after the feet leave the rim, W held on or let go as they do.</summary>
+    private async Task RecoverySlip(PlanetComposition comp, NVector3 stand, NVector3 toward, float pressAfter, bool holdOn, string what)
     {
         var shell = comp.Surface.Shell!;
         var falls = P.FallsStarted;
@@ -273,67 +313,101 @@ public partial class PlanetsProbe
         P.FaceCameraAlong(toward);
         await Frames(20);
         HoldKey(Godot.Key.W, true);
-        var offAt = -1;
+        var off = false;
         var pressed = false;
+        var pressFrames = 0;
         var lowest = 0f;
-        for (var frame = 0; frame < 240; frame++)
+        for (var frame = 0; frame < 300; frame++)
         {
-            if (!P.Walker.Grounded && offAt < 0) { offAt = frame; HoldKey(Godot.Key.W, false); }
-            if (offAt >= 0 && !pressed && frame - offAt >= 9) // 0.15 s at 60 Hz
+            if (!P.Walker.Grounded && !off)
+            {
+                off = true;
+                if (!holdOn) HoldKey(Godot.Key.W, false);
+            }
+
+            if (off && !pressed && P.AirSeconds >= pressAfter - 0.008f) // half a frame early: the press is read on the next frame
             {
                 pressed = true;
                 HoldKey(Godot.Key.Space, true);
             }
 
-            if (pressed && frame - offAt == 14) await Shot("hazard-recovery");
-            if (pressed && frame - offAt > 20) HoldKey(Godot.Key.Space, false);
+            if (pressed && ++pressFrames == 5 && what == "mid-window") await Shot("hazard-recovery");
+            if (pressed && pressFrames > 12) HoldKey(Godot.Key.Space, false);
             lowest = MathF.Min(lowest, P.Walker.Height.Value);
-            if (P.Falling || (pressed && P.Walker.Grounded && frame - offAt > 4)) break;
+            if (P.Falling || (pressed && P.Walker.Grounded && pressFrames > 3)) break;
             await Frames(1);
         }
 
         HoldKey(Godot.Key.W, false);
         HoldKey(Godot.Key.Space, false);
         await Frames(20);
+        var (at, was) = P.LastHazardPress;
         Check(P.Walker.Recoveries == recoveries + 1 && P.FallsStarted == falls && P.Walker.Grounded && !shell.OverHole(P.Walker.Up),
-            F($"a slip off the rim caught by a twirl in time: back on the ground ({P.Walker.Recoveries - recoveries} recovery, {P.FallsStarted - falls} falls, {lowest:0.00} m below the rim at the lowest)"));
-        await Shot("hazard-recovered");
+            F($"a slip off the rim caught by Space {what} ({at:0.00} s after the slip, W {(holdOn ? "held on" : "let go")}: \"{was}\"): back on the ground ({P.Walker.Recoveries - recoveries} recovery, {P.FallsStarted - falls} falls, {lowest:0.00} m below the rim at the lowest)"));
+        if (what == "mid-window") await Shot("hazard-recovered");
+        if (P.Falling) await Until(() => !P.Busy && P.FallReturns > 0, 12); // a failed catch: let the return finish
     }
+
+    /// <summary>The long jump's second press in <see cref="LeapCrossing"/>: at the top of the jump, late in its window, or none.</summary>
+    private enum LeapTwirl { Apex, Late, Plain }
+
+    /// <summary>
+    /// The long jump's twirl comes this long after take-off in <see cref="LeapTwirl.Late"/>, seconds (game time): late in the
+    /// window HazardRecoveryTimingTests measures for these inputs (≈ 0.23–0.52 s after take-off with each press held 0.3 s), so the window is shown
+    /// to be forgiving.
+    /// </summary>
+    private const float LeapLateTwirlSeconds = 0.45f;
 
     /// <summary>
     /// AD-65's leap with the real keys, on a world that has one: along the route to its near land, then [direct] stood 3 m
     /// before its take-off board facing across; W, Space on the board (0.35 m before the edge) and Space again at the top of
-    /// the jump (the vertical speed within ±1.5 m/s): over, onto the landing ledge. The ground ahead reads "leap" first.
+    /// the jump (the vertical speed within ±1.5 m/s), or late in the twirl's window (<see cref="LeapLateTwirlSeconds"/>):
+    /// over, onto the landing ledge. The ground ahead reads "leap" first. <see cref="LeapTwirl.Plain"/> (PLANET-71): the same
+    /// jump without the twirl falls short, and the fall takes the traveller back up. True when across.
     /// </summary>
-    private async Task LeapCrossing(PlanetComposition comp, BrokenShell shell)
+    private async Task<bool> LeapCrossing(PlanetComposition comp, BrokenShell shell, LeapTwirl mode = LeapTwirl.Apex)
     {
         var k = shell.Links.ToList().FindIndex(l => l.Advanced);
-        if (k < 0) { Log("SKIP no leap on this world"); return; }
+        if (k < 0) { Log("SKIP no leap on this world"); return false; }
         var link = shell.Links[k];
         var s = shell.Spans[link.Span];
         var (g0, g1) = s.Gaps[0];
         Log(F($"the leap: {g1 - g0:0.00} m, on a bridge of {s.LengthMetres:0.0} m"));
-        var near = await WalkRoute(shell.Waypoints[link.From], 0.8f, "the leap's near side");
-        if (!near.Reached) return;
+        // The plain jump comes straight after a crossing, from the far side: it is stood back on the near side [direct]
+        // (the walk round from there is not what it tests).
+        if (mode != LeapTwirl.Plain)
+        {
+            var near = await WalkRoute(shell.Waypoints[link.From], 0.8f, "the leap's near side");
+            if (!near.Reached) return false;
+        }
         var start = s.PointAlong(MathF.Max(0.5f, g0 - 3f));
         var across = s.DirectionAt(start);
         P.Walker.Teleport(comp.Surface, start, across); // [direct] stand on the bridge before the take-off board, facing across
         P.FaceCameraAlong(across);
         await Seconds(0.6);
         Check(P.GapClassAhead() == "leap", $"the gap ahead reads as a leap: \"{P.GapClassAhead()}\"");
-        await Shot("leap-takeoff");
+        if (mode == LeapTwirl.Apex) await Shot("leap-takeoff");
         var falls = P.FallsStarted;
         var apex = P.Walker.ApexTwirls;
         HoldKey(Godot.Key.W, true);
         bool jumped = false, twirled = false;
         var holdFrames = 0;
+        var twirlAt = -1f;
         for (var frame = 0; frame < 360; frame++)
         {
             var along = s.Measure(P.Walker.Up).AlongMetres;
+            var airborne = jumped && !P.Walker.Grounded;
+            var twirlNow = mode switch
+            {
+                LeapTwirl.Apex => holdFrames == 0 && MathF.Abs(P.Walker.VerticalVelocity.Value) < 1.5f,
+                LeapTwirl.Late => P.AirSeconds >= LeapLateTwirlSeconds - 0.008f, // half a frame early: read on the next frame
+                _ => false,
+            };
             if (!jumped && P.Walker.Grounded && along >= g0 - 0.35f) { jumped = true; HoldKey(Godot.Key.Space, true); holdFrames = 18; }
-            else if (jumped && !twirled && !P.Walker.Grounded && holdFrames == 0 && MathF.Abs(P.Walker.VerticalVelocity.Value) < 1.5f)
+            else if (airborne && !twirled && twirlNow)
             {
                 twirled = true;
+                twirlAt = P.AirSeconds;
                 HoldKey(Godot.Key.Space, true);
                 holdFrames = 18;
             }
@@ -346,10 +420,24 @@ public partial class PlanetsProbe
         HoldKey(Godot.Key.W, false);
         HoldKey(Godot.Key.Space, false);
         await Frames(15);
-        var beyond = s.Measure(P.Walker.Up).AlongMetres > g1;
-        Check(beyond && P.FallsStarted == falls && P.Walker.ApexTwirls == apex + 1, $"across the leap with a twirl at the top of the jump ({(beyond ? "landed beyond" : "short")}, {P.Walker.ApexTwirls - apex} apex twirl, {P.FallsStarted - falls} falls)");
-        await Shot("leap-landed");
-        if (P.Falling) await Until(() => !P.Busy, 12);
+        var beyond = !P.Falling && P.Shell == shell && s.Measure(P.Walker.Up).AlongMetres > g1;
+        var fell = P.FallsStarted - falls;
+        switch (mode)
+        {
+            case LeapTwirl.Apex:
+                Check(beyond && fell == 0 && P.Walker.ApexTwirls == apex + 1, F($"across the leap with a twirl at the top of the jump ({twirlAt:0.00} s after take-off; {(beyond ? "landed beyond" : "short")}, {P.Walker.ApexTwirls - apex} apex twirl, {fell} falls)"));
+                await Shot("leap-landed");
+                break;
+            case LeapTwirl.Late:
+                Check(beyond && fell == 0, F($"across the leap with the twirl late in its window ({twirlAt:0.00} s after take-off, \"{P.LastHazardPress.Was}\"; {(beyond ? "landed beyond" : "short")}, {fell} falls)"));
+                break;
+            default:
+                Check(!beyond && fell == 1, F($"the same jump without the twirl falls short of the leap ({fell} fall{(fell == 1 ? "" : "s")})"));
+                break;
+        }
+
+        if (P.Falling || fell > 0) await Until(() => !P.Busy && !P.Falling, 12);
+        return beyond;
     }
 
     /// <summary>The walking frames recorded since index <paramref name="from"/>: count, mean, p95 and max, milliseconds.</summary>

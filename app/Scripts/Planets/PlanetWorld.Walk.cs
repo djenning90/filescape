@@ -224,8 +224,11 @@ public partial class PlanetWorld
 
         if (jump) CloseOverlaysOnMove();
         if (wish.LengthSquared() > 0.01f) CloseOverlaysOnMove();
+        var airborneBefore = !_walker.Grounded;
         _walker.Update(new SphereWalkInput(Nv(wish), run, jump, jumpHeld), Core.Units.Durations.FromSeconds(dt));
         var ev = _walker.LastEvent;
+        _airSeconds = _walker.Grounded ? 0 : _airSeconds + dt;
+        if (jump && airborneBefore && Shell != null) NoteHazardPress(ev.Kind);
         switch (ev.Kind)
         {
             case Core.Movement.JumpEventKind.Jump:

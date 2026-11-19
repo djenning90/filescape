@@ -7,7 +7,8 @@ namespace FileScape.App.Planets;
 /// <summary>
 /// A Hazard World's behaviour (PLANET-34, PLANET-46; AD-53, AD-59): the caution cue on arrival, the edge warning as you
 /// near a broken edge (with rock crumbling off it), the fall, and hops that keep to the route. Core decides where there is no ground (<see cref="BrokenShell"/>); once the walker has dropped
-/// <see cref="PlanetSurface.FallThroughMetres"/> below the rim the fall is committed and this part takes over.
+/// <see cref="PlanetSurface.FallThroughMetres"/> below the rim with no catch still open (<see cref="SphereWalker.FallCommitted"/>,
+/// AD-69) the fall is committed and this part takes over; every Space press from then until the return is a last effort.
 /// <para>
 /// <b>The fall</b> (<see cref="Phase.Falling"/>, so the world is <see cref="Busy"/>): ≈ 2.6 s along a path that starts with
 /// the momentum you stepped off with, drops towards the centre, flattens into the black hole's disc and winds round it
@@ -136,8 +137,8 @@ public partial class PlanetWorld
         /// <summary>The black hole's frame (planet frame columns; Y its spin axis): the spiral is computed in it.</summary>
         public Basis Frame = Basis.Identity;
 
-        /// <summary>A last effort was made in this fall (on the way off the edge, or Space pressed early in the fall): only one.</summary>
-        public bool Effort;
+        /// <summary>Seconds since the latest effort in this fall (Space pressed during it: the bump, <see cref="FallEffortBumpMetres"/>), or −1 for none yet.</summary>
+        public float SinceEffort = -1;
 
         /// <summary>Set once the session has been asked to go up.</summary>
         public bool Asked;
@@ -167,14 +168,49 @@ public partial class PlanetWorld
     public int FallsStarted { get; private set; }
     public int FallReturns { get; private set; }
 
-    /// <summary>Space pressed in the first <see cref="LateEffortSeconds"/> of a fall: a last effort too late to save you (PLANET-62).</summary>
+    /// <summary>
+    /// Space pressed during a fall, any time before the return (PLANET-62; PLANET-72, AD-69: every press, not just one in
+    /// the first 0.6 s): a last effort too late to save you — a flail, a bump up the path and its cry; the fall goes on.
+    /// </summary>
     public int LateEfforts { get; private set; }
 
     /// <summary>
-    /// Space within this long of a fall's start still reads as a last effort, seconds (a flail and its sound; the fall goes on):
-    /// a press just after the walker's recovery window closed belongs to that moment, not to nothing (by eye).
+    /// A press during the fall bumps the traveller back up its path by up to this much, metres, over this long, seconds
+    /// (a sine hump: up and back, ending where it would have been), so the effort reads at the fall camera's 4 m distance
+    /// and the fall's timing is unchanged (by eye, 2026-11-19).
     /// </summary>
-    private const float LateEffortSeconds = 0.6f;
+    private const float FallEffortBumpMetres = 0.7f, FallEffortBumpSeconds = 0.4f;
+
+    /// <summary>Seconds since the walker last left the ground (0 while standing; it runs on through a fall), for <see cref="LastHazardPress"/>.</summary>
+    private float _airSeconds;
+
+    /// <summary>Seconds since the walker last left the ground, game time (0 standing; on through a fall): probes time their presses by it.</summary>
+    public float AirSeconds => _airSeconds;
+
+    /// <summary>
+    /// The latest Space press while airborne on a Hazard World or falling from one (probes, the state file): seconds after
+    /// leaving the ground, and what it did — "catch", "coyote-jump", "twirl", "apex-twirl", "effort", "fall-effort",
+    /// "buffered" (kept for the landing) — or (−1, "") before any.
+    /// </summary>
+    public (float AfterSeconds, string Was) LastHazardPress { get; private set; } = (-1, "");
+
+    private int _apexTwirlsSeen;
+
+    /// <summary>Records an airborne press on a Hazard World's walking frame (<see cref="LastHazardPress"/>) from the walker's event.</summary>
+    private void NoteHazardPress(Core.Movement.JumpEventKind kind)
+    {
+        var apex = _walker.ApexTwirls != _apexTwirlsSeen;
+        _apexTwirlsSeen = _walker.ApexTwirls;
+        var was = kind switch
+        {
+            Core.Movement.JumpEventKind.Recovery => "catch",
+            Core.Movement.JumpEventKind.Jump => "coyote-jump",
+            Core.Movement.JumpEventKind.AirJump => apex ? "apex-twirl" : "twirl",
+            Core.Movement.JumpEventKind.LastEffort => "effort",
+            _ => "buffered",
+        };
+        LastHazardPress = (_airSeconds, was);
+    }
 
     /// <summary>The recovery tip is shown after a fall until a recovery has been made, at most this many times per run.</summary>
     private const int RecoveryTipShows = 2;
@@ -245,7 +281,7 @@ public partial class PlanetWorld
             if (_s.Tree is { } tree && tree.Contains(_fallReturnFrom) && _current != null)
             {
                 // Until a recovery has been made, the first falls also teach it (PLANET-62).
-                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? " Tip: slip off an edge? Press Space as you drop and a twirl can catch the rim." : "";
+                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? " Tip: slip off an edge? Press Space at once (within about 0.4 s) and a twirl catches the rim." : "";
                 if (tip.Length > 0) _recoveryTipsShown++;
                 ShowHint($"Back in {tree.DisplayName(_current.FolderId)}, beside {tree.DisplayName(_fallReturnFrom)}'s launcher: step on and press Space to try again.{tip}");
             }
@@ -318,12 +354,13 @@ public partial class PlanetWorld
     // ------------------------------------------------------------------ the fall
 
     /// <summary>
-    /// After the walker's step: if it has fallen through the rim (Core's commitment depth), the fall begins. True when it
-    /// did (the walking frame stops there).
+    /// After the walker's step: if it has fallen past saving (Core's <see cref="SphereWalker.FallCommitted"/>: through the
+    /// rim and no catch still open), the fall begins. True when it did (the walking frame stops there). AD-69: this used to
+    /// start at the depth alone (0.6 m, ≈ 0.23 s after a slip), which cut the catch's window short in the app.
     /// </summary>
     private bool BeginFallIfThrough()
     {
-        if (_current == null || Shell == null || _walker.Grounded || _walker.Height.Value >= -PlanetSurface.FallThroughMetres) return false;
+        if (_current == null || Shell == null || !_walker.FallCommitted) return false;
         // The spiral is computed in the black hole's frame (its disc lies across the jet axis), from where and how fast you
         // stepped off, both turned into that frame.
         var frame = BlackHoleArt.AxisBasis(Shell.JetAxis);
@@ -342,7 +379,6 @@ public partial class PlanetWorld
             V0 = v0,
             DEnd = _current.Comp.Shape.Radius * BrokenShell.HorizonRadiusFraction * FallEndCoreRadii,
             Frame = frame,
-            Effort = _walker.LastEvent.Kind == Core.Movement.JumpEventKind.LastEffort,
         };
         _jumpQueued = false; // a press on the step that committed the fall is that step's, not the fall's
         _phase = Phase.Falling;
@@ -391,14 +427,18 @@ public partial class PlanetWorld
         }
 
         f.T += dt;
-        // Space early in the fall: too late to catch the rim, so a last effort (a flail and a cry), and the fall goes on.
+        _airSeconds += dt;
+        if (f.SinceEffort >= 0) f.SinceEffort += dt;
+        // Space in the fall, any time before the return: too late to catch the rim, so a last effort — a flail, a bump up
+        // the path and a cry — every press (AD-69: no dead press), and the fall goes on at its own pace.
         if (_jumpQueued)
         {
             _jumpQueued = false;
-            if (!f.Effort && f.T < LateEffortSeconds)
+            if (!f.Asked)
             {
-                f.Effort = true;
+                f.SinceEffort = 0;
                 LateEfforts++;
+                LastHazardPress = (_airSeconds, "fall-effort");
                 _audio.LastEffort();
                 _avatar.Flail();
                 Mark("last-effort-late");
@@ -417,6 +457,10 @@ public partial class PlanetWorld
         var u = Mathf.Clamp(f.T / FallSeconds, 0, 1);
         var pos = f.Frame * FallPoint(f, u);
         var ahead = f.Frame * FallPoint(f, MathF.Min(1, u + 0.01f)) - pos;
+        if (f.SinceEffort >= 0 && f.SinceEffort < FallEffortBumpSeconds && pos.LengthSquared() > 1e-6f)
+        {
+            pos += pos.Normalized() * (FallEffortBumpMetres * MathF.Sin(MathF.PI * f.SinceEffort / FallEffortBumpSeconds)); // the effort's bump, away from the hole
+        }
         var fwd = ahead.LengthSquared() > 1e-8f ? ahead.Normalized() : -pos.Normalized();
         var outward = pos.LengthSquared() > 1e-6f ? pos.Normalized() : Vector3.Up;
         LastFallClosestMetres = MathF.Min(LastFallClosestMetres, pos.Length());
