@@ -188,7 +188,7 @@ public partial class PlanetsProbe
         await Key(Godot.Key.X);
         await Frames(3);
         var requested = P.DiscoveryScheduler.Requested;
-        Check(P.DiscoveryScheduler.Paused && P.DiscoveryText.Contains("paused", StringComparison.OrdinalIgnoreCase), "X pauses discovery (the indicator says so)");
+        Check(P.DiscoveryScheduler.Paused && P.DiscoveryText.Contains("paused", StringComparison.OrdinalIgnoreCase), F($"X pauses discovery (the indicator says so): paused {P.DiscoveryScheduler.Paused}, \"{P.DiscoveryText}\", focus {GetViewport().GuiGetFocusOwner()?.Name ?? "none"}"));
         await Seconds(2);
         Check(P.DiscoveryScheduler.Requested == requested, F($"nothing more is asked for while paused ({requested} asked)"));
         await Click(P.DiscoveryButtonRect.GetCenter() / GetWindow().ContentScaleFactor);
