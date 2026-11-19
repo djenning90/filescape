@@ -174,6 +174,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # the reader at both sizes (wheel, keys, Expand, Enter/Open, links). The reader needs FILESCAPE_WSL_README (from
   # tools/make-wsl-fixture.sh --readme, which now also writes guide.md); without it that step is left out.
   journey planets-destinations-keys planets-destinations-keys.log 300 --automate=planets-destinations-keys --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # 2026-11-19 (PLANET-69/70, AD-68): every keyboard panel (Destinations, Locations, Open location, Settings, the reader),
+  # opened by shortcut and toolbar, typed into key by key at once and from its results, after travel and in the overview.
+  journey planets-dialog-keys planets-dialog-keys.log 420 --automate=planets-dialog-keys --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reader planets-reader.log 200 --automate=planets-reader "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional; fi
 fi
 

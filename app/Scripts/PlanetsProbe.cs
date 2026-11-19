@@ -118,6 +118,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
         else if (Mode == "planets-destinations-keys") await DestinationsKeysRun(); // PlanetsProbe.Input.cs (PLANET-51)
+        else if (Mode == "planets-dialog-keys") await DialogKeysRun(); // PlanetsProbe.Dialogs.cs (PLANET-69/70)
         else if (Mode == "planets-reader") await ReaderRun(); // PlanetsProbe.Reader.cs (PLANET-52/53)
         else if (Mode == "planets-near-far") await NearFarRun(); // PlanetsProbe.NearFar.cs (PLANET-58)
         else if (Mode == "planets-relief") await ReliefRun(); // PlanetsProbe.Relief.cs (PLANET-59)

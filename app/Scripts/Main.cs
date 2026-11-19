@@ -574,7 +574,7 @@ public partial class Main : Node3D
         {
             // The planetary world (AD-39) owns its camera, movement and signs; the session, HUD and state file stay shared.
             var pointerBlocked = !_windowFocused || ModalOpen;
-            var blockedKeys = pointerBlocked || GetViewport().GuiGetFocusOwner() != null;
+            var blockedKeys = pointerBlocked || GetViewport().GuiGetFocusOwner() != null || KeyboardPanel != KeyPanel.None; // AD-68
             _planets.Tick(delta, blockedKeys, pointerBlocked);
             TickTutorial((float)delta);
             // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
@@ -1149,11 +1149,11 @@ public partial class Main : Node3D
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_experimentOnly) return;
+        if (PanelOwnsKey(@event)) return; // AD-68 (Main.KeyboardOwner): a trip's Esc, then an open panel owns the keyboard
         if (_experience == Experience.Planets)
         {
-            if (ReaderKey(@event)) return; // the reading view owns the keys while it is open (PLANET-52, Main.Reader)
-            if (_planets.PanelKey(@event)) return; // a trip's Esc, the open Destinations list's typing (PLANET-51)
             if (@event is InputEventKey { Pressed: true } seen) NoteUnhandledKey(seen);
+            if (ProbeShortcutsInert && @event is InputEventKey { Keycode: not Key.Escape }) return; // instrument (PLANET-69): log, do not act
             if (_planets.UnhandledInput(@event)) return;
             if (@event is InputEventMouseButton { Pressed: true }) GetViewport().GuiReleaseFocus();
             if (@event is InputEventKey { Pressed: true, Echo: false } pk) HandleCommand(pk);
@@ -1168,8 +1168,6 @@ public partial class Main : Node3D
             case InputEventMouseMotion mm:
                 HandleMouseMotion(mm);
                 break;
-            case InputEventKey { Pressed: true } key when ReaderKey(key):
-                break; // the reading view owns the keys while it is open (Main.Reader)
             case InputEventKey { Pressed: true } key:
                 foreach (var a in InputBindings.MovementActions)
                 {
@@ -1308,6 +1306,7 @@ public partial class Main : Node3D
     /// </summary>
     private void HandleCommand(InputEventKey key)
     {
+        ShortcutCommandCount++;
         var planets = _experience == Experience.Planets;
         var places = _experience == Experience.Places || planets;
         if (_transition != null && !key.IsAction(InputBindings.Help)) return; // travel in progress: one place change at a time
@@ -1496,7 +1495,7 @@ public partial class Main : Node3D
     private void HandleKeyboardMovement(TimeSpan dt)
     {
         // A focused UI control (or an open dialog) owns the keyboard; navigation resumes when it lets go.
-        var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null || _transition != null;
+        var blocked = !_windowFocused || ModalOpen || GetViewport().GuiGetFocusOwner() != null || KeyboardPanel != KeyPanel.None || _transition != null;
         if (_transition != null && _windowFocused && !ModalOpen)
         {
             return; // travel in progress: movement pauses, flight (if any) continues afterwards

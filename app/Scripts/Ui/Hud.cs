@@ -204,7 +204,7 @@ public partial class Hud : CanvasLayer
         title.AddThemeColorOverride("font_color", new Color(0.75f, 0.88f, 1f));
         row.AddChild(title);
         row.AddChild(new VSeparator());
-        row.AddChild(MakeButton("Open…", () => OpenLocationRequested?.Invoke(), "Open a location (Ctrl+O): This computer (all drives and WSL distributions), a drive, a path, or browse for a folder."));
+        row.AddChild(_openLocationButton = MakeButton("Open…", () => OpenLocationRequested?.Invoke(), "Open a location (Ctrl+O): This computer (all drives and WSL distributions), a drive, a path, or browse for a folder."));
         row.AddChild(MakeButton("Sample world", () => DemoRequested?.Invoke(), "Open the Starter Sky: a small bundled world of sample files (not yours), where the walkthrough happens."));
         _cancel = MakeButton("Cancel scan", () => CancelRequested?.Invoke(), "Stop scanning. The part scanned so far stays explorable.");
         _cancel.Disabled = true;
@@ -762,6 +762,11 @@ public partial class Hud : CanvasLayer
     }
 
     public bool HelpVisible => _help.Visible;
+
+    private Button _openLocationButton = null!;
+
+    /// <summary>The top bar's Open… button on screen (probes open the Locations chooser with it, PLANET-69).</summary>
+    public Rect2 OpenLocationButtonRect => _openLocationButton.GetGlobalRect();
 
     /// <summary>The on-screen rectangle of a visualization button (for input automation that clicks the real toolbar).</summary>
     public Rect2 VisualizationButtonRect(int mapIndex) => _visButtons[mapIndex + 1].GetGlobalRect();
