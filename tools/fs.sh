@@ -216,7 +216,10 @@ case "$cmd" in
     DN="$(wslpath "$(win_env ProgramFiles)")/dotnet"
     cp "$DN/LICENSE.txt" "$WORK/FileScape/licenses/dotnet-LICENSE.txt" && cp "$DN/ThirdPartyNotices.txt" "$WORK/FileScape/licenses/dotnet-ThirdPartyNotices.txt" || { echo "fs.sh: .NET licence files not found in $DN" >&2; exit 5; }
     ZIP_W="$BASE_W\\FileScape-$id-win-x64.zip"
-    powershell.exe -NoProfile -Command "Compress-Archive -Path '$(wslpath -w "$WORK/FileScape")' -DestinationPath '$ZIP_W' -Force" || exit 6
+    # Windows' own bsdtar writes a standard ZIP (forward-slash entry names); Compress-Archive wrote "FileScape\FileScape.exe",
+    # which Explorer accepts but unzip on Linux/macOS extracts as single files with backslashes in their names (2026-11-19).
+    rm -f -- "$BASE/FileScape-$id-win-x64.zip"
+    (cd "$WORK" && /mnt/c/Windows/System32/tar.exe -a -c -f "$ZIP_W" FileScape) || exit 6
     rm -rf -- "$WORK"
     sha="$(sha256sum "$BASE/FileScape-$id-win-x64.zip" | cut -d' ' -f1)"
     echo "fs.sh: package OK -> $ZIP_W (sha256 $sha)" ;;

@@ -965,6 +965,15 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Evidence:** `planets-dialog-keys` (see the implementation status), the reproduction above.
 - **Revisit if:** a new text-entry or navigation panel is added (add it to `KeyboardPanel`, not a guard of its own),
   or DJ wants a paste in the Destinations results to go into the filter.
+- **Tuned after the real-keyboard run (2026-11-19, `os-planets-probe -Dialogs` on the merged build):** two defects the
+  injected-event probe could not see, because they need the real mouse resting on the toolbar.
+  - *Esc after a toolbar click:* opened by its toolbar button, a panel needed Esc twice. The button's tooltip was up under
+    the resting cursor and the GUI spent the first key press dismissing it (reproduced: after the first Esc nothing had
+    changed, the filter still editing). Esc for an open keyboard panel is now taken in `Main._Input`, before the GUI,
+    through the same `PanelOwnsKey` (a trip's Esc first).
+  - *Shortcuts dead after ⚙ then Esc:* the toolbar button kept the GUI focus after its panel closed, and a focused
+    control blocks the shortcuts (AD-12), so R and J did nothing until a click on the world. The Esc that closes the last
+    keyboard panel now releases the focus.
 
 ## AD-69 Hazard World moves: a catch from the first instant, a long jump for taps, an answer to every press (2026-11-19; amends AD-65)
 
