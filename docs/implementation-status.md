@@ -4,6 +4,40 @@ Last updated: 2026-11-17 (night), after the third playtest follow-up (PLANET-49.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fourth playtest follow-up (2026-11-19)
+
+### Keyboard ownership across all panels (PLANET-69..70, AD-68)
+
+DJ: typing into a navigation dialog still switched out of Planets into a legacy view (dialog unknown). Reproduced
+first with the new in-app instrument (`planets-dialog-keys`, injected key events, each key judged on its own;
+`docs/evidence/2026-11-19-input/repro-dialog-keys-summary.txt`): 564 of 916 typed keys reached the game's shortcuts.
+With the **Locations / Open location rows** focused (L, its button, Ctrl+O, Open…, or Tab from the path field): every
+letter (V is Planets → Places), digit, Backspace, Home/End, ←/→ and chord. **Settings**: every key, Tab and V included.
+From the **Destinations results** and the **reader**: Ctrl+V and Ctrl+Tab, both switching to Places live. From the
+**path field**: Ctrl+Tab. Plain typing in the Destinations filter and the path field was already safe. The most likely
+case for DJ is Locations with its rows focused, or a paste. The fix is one rule at the point where keys reach the game
+(`Main.KeyboardOwner`, AD-68). Commits `8439c53`, `946cb4f`, `5c07066` and this documentation commit on
+`worktree-agent-afc40f1875c66477c`.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Every keyboard panel owns the keyboard: Destinations (J, ☰), Locations (L, its button), Open location (Ctrl+L, Ctrl+O, Open…), Settings (F4, ⚙), the reader (R, ⤢ Expand). Tested typing at once and from the results, after travel (Enter in the filter), home again (Enter in the path field) and in the overview. Esc closes only the panel (PLANET-69) | **Demonstrated** in-app | `planets-dialog-keys` 148/0: 3,447 keys, 0 leaks, after 564 leaks before the fix. Evidence in `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-dialogs\r2\` |
+| The panels' own keys and the existing journeys | **Demonstrated** in-app | `planets-destinations-keys` 35/0, `planets-navigation` 47/0 (Locations and Destinations open together), `planets-reader` 33/0, `planets-tutorial` 36/0, `planets-journey` 39/0; `fs.sh check smoke` on `5c07066` (staged, not installed): 0 failing steps, Core 703/700 passed (Windows/WSL), `%LOCALAPPDATA%\FileScape\evidence\checks\smoke-20261119-202536\` |
+| Real keyboard and mouse, every panel (PLANET-70) | **Unknown**: `tools/os-planets-probe.ps1 -Dialogs` is written and parse-checked (`Parser::ParseFile`, 0 errors) but has not been run. The coordinator runs real-desktop input serially | — |
+
+**Instrument defects fixed:** the probe's R step failed at first. A panel had left a world selected, and R reads the
+selected folder's README ("No README to show here"). The step now presses Esc first, as a person would.
+`Main.ProbeShortcutsInert` (probe-only) logs and drops the keys that reach the shortcuts, so one run lists every leak
+without the first one leaving Planets.
+**Product defect found by the fix:** when Locations and Destinations were open together (PLANET-41), the fixed panel
+order kept keys from the list you opened last. Now the panel holding the GUI focus owns the keys, and J from the
+Locations rows opens the list beside them.
+**Changed on purpose:** chords other than Ctrl+L and Ctrl+O no longer get past an open panel (before, Ctrl+Home got
+through Destinations). Esc in the overview with a panel open closes the panel, not the overview.
+**Provisional:** DJ's own keystrokes are unknown, and `-Dialogs` has not been run with real keys. Overlays that do not
+take the keyboard (the preview, the bench, the root landmark's E panel, Help) are unchanged: you can walk with them
+open. Not exported or installed.
+
 ## Third playtest follow-up (2026-11-17, PLANET-49..66)
 
 DJ's follow-ups on `6b9b60c` and the staged `a9d2e7e`: the blank Overview and audio gaps (FOLLOW-1/2), then keyboard

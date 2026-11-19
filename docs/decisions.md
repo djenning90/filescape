@@ -891,3 +891,41 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
+
+## AD-68 An open panel owns the keyboard: one rule where keys reach the game (extends AD-62) (2026-11-19)
+
+- **Problem:** DJ (PLANET-69): typing into a navigation dialog still switched out of Planets into a legacy view; he
+  did not know which dialog. AD-62 had given the Destinations list and the reader their own guards; the other panels
+  had none.
+- **What was reproduced (in-app, `planets-dialog-keys`, injected key events, before any fix;
+  `docs/evidence/2026-11-19-input/repro-dialog-keys-summary.txt`):** the game takes every key no control uses
+  (`Main._UnhandledInput`). **Locations / Open location with the rows focused** (opened by L, its button, Ctrl+O, the
+  Open… button, or Tab from the path field): Godot's ItemList uses only its own navigation keys, so every letter,
+  digit, Backspace, Home/End, ←/→ and chord reached the shortcuts (Tab did not: Godot moves the focus with it) —
+  V is Planets ↔ Places, G launched to the selected world (seen live), Backspace is History back. **Settings** (no focusable control): every key, Tab and V included. **Destinations results and
+  the reader**: chords — Ctrl+V (paste) is V for Planets ↔ Places, Ctrl+Tab is Tab (switch view); both switched to
+  Places with the panel open. **The path field**: Ctrl+Tab switched to Places. Plain typing in the Destinations filter
+  and the path field was already safe. Most likely DJ's case: Locations with the rows focused, or a paste.
+- **Decision:** one rule at the only place a key reaches the game's shortcuts, `Main.PanelOwnsKey` (Main.KeyboardOwner),
+  first in `_UnhandledInput` for every experience. A trip's Esc stops the trip first. Then, while a keyboard panel is
+  open (`KeyboardPanel`: the reader, Settings, Locations / Open location, the planets' Destinations list; the one holding
+  the GUI focus, else the first in that order — Locations and Destinations can be open together, PLANET-41), that
+  panel's own handler gets the key (`ReaderKey`, `PlanetWorld.ListKey`); Esc closes the topmost panel
+  (`HandleEscape`), never the overview or a layer behind it; only the F keys, exactly Ctrl+L and Ctrl+O (they open the
+  navigation panels) and J from the Destinations results (it closes the list) or the Locations rows (it opens the list
+  beside them, as `planets-navigation` and `-Play` expect) pass; every other press, echo or chord
+  stops there and is counted (`PanelConsumedKeyCount`). Held movement is blocked while such a panel is open too (the
+  `blockedKeys` of the planets' tick and the maps' movement), whatever the focus.
+- **Alternatives:** guard each panel (the AD-62 shape; it is what left Settings and Locations open); check the GUI focus
+  owner in the shortcut handler (a click on the world leaves focus nowhere; a Button-only panel never has focus); make
+  the panels modal windows (they would take the pointer too, and DJ looks round with Destinations open); intercept in
+  `_Input` before the GUI (the panels' own controls would lose their keys).
+- **Changed on purpose:** Ctrl+Home (root) and other chords no longer pass while a panel is open (AD-62 let every chord
+  through Destinations); Esc in the overview with a panel open closes the panel, not the overview.
+- **Known limits:** keys are judged as Godot delivers them; the real-keyboard check (`os-planets-probe.ps1 -Dialogs`)
+  is written but not yet run. Non-keyboard overlays (the preview, the bench, the root landmark's E panel, Help, the
+  legend) do not own the keyboard: you walk with them open, and the landmark's number keys are its own (AD-63). The
+  folder picker and confirmations are separate windows with their own input.
+- **Evidence:** `planets-dialog-keys` (see the implementation status), the reproduction above.
+- **Revisit if:** a new text-entry or navigation panel is added (add it to `KeyboardPanel`, not a guard of its own),
+  or DJ wants a paste in the Destinations results to go into the filter.
