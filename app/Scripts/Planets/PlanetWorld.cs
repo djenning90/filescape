@@ -43,6 +43,8 @@ namespace FileScape.App.Planets;
 /// <item><b>.Universe</b>: the overview (T): every known folder as nested star systems, its camera and landing.</item>
 /// <item><b>.Bench</b>: the repository workbench (PLANET-29). <b>.Routes</b>: remembered routes. <b>.Probe</b>: what
 /// probes read.</item>
+/// <item><b>.Bell</b>: the bell tower and the telescope (PLANET-55/56/73). <b>.Whimsy</b>: the lighthouse and the
+/// scenery that answers a twirl (PLANET-74/75, AD-70).</item>
 /// </list>
 /// Assumptions to keep: only one place change at a time (<see cref="Busy"/>); everything shown is in the current
 /// planet's frame, so anything kept across a landing must be re-expressed in the new frame (<c>Land</c>); and node ids

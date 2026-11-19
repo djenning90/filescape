@@ -255,7 +255,8 @@ public partial class PlanetWorld
         if (BeginFallIfThrough()) return; // through a broken world's rim: the fall takes over (PlanetWorld.Hazard)
         // PLANET-43: a twirl by a file previews it; PLANET-56: under the bell it rings the bell instead (nothing else);
         // AD-63: at a root landmark it arms the quick route (Enter runs it; the twirl starts nothing).
-        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder() && !TwirlAtRootMark()) TwirlNearFile();
+        // PLANET-74/75 (AD-70): away from files, the lighthouse lights and a piece of scenery answers (TwirlNearby).
+        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder() && !TwirlAtRootMark()) TwirlNearby();
         if (_walker.Footsteps != _lastFootsteps)
         {
             _lastFootsteps = _walker.Footsteps;
@@ -516,6 +517,12 @@ public partial class PlanetWorld
         public float T, Seconds, Height;
         public int Inspect = -1;
 
+        /// <summary>
+        /// The feet's height over the ground at the start and the end, metres (PLANET-73: E lifts you onto the overlook's
+        /// platform, so the arc runs from where you stood up to its top); both 0 for every other hop (onto the ground).
+        /// </summary>
+        public float FromHeight, ToHeight;
+
         /// <summary>On a Hazard World, the route's points after <see cref="FromUp"/> (ending at <see cref="ToUp"/>) when the straight arc would leave the ground (<see cref="HopRoute"/>), else null.</summary>
         public NVector3[]? Path;
 
@@ -533,8 +540,12 @@ public partial class PlanetWorld
     private const float HopRouteMaxSeconds = 1.8f;
     private const float HopHeightPerMetre = 0.25f, HopMinHeightMetres = 1.2f, HopMaxHeightMetres = 9f;
 
-    /// <summary>A short hop across the planet to stand at <paramref name="up"/> facing <paramref name="facing"/> (then inspect).</summary>
-    private void StartHop(NVector3 up, NVector3 facing, int inspect)
+    /// <summary>
+    /// A short hop across the planet to stand at <paramref name="up"/> facing <paramref name="facing"/> (then inspect).
+    /// <paramref name="toHeight"/> (metres over the ground) lands on something raised (the overlook's platform); the arc
+    /// then starts from the feet's height now. 0 keeps the arc ground to ground, as every hop was before.
+    /// </summary>
+    private void StartHop(NVector3 up, NVector3 facing, int inspect, float toHeight = 0)
     {
         if (_current == null) return;
         var path = HopRoute(_walker.Up, up);
@@ -558,6 +569,8 @@ public partial class PlanetWorld
             Seconds = Mathf.Clamp(HopBaseSeconds + dist / HopMetresPerSecond, HopBaseSeconds, path != null ? HopRouteMaxSeconds : HopMaxSeconds),
             Height = Mathf.Clamp(dist * HopHeightPerMetre, HopMinHeightMetres, HopMaxHeightMetres),
             Inspect = inspect,
+            FromHeight = toHeight > 0 ? _walker.Height.Value : 0,
+            ToHeight = toHeight,
             Path = path,
             PathShares = shares,
         };
@@ -587,7 +600,7 @@ public partial class PlanetWorld
         }
 
         var surf = _current!.Comp.Surface;
-        var height = 4 * h.Height * u * (1 - u); // 4u(1 − u): 0 at both ends, 1 at u = ½
+        var height = Mathf.Lerp(h.FromHeight, h.ToHeight, s) + 4 * h.Height * u * (1 - u); // 4u(1 − u): 0 at both ends, 1 at u = ½
         var facing = h.ToUp - dir * NVector3.Dot(h.ToUp, dir);
         facing = facing.LengthSquared() > 1e-5f ? NVector3.Normalize(facing) : h.Facing;
         var feet = Gd(surf.PointAt(dir, height));

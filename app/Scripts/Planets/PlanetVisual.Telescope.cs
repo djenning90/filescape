@@ -8,7 +8,8 @@ namespace FileScape.App.Planets;
 /// <see cref="TelescopeCueTarget"/> (0 = far, 1 = at the stones or on the platform), which the world sets each frame
 /// from where you stand. The words — "E · Telescope · this world's files and destinations" — are a pinned sign over
 /// the telescope in the sign layer (<c>PlanetWorld.Bell.cs</c>), which keeps clear of the HUD. The overlook's own view
-/// is unchanged. Not on a repository, whose overlook is the workbench.
+/// is unchanged. Not on a repository, whose overlook is the workbench. When you look through it (E on the platform,
+/// PLANET-73) the light flares for a moment (<see cref="FlareTelescope"/>): the telescope itself answers the key.
 /// </summary>
 public partial class PlanetVisual
 {
@@ -19,8 +20,15 @@ public partial class PlanetVisual
     /// <summary>The light on the telescope at full cue, its energy and range in metres.</summary>
     private const float TelescopeLightEnergy = 2.2f, TelescopeLightRangeMetres = 3.5f;
 
+    /// <summary>Looking through it, the light flares to this many times its full cue and falls back over <see cref="TelescopeFlareSeconds"/> (by eye, 2026-11-19).</summary>
+    private const float TelescopeFlareFactor = 2.5f, TelescopeFlareSeconds = 0.8f;
+
     private OmniLight3D? _telescopeLight;
     private float _telescopeCue;
+    private float _telescopeFlare = -1; // seconds since E at the telescope, or −1
+
+    /// <summary>E at the telescope (PLANET-73): its light flares and falls back.</summary>
+    public void FlareTelescope() => _telescopeFlare = 0;
 
     /// <summary>How strongly the telescope's cue should show, 0–1 (the world sets it; the cue eases towards it at the root mark's rate).</summary>
     public float TelescopeCueTarget { get; set; }
@@ -44,6 +52,14 @@ public partial class PlanetVisual
     {
         if (_telescopeLight == null) return;
         _telescopeCue = Mathf.Lerp(_telescopeCue, Mathf.Clamp(TelescopeCueTarget, 0, 1), 1 - Mathf.Exp(-GlowRatePerSecond * dt));
-        _telescopeLight.LightEnergy = TelescopeLightEnergy * _telescopeCue;
+        var flare = 0f;
+        if (_telescopeFlare >= 0)
+        {
+            _telescopeFlare += dt;
+            flare = _telescopeFlare < TelescopeFlareSeconds ? (TelescopeFlareFactor - 1) * (1 - _telescopeFlare / TelescopeFlareSeconds) : 0;
+            if (_telescopeFlare >= TelescopeFlareSeconds) _telescopeFlare = -1;
+        }
+
+        _telescopeLight.LightEnergy = TelescopeLightEnergy * (_telescopeCue + flare);
     }
 }
