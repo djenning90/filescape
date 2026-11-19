@@ -891,3 +891,39 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
+
+## AD-67 Framings add to the pitch you choose; they never replace it (amends AD-57) (2026-11-19)
+
+- **Problem:** DJ (playtest of `bcde9b33b338`): "Left- and right-drag turn the camera horizontally, but vertical
+  dragging appears locked out. I can't tilt up or down. Check surface walking, arrival transitions, and Overview …
+  keeping the improved arrival perspective. Check any leveling or camera-follow behavior that could immediately undo
+  the input."
+- **Reproduced first** (`--automate=planets-look`, injected drags through the mouse path, judged from the drawn camera):
+  standing on arrival, just after a landing, in the overlook view and on a Hazard World's arrival a 200–400 px vertical
+  drag tilted the view **0.0°** (the chosen pitch moved 30–56°; 9 of 9 sweep steps dead on the Hazard World); the wheel
+  did not zoom during the arrival framing (8.5 → 8.5 m). After walking, while walking and in the overview it worked
+  (≈ 30° per 200 px).
+- **Root cause:** the chase camera blended its pitch *to* a fixed value: `Lerp(Lerp(chosen, 29°, arrival), 34°,
+  overlook)`. The arrival framing (AD-57, PLANET-42) holds at weight 1 for as long as you stand still — by design a drag
+  does not release it — so on arrival, where you stop to look round, the chosen pitch had no weight at all; the overlook
+  view did the same. The distance blended the same way (the wheel). On a Hazard World the hazard view's cap,
+  `Min(base + add, Max(62°, base))`, also held the pitch at 62° for 16° of drag. Not the cause: the overview (its own
+  orbit, unaffected), the Places look settings (the planets camera never read them), levelling (Places only), the
+  swing-in and the Hazard arrival look (heading only), the keep-in-frame rule (it limits the aim, not the boom).
+- **Decision:** the framings are offsets on what you choose. Pitch = chosen + (the framing's pitch − 18°), the distance
+  = chosen × (the framing's distance ÷ 7.2 m); with the usual 18° and 7.2 m that is exactly the framing as before. A drag
+  keeps the chosen pitch inside the range the current framing leaves (clamped, then moved, so every pixel counts until
+  an end). Each arrival (landing, warp, opening shot) starts from the usual pitch, so every landing is the designed
+  arrival shot whatever you looked at before; the wheel's distance is kept. The hazard view and edge peek still add in
+  full under the 62° cap; above it their addition fades out linearly to 0 at 70° instead of being cut. Looking up
+  (PLANET-68): past the boom's floor (−8°) a further 12° of drag raises the aim over the traveller, so the view reaches
+  ≈ +19° above the horizon (+8° before), kept under the 18° keep-in-frame rule so it never snaps back. The planets
+  camera keeps its own convention (drag down raises the camera, the view looks down; drag right turns right) and does
+  not use the Places reverse or levelling settings, as before; DJ found the horizontal direction right.
+- **Alternatives:** releasing the arrival framing on a vertical drag (the distance and look-ahead DJ liked would ease
+  away the moment you tilt); keeping your pitch across a flight (a landing after looking at the sky would show the sky,
+  not the world: the arrival composition is lost); honouring Places' "reverse up/down" on planets (default on, it would
+  flip the vertical direction against the horizontal one, which DJ is happy with).
+- **Revisit if:** DJ wants the planets camera to follow the Places reverse settings, the pitch kept across flights,
+  more look-up (`LookUpPastBoomDegrees`; past ≈ 13° the keep-in-frame rule would take it back) or a different
+  sensitivity (`OrbitPitchDegreesPerPixel`, 0.15°/px).

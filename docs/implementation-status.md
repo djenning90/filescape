@@ -4,6 +4,21 @@ Last updated: 2026-11-17 (night), after the third playtest follow-up (PLANET-49.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fourth playtest follow-up (2026-11-19)
+
+### Vertical camera look (PLANET-67..68, AD-67)
+
+DJ (build `bcde9b33b338`): vertical drags seemed locked out. **Reproduced first** with `--automate=planets-look`, which injects drags the way a mouse sends them. Standing on arrival, just after a landing, in the overlook view and on a Hazard World's arrival, a vertical drag tilted the drawn view **0.0°** and the wheel did not zoom. After walking, while walking and in the overview it worked. **Root cause:** the arrival and overlook framings set the pitch and distance to fixed values instead of adding to the chosen ones. The arrival framing holds the whole time you stand still, so it overrode the drag. A 62° cap on a Hazard World also left a dead band. The Places reverse and levelling settings, the swing-in, the keep-in-frame rule and the overview were not involved. **Fix:** framings are now offsets on what you choose (no change at the defaults). Each arrival starts from the designed pitch. The cap fades instead of cutting. A drag up past the boom's floor tilts the view up to about +19° (it was +8°). The state file now has `planets.camPitch`, `viewPitch`, `arrivalFraming`, `overlookView` and `uniPitch`.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Vertical look on arrival, after and while walking, overlook view, after a landing, Hazard World, overview; wheel during the arrival framing; arrival boom 29° until you look and after every landing (PLANET-67) | **Demonstrated** in-app | `planets-look` 35/0 with no prefs file, the "usual" file (reverse and levelling off) and the "reversed" file (all on); before the fix 24 passed, 11 failed (`repro`, the earlier probe version) |
+| Looking up past the boom's floor (PLANET-68) | **Demonstrated** in-app; how it feels: DJ | `planets-look` sweep: +19.4° … −70.0°, every 60 px step tilts |
+| No regressions | **Demonstrated** | `planets-arrival` 25/0, `planets-hazard` 72/0, `planets-journey` 39/0, `planets-lookouts` 29/0, `planets-tutorial-cues` 55/0, `planets-tutorial` 36/0; Core (WSL) 700/0 |
+| Real input `tools/os-planets-probe.ps1 -Look [-LookPrefs default\|usual\|reversed]` | **Unknown**: written and parse-checked, not run (the coordinator runs real input) | — |
+
+Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-look\` (`repro`, `look-default`, `look-usual`, `look-reversed`, `reg-*`). Runs were made from the worktree project with `fs.sh run`, not from an exported build.
+
 ## Third playtest follow-up (2026-11-17, PLANET-49..66)
 
 DJ's follow-ups on `6b9b60c` and the staged `a9d2e7e`: the blank Overview and audio gaps (FOLLOW-1/2), then keyboard
