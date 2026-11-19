@@ -38,6 +38,7 @@ public partial class Main : IWorldSession
     bool IWorldSession.IsLive => _tree?.Source.IsLive ?? false;
     bool IWorldSession.IsVisible(FsNode node) => IsVisibleInPlace(node);
     bool IWorldSession.Visited(int id) => _visitedPlaces.Contains(id);
+    bool IWorldSession.MayListAhead(int id) => MayReveal(id);
     bool IWorldSession.TravelInto(int id) => TravelIntoFromPlanets(id);
     int IWorldSession.PendingRequests => PendingRequests;
     bool IWorldSession.AwaitingArrival => _awaitingArrival;

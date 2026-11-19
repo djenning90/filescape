@@ -53,6 +53,12 @@ public interface IWorldSession
     /// <summary>Visited this session (the overview rings them).</summary>
     bool Visited(int id);
 
+    /// <summary>
+    /// Whether a folder may be listed ahead of the player (the aerial world's rule, AERIAL-04, reused by the overview's
+    /// discovery, PLANET-76): inside the arrival folder or below a place visited this session.
+    /// </summary>
+    bool MayListAhead(int id);
+
     /// <summary>Into a child folder, through a link, up, or a jump elsewhere: the navigator decides, the world animates (Changed).</summary>
     bool TravelInto(int id);
 
