@@ -891,3 +891,48 @@ Each entry: problem → decision → rationale → alternatives → revisit when
   DJ's call by ear. Samples: `%LOCALAPPDATA%\FileScape\evidence\2026-11-17-music\` (README.txt).
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
+
+## AD-71 The overview discovers by itself, breadth-first, within fixed bounds, and grows without jumping (2026-11-19)
+
+- **Problem:** DJ (PLANET-76..78): the overview (T) showed only what visits had listed, a couple of levels; he wanted it to
+  discover more while he looks round (breadth-first, the selected or zoomed-toward world first), with the existing
+  listing system, bounded requests and memory, links and denied folders as in normal exploration, entries and metadata
+  only, no camera reset or layout jumps, an indication with a pause, and what was learned kept.
+- **Decision — who decides and who lists:** a Core scheduler, `OverviewDiscovery`, picks folders; the session's
+  `WorldExplorer` lists them through a new request, `Discover` (like `Reveal`: not a visit, never a location root, only a
+  folder never listed, at prefetch priority behind what the user waits for; unlike Reveal, through `ListAhead`). No new
+  listing code, threads or caches: discovery is the explorer's ordinary metadata-only listing, and its results are the
+  session's tree.
+- **Decision — order:** the frontier is the overview's drawn worlds still known only by name. Worlds below a focus (the
+  selected world, and the drawn world nearest the point the camera looks at) go first, breadth-first below that focus;
+  then everything else breadth-first by depth, then the layout's order (names). Only drawn worlds are candidates, so
+  discovery never lists what the overview cannot show; `UniverseLayout.MaxBodies` (1,500) and `MaxChildren` (64) bound it.
+- **Decision — bounds (`OverviewDiscovery.Limits`):** at most **3 listings in flight** (the explorer runs 4, so a visit's
+  own listing always has a worker); **10 new listings per second**, burst 3 (paces the growth DJ watches, ≈ 300 folders in
+  30 s); **stop at 200,000 tree entries** (a fifth of the session's 1,000,000-entry budget, ≈ 1 KB each, so visits keep
+  room; the explorer's own budget and reserve still apply); a request unanswered after **20 s** frees its slot and is not
+  retried. Steps every 0.1 s; relayouts at most every 1.5 s. Only while the overview is open; X or the indicator's button
+  pauses (the state is kept for the session).
+- **Decision — what is never asked for:** links (not folders in the tree: shown, never followed, so no loop), the hub and
+  location roots, failed, denied, unavailable, vanished and cloud folders (they keep their state until Retry), folders with
+  a note (a ListAhead refusal, the entry limit), hidden folders (not drawn), anything ListAhead refuses (Linux system
+  filesystems, network shares), and anything outside the arrival folder or a place visited this session (the aerial
+  world's rule, `IWorldSession.MayListAhead`), so the stubs on the way to the arrival folder (`C:\Users\…`) are not listed.
+- **Decision — growth without jumps:** the layout stays the global nested-rings layout (AD-46); a relayout (a) pins every
+  world already drawn, so worlds are only added, never pushed out when the budget fills; (b) glides every world from where
+  it is drawn to its new place over 1.2 s (smoothstep), a new one growing out of its parent; (c) shifts the whole picture
+  so the anchor (the selected world, else the root) stays where it was headed, so the camera, which looks at it, never
+  moves; (d) while the camera is still framed by opening or selecting (until a wheel or pan), eases the distance with the
+  framed system's growth, so the growing ring stays in view. Yaw, pitch and focus are never touched.
+- **Considered, not built:** a frozen incremental layout (new worlds placed without moving any old one). The packed
+  layout reserves no room: a leaf's neighbours sit 2.5 m apart, so its discovered children would overlap them or shrink by
+  ~×0.3 a level. A fractal layout with room reserved per level would change the overview DJ has learned (AD-46). The
+  anchored glide keeps the picture and reads as unfolding; DJ to judge.
+- **Considered, not built:** discovery while the overview is closed (DJ asked for it while open; nothing is listed behind
+  the player's back); listing hidden folders (the overview does not draw them).
+- **Measured:** see implementation status (fourth playtest follow-up): fill-in at 0, 10 and 30 s on the deep fixture, the
+  WSL deep fixture and `C:\` (counts only), jumps, drift, frame times, relayout cost.
+- **Instrument:** `--test-broad` treats the arrival folder as a broad place (no background listing), so a fixture
+  measures discovery and not the background traversal of a non-broad arrival (which lists the whole subtree anyway).
+- **Revisit if:** DJ finds the growth too fast, too slow or too busy (`ListingsPerSecond`, `UniverseGrowSeconds`,
+  `UniverseRelayoutSeconds`), wants it to continue outside the overview, or wants the overview's 1,500-world budget larger.

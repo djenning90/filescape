@@ -144,5 +144,6 @@ FileScape.Core/Samples: SampleSky (the Starter Sky: real files for the first imp
 
 Threads: planet ground vertex data is computed on worker threads (`PlanetArt.PlanetMeshArrays`, pure maths) and
 prefetched for every world in the sky; only the mesh upload and the props are built on the main thread (3–17 ms).
+The overview (T) discovers while open (PLANET-76, AD-71): `OverviewDiscovery` (Core) picks drawn worlds known only by name, breadth-first, focus first, within its limits; `WorldExplorer.Discover` lists them (metadata only); `PlanetWorld.Discovery` relayouts at most every 1.5 s, pinning what is drawn, and glides into it.
 Picture thumbnails are decoded on workers. A listing that changes the planet recomposes asynchronously (the new world is
 swapped in when its ground is ready).
