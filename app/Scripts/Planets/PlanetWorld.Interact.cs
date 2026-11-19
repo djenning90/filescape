@@ -397,6 +397,8 @@ public partial class PlanetWorld
         _focusTelescope = false;
         UpdateRootMarkGlow(); // PLANET-45: a root landmark's cue brightens as you come near (PlanetWorld.RootMark.cs)
         UpdateTelescopeCue(); // PLANET-55: the telescope's sign on approach (PlanetWorld.Bell.cs)
+        _focusTelescopeFoot = _focusLighthouse = false; // set again below when nothing nearer is in focus (PlanetWorld.Bell.cs, .Whimsy.cs)
+        UpdateSceneryCue(); // PLANET-75: the nearest answering piece of scenery shimmers (PlanetWorld.Whimsy.cs)
         if (_focusLauncher == null)
         {
             var best = FocusReachMetres;
@@ -455,7 +457,11 @@ public partial class PlanetWorld
         }
         else if (UpdateLandmarkApproachPrompt())
         {
-            // PLANET-55/56: walking up to the telescope, or at the bell tower (PlanetWorld.Bell.cs)
+            // PLANET-55/56/73/74: walking up to the telescope, at the bell tower or the lighthouse (PlanetWorld.Bell.cs)
+        }
+        else if (UpdateSceneryPrompt())
+        {
+            // PLANET-75: beside a piece of scenery that answers a twirl, while its prompt is still news (PlanetWorld.Whimsy.cs)
         }
         else
         {
@@ -496,14 +502,25 @@ public partial class PlanetWorld
 
         if (_focusTelescope)
         {
-            OpenContents(null);
-            _audio.Inspect();
+            LookThroughTelescope(); // PLANET-73: the list, with the telescope's flare and a caption (PlanetWorld.Bell.cs)
             return;
         }
 
         if (_focusRootMark)
         {
             ToggleRootMarkPanel(); // PLANET-45: the landmark's panel; nothing runs until a row is chosen
+            return;
+        }
+
+        if (_focusTelescopeFoot)
+        {
+            ClimbToTelescope(); // PLANET-73: E where the telescope's sign shows lifts you up beside it (PlanetWorld.Bell.cs)
+            return;
+        }
+
+        if (_focusLighthouse)
+        {
+            LightLighthouse(); // PLANET-74: E or a twirl at its foot (PlanetWorld.Whimsy.cs)
             return;
         }
 

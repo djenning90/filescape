@@ -179,6 +179,7 @@ public partial class PlanetVisual : Node3D
             var landmarkNode = new MeshInstance3D { Name = "Landmark", Mesh = mesh, Transform = Stand(surf, lm.Direction, PlanetFrame.North(lm.Direction), 1f, sink: BellTower.SinkMetres) };
             AddChild(landmarkNode);
             if (lm.Bell) HangBell(landmarkNode, comp.Theme);
+            if (full && comp.Theme == PlanetTheme.Hearth) BuildLighthouseBeam(landmarkNode); // PLANET-74 (PlanetVisual.Whimsy.cs)
         }
 
         var tGround = sw.Elapsed.TotalMilliseconds;
@@ -356,13 +357,16 @@ public partial class PlanetVisual : Node3D
 
     /// <summary>
     /// Scenery: three mesh variants per (theme, kind), picked by seed, each turned by its seed and drawn as one MultiMesh
-    /// per mesh (hundreds of pieces in a handful of draw calls).
+    /// per mesh (hundreds of pieces in a handful of draw calls). The pieces that answer a twirl (PLANET-75) are remembered
+    /// by their MultiMesh slot so they can move (<see cref="PlayScenery"/>).
     /// </summary>
     private void BuildDecorations(PlanetSurface surf)
     {
         var groups = new Dictionary<ArrayMesh, List<Transform3D>>();
-        foreach (var d in _comp.Decorations)
+        var slots = new List<(int Index, ArrayMesh Mesh, int Slot)>();
+        for (var index = 0; index < _comp.Decorations.Count; index++)
         {
+            var d = _comp.Decorations[index];
             var variant = Math.Abs(d.Seed) % 3;
             if (!DecorationMeshes.TryGetValue((_comp.Theme, d.Kind, variant), out var mesh))
             {
@@ -374,15 +378,20 @@ public partial class PlanetVisual : Node3D
             var (a, b) = PlanetShape.Tangents(d.Direction);
             var facing = a * MathF.Cos(spin) + b * MathF.Sin(spin);
             if (!groups.TryGetValue(mesh, out var list)) groups[mesh] = list = [];
+            if (Answers(d.Kind)) slots.Add((index, mesh, list.Count));
             list.Add(Stand(surf, d.Direction, facing, d.Scale, sink: 0.08f));
         }
 
+        var multis = new Dictionary<ArrayMesh, MultiMesh>();
         foreach (var (mesh, list) in groups)
         {
             var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = mesh, InstanceCount = list.Count };
             for (var i = 0; i < list.Count; i++) mm.SetInstanceTransform(i, list[i]);
             AddChild(new MultiMeshInstance3D { Multimesh = mm });
+            multis[mesh] = mm;
         }
+
+        foreach (var (index, mesh, slot) in slots) _scenery[index] = (multis[mesh], slot, groups[mesh][slot]);
     }
 
     /// <summary>The grove names on the ground (billboarded Label3Ds; launchers are named elsewhere).</summary>
@@ -469,6 +478,7 @@ public partial class PlanetVisual : Node3D
         if (!_full) return;
         AnimateBell(dt); // PLANET-56: the bell tower's bell swings when rung (PlanetVisual.Bell.cs)
         AnimateTelescopeCue(dt); // PLANET-55: the telescope's sign on approach (PlanetVisual.Telescope.cs)
+        AnimateWhimsy(dt); // PLANET-74/75: the lighthouse's beam, the answering scenery and its shimmer (PlanetVisual.Whimsy.cs)
         var surf = _comp.Surface;
         foreach (var (id, node) in _launchers)
         {

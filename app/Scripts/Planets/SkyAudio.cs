@@ -503,6 +503,12 @@ public partial class SkyAudio : Node
     /// <summary>The bell tower rung (PLANET-56): a big bell's strike and its answer in the world's key. Tempo-locked.</summary>
     public void BellToll() { lock (_gate) _synth.BellToll(); }
 
+    /// <summary>The lighthouse lit (PLANET-74): a soft horn and the lamp's two bells, in key. Tempo-locked.</summary>
+    public void LighthouseCall() { lock (_gate) _synth.LighthouseCall(); }
+
+    /// <summary>A piece of scenery answers a twirl (PLANET-75): <paramref name="voice"/>'s short figure, varied by <paramref name="variant"/>. Tempo-locked.</summary>
+    public void SceneryReply(SceneryVoice voice, int variant) { lock (_gate) _synth.SceneryReply(voice, variant); }
+
     /// <summary>A Hazard World's recovery twirl: the twirl's bells, higher and quicker, with a rising whoosh (PLANET-62). Immediate.</summary>
     public void RecoveryTwirl() { lock (_gate) _synth.RecoveryTwirl(); }
 

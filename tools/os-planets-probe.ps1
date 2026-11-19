@@ -40,15 +40,19 @@
   End, Enter and the Open button (recorded), Close, R. -RealOpen adds one real open of a file FileScape's probe writes
   under %TEMP%\FileScape-fixtures (its default app starts or comes forward; nothing is closed: it may be DJ's app).
 
-  -Landmarks (PLANET-54..56, 2026-11-17) on the Starter Sky with the recording test shell: walks up to the overlook
-  (the telescope's sign and prompt appear), onto it with a real jump and twirl, E opens the list; J to Music Box, a
-  twirl beside the bell tower rings nothing, walks under the bell, a jump rings nothing, a jump and twirl rings it once
-  (bellRings, bellSwing); then Help -> Learn to play, skip to the overview, T, a left-drag, and the real mouse wheel
-  until the zoom step completes (uniZoom, uniWorlds), Esc.
+  -Landmarks (PLANET-54..56, PLANET-73..75; 2026-11-17, extended 2026-11-19) on the Starter Sky with the recording
+  test shell: walks towards the overlook until the telescope's sign and its prompt "E · up to the telescope" appear,
+  E there lifts you onto the platform (telescopeClimbs), E again opens the list (telescopeLists); walks to the nearest
+  piece of scenery that answers (sceneryBearing/sceneryDistance), a real jump and twirl beside it makes it answer
+  (sceneryReplies); J to Music Box, a twirl beside the bell tower rings nothing, walks under the bell, a jump rings
+  nothing, a jump and twirl rings it once (bellRings, bellSwing); J to the sample's Hearth world (-HearthWorld, default
+  'Constellations'), walks to the lighthouse's foot, a twirl lights it (lighthouseLights, lighthouseBeam), E lights it
+  again; then Help -> Learn to play, skip to the overview, T, a left-drag, and the real mouse wheel until the zoom step
+  completes (uniZoom, uniWorlds), Esc.
 
   .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
-param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
+param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
   [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
@@ -383,35 +387,40 @@ try {
     }
     $shell0 = [int](State).nav.shellCount
 
-    # ---- the telescope: walk towards the overlook; at 5 m its sign and prompt; up onto it with a jump and twirl; E.
+    # ---- the telescope (PLANET-73): walk towards the overlook until its sign and prompt show (within 6 m of its edge), then
+    # E as the sign says: it lifts you onto the platform; E there opens the list. (The stones' climb was this probe's
+    # flaky part, 2026-11-17: the steering walked into the book tower beside the platform; E from the approach replaces it.)
     $s = (State).planets
     Check (-not $s.telescopeSign) "far from the overlook its sign is hidden (edge $($s.overlookEdge) m, cue $($s.telescopeCue))"
-    $s = Steer-By 'overlookBearing' 'overlookEdge' 1.2
+    $s = Steer-By 'overlookBearing' 'overlookEdge' 4.0
     Start-Sleep -Milliseconds 600; $s = (State).planets
-    Check ($s.telescopeSign -and $s.prompt -match 'telescope') "walking up, the telescope's sign shows and the prompt points to it (edge $($s.overlookEdge) m): '$($s.prompt)'"
+    Check ($s.telescopeSign -and $s.telescopeFoot -and $s.prompt -like '*up to the telescope*') "walking up, the telescope's sign shows and the prompt says what E does (edge $($s.overlookEdge) m): '$($s.prompt)'"
     Shot 'landmarks-telescope-approach' | Out-Null
-    # Up the stepping stones in order, as a player does (the prompt says "Up the steps"): steer to each stone, jumping
-    # onto it when walking stops gaining; then on to the platform. (Jumping at the wall itself bounced off: 2026-11-17.)
-    $nStones = @((State).planets.stones).Count
-    for ($i = 0; $i -lt $nStones -and -not (State).planets.onOverlook; $i++) {
-      $last = [double]::MaxValue; $stuck = 0
-      for ($t = 0; $t -lt 40; $t++) {
-        $st = @((State).planets.stones)[$i]; $b = [double]$st[0]; $d = [double]$st[1]
-        if ($d -le 0.45 -or (State).planets.onOverlook) { break }
-        if ([Math]::Abs($b) -gt 12) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000)); Start-Sleep -Milliseconds 100; continue }
-        Hold-Key 'W' ([int][Math]::Min(350, 90 + $d * 60))
-        $stuck = if ($d -gt $last - 0.05) { $stuck + 1 } else { 0 }; $last = $d
-        if ($stuck -ge 2) { Jump-Twirl -Forward; $stuck = 0 }
-        Start-Sleep -Milliseconds 100
-      }
-    }
-    for ($k = 0; $k -lt 4 -and -not (State).planets.onOverlook; $k++) { $s = Steer-By 'overlookBearing' 'overlookEdge' 0.3 12; Jump-Twirl -Forward; Start-Sleep -Milliseconds 500 }
+    $c0 = [int]$s.telescopeClimbs
+    Hold-Key 'E' 60
+    for ($i = 0; $i -lt 20 -and -not ((State).planets.onOverlook -and (State).planets.grounded); $i++) { Start-Sleep -Milliseconds 150 }
     Start-Sleep -Milliseconds 800; $s = (State).planets
-    Check ($s.onOverlook -and $s.prompt -like 'E · Telescope*') "up on the overlook (a real jump and twirl): '$($s.prompt)'"
+    Check ($s.onOverlook -and [int]$s.telescopeClimbs -eq $c0 + 1 -and -not $s.listOpen) "a real E at the approach lifts you onto the overlook (climbs +$([int]$s.telescopeClimbs - $c0), feet $($s.height) m): '$($s.prompt)'"
+    Check ($s.prompt -clike 'E*Telescope:*') "on the platform the prompt: '$($s.prompt)'"
+    Shot 'landmarks-telescope-top' | Out-Null
     Hold-Key 'E' 60; Start-Sleep -Milliseconds 700
-    Check ((State).nav.listOpen) "E at the telescope opens this world's list"
+    Check ((State).nav.listOpen -and [int](State).planets.telescopeLists -ge 1) "E at the telescope opens this world's list"
     Shot 'landmarks-telescope-list' | Out-Null
     Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400
+
+    # ---- scenery that answers (PLANET-75): walk to the nearest answering piece (a lantern on the Starter Sky) and twirl.
+    $s = Steer-By 'sceneryBearing' 'sceneryDistance' 1.1 120
+    Start-Sleep -Milliseconds 500; $s = (State).planets
+    Check ([double]$s.sceneryDistance -le 1.7) "walked beside a $($s.sceneryKind) that answers ($($s.sceneryDistance) m): '$($s.prompt)'"
+    $q0 = [int]$s.sceneryReplies; $pv0 = [bool]$s.previewOpen
+    $played = $false
+    Hold-Key 'Space' 300; Start-Sleep -Milliseconds 40; Hold-Key 'Space' 80
+    for ($i = 0; $i -lt 12; $i++) { if ((State).planets.sceneryPlaying) { $played = $true }; Start-Sleep -Milliseconds 60 }
+    Shot 'landmarks-scenery-answers' | Out-Null
+    Start-Sleep -Milliseconds 600; $s = (State).planets
+    if ($pv0 -or $s.previewOpen) { Log "  (a file was in reach: its preview takes the twirl, by design; scenery replies +$([int]$s.sceneryReplies - $q0))" }
+    Check ([int]$s.sceneryReplies -eq $q0 + 1 -and $played) "a real jump and twirl beside the $($s.sceneryKind) makes it answer (replies +$([int]$s.sceneryReplies - $q0), it moved: $played)"
+    Check (-not (State).nav.listOpen) "it opens nothing"
 
     # ---- the bell: J to Music Box; beside the tower a twirl is only a twirl; under the bell a jump is only a jump; a twirl rings it.
     Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line 'music'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
@@ -435,6 +444,28 @@ try {
     Start-Sleep -Milliseconds 600; $s = (State).planets
     Check ([int]$s.bellRings -eq $r0 + 1 -and $swing -gt 0.05) "a real jump and twirl under the bell rings it once (rings +$([int]$s.bellRings - $r0), swing up to $([Math]::Round($swing * 57.3, 1)) deg)"
     Check ((State).nav.shellCount -eq $shell0 -and -not (State).nav.listOpen) "nothing started or opened ($([int](State).nav.shellCount - $shell0) shell requests)"
+
+    # ---- the lighthouse (PLANET-74): J to the Hearth world, walk to the lighthouse's foot; a twirl lights it, and E.
+    Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line ($HearthWorld -replace ' ', ''); Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+    for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.currentName -eq $HearthWorld -and $s.planets.phase -eq 'Walking' -and -not $s.nav.tripActive) { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Seconds 1; $s = State
+    Check ($s.currentName -eq $HearthWorld -and $s.planets.lighthouse) "J, typed '$HearthWorld', Enter: on $($s.currentName), a world with a lighthouse ($($s.planets.lighthouse))"
+    if ($s.planets.lighthouse) {
+      $s = Steer-By 'lighthouseBearing' 'lighthouseDistance' 2.6 140
+      Start-Sleep -Milliseconds 500; $s = (State).planets
+      Check ($s.prompt -like 'E or twirl*light the lighthouse') "at the lighthouse's foot ($($s.lighthouseDistance) m from its axis): '$($s.prompt)'"
+      $l0 = [int]$s.lighthouseLights; $beam = $false
+      Hold-Key 'Space' 300; Start-Sleep -Milliseconds 40; Hold-Key 'Space' 80
+      for ($i = 0; $i -lt 16; $i++) { if ((State).planets.lighthouseBeam) { $beam = $true }; Start-Sleep -Milliseconds 60 }
+      Shot 'landmarks-lighthouse-beam' | Out-Null
+      Start-Sleep -Milliseconds 400; $s = (State).planets
+      Check ([int]$s.lighthouseLights -eq $l0 + 1 -and $beam) "a real jump and twirl at its foot lights it (lights +$([int]$s.lighthouseLights - $l0), beam seen: $beam)"
+      for ($i = 0; $i -lt 30 -and (State).planets.lighthouseBeam; $i++) { Start-Sleep -Milliseconds 150 }
+      Check (-not (State).planets.lighthouseBeam) "the beam stops by itself"
+      Hold-Key 'E' 60; Start-Sleep -Milliseconds 300; $s = (State).planets
+      Check ([int]$s.lighthouseLights -eq $l0 + 2 -and -not (State).nav.listOpen -and -not $s.previewOpen) "a real E there lights it too and opens nothing (lights +$([int]$s.lighthouseLights - $l0))"
+    }
+    Check ((State).nav.shellCount -eq $shell0) "still nothing started ($([int](State).nav.shellCount - $shell0) shell requests)"
 
     # ---- the walkthrough's wheel step: Help -> Learn to play, skip to "The overview", T, a left-drag, then the real wheel.
     Hold-Key 'F1' 60; Start-Sleep -Milliseconds 700; $s = State; Click-At $s.helpLearn

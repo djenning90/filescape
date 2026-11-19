@@ -892,6 +892,7 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
 
+<<<<<<< HEAD
 ## AD-72 The FileScape theme in seven modes; a Mixolydian launcher; arrangements for places and moments (offline sketches, nothing replaced) (2026-11-19)
 
 - **Problem:** DJ (PLANET-79, PLANET-80): study how game composers use modes (two 8-bit Music Theory videos; notes and
@@ -943,3 +944,54 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Revisit if:** DJ picks pieces for the game (add them as new options as above), wants a different tonal centre or
   tempo for the reel (`ModeSketches.TonicMidi`, `ReelBpm`), or wants the plain written theme (without the two
   ornaments) in the reel.
+=======
+## AD-70 What E and the twirl do at landmarks and scenery: the telescope lifts you, the lighthouse lights, a few kinds of scenery answer (2026-11-19; amends AD-63)
+
+- **Problem:** DJ's fourth playtest (PLANET-73..75): "I tried the telescope and lighthouse and nothing happened."
+  **Why the telescope seemed to do nothing:** its sign "E · Telescope" appeared from ≈ 7 m off the overlook's edge and
+  the prompt said "Up the steps to the telescope: E there lists …", but E only acted on the platform, 2.4 m up a ring of
+  seven 1.2 m stones that winds round it (a real-input probe climbed them once in two runs; on the Starter Sky the book
+  tower stands 1.5 m beside the platform, between the arrival and the stones, and catches anyone walking straight at
+  it). Pressing E where the sign said E did nothing. And when it did act, it opened the same list as J, with nothing to
+  say so. The lighthouse was scenery: nothing at all answered.
+- **The telescope (decided):** the sign and E share one reach. Within 6 m of the overlook's edge (the sign shows; it no
+  longer shows farther out) the prompt reads **"E · up to the telescope · or climb the stones"** and E lifts you onto
+  the platform beside the telescope with a hop (the hop Destinations' approach uses, now arcing from your height up to
+  the platform's top); the overlook view rises as when you climb. On the platform **E** opens this world's list, the
+  telescope's light flares, and a caption says what the list is ("Through the telescope: every world and file here.
+  Choose one and press Enter to go there."). Options considered: (1) *only a clearer "climb the stones" prompt* —
+  honest, but the climb itself is the difficulty; (2) *wider stones or a ramp* — changes every world's composition and
+  the behaviour baseline, and a ramp crosses the routes round the overlook; (3) *E opens the list from the foot* — the
+  list is J's list, so the overlook would add nothing; (4) *E lifts you up (chosen)* — the sign is true wherever it
+  shows, the platform's view (every destination named) becomes the first thing E shows, and the second E is the list.
+  The stones stay for players who climb; jump and twirl still reaches the top.
+- **The lighthouse (decided: a small interaction):** at its foot (within 1.8 m of its footprint) the prompt reads **"E
+  or twirl (Space, Space) · light the lighthouse"**; either lights it: two soft additive beams sweep round from the lamp
+  room one and a half turns over 3.2 s and fade, the lamp flares, and `SkySynth.LighthouseCall` plays a soft low horn on
+  the tonic with the lamp's two bells (fifth, then octave) on the music's grid, the music dipping to 70 % for a second.
+  It opens nothing. Why both keys: E is what DJ tried, and the twirl is how the bell beside it is played (AD-63); the
+  lighthouse is not a bell you stand under, so either deliberate act will do. Remaining scenery was considered and
+  rejected: it is the most "interactive-looking" landmark (a door, a lamp) and DJ expected something.
+- **Scenery that answers (decided):** three kinds the themes already scatter — **mushrooms** (squash and spring back,
+  a boing up a fifth), **crystals** (a sway and glow, three glassy notes up the chord) and **lamps/lanterns** (a sway and
+  glow, two warm bell notes falling a third) — answer a **twirl** within 1.7 m. Each reply is under a second of motion
+  and about a second of sound, in the world's key on the grid, quieter than the bell flowers, and the same piece always
+  answers with the same degree (neighbours differ). **Cue:** the nearest answering piece within 4.5 m shimmers (one soft
+  breathing light); beside it, the prompt "Space, Space · twirl by the mushroom/crystal/lantern" shows until that kind
+  has answered twice in the run, then the shimmer alone is the cue, so groves stay quiet. Why the twirl and not E: E is
+  the file key; scenery stands among files, and the twirl is FileScape's deliberate playful move (bench spin, bell,
+  file preview). Trees, rocks, grass and flowers stay still (the bell flowers already ring on footsteps by audio files).
+- **What keeps files and routes safe:** a file or pad in focus wins E and the twirl before any of this (`UpdateFocus`
+  order unchanged: pad, file, telescope on the platform, root landmark, then bell/lighthouse/telescope reach, then
+  scenery); nothing adds a solid or moves a composition (the behaviour baseline is unchanged); scenery stays in its
+  MultiMesh, one slot moving and returning to its built transform.
+- **Evidence:** Core `SkySynthTests.Landmarks` (grid, key, brevity, level, variation); `planets-lookouts` (telescope from
+  the approach, the stones, a file keeping E, a lantern answering, the bell, the lighthouse). Real input:
+  `os-planets-probe.ps1 -Landmarks` extended (E from the approach, the lighthouse, a piece of scenery), parse-checked,
+  not run here.
+- **Known limits:** the sounds and looks are judged by measurement and screenshots, not yet by ear or by DJ's eye; the
+  beam is a plain cone (no gradient along its length); only Hearth has a lighthouse, and the other landmarks (flower,
+  chimney, book tower, tent, vault, spire, arches) remain silhouettes.
+- **Revisit if:** DJ wants the climb kept as the only way up (drop E's lift), the scenery quieter or chattier
+  (`SceneryPromptTimes`, `SceneryShimmerMetres`), other kinds to answer (flowers, trees) or other landmarks to answer.
+>>>>>>> worktree-agent-a3ead24977c4a8d94
