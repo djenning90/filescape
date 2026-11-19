@@ -18,10 +18,14 @@
   (to the child launcher it reaches most easily, jumping any gap on the way; no fall), then off an edge: the fall, the
   return to the parent, and straight back in.
 
-  -Recovery (with -Hazard; PLANET-62, AD-65, 2026-11-17) adds the recovery twirl with real keys: walk off a rim and let W
-  go as the feet leave it, Space 0.15 s later lifts you back on (planets.recoveries; up to three tries, since the state
-  file is 0.15 s old and the press is timed from the walking speed); then a press too late (0.5 s after the edge) is a
-  last effort (planets.lastEfforts), the fall returns you to the Starter Sky and you go straight back in from the launcher.
+  -Recovery (with -Hazard; PLANET-62, AD-65, 2026-11-17; PLANET-71..72, AD-69, 2026-11-19) adds both Hazard moves with
+  real keys, every press timed from the app's own clock (planets.airSeconds) and reported back (pressAfterSeconds,
+  pressWas): walk off a rim and press Space early (≈ 0.04 s, W held), mid-window (0.2 s, W let go) and late (0.33 s,
+  W held) — each lifts you back on (planets.recoveries; up to three tries each); then a slip not caught falls within
+  0.55 s, Space 0.7 s after it and twice more in the fall is a last effort each time (planets.fallEfforts), and the fall
+  returns you to the Starter Sky within 6 s; straight back in. Then the long jump on Debris Field (J): the route to the
+  leap's stand point (leapRoute*), Space on the take-off board and again 0.31 s after take-off crosses it (apexTwirls);
+  the same jump without the twirl falls short and returns you to Event Horizon.
 
   -Play (PLANET-39..43, 2026-11-16) plays the second playtest's navigation and file actions with real input, the
   recording test shell launching nothing: J to the repository (the workbench in view on landing), a real double-click
@@ -572,13 +576,15 @@ try {
     # (routeJump) hold W for a run-up and press Space (held, a full jump) once the edge is under 1.4 m ahead
     # (gapAheadMetres; the state is 0.15 s old at most, 0.9 m at walking pace, so the press lands 0.2-1.4 m before the edge,
     # inside what the Core tests clear). Never a sidestep: on a bridge that is a fall.
-    function Steer-Route([double]$stop, [int]$tries = 220) {
+    # $pre names the state's route fields: 'route' (to the easiest child launcher) or 'leapRoute' (to the long jump's
+    # stand point, PLANET-71).
+    function Steer-Route([double]$stop, [int]$tries = 220, [string]$pre = 'route') {
       for ($i = 0; $i -lt $tries; $i++) {
         $s = State; $p = $s.planets
-        if ($p.falling -or [double]$p.routeLeft -lt 0 -or [double]$p.routeLeft -le $stop) { return $s }
-        $b = [double]$p.routeBearing
+        if ($p.falling -or [double]$p."$($pre)Left" -lt 0 -or [double]$p."$($pre)Left" -le $stop) { return $s }
+        $b = [double]$p."$($pre)Bearing"
         if ([Math]::Abs($b) -gt 5) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(30, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 80; continue }
-        if ($p.routeJump) {
+        if ($p."$($pre)Jump") {
           Key-Down 'W'
           try {
             for ($k = 0; $k -lt 60; $k++) { $g = [double](State).planets.gapAheadMetres; if ($g -ge 0 -and $g -lt 1.4) { break }; Start-Sleep -Milliseconds 30 }
@@ -586,7 +592,7 @@ try {
           } finally { Key-Up 'W'; Key-Up 'Space' }
           Start-Sleep -Milliseconds 150; continue
         }
-        Hold-Key 'W' ([int][Math]::Min(300, 100 + [double]$p.routeDistance * 30))
+        Hold-Key 'W' ([int][Math]::Min(300, 100 + [double]$p."$($pre)Distance" * 30))
         Start-Sleep -Milliseconds 80
       }
       return State
@@ -621,9 +627,11 @@ try {
     Shot 'hazard-reentered' | Out-Null
 
     if ($Recovery) {
-      # Walking speed (SphereWalkParams.WalkSpeed, 6 m/s) and the time to reach it from a standstill (≈ 0.16 s at
-      # 14/s): the press is timed from them, since the state file is up to 0.15 s old.
-      $walkMetresPerSecond = 6.0; $startSeconds = 0.12
+      # PLANET-71..72, AD-69 (2026-11-19). Every press is timed from the app's own clock: the state file's airSeconds
+      # (game seconds since the feet left the ground; it runs on through a fall), read in a tight loop (each read
+      # ≈ 5–20 ms), and the app reports when the press arrived and what it did (pressAfterSeconds, pressWas: catch,
+      # coyote-jump, twirl, apex-twirl, effort, fall-effort). The Core tables (HazardRecoveryTimingTests) say walking off
+      # at 6 m/s any press 0–0.40 s after the slip catches the rim, and an uncaught slip falls at 0.40 s.
       # Back to the launcher of Event Horizon after a fall, then in again.
       function Back-In {
         for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $sky -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
@@ -634,50 +642,120 @@ try {
         Start-Sleep -Seconds 2
         return State
       }
-      # Off the nearest drop: face it, stop 1.6 m short, then W until the edge (by time), let go, and Space after $afterMs.
-      function Slip([int]$afterMs) {
+      # Waits (tight loop on the state file, up to $limitMs) until $test holds for the planets state; returns it or $null.
+      function Wait-Planets([scriptblock]$test, [int]$limitMs) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.ElapsedMilliseconds -lt $limitMs) { $p0 = (State).planets; if ($p0 -and (& $test $p0)) { return $p0 }; Start-Sleep -Milliseconds 3 }
+        return $null
+      }
+      # Off the nearest drop: face it, stop 1.6 m short, then W until the feet leave the rim (airSeconds > 0); W let go
+      # then unless -HoldOn; Space (held 120 ms) once airSeconds reaches $pressAt - 0.02 s (the press lands on the next
+      # frame). Returns the state 1.5 s later.
+      function Slip([double]$pressAt, [switch]$HoldOn) {
         $s = Steer 'holeBearing' 'holeDistance' 1.6 80
         $b = [double]$s.planets.holeBearing
         if ([Math]::Abs($b) -gt 5) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(30, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 300; $s = State }
-        $d = [double]$s.planets.holeDistance
-        if ($d -lt 0) { return $s }
-        # A negative $afterMs reacts as a player does: W held until the state file shows the feet below the rim, then
-        # Space at once (the state is written every frame; the reaction is one read, ≈ 20–60 ms). Otherwise by time.
-        if ($afterMs -lt 0) {
-          $limit = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond)) + 1500; $sw = [Diagnostics.Stopwatch]::StartNew(); $seen = -1
-          Key-Down 'W'
-          try { while ($sw.ElapsedMilliseconds -lt $limit) { $p0 = (State).planets; if ([double]$p0.belowRimSeconds -ge 0) { $seen = [double]$p0.belowRimSeconds; break }; Start-Sleep -Milliseconds 5 } } finally { Key-Up 'W' }
+        if ([double]$s.planets.holeDistance -lt 0) { return $s }
+        Key-Down 'W'
+        try {
+          $off = Wait-Planets { param($p) [double]$p.airSeconds -gt 0 -or $p.falling } 3000
+          if (-not $HoldOn) { Key-Up 'W' }
+          if ($off) { [void](Wait-Planets { param($p) [double]$p.airSeconds -ge $pressAt - 0.02 -or [double]$p.airSeconds -le 0 } 3000) }
           Hold-Key 'Space' 120
-          Log ("  below the rim seen at {0:0.000} s; Space pressed at once" -f $seen)
-        } else {
-          $toEdgeMs = [int](1000 * ($startSeconds + $d / $walkMetresPerSecond))
-          Key-Down 'W'
-          try { Start-Sleep -Milliseconds $toEdgeMs } finally { Key-Up 'W' }
-          Start-Sleep -Milliseconds $afterMs
-          Hold-Key 'Space' 120
-        }
+        } finally { Key-Up 'W'; Key-Up 'Space' }
         Start-Sleep -Milliseconds 1500
         return State
       }
-      # A recovery: Space as soon as the feet are seen below the rim (a player's reaction), inside the 0.3 s window.
-      $rec0 = [int]$s.planets.recoveries; $recovered = $false
-      for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
-        $f = [int](State).planets.fallsStarted
-        $s = Slip -1
-        $recovered = [int]$s.planets.recoveries -gt $rec0 -and [int]$s.planets.fallsStarted -eq $f
-        Log "  recovery try $try`: recoveries $($s.planets.recoveries), falls $($s.planets.fallsStarted - $f), last efforts $($s.planets.lastEfforts)"
-        if (-not $recovered -and [int]$s.planets.fallsStarted -gt $f) { $s = Back-In }
+      # The catch: Space early (in the coyote time, W held: it used to be a jump further out), mid-window (W let go) and
+      # late (W held). Up to three tries each; a try that falls is a FAIL of the timing only if the press came in time.
+      foreach ($case in @(@{ Name = 'early'; At = 0.04; HoldOn = $true }, @{ Name = 'mid-window'; At = 0.2; HoldOn = $false }, @{ Name = 'late'; At = 0.33; HoldOn = $true })) {
+        $recovered = $false; $inTime = $false
+        for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
+          $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted
+          $s = Slip $case.At -HoldOn:$case.HoldOn
+          $p = $s.planets
+          $recovered = [int]$p.recoveries -gt $rec0 -and [int]$p.fallsStarted -eq $f
+          $inTime = [double]$p.pressAfterSeconds -ge 0 -and [double]$p.pressAfterSeconds -le 0.4
+          Log ("  {0} try {1}: Space {2:0.000} s after the slip -> '{3}'; recoveries +{4}, falls +{5}, efforts {6}" -f $case.Name, $try, [double]$p.pressAfterSeconds, $p.pressWas, ([int]$p.recoveries - $rec0), ([int]$p.fallsStarted - $f), $p.lastEfforts)
+          if (-not $recovered -and [int]$p.fallsStarted -gt $f) { $s = Back-In }
+        }
+        Shot "hazard-recovered-$($case.Name)" | Out-Null
+        Check $recovered "a slip off the rim caught by Space $($case.Name) (aimed $($case.At) s after it, W $(if ($case.HoldOn) { 'held on' } else { 'let go' })): back on the ground (last press $($s.planets.pressAfterSeconds) s, '$($s.planets.pressWas)'; in the 0.4 s window: $inTime)"
       }
-      Shot 'hazard-recovered' | Out-Null
-      Check $recovered "a slip off the rim caught by Space in time: back on the ground (recoveries $($s.planets.recoveries))"
-      # Too late: Space 0.5 s after the edge is a last effort; the fall goes on, returns you to the parent; straight back in.
-      $s = State; $e0 = [int]$s.planets.lastEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns
-      $s = Slip 500
-      Check ([int]$s.planets.lastEfforts -gt $e0 -and [int]$s.planets.fallsStarted -gt $f0) "Space too late is a last effort and the fall goes on (last efforts $($s.planets.lastEfforts - $e0), falls $($s.planets.fallsStarted - $f0))"
+      # Too late: Space 0.7 s after the slip (the fall began at ≈ 0.4 s) is a last effort, and so is each press after it
+      # in the fall (two more); the fall goes on and returns you to the parent promptly; straight back in.
+      $s = State; $e0 = [int]$s.planets.lastEfforts; $fe0 = [int]$s.planets.fallEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns
+      $s = Steer 'holeBearing' 'holeDistance' 1.6 80
+      Key-Down 'W'
+      try {
+        $off = Wait-Planets { param($p) [double]$p.airSeconds -gt 0 } 3000
+        $fallAt = Wait-Planets { param($p) $p.falling } 3000
+        $swFall = [Diagnostics.Stopwatch]::StartNew()
+        Key-Up 'W'
+        if ($fallAt) { Log ("  an uncaught slip: the fall began {0:0.000} s after it" -f [double]$fallAt.airSeconds) }
+        Check ($fallAt -and [double]$fallAt.airSeconds -lt 0.55) "an uncaught slip falls promptly (at $(if ($fallAt) { $fallAt.airSeconds } else { 'never' }) s; the catch's window is 0.4 s)"
+        [void](Wait-Planets { param($p) [double]$p.airSeconds -ge 0.68 } 3000); Hold-Key 'Space' 120
+        $p1 = (State).planets
+        Start-Sleep -Milliseconds 500; Hold-Key 'Space' 120
+        Start-Sleep -Milliseconds 500; Hold-Key 'Space' 120
+        $p3 = (State).planets
+        Log ("  presses in the fall: the first '{0}' at {1:0.000} s, the last '{2}' at {3:0.000} s; fall efforts +{4}" -f $p1.pressWas, [double]$p1.pressAfterSeconds, $p3.pressWas, [double]$p3.pressAfterSeconds, ([int]$p3.fallEfforts - $fe0))
+        Check ([int]$p3.fallEfforts - $fe0 -eq 3 -and $p3.pressWas -eq 'fall-effort') "each Space in the fall is a last effort (3 presses, $([int]$p3.fallEfforts - $fe0) efforts, last '$($p3.pressWas)')"
+        $back = Wait-Planets { param($p) $p.folder -eq $sky -and $p.phase -eq 'Walking' -and [int]$p.fallReturns -gt $r0 } 10000
+        $returnMs = $swFall.ElapsedMilliseconds
+        Check ($back -and $returnMs -lt 6000) "the fall returns you to the Starter Sky promptly ($returnMs ms from the fall's start, presses included)"
+      } finally { Key-Up 'W'; Key-Up 'Space' }
       $s = Back-In
-      Check ([int]$s.planets.fallReturns -gt $r0) "the fall returned you to the Starter Sky (returns $($s.planets.fallReturns - $r0))"
+      Check ([int]$s.planets.fallReturns -gt $r0 -and [int]$s.planets.lastEfforts - $e0 -ge 3) "the fall returned you to the Starter Sky (returns $($s.planets.fallReturns - $r0), efforts $([int]$s.planets.lastEfforts - $e0))"
       Check ($s.planets.character -eq 'Hazard') "and straight back in from its launcher ($($s.currentName))"
       Shot 'hazard-retry' | Out-Null
+
+      # The long jump (PLANET-71) on Debris Field, inside Event Horizon: the route to the leap's stand point (3 m before its
+      # take-off board), face across, W; Space when the edge is ≈ 0.4 m ahead (the board); Space again at the top of the
+      # jump (0.33 s after take-off: the window is ≈ 0.25–0.42 s tapped, 0.23–0.52 s held 0.3 s); across, no fall. Then
+      # the same jump from the far side without the twirl: it falls short, and the fall returns you to Event Horizon.
+      $eh = (State).planets.folder
+      Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text 'debris'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking' -and $s.planets.folder -ne $eh) { break }; Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Seconds 2
+      $s = State
+      Check ($s.currentName -eq 'Debris Field' -and [double]$s.planets.leapWidth -gt 0) "J -> Debris Field: a Hazard World with a leap ($($s.planets.leapWidth) m)"
+      function Leap([switch]$Twirl) {
+        $s = Steer-Route 0.5 220 'leapRoute'
+        for ($i = 0; $i -lt 20; $i++) {
+          $b = [double](State).planets.leapAcrossBearing
+          if ([Math]::Abs($b) -le 3) { break }
+          Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(25, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150
+        }
+        $s0 = (State).planets; $f = [int]$s0.fallsStarted; $a0 = [int]$s0.apexTwirls
+        Log ("  at the leap's stand point: {0} m to the edge, facing across within {1}°" -f $s0.leapToEdge, $s0.leapAcrossBearing)
+        Key-Down 'W'
+        try {
+          # 0.55 m ahead at walking pace: a read and the next frame (≈ 25 ms, 0.15 m) put the press on the board.
+          [void](Wait-Planets { param($p) ([double]$p.leapToEdge -ge 0 -and [double]$p.leapToEdge -le 0.55) -or [double]$p.airSeconds -gt 0 } 4000)
+          Key-Down 'Space'
+          $up = Wait-Planets { param($p) [double]$p.airSeconds -gt 0 } 1000
+          Start-Sleep -Milliseconds 100; Key-Up 'Space'
+          if ($Twirl) {
+            [void](Wait-Planets { param($p) [double]$p.airSeconds -ge 0.31 } 1500)
+            Hold-Key 'Space' 200
+          }
+          Start-Sleep -Milliseconds 900
+        } finally { Key-Up 'W'; Key-Up 'Space' }
+        Start-Sleep -Milliseconds 600
+        $s = State; $p = $s.planets
+        Log ("  the jump: last press '{0}' at {1:0.000} s; apex twirls +{2}, falls +{3}" -f $p.pressWas, [double]$p.pressAfterSeconds, ([int]$p.apexTwirls - $a0), ([int]$p.fallsStarted - $f))
+        return @{ State = $s; Fell = ([int]$p.fallsStarted -gt $f); Apex = ([int]$p.apexTwirls - $a0) }
+      }
+      $j = Leap -Twirl
+      Shot 'leap-across' | Out-Null
+      Check (-not $j.Fell -and $j.Apex -eq 1 -and [double]$j.State.planets.leapWidth -gt 0) "the long jump: Space on the board and again at the top of the jump crosses the leap (apex twirls +$($j.Apex), fell $($j.Fell))"
+      if (-not $j.Fell) {
+        $j = Leap
+        Check $j.Fell "the same jump without the twirl falls short of the leap (fell $($j.Fell))"
+        for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $eh -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+        Check ($s.planets.folder -eq $eh) "and the fall returns you to Event Horizon ($($s.currentName))"
+      }
     }
 
     exit $fails
