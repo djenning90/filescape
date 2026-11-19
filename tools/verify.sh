@@ -137,6 +137,9 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # PLANET-60: the sky's slow turn (far below camera drift standing still) and a shooting star standing and in flight;
   # none just after a landing or in the overview.
   journey planets-sky planets-sky.log 200 --automate=planets-sky --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # PLANET-67/68: vertical look (drags up and down) on arrival, after and while walking, the overlook view, after a
+  # landing, a Hazard World and the overview; every step of a sweep tilts the view; the wheel zooms during the arrival.
+  journey planets-look planets-look.log 250 --automate=planets-look --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,

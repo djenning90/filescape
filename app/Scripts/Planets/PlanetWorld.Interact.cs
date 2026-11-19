@@ -42,8 +42,19 @@ public partial class PlanetWorld
     /// <summary>Drag sensitivity, degrees per screen pixel: across (a 360 px drag turns 90°) and up and down (slower).</summary>
     private const float OrbitYawDegreesPerPixel = 0.25f, OrbitPitchDegreesPerPixel = 0.15f;
 
-    /// <summary>How far the chase camera may pitch, degrees: a little below level (looking up at the sky) to well above.</summary>
+    /// <summary>How far the chase camera's boom may pitch, degrees: a little below level (looking up at the sky) to well above.</summary>
     private const float MinCamPitchDegrees = -8f, MaxCamPitchDegrees = 70f;
+
+    /// <summary>
+    /// Past the boom's lowest pitch a drag up goes on tilting the view up by this much more, degrees (PLANET-68): the boom
+    /// cannot go lower without the eye meeting the ground, so the aim rises above the traveller instead and the sky and
+    /// its worlds come into view. Kept under <see cref="KeepInFrameWalkingDegrees"/> less the ≈ 4.5° between the aim and
+    /// the traveller's middle, so the keep-in-frame rule never takes the last of it back (a dead end to the drag).
+    /// </summary>
+    private const float LookUpPastBoomDegrees = 12f;
+
+    /// <summary>The lowest look a drag can choose, degrees on the pitch's scale (below the boom's floor it is the look-up tilt).</summary>
+    private const float LowestLookDegrees = MinCamPitchDegrees - LookUpPastBoomDegrees;
 
     /// <summary>One wheel notch multiplies the chase distance by 0.9 (in) or 1.1 (out); the distance stays within 3.5–16 m.</summary>
     private const float ChaseWheelIn = 0.9f, ChaseWheelOut = 1.1f, ChaseMinDistanceMetres = 3.5f, ChaseMaxDistanceMetres = 16f;
@@ -237,14 +248,25 @@ public partial class PlanetWorld
         if (_orbitStart != Vector2.Zero) Godot.Input.WarpMouse(_orbitStart);
     }
 
-    /// <summary>A drag on a planet: turn the chase camera about the local up (drag right turns right) and pitch it
-    /// (drag down raises it); the swing-in waits while you do (<see cref="SwingInDelaySeconds"/>).</summary>
+    /// <summary>
+    /// A drag on a planet: turn the chase camera about the local up (drag right turns right) and pitch it (drag down
+    /// raises it, so the view looks further down); the swing-in waits while you do (<see cref="SwingInDelaySeconds"/>).
+    /// <para>
+    /// PLANET-67: the chosen pitch is kept inside the range the current framing leaves (the arrival and overlook framings
+    /// add <see cref="_framingPitchDegrees"/> on top of it, <see cref="UpdateCamera"/>), clamped first and then moved, so
+    /// every pixel of a drag moves the view until it reaches an end, whatever framing is in force — framings that
+    /// replaced the chosen pitch made vertical drags do nothing on arrival and on the overlook (DJ, playtest of
+    /// bcde9b33b338). The planets camera does not use the Places look settings (reverse, levelling; AD-67).
+    /// </para>
+    /// </summary>
     private void OrbitCamera(Vector2 screenPixels)
     {
         _sinceOrbitSeconds = 0;
         var up = Gd(_walker.Up);
         _camFwd = _camFwd.Rotated(up, -screenPixels.X * Mathf.DegToRad(OrbitYawDegreesPerPixel)).Normalized();
-        _camPitchDegrees = Mathf.Clamp(_camPitchDegrees + screenPixels.Y * OrbitPitchDegreesPerPixel, MinCamPitchDegrees, MaxCamPitchDegrees);
+        var lo = LowestLookDegrees - _framingPitchDegrees;
+        var hi = MaxCamPitchDegrees - _framingPitchDegrees;
+        _camPitchDegrees = Mathf.Clamp(Mathf.Clamp(_camPitchDegrees, lo, hi) + screenPixels.Y * OrbitPitchDegreesPerPixel, lo, hi);
     }
 
     /// <summary>
@@ -690,7 +712,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

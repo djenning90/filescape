@@ -103,6 +103,13 @@ public partial class PlanetWorld
     /// <summary>Seconds since you last turned the camera yourself (starts "long ago", so the camera may swing in at once).</summary>
     private float _sinceOrbitSeconds = 99f;
 
+    /// <summary>What the arrival and overlook framings add to the chosen pitch now, degrees (0 in the usual chase view;
+    /// <see cref="UpdateCamera"/> sets it, <see cref="OrbitCamera"/> keeps the chosen pitch inside the range it leaves).</summary>
+    private float _framingPitchDegrees;
+
+    /// <summary>The boom's pitch in the last walking frame, degrees (probes: <see cref="BoomPitchDegrees"/>).</summary>
+    private float _boomPitchDegrees = StartCamPitchDegrees;
+
     /// <summary>0 = the chase view, 1 = the overlook view (blended between).</summary>
     private float _overlook01;
     private bool _jumpQueued;
@@ -378,10 +385,18 @@ public partial class PlanetWorld
         // Just arrived: a higher, further boom looking further ahead (PlanetWorld.Arrival, PLANET-42); 0 once you move.
         var arrive = ArrivalWeight();
         var hz = HazardViewAmount(dt);
-        var basePitch = Mathf.Lerp(Mathf.Lerp(_camPitchDegrees, ArrivalPitchDegrees, arrive), OverlookPitchDegrees, _overlook01);
+        // The arrival and overlook framings add to the pitch and scale the distance you chose; they never replace them
+        // (PLANET-67): with the usual 18° and 7.2 m the result is exactly the framing's own pitch and distance, as before,
+        // and a drag or the wheel still moves the view while a framing holds (the arrival's holds as long as you stand).
+        _framingPitchDegrees = Mathf.Lerp(Mathf.Lerp(StartCamPitchDegrees, ArrivalPitchDegrees, arrive), OverlookPitchDegrees, _overlook01) - StartCamPitchDegrees;
+        var framingScale = Mathf.Lerp(Mathf.Lerp(StartCamDistanceMetres, ArrivalDistanceHere(), arrive), OverlookDistanceMetres, _overlook01) / StartCamDistanceMetres;
+        var chosenLook = Mathf.Clamp(_camPitchDegrees + _framingPitchDegrees, LowestLookDegrees, MaxCamPitchDegrees);
+        // Below the boom's floor the boom stays there and the aim tilts up instead (PLANET-68).
+        var lookUp = MathF.Max(0, MinCamPitchDegrees - chosenLook);
         // The cap only ever limits what the hazard view and the peek add (never a pitch you chose yourself).
-        var pitch = Mathf.DegToRad(MathF.Min(basePitch + EdgePeekPitchDegrees * peek + HazardViewPitchDegrees * hz, MathF.Max(HazardViewMaxPitchDegrees, basePitch)));
-        var dist = Mathf.Lerp(Mathf.Lerp(_camDistance, ArrivalDistanceHere(), arrive), OverlookDistanceMetres, _overlook01) + extraBack + EdgePeekBackMetres * peek + HazardViewBackMetres * hz;
+        _boomPitchDegrees = WithViewAdditions(MathF.Max(chosenLook, MinCamPitchDegrees), EdgePeekPitchDegrees * peek + HazardViewPitchDegrees * hz);
+        var pitch = Mathf.DegToRad(_boomPitchDegrees);
+        var dist = _camDistance * framingScale + extraBack + EdgePeekBackMetres * peek + HazardViewBackMetres * hz;
         // The aim point rises by half the wind-up's lift (the eye rises by all of it), so the view tilts down a little.
         var target = feet + up * (LookHeightMetres + extraUp * 0.5f) + facing * (LookAheadMetres + EdgePeekAheadMetres * peek + ArrivalLookAheadMetres * arrive);
         var desired = target - f * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist + extraUp);
@@ -391,7 +406,8 @@ public partial class PlanetWorld
         var minR = _current.Comp.Shape.GroundRadius(Nv(dir)) + MinEyeClearanceMetres;
         if (desired.Length() < minR) desired = dir * minR;
         _camPos = _camPos.Lerp(desired, 1 - MathF.Exp(-CamFollowRatePerSecond * dt));
-        var look = target;
+        // The look-up tilt raises the aim over the traveller by the tilt as seen from the boom's length away.
+        var look = target + up * (MathF.Tan(Mathf.DegToRad(lookUp)) * MathF.Cos(pitch) * dist);
         if (lookAt is { } la)
         {
             // Wind-up: look past the traveller towards where it is going; it stays low in the frame, the world above it.
@@ -415,6 +431,21 @@ public partial class PlanetWorld
         }
 
         _camera.Fov = Mathf.Lerp(_camera.Fov, WalkingFovDegrees, 1 - MathF.Exp(-FovRecoverRatePerSecond * dt));
+    }
+
+    /// <summary>
+    /// The boom's pitch with what the edge peek and the hazard view add (<paramref name="add"/>, degrees) on top of
+    /// <paramref name="basePitch"/>. While the whole addition fits under <see cref="HazardViewMaxPitchDegrees"/> it is
+    /// added in full, as before; above that (PLANET-67) it fades out linearly towards <see cref="MaxCamPitchDegrees"/>
+    /// instead of being cut at the cap, so the result still rises with every degree you drag (the cut held it still for
+    /// 16° of drag on a Hazard World) and meets your own pitch at the top.
+    /// </summary>
+    private static float WithViewAdditions(float basePitch, float add)
+    {
+        if (add <= 0) return basePitch;
+        var knee = HazardViewMaxPitchDegrees - add; // up to here the full addition fits under the cap
+        if (basePitch <= knee) return basePitch + add;
+        return basePitch + add * Mathf.Clamp((MaxCamPitchDegrees - basePitch) / (MaxCamPitchDegrees - knee), 0, 1);
     }
 
     /// <summary>
@@ -495,7 +526,7 @@ public partial class PlanetWorld
         var up = _camUp;
         var feet = Gd(_walker.Feet);
         var hz = HazardViewAmount(0, snap: true);
-        var pitch = Mathf.DegToRad(MathF.Min(_camPitchDegrees + HazardViewPitchDegrees * hz, MathF.Max(HazardViewMaxPitchDegrees, _camPitchDegrees)));
+        var pitch = Mathf.DegToRad(WithViewAdditions(Mathf.Clamp(_camPitchDegrees, MinCamPitchDegrees, MaxCamPitchDegrees), HazardViewPitchDegrees * hz));
         var dist = _camDistance + HazardViewBackMetres * hz;
         var target = feet + up * LookHeightMetres;
         _camPos = target - _camFwd * (MathF.Cos(pitch) * dist) + up * (MathF.Sin(pitch) * dist);
