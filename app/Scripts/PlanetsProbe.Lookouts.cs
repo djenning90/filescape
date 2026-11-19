@@ -6,13 +6,18 @@ using NVector3 = System.Numerics.Vector3;
 namespace FileScape.App;
 
 /// <summary>
-/// <c>--automate=planets-lookouts --root=sample --vis=planets --test-shell=record</c> (PLANET-55, PLANET-56): the Starter
-/// Sky's telescope and the Music Box's bell tower with real keys. <b>Telescope:</b> far from the overlook its sign is
-/// hidden; walking up (W) it appears and the prompt points up the steps; climbing the stones it reads in full; on the
-/// platform E opens the world's list. <b>Bell:</b> an ordinary jump and a twirl beside the tower ring nothing; W walks
-/// onto the base and under the bell (it stands on the base, as drawn); an ordinary jump there rings nothing; a jump and
-/// twirl rings it once (the bell swings) and opens nothing; walking on out between the far pillars works. The test shell
-/// records any start: nothing may be recorded here.
+/// <c>--automate=planets-lookouts --root=sample --vis=planets --test-shell=record</c> (PLANET-55/56, PLANET-73..75): the
+/// Starter Sky's telescope, a lantern that answers, the Music Box's bell tower and a Hearth world's lighthouse with real
+/// keys. <b>Telescope:</b> far from the overlook its sign is hidden; walking up (W) it appears with the prompt
+/// "E · up to the telescope"; E there lifts you onto the platform (PLANET-73: DJ pressed E where the sign showed and
+/// nothing happened); on the platform E opens the world's list with its caption; then, from the foot again, walking up
+/// the stones still reaches the top, and a file in reach keeps E. <b>Scenery</b> (PLANET-75): the nearest answering
+/// piece shimmers; beside it the prompt says to twirl; a twirl makes it answer (it moves, nothing opens), and after two
+/// replies its prompt steps aside. <b>Bell:</b> an ordinary jump and a twirl beside the tower ring nothing; W walks onto
+/// the base and under the bell (it stands on the base, as drawn); an ordinary jump there rings nothing; a jump and twirl
+/// rings it once (the bell swings) and opens nothing; walking on out between the far pillars works. <b>Lighthouse</b>
+/// (PLANET-74): on the first Hearth world in the sample, its prompt at the foot; a twirl lights it (the beam sweeps and
+/// stops), and so does E; nothing opens. The test shell records any start: nothing may be recorded here.
 /// </summary>
 public partial class PlanetsProbe
 {
@@ -26,6 +31,7 @@ public partial class PlanetsProbe
         await TelescopeVisit();
         await Key(Godot.Key.Escape);
         await Frames(4);
+        await SceneryVisit();
 
         var music = Child(root, "Music Box");
         App.Selection.Select(music); // [direct] the selection a click on its world makes
@@ -33,6 +39,7 @@ public partial class PlanetsProbe
         await Fly(Godot.Key.G, music, "Music Box");
         await Seconds(1.5);
         await BellVisit();
+        await LighthouseVisit(root);
         Check(App.ShellLog.Count == shell0, $"nothing was started or recorded by the shell in this run ({App.ShellLog.Count - shell0})");
     }
 
@@ -59,7 +66,7 @@ public partial class PlanetsProbe
         var shown = App.Signs.ShownText.GetValueOrDefault(PlanetWorld.TelescopeSignId, "");
         Check(near.Cue > 0.6f && App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && shown.Contains(PlanetWorld.TelescopeSignName),
             F($"at the foot of the stones the sign over the telescope shows \"{shown.Replace('\n', ' ')}\" (cue {near.Cue:0.00})"));
-        Check(P.PromptText.Contains("telescope", StringComparison.OrdinalIgnoreCase) && P.PromptText.Contains("files and destinations"), $"the prompt points up to it: \"{P.PromptText}\"");
+        Check(P.PromptText == PlanetWorld.TelescopeFootPrompt, $"the prompt says what E does here: \"{P.PromptText}\"");
         if (P.TelescopePoint is { } tp && !P.Camera.IsPositionBehind(tp))
         {
             var s = P.Camera.UnprojectPosition(tp);
@@ -69,20 +76,179 @@ public partial class PlanetsProbe
 
         await Shot("lookouts-telescope-approach");
 
-        // Up the stones (real keys: W towards each stone in turn, jumping when stuck), onto the platform.
-        foreach (var step in ov.Steps) await WalkToward(step.Direction, step.Radius * 0.6f, 6);
-        await WalkToward(ov.Direction, ov.Radius * 0.5f, 6);
-        await Until(() => P.OnOverlook, 3);
+        // PLANET-73: E where the sign shows lifts you up beside the telescope (DJ pressed E here and nothing happened).
+        var climbs0 = P.TelescopeClimbs;
+        await Key(Godot.Key.E);
+        await Until(() => P.OnOverlook && P.Walker.Grounded, 4);
         await Seconds(0.8);
         var top = P.TelescopeCue;
-        Check(P.OnOverlook && App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && top.Cue > 0.9f, F($"on the platform (by its stones) the sign is shown and the telescope lit: cue {top.Cue:0.00}"));
+        Check(P.TelescopeClimbs == climbs0 + 1 && P.OnOverlook && MathF.Abs(P.Walker.Support.Value - ov.Top) < 0.05f && !P.ListOpen,
+            F($"E at the foot lifts you onto the platform: support {P.Walker.Support.Value:0.00} m (top {ov.Top:0.00} m), the overlook view, nothing opened"));
+        Check(App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && top.Cue > 0.9f, F($"on the platform the sign is shown and the telescope lit: cue {top.Cue:0.00}"));
         Check(P.PromptText.StartsWith("E · Telescope", StringComparison.Ordinal), $"the prompt: \"{P.PromptText}\"");
         await Shot("lookouts-telescope-top");
         await Key(Godot.Key.E);
         await Until(() => P.ListOpen, 3);
-        Check(P.ListOpen, "E at the telescope opens this world's list (files and destinations)");
+        Check(P.ListOpen && P.TelescopeLists == 1, "E at the telescope opens this world's list (files and destinations)");
+        Check(P.HintText.StartsWith("Through the telescope", StringComparison.Ordinal), $"  with a caption saying what it is: \"{P.HintText}\"");
         await Seconds(0.4);
         await Shot("lookouts-telescope-list");
+        await Key(Godot.Key.Escape);
+        await Frames(4);
+
+        // The stones still climb (the walking route is unchanged): from the foot, W up each stone in turn.
+        var outward = ov.StepFoot - ov.Direction * NVector3.Dot(ov.StepFoot, ov.Direction);
+        var foot = PlanetFrame.Move(ov.StepFoot, NVector3.Normalize(outward - ov.StepFoot * NVector3.Dot(outward, ov.StepFoot)), ov.Steps[0].Radius + 1.2f, r);
+        P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot); // [direct] back at the foot of the stones, facing the first
+        P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - foot * NVector3.Dot(ov.StepFoot, foot)));
+        await Seconds(0.8);
+        Check(!P.OnOverlook && P.PromptText == PlanetWorld.TelescopeFootPrompt, $"back at the foot: \"{P.PromptText}\"");
+        foreach (var step in ov.Steps) await WalkToward(step.Direction, step.Radius * 0.6f, 6);
+        await WalkToward(ov.Direction, ov.Radius * 0.5f, 6);
+        await Until(() => P.OnOverlook, 3);
+        Check(P.OnOverlook && P.TelescopeClimbs == climbs0 + 1, F($"walking up the stones still reaches the platform (support {P.Walker.Support.Value:0.00} m; E not used)"));
+
+        // A file within the telescope's reach keeps E (its own prompt), if this world has one there.
+        var fileNear = c.Items.Where(i => i.NodeId >= 0 && i.Kind != PlanetItemKind.Pile && PlanetShape.Angle(i.Direction, ov.Direction) * r - ov.Radius is > 1.5f and < 5.5f)
+            .OrderBy(i => PlanetShape.Angle(i.Direction, ov.Direction)).FirstOrDefault();
+        if (fileNear != null)
+        {
+            var side = fileNear.Direction - ov.Direction;
+            side -= fileNear.Direction * NVector3.Dot(side, fileNear.Direction);
+            var stand = PlanetFrame.Move(fileNear.Direction, -NVector3.Normalize(side), 1.2f * fileNear.Scale + 0.6f, r);
+            P.Walker.Teleport(c.Surface, stand, fileNear.Direction - stand); // [direct] beside the file, on the overlook's side
+            P.FaceCameraAlong(NVector3.Normalize(fileNear.Direction - stand * NVector3.Dot(fileNear.Direction, stand)));
+            await Seconds(0.6);
+            var climbs1 = P.TelescopeClimbs;
+            Check(P.FocusNodeId == fileNear.NodeId && !P.PromptText.Contains("telescope"), F($"beside {Tree[fileNear.NodeId].Name} ({P.DistanceTo(ov.Direction) - ov.Radius:0.0} m from the overlook's edge) the file has the prompt: \"{P.PromptText}\""));
+            await Key(Godot.Key.E);
+            await Seconds(0.5);
+            Check(P.PreviewOpen && P.TelescopeClimbs == climbs1, "E there looks closer at the file, not up to the telescope");
+            await Key(Godot.Key.Escape);
+            await Frames(4);
+        }
+        else Log("(no file stands within the telescope's reach on this world: the file-keeps-E check is covered where one does)");
+    }
+
+    /// <summary>
+    /// Scenery that answers (PLANET-75): the answering piece clearest of files and pads; it shimmers from a few metres; W
+    /// up beside it shows the twirl prompt; a twirl makes it answer (it moves, nothing opens); after two replies the
+    /// prompt steps aside (the shimmer stays).
+    /// </summary>
+    private async Task SceneryVisit()
+    {
+        var c = P.Composition!;
+        var r = c.Shape.Radius;
+        var kinds = new[] { FileScape.Core.Planets.DecorationKind.Mushroom, FileScape.Core.Planets.DecorationKind.Crystal, FileScape.Core.Planets.DecorationKind.Lamp };
+        float Clearance(NVector3 d) => c.Items.Select(i => PlanetShape.Angle(i.Direction, d) * r).Concat(c.Launchers.Select(l => PlanetShape.Angle(l.Direction, d) * r - 2f)).DefaultIfEmpty(99f).Min();
+        var pick = c.Decorations.Select((d, i) => (d, i)).Where(x => kinds.Contains(x.d.Kind)).OrderByDescending(x => MathF.Min(8f, Clearance(x.d.Direction))).ThenBy(x => PlanetShape.Angle(x.d.Direction, NVector3.UnitY)).FirstOrDefault();
+        Log($"answering scenery here: {string.Join(", ", kinds.Select(k => $"{c.Decorations.Count(d => d.Kind == k)} {k}"))}");
+        if (pick.d == null)
+        {
+            Check(false, "this world has a piece of scenery that answers");
+            return;
+        }
+
+        var (piece, index) = pick;
+        var clear = Clearance(piece.Direction);
+        // [direct] 4 m from it, on the side away from the nearest file or pad, facing it.
+        var nearest = c.Items.Select(i => i.Direction).Concat(c.Launchers.Select(l => l.Direction)).OrderBy(d => PlanetShape.Angle(d, piece.Direction)).FirstOrDefault();
+        var away = nearest == default ? PlanetFrame.North(piece.Direction) : piece.Direction - nearest;
+        away -= piece.Direction * NVector3.Dot(away, piece.Direction);
+        var start = PlanetFrame.Move(piece.Direction, NVector3.Normalize(away), 4f, r);
+        P.Walker.Teleport(c.Surface, start, piece.Direction - start);
+        P.FaceCameraAlong(NVector3.Normalize(piece.Direction - start * NVector3.Dot(piece.Direction, start)));
+        await Seconds(0.8);
+        Check(P.SceneryCueIndex == index, F($"4 m from a {piece.Kind} ({clear:0.0} m clear of files and pads) it shimmers (cue on {P.SceneryCueIndex}, the piece is {index})"));
+        await Shot("lookouts-scenery-shimmer");
+        await WalkToward(piece.Direction, 1.1f, 8);
+        await Seconds(0.3);
+        Check(P.PromptText.StartsWith("Space, Space · twirl by the", StringComparison.Ordinal), $"beside it the prompt says how: \"{P.PromptText}\"");
+        var replies0 = P.SceneryReplies;
+        var twirls0 = P.TwirlPreviews;
+        var played = false;
+        await JumpAndTwirl(() => played |= P.SceneryPlaying, shot: "lookouts-scenery-answers");
+        Check(P.SceneryReplies == replies0 + 1 && played && P.LastSceneryKind == piece.Kind, F($"a twirl beside the {piece.Kind} makes it answer (replies +{P.SceneryReplies - replies0}, it moved: {played})"));
+        Check(!P.PreviewOpen && !P.ListOpen && P.TwirlPreviews == twirls0, "it opens nothing");
+        await Seconds(1.0);
+        Check(!P.SceneryPlaying, "and it is brief: still again within a second");
+        await JumpAndTwirl();
+        await Seconds(0.4);
+        Check(P.SceneryReplies == replies0 + 2, "a second twirl, a second reply (pleasant to repeat)");
+        Check(!P.PromptText.Contains("twirl by the"), $"after two replies its prompt steps aside: \"{P.PromptText}\" (the shimmer stays: cue on {P.SceneryCueIndex})");
+        using (var doc = System.Text.Json.JsonDocument.Parse(App.StateJson()))
+        {
+            var pl = doc.RootElement.GetProperty("planets");
+            Check(pl.GetProperty("sceneryReplies").GetInt32() == P.SceneryReplies && pl.GetProperty("sceneryDistance").GetSingle() < 2f && pl.GetProperty("sceneryKind").GetString() == piece.Kind.ToString(),
+                F($"  state file: sceneryKind {pl.GetProperty("sceneryKind").GetString()}, sceneryDistance {pl.GetProperty("sceneryDistance").GetSingle():0.00} m, sceneryReplies {pl.GetProperty("sceneryReplies").GetInt32()}"));
+        }
+    }
+
+    /// <summary>
+    /// The lighthouse (PLANET-74, AD-70): on the sample's first Hearth world (by path, as Ctrl+L does), walk to its foot;
+    /// the prompt says E or a twirl lights it; a twirl does (the beam sweeps, then stops), and so does E; nothing opens.
+    /// </summary>
+    private async Task LighthouseVisit(int root)
+    {
+        var hearth = HearthWorld(root);
+        if (hearth < 0)
+        {
+            Check(false, "the sample has a Hearth world (the lighthouse)");
+            return;
+        }
+
+        await GoToPath(Tree.FullPath(hearth));
+        await Seconds(1.5);
+        var c = P.Composition!;
+        Check(c.Theme == PlanetTheme.Hearth && c.FolderId == hearth, $"on {Tree.DisplayName(hearth)}, a Hearth world with the lighthouse ({c.Theme})");
+        var lm = c.Landmark!;
+        var r = c.Shape.Radius;
+        var start = PlanetFrame.Move(lm.Direction, PlanetFrame.North(lm.Direction), lm.Radius + 7f, r);
+        P.Walker.Teleport(c.Surface, start, lm.Direction - start); // [direct] 7 m out from its footprint, facing it
+        P.FaceCameraAlong(NVector3.Normalize(lm.Direction - start * NVector3.Dot(lm.Direction, start)));
+        await Seconds(1.0);
+        Check(P.PromptText != PlanetWorld.LighthousePrompt, $"from afar it is scenery: \"{P.PromptText}\"");
+        await WalkToward(lm.Direction, lm.Radius + 1.0f, 10);
+        await Seconds(0.4);
+        Check(P.PromptText == PlanetWorld.LighthousePrompt, F($"at its foot ({P.DistanceTo(lm.Direction):0.0} m from its axis) the prompt: \"{P.PromptText}\""));
+        await Shot("lookouts-lighthouse-foot");
+        var lights0 = P.LighthouseLights;
+        var beam = false;
+        await JumpAndTwirl(() => beam |= P.LighthouseBeam, shot: "lookouts-lighthouse-twirl");
+        Check(P.LighthouseLights == lights0 + 1 && beam, $"a twirl at its foot lights it: the beam sweeps (lights +{P.LighthouseLights - lights0})");
+        await Seconds(0.6);
+        await Shot("lookouts-lighthouse-beam");
+        await Until(() => !P.LighthouseBeam, 5);
+        Check(!P.LighthouseBeam, "and it stops by itself (brief)");
+        await Key(Godot.Key.E);
+        await Frames(4);
+        Check(P.LighthouseLights == lights0 + 2 && P.LighthouseBeam, "E there lights it too");
+        Check(!P.PreviewOpen && !P.ListOpen, "lighting it opens nothing");
+        // [direct] step back 12 m to see the sweep whole (evidence: at the foot the beam passes overhead).
+        var back = PlanetFrame.Move(lm.Direction, PlanetFrame.North(lm.Direction), lm.Radius + 12f, r);
+        P.Walker.Teleport(c.Surface, back, lm.Direction - back);
+        P.FaceCameraAlong(NVector3.Normalize(lm.Direction - back * NVector3.Dot(lm.Direction, back)));
+        await Seconds(0.5);
+        await Shot("lookouts-lighthouse-sweep");
+        using var doc = System.Text.Json.JsonDocument.Parse(App.StateJson());
+        var pl = doc.RootElement.GetProperty("planets");
+        Check(pl.GetProperty("lighthouse").GetBoolean() && pl.GetProperty("lighthouseLights").GetInt32() == P.LighthouseLights && MathF.Abs(pl.GetProperty("lighthouseDistance").GetSingle() - (lm.Radius + 12f)) < 0.5f && pl.GetProperty("lighthouseBeam").GetBoolean(),
+            F($"  state file: lighthouseLights {pl.GetProperty("lighthouseLights").GetInt32()}, lighthouseDistance {pl.GetProperty("lighthouseDistance").GetSingle():0.0} m, beam {pl.GetProperty("lighthouseBeam").GetBoolean()}"));
+    }
+
+    /// <summary>The shallowest folder under <paramref name="root"/> whose world is Hearth (the lighthouse), or −1.</summary>
+    private int HearthWorld(int root)
+    {
+        var queue = new Queue<int>([root]);
+        while (queue.Count > 0)
+        {
+            var id = queue.Dequeue();
+            if (id != root && PlanetComposer.ThemeOf(Tree, id) == PlanetTheme.Hearth) return id;
+            foreach (var ch in Tree[id].Children)
+                if (Tree.Contains(ch) && Tree[ch].IsDirectory) queue.Enqueue(ch);
+        }
+
+        return -1;
     }
 
     /// <summary>The bell tower: jumps beside it ring nothing; walk under the bell; a jump there rings nothing; a twirl rings it.</summary>
