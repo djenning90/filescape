@@ -253,7 +253,7 @@ public sealed class JumpModel
 
     /// <summary>
     /// While true, a rise keeps full gravity even with Space released (no short hop): the recovery's lift is sized for
-    /// full gravity, so a tap and a hold catch the rim alike. Cleared at the apex, on landing and on reset.
+    /// full gravity, so a tap and a hold catch the rim alike; a Hazard World's apex twirl too (<see cref="HoldRise"/>). Cleared at the apex, on landing and on reset.
     /// </summary>
     private bool _riseLocked;
 
@@ -276,6 +276,16 @@ public sealed class JumpModel
         return LastEvent = new JumpEvent(kind);
     }
 
+    /// <summary>
+    /// The rise now under way keeps full gravity whether Space is held or not, until its apex (no short hop): a Hazard
+    /// World's twirl at the top of the jump carries a tap as far as a hold (AD-69: a tapped long jump never made a leap,
+    /// a held one did). The envelope is unchanged: it is what holding Space already does.
+    /// </summary>
+    public void HoldRise()
+    {
+        if (_verticalMetersPerSecond > 0) _riseLocked = true;
+    }
+
     /// <summary>Grounded and supported this step: no vertical motion.</summary>
     public void StayOnGround() => _verticalMetersPerSecond = 0;
 
@@ -292,7 +302,7 @@ public sealed class JumpModel
         var g = _p.Gravity.Value;
         if (_riseLocked)
         {
-            if (_verticalMetersPerSecond > 0) jumpHeld = true; // the recovery's lift: a hold and a tap rise alike
+            if (_verticalMetersPerSecond > 0) jumpHeld = true; // the recovery's lift or an apex twirl: a hold and a tap rise alike
             else _riseLocked = false;
         }
 
