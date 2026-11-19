@@ -97,8 +97,9 @@ public partial class PlanetWorld
 
     private Node3D? _universe;
 
-    /// <summary>The drawn bodies' batches and the bodies in each, in instance order (re-scaled every frame, see DrawnRadius).</summary>
-    private readonly List<(MultiMesh Mesh, List<UniverseBody> Bodies)> _uniBatches = [];
+    /// <summary>The drawn bodies' batches and the indices (into <see cref="_uniBodies"/>) in each, in instance order
+    /// (re-placed and re-scaled every frame, see DrawnRadius and <see cref="PlaceUniverse"/>).</summary>
+    private readonly List<(MultiMesh Mesh, List<int> Bodies)> _uniBatches = [];
 
     /// <summary>
     /// The smallest a world is drawn in the overview, pixels of radius (FOLLOW-1, 2026-11-17): a world is 1.2–4 m across
@@ -110,29 +111,55 @@ public partial class PlanetWorld
 
     /// <summary>
     /// A body's drawn radius now, metres: its real radius, or at least <see cref="MinDrawnRadiusPixels"/> on screen at its
-    /// distance from the camera (pixels per radian = view height / (2 tan(fov/2))).
+    /// distance from the camera (pixels per radian = view height / (2 tan(fov/2))). A world that has just been discovered
+    /// grows into it (<see cref="AppearScale"/>, applied by <see cref="PlaceUniverse"/>).
     /// </summary>
-    private float DrawnRadius(UniverseBody b, Vector3 at)
+    private float DrawnRadius(UniverseBody b, Vector3 at) => DrawnRadius(b.Radius, at);
+
+    private float DrawnRadius(float radius, Vector3 at)
     {
         var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
-        return MathF.Max(b.Radius, _camera.GlobalPosition.DistanceTo(at) * MinDrawnRadiusPixels / pixelsPerRadian);
+        return MathF.Max(radius, _camera.GlobalPosition.DistanceTo(at) * MinDrawnRadiusPixels / pixelsPerRadian);
     }
 
-    /// <summary>Re-scales every drawn body to <see cref="DrawnRadius"/> (≤ 1,500 instance transforms a frame).</summary>
-    private void RescaleUniverseBodies()
-    {
-        foreach (var (mm, list) in _uniBatches)
-        {
-            for (var i = 0; i < list.Count; i++)
-            {
-                var b = list[i];
-                var r = DrawnRadius(b, UniverseOrigin + Gd(b.Position));
-                mm.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), Gd(b.Position)));
-            }
-        }
-    }
     private readonly List<(UniverseBody Body, Vector3 At)> _uniBodies = [];
     private readonly Dictionary<int, int> _uniIndex = [];
+
+    // ---- incremental growth while the overview is open (PLANET-77, AD-71): a relayout never cuts. Every body glides from
+    // where it is drawn to its new place over UniverseGrowSeconds; a newly discovered world grows out of its parent; and
+    // the whole picture is shifted so the anchor (the selected world, else the root) keeps its place, so the camera,
+    // which looks at the anchor, sees its own system unfold rather than the map jump.
+    /// <summary>Each body's motion for the current growth step, in the universe node's frame (metres): from, to, and its
+    /// radius, ring radius and appear scale at the start (the end values are the layout's).</summary>
+    private readonly List<(Vector3 From, Vector3 To, float RadiusFrom, float OrbitFrom, float AppearFrom)> _uniMotion = [];
+
+    /// <summary>Each body's place this frame (universe frame), from <see cref="_uniMotion"/>.</summary>
+    private readonly List<Vector3> _uniLocal = [];
+
+    /// <summary>Seconds into the current growth step (≥ <see cref="UniverseGrowSeconds"/>: settled).</summary>
+    private float _uniGrowT = float.MaxValue;
+
+    /// <summary>
+    /// How long a relayout's glide lasts, seconds, eased in and out: long enough to follow a world to its new place, short
+    /// enough to be over before the next relayout (<see cref="UniverseRelayoutSeconds"/>). By eye; DJ to judge.
+    /// </summary>
+    private const float UniverseGrowSeconds = 1.2f;
+
+    /// <summary>The offset added to every layout position (metres, layout frame) so the anchor stays where it was drawn.</summary>
+    private System.Numerics.Vector3 _uniShift;
+
+    /// <summary>Systems drawn with a ring (two or more drawn children) and chains (a parent with one drawn child), by body index.</summary>
+    private readonly List<int> _uniRingBodies = [];
+    private readonly List<(int Parent, int Child)> _uniChains = [];
+    private readonly List<int> _uniVisited = [];
+    private MultiMesh? _uniRingMesh, _uniChainMesh, _uniVisitedMesh;
+    private MeshInstance3D? _uniHalo;
+    private int _uniHere = -1;
+
+    /// <summary>The tree version the overview's layout was made from, and when (app clock).</summary>
+    private int _uniLayoutVersion;
+    private TimeSpan _uniLayoutAt;
+
     private Vector3 _uniFocus, _uniFocusTarget;
     private float _uniYaw = StartYawRadians, _uniPitch = StartPitchRadians, _uniDistance, _uniDistanceTarget;
     private int _uniSelected = -1, _uniHovered = -1;
@@ -140,6 +167,13 @@ public partial class PlanetWorld
     private (int Id, float T, float Seconds)? _uniLanding;
     private MeshInstance3D? _uniSelectRing;
     private bool _arriveFromSky;
+
+    /// <summary>
+    /// The system the camera was last framed on by opening or selecting (its world, and the multiple of its size and the
+    /// limits used), until the player zooms or pans. While it holds, a relayout that grows that system eases the distance
+    /// out with it (PLANET-77), so a discovered ring stays in view; the camera's angles and focus are never reset.
+    /// </summary>
+    private (int Id, float Systems, float MinMetres, float MaxMetres)? _uniFrame;
 
     public bool UniverseOpen => _universe != null;
     public int UniverseBodyCount => _uniBodies.Count;
@@ -164,35 +198,49 @@ public partial class PlanetWorld
         EndOrbit();
         CloseOverlays();
         _jumpQueued = false;
-        // The way to where you stand is always shown, even through a hidden folder (AppData is hidden on Windows).
-        var onTheWay = new HashSet<int>();
-        for (var a = _current.FolderId; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
-        var bodies = UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay);
+        var bodies = ComputeUniverse(tree, keepDrawn: false);
         if (bodies.Count == 0) return;
         _universe = new Node3D { Name = "Universe", Position = UniverseOrigin };
         AddChild(_universe);
-        _uniBodies.Clear();
-        _uniIndex.Clear();
-        foreach (var b in bodies)
-        {
-            _uniIndex[b.NodeId] = _uniBodies.Count;
-            _uniBodies.Add((b, UniverseOrigin + Gd(b.Position)));
-        }
-
-        BuildUniverseScene(tree, bodies);
+        _uniShift = System.Numerics.Vector3.Zero;
+        ApplyUniverseLayout(tree, bodies, animate: false);
         // Start close to where you stand and pull back: the zoom out is the transition.
         var here = _uniIndex.TryGetValue(_current.FolderId, out var hi) ? _uniBodies[hi] : _uniBodies[0];
         _uniSelected = here.Body.NodeId;
         _uniFocus = _uniFocusTarget = here.At;
         _uniDistance = here.Body.Radius * OpenStartRadii;
         _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
+        _uniFrame = (here.Body.NodeId, OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
         _camera.Far = OverviewFarMetres;
         _warpFlash = OpenFlashLevel; // a soft flash, fading as you pull back from your world
         _s.Hud.SetPlanetsOverview(open: true);
         _titleTime = MathF.Min(_titleTime, 0.3f); // the arrival title fades out of the way (it lingered over the map)
         _audio.Launch();
         _s.Signs.Clear();
+        OpenDiscovery(); // PlanetWorld.Discovery.cs (PLANET-76)
         UpdateUniverse(tree, 0f, true);
+    }
+
+    /// <summary>
+    /// The overview's layout of the tree as it is now. The way to where you stand is always shown, even through a hidden
+    /// folder (AppData is hidden on Windows); with <paramref name="keepDrawn"/> every world drawn now is kept too (pinned),
+    /// so a relayout only ever adds worlds (PLANET-77): when the budget is full, newly listed folders count as "+N more"
+    /// instead of pushing out worlds you were looking at.
+    /// </summary>
+    private IReadOnlyList<UniverseBody> ComputeUniverse(FsTree tree, bool keepDrawn)
+    {
+        var onTheWay = new HashSet<int>();
+        for (var a = _current!.FolderId; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
+        var pinned = new HashSet<int>(onTheWay);
+        if (keepDrawn)
+        {
+            foreach (var (b, _) in _uniBodies)
+            {
+                if (tree.Contains(b.NodeId) && _s.IsVisible(tree[b.NodeId])) pinned.Add(b.NodeId);
+            }
+        }
+
+        return UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, pinned);
     }
 
     /// <summary>
@@ -201,23 +249,108 @@ public partial class PlanetWorld
     /// </summary>
     private static float SystemSize(UniverseBody b) => MathF.Max(b.Radius * 4f, b.OrbitRadius * 1.3f + b.Radius);
 
+    /// <summary>
+    /// Takes a layout into the scene. The first one (<paramref name="animate"/> false) is drawn where it lies. Later ones
+    /// (discovery, a listing that arrived) glide: each body from where it is drawn now, a new one from its parent, all
+    /// shifted so the anchor — the selected world if it is still shown, else the root — stays where it was headed.
+    /// </summary>
+    private void ApplyUniverseLayout(FsTree tree, IReadOnlyList<UniverseBody> bodies, bool animate)
+    {
+        var oldIndex = new Dictionary<int, int>(_uniIndex);
+        var oldBodies = _uniBodies.Select(b => b.Body).ToList();
+        var oldLocal = new List<Vector3>(_uniLocal);
+        var oldMotion = new List<(Vector3 From, Vector3 To, float RadiusFrom, float OrbitFrom, float AppearFrom)>(_uniMotion);
+        var oldProgress = GrowEase();
+        var newIndex = new Dictionary<int, int>(bodies.Count);
+        for (var i = 0; i < bodies.Count; i++) newIndex[bodies[i].NodeId] = i;
+        if (animate)
+        {
+            var anchor = _uniSelected >= 0 && oldIndex.ContainsKey(_uniSelected) && newIndex.ContainsKey(_uniSelected) ? _uniSelected
+                : oldIndex.ContainsKey(bodies[0].NodeId) ? bodies[0].NodeId : -1;
+            if (anchor >= 0)
+            {
+                // Where the anchor was headed stays where it is headed: the new layout is shifted onto it.
+                var was = oldMotion[oldIndex[anchor]].To;
+                var now = Gd(bodies[newIndex[anchor]].Position);
+                var shift = was - now;
+                _uniShift = new System.Numerics.Vector3(shift.X, shift.Y, shift.Z);
+            }
+        }
+
+        _uniBodies.Clear();
+        _uniIndex.Clear();
+        _uniMotion.Clear();
+        _uniLocal.Clear();
+        foreach (var b in bodies)
+        {
+            var to = Gd(b.Position + _uniShift);
+            var motion = (From: to, To: to, RadiusFrom: b.Radius, OrbitFrom: b.OrbitRadius, AppearFrom: 1f);
+            if (animate)
+            {
+                if (oldIndex.TryGetValue(b.NodeId, out var oi))
+                {
+                    // From where it is drawn now (mid-glide too), with the size it has now.
+                    var om = oldMotion[oi];
+                    var ob = oldBodies[oi];
+                    motion = (oldLocal[oi], to, Mathf.Lerp(om.RadiusFrom, ob.Radius, oldProgress), Mathf.Lerp(om.OrbitFrom, ob.OrbitRadius, oldProgress), Mathf.Lerp(om.AppearFrom, 1f, oldProgress));
+                }
+                else
+                {
+                    // New: out of its parent (where the parent is drawn now, or will be).
+                    var from = oldIndex.TryGetValue(b.ParentId, out var pi) ? oldLocal[pi] : newIndex.TryGetValue(b.ParentId, out var np) ? Gd(bodies[np].Position + _uniShift) : to;
+                    motion = (from, to, b.Radius, 0f, 0f);
+                }
+            }
+
+            _uniIndex[b.NodeId] = _uniBodies.Count;
+            _uniBodies.Add((b, UniverseOrigin + motion.From));
+            _uniMotion.Add(motion);
+            _uniLocal.Add(motion.From);
+        }
+
+        if (animate && _uniFrame is { } frame && newIndex.TryGetValue(frame.Id, out var fi))
+        {
+            // Keep the framed system framed as it grows (not a reset: only the distance follows, at the zoom's own ease).
+            _uniDistanceTarget = Mathf.Clamp(SystemSize(bodies[fi]) * frame.Systems, frame.MinMetres, frame.MaxMetres);
+            _uniFocusTarget = UniverseOrigin + _uniMotion[fi].To;
+        }
+
+        _uniGrowT = animate ? 0f : float.MaxValue;
+        _uniLayoutVersion = tree.Version;
+        _uniLayoutAt = _s.Now;
+        BuildUniverseScene(tree, bodies);
+        PlaceUniverse(0f);
+    }
+
+    /// <summary>The current growth step's progress, 0…1, eased in and out (smoothstep); 1 when settled.</summary>
+    private float GrowEase()
+    {
+        if (_uniGrowT >= UniverseGrowSeconds) return 1f;
+        var u = Mathf.Clamp(_uniGrowT / UniverseGrowSeconds, 0f, 1f);
+        return u * u * (3f - 2f * u);
+    }
+
+    /// <summary>A body's appear scale now: 1 for a settled world, growing from 0 for a newly discovered one.</summary>
+    private float AppearScale(int i) => Mathf.Lerp(_uniMotion[i].AppearFrom, 1f, GrowEase());
+
+    /// <summary>
+    /// Builds the overview's scene objects for a layout: one batch of solid worlds and one of ghosts (colours fixed per
+    /// layout), the orbit rings and chains as instances of a unit circle and a unit segment, the visited rings, the beacon
+    /// where you stand. Their transforms are set every frame by <see cref="PlaceUniverse"/>, so a relayout glides.
+    /// </summary>
     private void BuildUniverseScene(FsTree tree, IReadOnlyList<UniverseBody> bodies)
     {
+        foreach (var child in _universe!.GetChildren()) child.QueueFree();
         var sphere = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 24, Rings = 12 };
-        var solid = bodies.Where(b => b.Discovery != Discovery.Unknown).ToList();
-        var ghosts = bodies.Where(b => b.Discovery == Discovery.Unknown).ToList();
+        var solid = new List<int>();
+        var ghosts = new List<int>();
+        for (var i = 0; i < bodies.Count; i++) (bodies[i].Discovery == Discovery.Unknown ? ghosts : solid).Add(i);
         _uniBatches.Clear();
-        MultiMeshInstance3D Batch(List<UniverseBody> list, Material mat, Func<UniverseBody, Color> color)
+        MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, Color> color)
         {
             var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = sphere, InstanceCount = list.Count };
             _uniBatches.Add((mm, list));
-            for (var i = 0; i < list.Count; i++)
-            {
-                var r = list[i].Radius;
-                mm.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), Gd(list[i].Position)));
-                mm.SetInstanceColor(i, color(list[i]));
-            }
-
+            for (var i = 0; i < list.Count; i++) mm.SetInstanceColor(i, color(bodies[list[i]]));
             return new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         }
 
@@ -225,7 +358,7 @@ public partial class PlanetWorld
         var ghostMat = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, CullMode = BaseMaterial3D.CullModeEnum.Back };
         if (solid.Count > 0)
         {
-            _universe!.AddChild(Batch(solid, solidMat, b =>
+            _universe.AddChild(Batch(solid, solidMat, b =>
             {
                 var pal = PlanetArt.Palette(PlanetComposer.ThemeOf(tree, b.NodeId, _s.IsVisible));
                 var h = (uint)(b.NodeId * 2654435761u);
@@ -235,82 +368,171 @@ public partial class PlanetWorld
             }));
         }
 
-        if (ghosts.Count > 0) _universe!.AddChild(Batch(ghosts, ghostMat, _ => new Color(0.7f, 0.72f, 0.95f, 0.22f)));
+        if (ghosts.Count > 0) _universe.AddChild(Batch(ghosts, ghostMat, _ => new Color(0.7f, 0.72f, 0.95f, 0.22f)));
 
-        // Orbits: one faint ring per system with children, in its tilted plane.
-        var lines = new SurfaceTool();
-        lines.Begin(Mesh.PrimitiveType.Lines);
-        var any = false;
-        var byId = bodies.ToDictionary(b => b.NodeId);
-        // A folder with a single subfolder is a chain, not a system: a short straight link, not a ring across the sky.
-        foreach (var b in bodies.Where(b => b.ParentId >= 0 && byId.ContainsKey(b.ParentId) && bodies.Count(o => o.ParentId == b.ParentId) == 1))
+        // Orbits: one faint ring per system with two or more children, in its tilted plane; a folder with a single subfolder
+        // is a chain, not a system: a short straight link, not a ring across the sky.
+        var childCount = new Dictionary<int, int>();
+        foreach (var b in bodies)
         {
-            lines.AddVertex(Gd(byId[b.ParentId].Position));
-            lines.AddVertex(Gd(b.Position));
-            any = true;
+            if (b.ParentId >= 0) childCount[b.ParentId] = childCount.GetValueOrDefault(b.ParentId) + 1;
         }
 
-        foreach (var b in bodies.Where(b => b.OrbitRadius > 0 && bodies.Count(o => o.ParentId == b.NodeId) >= 2))
+        _uniRingBodies.Clear();
+        _uniChains.Clear();
+        for (var i = 0; i < bodies.Count; i++)
         {
-            var n = Gd(b.OrbitNormal);
-            var a = n.Cross(MathF.Abs(n.X) < 0.9f ? Vector3.Right : Vector3.Back).Normalized();
-            var c = n.Cross(a);
-            const int seg = 64;
-            for (var i = 0; i < seg; i++)
-            {
-                var t0 = Mathf.Tau * i / seg;
-                var t1 = Mathf.Tau * (i + 1) / seg;
-                lines.AddVertex(Gd(b.Position) + (a * Mathf.Cos(t0) + c * Mathf.Sin(t0)) * b.OrbitRadius);
-                lines.AddVertex(Gd(b.Position) + (a * Mathf.Cos(t1) + c * Mathf.Sin(t1)) * b.OrbitRadius);
-            }
-
-            any = true;
+            var b = bodies[i];
+            if (b.OrbitRadius > 0 && childCount.GetValueOrDefault(b.NodeId) >= 2) _uniRingBodies.Add(i);
+            if (b.ParentId >= 0 && _uniIndex.TryGetValue(b.ParentId, out var pi) && childCount.GetValueOrDefault(b.ParentId) == 1) _uniChains.Add((pi, i));
         }
 
-        if (any)
+        var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f) };
+        _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
+        _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
+        foreach (var mm in new[] { _uniRingMesh, _uniChainMesh })
         {
-            _universe!.AddChild(new MeshInstance3D
-            {
-                Mesh = lines.Commit(),
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                MaterialOverride = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f) },
-            });
+            if (mm != null) _universe.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = lineMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
 
         // Visited this session: a ring round the world. Where you stand: a gold beacon.
-        var visited = bodies.Where(b => _s.Visited(b.NodeId)).ToList();
-        if (visited.Count > 0)
+        _uniVisited.Clear();
+        for (var i = 0; i < bodies.Count; i++)
+        {
+            if (_s.Visited(bodies[i].NodeId)) _uniVisited.Add(i);
+        }
+
+        _uniVisitedMesh = null;
+        if (_uniVisited.Count > 0)
         {
             var torus = new TorusMesh { InnerRadius = 1.35f, OuterRadius = 1.5f, Rings = 32, RingSegments = 4 };
-            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = torus, InstanceCount = visited.Count };
-            for (var i = 0; i < visited.Count; i++)
+            _uniVisitedMesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = torus, InstanceCount = _uniVisited.Count };
+            _universe.AddChild(new MultiMeshInstance3D { Multimesh = _uniVisitedMesh, MaterialOverride = PlanetArt.GlowMaterial(new Color(0.75f, 0.95f, 1f), 1.4f), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        }
+
+        _uniHalo = null;
+        _uniHere = _uniIndex.TryGetValue(_current!.FolderId, out var ci) ? ci : -1;
+        if (_uniHere >= 0)
+        {
+            _uniHalo = PlanetArt.Halo(new Color(1f, 0.82f, 0.4f), bodies[ci].Radius * 3.2f, 1.4f);
+            _universe.AddChild(_uniHalo);
+        }
+
+        if (_uniSelectRing == null)
+        {
+            _uniSelectRing = new MeshInstance3D
             {
-                var r = visited[i].Radius;
-                mm.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), Gd(visited[i].Position)));
-            }
-
-            _universe!.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = PlanetArt.GlowMaterial(new Color(0.75f, 0.95f, 1f), 1.4f), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+                Mesh = new TorusMesh { InnerRadius = 1.6f, OuterRadius = 1.75f, Rings = 48, RingSegments = 4 },
+                MaterialOverride = PlanetArt.GlowMaterial(new Color(1f, 0.92f, 0.55f), 2.2f, pulse: 1f),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            AddChild(_uniSelectRing);
         }
 
-        if (_uniIndex.TryGetValue(_current!.FolderId, out var ci))
-        {
-            var here = _uniBodies[ci].Body;
-            var halo = PlanetArt.Halo(new Color(1f, 0.82f, 0.4f), here.Radius * 3.2f, 1.4f);
-            halo.Position = Gd(here.Position);
-            _universe!.AddChild(halo);
-        }
-
-        _uniSelectRing = new MeshInstance3D
-        {
-            Mesh = new TorusMesh { InnerRadius = 1.6f, OuterRadius = 1.75f, Rings = 48, RingSegments = 4 },
-            MaterialOverride = PlanetArt.GlowMaterial(new Color(1f, 0.92f, 0.55f), 2.2f, pulse: 1f),
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        AddChild(_uniSelectRing);
-        UniverseCounts = (bodies.Count(b => b.Discovery == Discovery.Listed), bodies.Count(b => b.Discovery == Discovery.Partial), bodies.Count(b => b.Discovery == Discovery.Unknown), visited.Count);
+        UniverseCounts = (bodies.Count(b => b.Discovery == Discovery.Listed), bodies.Count(b => b.Discovery == Discovery.Partial), bodies.Count(b => b.Discovery == Discovery.Unknown), _uniVisited.Count);
     }
 
-    /// <summary>Leaves the overview; <paramref name="returnToSurface"/> glides the camera back down to where you stood.</summary>
+    /// <summary>Segments of the unit circle drawn for every orbit (scaled, tilted and placed per system).</summary>
+    private const int OrbitSegments = 64;
+
+    /// <summary>The unit circle in the XZ plane as line segments: a ring instance maps X and Z onto its plane's axes.</summary>
+    private static ArrayMesh UnitCircleLines()
+    {
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Lines);
+        for (var i = 0; i < OrbitSegments; i++)
+        {
+            var t0 = Mathf.Tau * i / OrbitSegments;
+            var t1 = Mathf.Tau * (i + 1) / OrbitSegments;
+            st.AddVertex(new Vector3(Mathf.Cos(t0), 0, Mathf.Sin(t0)));
+            st.AddVertex(new Vector3(Mathf.Cos(t1), 0, Mathf.Sin(t1)));
+        }
+
+        return st.Commit();
+    }
+
+    /// <summary>A unit segment along +Z: a chain instance maps Z onto parent → child.</summary>
+    private static ArrayMesh UnitSegmentLine()
+    {
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Lines);
+        st.AddVertex(Vector3.Zero);
+        st.AddVertex(Vector3.Back);
+        return st.Commit();
+    }
+
+    /// <summary>
+    /// Advances the growth glide by <paramref name="dt"/> and sets every drawn transform from it: bodies (at their drawn
+    /// radius, see DrawnRadius), rings, chains, visited rings and the beacon (≤ 1,500 bodies plus their rings a frame).
+    /// </summary>
+    private void PlaceUniverse(float dt)
+    {
+        if (_universe == null) return;
+        if (_uniGrowT < UniverseGrowSeconds) _uniGrowT += dt;
+        var e = GrowEase();
+        for (var i = 0; i < _uniMotion.Count; i++)
+        {
+            var m = _uniMotion[i];
+            var p = e >= 1f ? m.To : m.From.Lerp(m.To, e);
+            _uniLocal[i] = p;
+            _uniBodies[i] = (_uniBodies[i].Body, UniverseOrigin + p);
+        }
+
+        foreach (var (mm, list) in _uniBatches)
+        {
+            for (var k = 0; k < list.Count; k++)
+            {
+                var i = list[k];
+                var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
+                var r = DrawnRadius(radius, _uniBodies[i].At) * AppearScale(i);
+                mm.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
+            }
+        }
+
+        if (_uniRingMesh != null)
+        {
+            for (var k = 0; k < _uniRingBodies.Count; k++)
+            {
+                // The ring's plane axes as the layout builds them: a = n × X (or Z when n is nearly along X), c = n × a.
+                var i = _uniRingBodies[k];
+                var b = _uniBodies[i].Body;
+                var n = Gd(b.OrbitNormal);
+                var a = n.Cross(MathF.Abs(n.X) < 0.9f ? Vector3.Right : Vector3.Back).Normalized();
+                var c = n.Cross(a);
+                var r = Mathf.Lerp(_uniMotion[i].OrbitFrom, b.OrbitRadius, e);
+                _uniRingMesh.SetInstanceTransform(k, new Transform3D(new Basis(a * r, n * r, c * r), _uniLocal[i]));
+            }
+        }
+
+        if (_uniChainMesh != null)
+        {
+            for (var k = 0; k < _uniChains.Count; k++)
+            {
+                var (pi, ci) = _uniChains[k];
+                var d = _uniLocal[ci] - _uniLocal[pi];
+                var dir = d.LengthSquared() > 1e-8f ? d.Normalized() : Vector3.Back;
+                var u = dir.Cross(MathF.Abs(dir.Y) < 0.9f ? Vector3.Up : Vector3.Right).Normalized();
+                var v = dir.Cross(u);
+                // Z carries the segment; X and Y only keep the basis invertible (the segment has no width).
+                _uniChainMesh.SetInstanceTransform(k, new Transform3D(new Basis(u, v, d.LengthSquared() > 1e-8f ? d : dir * 1e-4f), _uniLocal[pi]));
+            }
+        }
+
+        if (_uniVisitedMesh != null)
+        {
+            for (var k = 0; k < _uniVisited.Count; k++)
+            {
+                var i = _uniVisited[k];
+                var r = _uniBodies[i].Body.Radius * AppearScale(i);
+                _uniVisitedMesh.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
+            }
+        }
+
+        if (_uniHalo != null && _uniHere >= 0) _uniHalo.Position = _uniLocal[_uniHere];
+    }
+
+    /// <summary>Leaves the overview; <paramref name="returnToSurface"/> glides the camera back down to where you stood.
+    /// What discovery learned stays in the session's tree (PLANET-78).</summary>
     private void CloseUniverse(bool returnToSurface)
     {
         if (_universe == null) return;
@@ -324,7 +546,17 @@ public partial class PlanetWorld
         _uniSelectRing = null;
         _uniBodies.Clear();
         _uniIndex.Clear();
+        _uniMotion.Clear();
+        _uniLocal.Clear();
+        _uniRingBodies.Clear();
+        _uniChains.Clear();
+        _uniVisited.Clear();
+        _uniRingMesh = _uniChainMesh = _uniVisitedMesh = null;
+        _uniHalo = null;
+        _uniHere = -1;
         _uniLanding = null;
+        _uniFrame = null;
+        CloseDiscovery(); // PlanetWorld.Discovery.cs
         _camera.Far = SurfaceFarMetres;
         _s.Signs.Clear();
         _s.Hud.SetPlanetsOverview(open: false);
@@ -362,7 +594,11 @@ public partial class PlanetWorld
             var move = right * Axis(InputBindings.Left, InputBindings.Right)
                 + forward * Axis(InputBindings.Back, InputBindings.Forward)
                 + Vector3.Up * (Axis(InputBindings.Down, InputBindings.Up));
-            if (move.LengthSquared() > 0.01f) _uniFocusTarget += move.LimitLength() * _uniDistance * KeyPanDistancesPerSecond * dt;
+            if (move.LengthSquared() > 0.01f)
+            {
+                _uniFocusTarget += move.LimitLength() * _uniDistance * KeyPanDistancesPerSecond * dt;
+                _uniFrame = null; // the player took the camera: growth no longer reframes it
+            }
         }
 
         // The flash follows the landing's progress (0 → 1 over the flight) and otherwise fades to 0; squaring the level
@@ -376,7 +612,8 @@ public partial class PlanetWorld
         _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
         _camera.LookAt(_uniFocus, Vector3.Up);
         _camera.Fov = OverviewFovDegrees;
-        RescaleUniverseBodies();
+        StepDiscovery(tree); // PlanetWorld.Discovery.cs: ask for more listings, relayout when the tree has grown
+        PlaceUniverse(dt);
 
         var mouse = GetViewport().GetMousePosition();
         _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? PickUniverse(mouse) : -1;
@@ -429,7 +666,7 @@ public partial class PlanetWorld
         var selName = _uniSelected >= 0 && tree.Contains(_uniSelected) ? tree.DisplayName(_uniSelected) : "";
         var (listed, partial, unknown, visitedCount) = UniverseCounts;
         SetPrompt(_uniSelected == _current?.FolderId ? $"★ {selName}: you are here · click a world, then Enter to land there" : $"{selName} · Enter (or double-click) to land there",
-            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zoom · Esc or T: back");
+            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zoom · X: pause discovery · Esc or T: back");
     }
 
     /// <summary>
@@ -478,6 +715,9 @@ public partial class PlanetWorld
                 return true;
             case InputEventKey { Pressed: true, Echo: false } b when b.IsAction(InputBindings.Overview):
                 return true; // B (the overlook view) means nothing up here
+            case InputEventKey { Pressed: true, Echo: false } x when x.IsAction(InputBindings.DiscoveryPause):
+                ToggleDiscoveryPause(); // PlanetWorld.Discovery.cs (PLANET-76)
+                return true;
             case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
                 RequestSoundToggle(); // PlanetWorld.Sound.cs: the same control as the toolbar's sound button
                 return true;
@@ -493,8 +733,9 @@ public partial class PlanetWorld
         _uniSelected = id;
         _s.Select(id);
         _audio.Select();
-        _uniFocusTarget = _uniBodies[i].At;
+        _uniFocusTarget = UniverseOrigin + _uniMotion[i].To; // where it is headed if a relayout is gliding it
         _uniDistanceTarget = Mathf.Clamp(SystemSize(_uniBodies[i].Body) * SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
+        _uniFrame = (id, SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
     }
 
     /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it.</summary>
@@ -509,8 +750,9 @@ public partial class PlanetWorld
 
         var seconds = _audio.AlignToSixteenth(LandingSeconds, maxShiftSeconds: LandingBeatShiftSeconds); // ends on the beat (AD-42)
         _uniLanding = (id, 0f, seconds);
-        _uniFocusTarget = _uniBodies[i].At;
+        _uniFocusTarget = UniverseOrigin + _uniMotion[i].To;
         _uniDistanceTarget = _uniBodies[i].Body.Radius * LandingCloseRadii;
+        _uniFrame = null;
         _audio.WindUp(seconds);
     }
 
@@ -553,9 +795,11 @@ public partial class PlanetWorld
                 var right = _camera.GlobalBasis.X;
                 var up = _camera.GlobalBasis.Y;
                 _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * PanDistancesPerPixel;
+                _uniFrame = null;
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
                 _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? WheelZoomIn : WheelZoomOut), MinZoomMetres, MaxZoomMetres);
+                _uniFrame = null;
                 return true;
         }
 

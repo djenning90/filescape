@@ -40,7 +40,8 @@ namespace FileScape.App.Planets;
 /// inspect and approach, the Destinations drawer, the probe state.</item>
 /// <item><b>.Overlay</b>: the screen layer (title card, prompt, hint, preview, the planet's list, the warp flash),
 /// names in the sky, the travel effects.</item>
-/// <item><b>.Universe</b>: the overview (T): every known folder as nested star systems, its camera and landing.</item>
+/// <item><b>.Universe</b>: the overview (T): every known folder as nested star systems, its camera and landing.
+/// <b>.Discovery</b>: what the open overview lists by itself, its indicator and pause (PLANET-76..78).</item>
 /// <item><b>.Bench</b>: the repository workbench (PLANET-29). <b>.Routes</b>: remembered routes. <b>.Probe</b>: what
 /// probes read.</item>
 /// <item><b>.Bell</b>: the bell tower and the telescope (PLANET-55/56/73). <b>.Whimsy</b>: the lighthouse and the
@@ -291,6 +292,8 @@ public partial class PlanetWorld : Node3D
     private void ResetForTree(FsTree tree)
     {
         CloseUniverse(returnToSurface: false);
+        _discovery.Reset(); // ids start again (PlanetWorld.Discovery)
+        _uniEverDrawn.Clear();
         _tree = tree;
         var bodies = new List<Body>();
         if (_current != null) bodies.Add(_current);

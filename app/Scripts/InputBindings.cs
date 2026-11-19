@@ -41,6 +41,9 @@ public static class InputBindings
     // The two walking worlds (AD-39): V switches between Places and Planets on the same folder.
     public const string WorldToggle = "cmd_world_toggle";
 
+    // The overview's discovery (PLANET-76): X pauses and resumes it (only while the overview is open; X is free elsewhere).
+    public const string DiscoveryPause = "cmd_discovery_pause";
+
     public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
 
     /// <summary>Human-readable bindings for Help.</summary>
@@ -97,6 +100,7 @@ public static class InputBindings
         Physical(Pin, Key.P);
         Physical(Readme, Key.R);
         Physical(WorldToggle, Key.V);
+        Physical(DiscoveryPause, Key.X);
     }
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>

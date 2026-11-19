@@ -53,6 +53,14 @@ public sealed record CommandLine
     /// <summary>--test-list-delay-match=TEXT (instrument, PLANET-39): the delay applies only to folders whose path contains TEXT, so a probe can see one folder "still listing" while the rest list normally.</summary>
     public string? TestListDelayMatch { get; init; }
 
+    /// <summary>
+    /// --test-broad (instrument, PLANET-76): the arrival folder is treated as a broad place (a drive, a profile, a
+    /// distribution root), so it is not listed in the background and only visits and the overview's discovery list it.
+    /// A deep fixture then behaves as a real drive does, and the discovery journey measures discovery, not the background
+    /// traversal.
+    /// </summary>
+    public bool TestBroad { get; init; }
+
     /// <summary>--test-relief=classic (comparison instrument, PLANET-59): ordinary worlds keep the hills they had before 2026-11-17, for before/after screenshots in one build.</summary>
     public bool TestClassicRelief { get; init; }
 
@@ -106,6 +114,7 @@ public sealed record CommandLine
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,
             TestListDelayMatch = Get("test-list-delay-match"),
             TestClassicRelief = Get("test-relief") == "classic",
+            TestBroad = Get("test-broad") != null,
         };
     }
 }

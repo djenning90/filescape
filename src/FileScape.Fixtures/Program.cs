@@ -6,6 +6,7 @@ using FileScape.Fixtures;
 //   FileScape.Fixtures create [parentDir]   creates a fixture (default parent: %TEMP%\FileScape-fixtures) and prints its manifest
 //   FileScape.Fixtures create-places [parent] creates the Places fixture (PLACE-*) and prints its roots
 //   FileScape.Fixtures create-walk [parent]   creates the walking-world fixture (links, identities, visibility)
+//   FileScape.Fixtures create-deep [parent]   creates "Deep Atlas" (7 levels × 3 folders, links, denied; PLANET-76)
 //   FileScape.Fixtures create-sky [parent]    creates a marked sky-<stamp>-<hex> holding the "Starter Sky" sample; prints its path
 //   FileScape.Fixtures delete <fixtureRoot>  deletes a fixture; refuses directories without the marker
 //   FileScape.Fixtures delete-all            deletes every marked fixture under the default parent
@@ -17,6 +18,9 @@ switch (args.FirstOrDefault())
         return 0;
     case "create-walk":
         Console.WriteLine(WalkFixture.Create(args.Length > 1 ? args[1] : null));
+        return 0;
+    case "create-deep":
+        Console.WriteLine(DeepFixture.Create(args.Length > 1 ? args[1] : null));
         return 0;
     case "create-sky":
         Console.WriteLine(SkyFixture.Create(args.Length > 1 ? args[1] : null));
@@ -33,7 +37,7 @@ switch (args.FirstOrDefault())
         Console.WriteLine($"Deleted {FixtureBuilder.DeleteAllUnderDefaultParent()} fixture(s) under {FixtureBuilder.DefaultParent}");
         return 0;
     default:
-        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-places [parentDir] | create-sky [parentDir] | delete <fixtureRoot> | delete-all");
+        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-places [parentDir] | create-sky [parentDir] | delete <fixtureRoot> | delete-all");
         return 2;
 }
 

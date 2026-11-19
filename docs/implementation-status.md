@@ -56,6 +56,56 @@ Where to find them on the sample: the telescope on the Starter Sky's overlook be
 Starter Sky (5, the clearest one out past the pads); the lighthouse on Constellations (Starter Sky's child); mushrooms
 on Hearth, Chime, Theatre, Wild and Quiet worlds; crystals on Workshop, Vault, Crystal, Wild and Quiet worlds.
 
+### The overview discovers more of the filesystem (PLANET-76..78, AD-71)
+
+DJ: T showed only a couple of levels; more appeared only after visits. Now, while the overview is open, it lists the
+worlds it draws that are known only by name, breadth-first, with the selected (or zoomed-toward) world's subtree first,
+through the session's explorer (`WorldExplorer.Discover`, metadata only), and the overview grows by gliding. A small
+indicator above the prompt ("◐ Discovering… N worlds, M listed · X pauses") has a Pause/Resume button; X does the same.
+Commits on branch `worktree-agent-ade6c21bd8f842cf5`: `74aa99f` (Core scheduler, explorer request, layout, tests), `a9ce0ee`
+(overview growth, indicator), the evidence commit (fixtures, `--test-broad`, journey, verify step, real-input mode), and
+this documentation commit.
+
+**Limits chosen (`OverviewDiscovery.Limits`, `PlanetWorld.Discovery`):** 3 listings in flight; 10 new listings per second
+(burst 3); stop at 200,000 tree entries (a fifth of the 1,000,000 session budget); a request unanswered for 20 s gives up
+its slot; only drawn worlds (≤ 1,500, ≤ 64 per system) and only inside the arrival folder or below a visited place; steps
+every 0.1 s, relayouts at most every 1.5 s, each glide 1.2 s.
+
+**Fill-in (journey `planets-overview-discovery`, exported-from-project build, 1600 × 900, UI 1.0)** — worlds drawn below the
+arrival folder, levels drawn, deepest level listed (0 = the arrival folder); discovery's own requests:
+
+| Root | 0 s | 10 s | 30 s |
+|---|---|---|---|
+| Deep fixture, Windows (`create-deep`, `--test-broad`) | 40 worlds, levels 0–3, listed to 2 | 317, levels 0–5, listed to 4 (102 asked) | 905, levels 0–7, listed to 6 (302 asked) |
+| Deep fixture, WSL through `\\wsl.localhost` (`--deep`, `--test-broad`) | 41, 0–3, to 2 | 318, 0–5, to 4 (102) | 906, 0–7, to 6 (303) |
+| `C:\` (counts only: no names logged, no screenshots, no landing) | 220, 0–3, to 2 (tree 710 entries) | 518, 0–4, to 3 (102 asked, 5 failed; tree 3,449) | 1,070, 0–5, to 4 (302 asked, 16 failed; tree 13,223) |
+
+At 0 s the visit's own listings (the arrival folder, its destinations and their children) are what is known; everything
+after is discovery. On `C:\` the folders are wide, so the budget fills by breadth before depth (1,089 of 1,500 worlds at
+34 s); the failures are access-denied system folders, reported as such and not retried.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Breadth-first discovery, focus first, bounds, links/denied/refused/location roots (PLANET-76) | **Demonstrated** | Core `OverviewDiscoveryTests` 11/11 (WSL; the POSIX test skips on Windows): order, focus, in-flight ≤ 3, rate ≤ 10/s + burst, tree-size stop, pause, timeout, refusal, failure not retried; real explorer: symlink loop not followed, mode-000 folder AccessDenied, nothing outside listed, 7 levels. In-app on both deep fixtures: 61 of the 61 folders listed in the 6 s after selecting West were inside it (`C:\`: 59 of 60); the link back to the root shown and never followed; the folder a link points to never listed; the denied folder Failed/AccessDenied, asked once; the hidden folder never drawn |
+| Growth without jumps; camera and selection responsive (PLANET-77) | **Demonstrated** in-app; the feel: DJ | Largest per-frame move of an on-screen world 2.8 % (Windows), 2.6 % (WSL), 0.8 % (`C:\`) of the screen height across 6 glided relayouts; the selected world 0.00 % a frame; yaw, pitch and focus unchanged; click-select, wheel zoom (306 → 188 m), Enter lands and Backspace returns during discovery; frame times while the overview ran p95 16.7 ms on all three (max 42–56 ms); longest relayout 5.6 ms (deep), 3.7 ms (WSL), 9.6 ms (`C:\`); `Relaying_out_with_what_is_drawn_pinned_only_adds_worlds`; behaviour baseline identical before/after the layout change |
+| What is learned is kept (PLANET-78) | **Demonstrated** | Landing on a world discovery had listed (level 6) lists nothing again (4 entries before and after); T after landing and returning: 977 worlds (was 916 at 30 s), `C:\` 1,089 (was 1,073) |
+| Pause / resume | **Demonstrated** in-app | X pauses (nothing asked in 2 s), the indicator's button resumes |
+| Real input (`tools/os-planets-probe.ps1 -Discovery -DiscoveryRoot <Deep Atlas>`) | **Unknown**: written and parse-checked, **not run** (the coordinator runs real input serially) | — |
+| Core suites | Windows 710 passed / 28 skipped, WSL 711 / 25, 0 failed | `tools/fs.sh test`, `test-wsl` |
+
+Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-discovery\` (`deep-3`, `wsl-1`, `c-1`; `deep-1`/`deep-2` are the
+runs with the instrument defect below).
+
+**Instrument defects fixed:** the jump measure first counted worlds far off screen (one projected to (−1892, 2414) in a
+1600 × 900 view, "48 %" per frame, where perspective magnifies tiny motion); it now judges only worlds on screen in both
+frames. The hidden-folder check first asked that the folder stay unlisted, but the visit's ordinary context listing (two
+levels down) lists it; the check is now that it is never drawn, so discovery never asks for it.
+
+**Provisional / open:** the deep fixtures are measured with `--test-broad` (as on a drive root): on a non-broad arrival the
+background traversal lists the subtree anyway and discovery adds the order and the live overview. The growth pace, glide
+length and the keep-framing zoom-out are by eye. The overview's 1,500-world budget caps how far discovery goes on wide
+roots. Real-input `-Discovery` not run. Not exported or installed.
+
 ### Musical modes: the theme in seven modes, a Mixolydian launcher, arrangements for places (PLANET-79..80, AD-72)
 
 DJ asked for modes studied from two 8-bit Music Theory videos (notes, and what could be reached: titles, descriptions

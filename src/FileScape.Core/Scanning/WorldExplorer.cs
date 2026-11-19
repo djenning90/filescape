@@ -181,6 +181,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// <summary>From <see cref="Expand"/>.</summary>
     private sealed record ExpandRequest(int Id) : Request;
 
+    /// <summary>From <see cref="Discover"/>.</summary>
+    private sealed record DiscoverRequest(int Id) : Request;
+
     /// <summary>From <see cref="FollowLink"/>.</summary>
     private sealed record FollowRequest(int Ticket, int LinkId) : Request;
 
@@ -257,6 +260,16 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// moves ahead. Location roots are listed too: opening one in the list is as deliberate as going there.
     /// </summary>
     public void Expand(int dirId) => Post(new ExpandRequest(dirId));
+
+    /// <summary>
+    /// Lists a folder for the overview's discovery (PLANET-76, AD-71; the app's scheduler is
+    /// <see cref="Planets.OverviewDiscovery"/>): like <see cref="Reveal"/> it is not a visit (no destinations or context
+    /// are listed ahead of it), never opens a location root, lists only a folder never listed, and waits behind listings
+    /// the user is waiting for (prefetch priority). Unlike Reveal it goes through <see cref="ListAhead"/> as background
+    /// listing does, so Linux system filesystems and network shares are refused with their note. Entries and metadata
+    /// only, within the node budget's non-reserved part (FS-10).
+    /// </summary>
+    public void Discover(int dirId) => Post(new DiscoverRequest(dirId));
 
     /// <summary>Follows a link deliberately (LINK-02). The reply carries the destination id, or why not.</summary>
     public int FollowLink(int linkId)
@@ -402,6 +415,11 @@ public sealed class WorldExplorer : IScanSource, IDisposable
                 if (d.State is DirState.Unlisted or DirState.Queued) Enqueue(d, Priority.Urgent);
                 break;
             case ExpandRequest:
+                break;
+            case DiscoverRequest dr when dr.Id != 0 && !_roots.ContainsValue(dr.Id) && _dirs.TryGetValue(dr.Id, out var d):
+                if (d.State == DirState.Unlisted && !d.Retry) Ahead(d, Priority.Prefetch, ListAheadKind.Background);
+                break;
+            case DiscoverRequest:
                 break;
             case FollowRequest f:
                 Follow(f.Ticket, f.LinkId);

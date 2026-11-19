@@ -3,6 +3,7 @@
 #   tools/make-wsl-fixture.sh [parent]     default parent: /tmp/filescape-wsl-fixtures
 #   tools/make-wsl-fixture.sh --readme [parent]   a repository with a long real README (for --automate=planets-reading)
 #   tools/make-wsl-fixture.sh --root-like [parent]  a crowded world shaped like a distribution root (PLANET-58)
+#   tools/make-wsl-fixture.sh --deep [parent]  "Deep Atlas": 7 levels × 3 folders, a symlink loop, an unreadable folder (PLANET-76)
 #   tools/make-wsl-fixture.sh --delete <dir>
 # Contents: case pairs (Notes/notes, README.md/readme.md), Linux symlinks (to a folder, a file, a missing target,
 # an absolute path, a loop, and /mnt/c), a FIFO, an executable script (never run by FileScape), and a small project
@@ -10,6 +11,7 @@
 set -euo pipefail
 if [[ "${1:-}" == "--delete" ]]; then
   d="${2:?dir}"; [[ -f "$d/.filescape-wsl-fixture" ]] || { echo "refusing: $d is not a FileScape WSL fixture" >&2; exit 2; }
+  chmod -R u+rwX -- "$d" 2>/dev/null || true # the deep fixture's unreadable folder (its own, never anyone's files)
   rm -rf -- "$d"; echo "deleted $d"; exit 0
 fi
 if [[ "${1:-}" == "--readme" ]]; then
@@ -42,6 +44,35 @@ if [[ "${1:-}" == "--readme" ]]; then
     for i in $(seq 1 60); do printf '## Section %d\n\nParagraph %d of the guide, long enough to wrap in the narrow preview and to make the whole document scroll.\n\n' "$i" "$i"; done
     printf '## The last section\n\nYou reached the end.\n\nEND-OF-GUIDE\n'
   } > "$root/guide.md"
+  distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
+  echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
+  exit 0
+fi
+if [[ "${1:-}" == "--deep" ]]; then
+  # PLANET-76..78: the overview's discovery on a real Linux tree through \\wsl.localhost. The same shape as
+  # FileScape.Fixtures create-deep: below "Deep Atlas" every folder has three subfolders, seven levels down (3,279
+  # folders, one small file each), plus a symlink back to the root (a loop), a symlink outside, an unreadable folder
+  # three levels down (mode 000 on this fixture's own folder) and a dot folder. Prints the Deep Atlas path.
+  parent="${2:-/tmp/filescape-wsl-fixtures}"
+  fx="$parent/deep-$(date +%Y%m%d-%H%M%S)"
+  root="$fx/Deep Atlas"
+  mkdir -p "$root" "$fx/Outer Reaches"
+  touch "$fx/.filescape-wsl-fixture"
+  echo beyond > "$fx/Outer Reaches/beyond.txt"
+  names=("North East West" "Hills Lakes Woods" "Ash Birch Cedar" "Dawn Noon Dusk" "Amber Jade Slate" "One Two Three" "Fern Moss Reed")
+  level=("$root")
+  for l in 0 1 2 3 4 5 6; do
+    next=()
+    for p in "${level[@]}"; do
+      for n in ${names[$l]}; do mkdir "$p/$n"; printf '%*s' $((100 + l * 10)) '' > "$p/$n/notes.txt"; next+=("$p/$n"); done
+    done
+    level=("${next[@]}")
+  done
+  ln -s .. "$root/North/back-to-atlas"
+  ln -s "../../Outer Reaches" "$root/East/to-outer-reaches"
+  mkdir -p "$root/West/Woods/Ash/Sealed/inside" "$root/West/.hidden-grove"
+  echo secret > "$root/West/Woods/Ash/Sealed/inside/secret.txt"
+  chmod 000 "$root/West/Woods/Ash/Sealed"
   distro="${WSL_DISTRO_NAME:-Ubuntu-24.04}"
   echo "\\\\wsl.localhost\\$distro$(echo "$root" | tr '/' '\\')"
   exit 0

@@ -210,7 +210,7 @@ public static class FixtureBuilder
 
         if (OperatingSystem.IsWindows())
         {
-            foreach (var denied in new[] { Path.Combine(root, "special", "access-denied"), Path.Combine(root, PlacesFixture.RootName, "locked"), Path.Combine(root, WalkFixture.RootName, "locked") })
+            foreach (var denied in new[] { Path.Combine(root, "special", "access-denied"), Path.Combine(root, PlacesFixture.RootName, "locked"), Path.Combine(root, WalkFixture.RootName, "locked"), Path.Combine(root, DeepFixture.RootName, "West", "Woods", "Ash", "Sealed") })
             {
                 if (Directory.Exists(denied))
                 {
@@ -225,7 +225,7 @@ public static class FixtureBuilder
                 else if (File.Exists(link)) File.Delete(link);
             }
 
-            foreach (var attr in new[] { Path.Combine(root, WalkFixture.RootName, "hidden-cache"), Path.Combine(root, WalkFixture.RootName, "system-stuff") })
+            foreach (var attr in new[] { Path.Combine(root, WalkFixture.RootName, "hidden-cache"), Path.Combine(root, WalkFixture.RootName, "system-stuff"), Path.Combine(root, DeepFixture.RootName, "West", "Hidden Grove") })
             {
                 if (Directory.Exists(attr)) File.SetAttributes(attr, FileAttributes.Directory);
             }
