@@ -93,7 +93,10 @@ public partial class AvatarRig : Node3D
     private const float TwirlDurationSeconds = 0.5f;
 
     // ---- the last effort (PLANET-62, AD-65; by eye): a flail this long, arms waving this fast (rad/s, ≈ 3 Hz), leaning back this far (degrees)
-    private const float FlailDurationSeconds = 0.7f, FlailWaveRadiansPerSecond = 19f, FlailLeanDegrees = 18f;
+    // PLANET-72, AD-69 (2026-11-19, DJ: "pressing Space produced no visible effort"): leaning back 26° (was 18°) and a
+    // hop of the body this high, metres, over the flail's first half (a sine hump; the pose only, the walker's path is
+    // unchanged), so the effort reads from the chase and fall cameras.
+    private const float FlailDurationSeconds = 0.7f, FlailWaveRadiansPerSecond = 19f, FlailLeanDegrees = 26f, FlailHopMetres = 0.22f;
 
     private float _flailSeconds = -1;  // time since the last effort began, or −1
 
@@ -313,7 +316,9 @@ public partial class AvatarRig : Node3D
 
         // Running bob: lowest at each foot contact.
         var bob = _run * 0.055f * Mathf.Abs(Mathf.Sin(_phase)) - _run * 0.02f;
-        _bob.Position = new Vector3(0, bob, 0);
+        var flailT = _flailSeconds >= 0 ? _flailSeconds / FlailDurationSeconds : 1f;
+        var hop = flailT < 0.5f ? FlailHopMetres * Mathf.Sin(Mathf.Pi * flailT * 2f) : 0f; // the effort's hop (first half of the flail)
+        _bob.Position = new Vector3(0, bob + hop, 0);
         _head.Rotation = new Vector3(Mathf.DegToRad(-leanDeg * 0.35f * (1 - _fly) + _fly * -40f + 4f * Mathf.Sin(_phase * 2) * _run), 0, 0);
 
         // Feet: swing along the stride on the ground, tuck in the air, together and trailing in flight.

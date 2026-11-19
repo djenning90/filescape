@@ -182,6 +182,40 @@ public partial class PlanetWorld
     /// <c>routeLeft</c> is under a metre; when <c>routeJump</c> is true, run and press Space once <c>gapAheadMetres</c>
     /// is under about 0.8.
     /// </summary>
+    /// <summary>The long jump's stand point in <see cref="LeapStateJson"/> is this far before the take-off edge along the bridge, metres (a run-up of ≈ 0.5 s at walking pace).</summary>
+    private const float LeapStandMetres = 3f;
+
+    /// <summary>
+    /// The state file's long-jump fields on a Hazard World with a leap (PLANET-71; tools/os-planets-probe.ps1 -Recovery):
+    /// "leapRoute*" — the route's next step towards the stand point <see cref="LeapStandMetres"/> before the leap's nearer
+    /// take-off edge (bearing as the other route fields, metres, whether it crosses a gap, metres left); "leapAcrossBearing"
+    /// — the turn to face across from there; "leapToEdge" — metres along the bridge to the take-off edge while on that
+    /// bridge (−1 otherwise); "leapWidth" the gap's width. All −1 / 0 without a leap.
+    /// </summary>
+    private string LeapStateJson()
+    {
+        var none = "\"leapRouteBearing\":0,\"leapRouteDistance\":-1,\"leapRouteJump\":false,\"leapRouteLeft\":-1,\"leapAcrossBearing\":0,\"leapToEdge\":-1,\"leapWidth\":0,";
+        if (_current?.Comp.Surface.Shell is not { } shell) return none;
+        var k = shell.Links.ToList().FindIndex(l => l.Advanced);
+        if (k < 0) return none;
+        var s = shell.Spans[shell.Links[k].Span];
+        if (s.Gaps.Count == 0) return none;
+        var (g0, g1) = s.Gaps[0];
+        var r = _current.Comp.Shape.Radius;
+        var standA = s.PointAlong(MathF.Max(0.5f, g0 - LeapStandMetres));
+        var standB = s.PointAlong(MathF.Min(s.LengthMetres - 0.5f, g1 + LeapStandMetres));
+        var fromA = PlanetShape.Angle(_walker.Up, standA) <= PlanetShape.Angle(_walker.Up, standB);
+        var stand = fromA ? standA : standB;
+        var across = fromA ? s.PointAlong(g1 + 2f) : s.PointAlong(g0 - 2f);
+        var (along, side) = s.Measure(_walker.Up);
+        var onBridge = MathF.Abs(side) <= s.HalfWidthMetres && along > 0 && along < s.LengthMetres;
+        var toEdge = !onBridge ? -1f : fromA ? (along <= g0 ? g0 - along : -1f) : (along >= g1 ? along - g1 : -1f);
+        var step = NextRouteStep(stand);
+        var (rb, rd) = step is { } st ? (CameraTurnTo(st.Point), PlanetShape.Angle(_walker.Up, st.Point) * r) : (0f, -1f);
+        return System.FormattableString.Invariant(
+            $"\"leapRouteBearing\":{rb:0.#},\"leapRouteDistance\":{rd:0.##},\"leapRouteJump\":{(step?.Jump == true ? "true" : "false")},\"leapRouteLeft\":{step?.RemainingMetres ?? -1:0.##},\"leapAcrossBearing\":{CameraTurnTo(across):0.#},\"leapToEdge\":{toEdge:0.##},\"leapWidth\":{g1 - g0:0.##},");
+    }
+
     private string HazardStateJson()
     {
         if (_current == null) return "";
@@ -196,7 +230,7 @@ public partial class PlanetWorld
         var (sb, sd) = sel != null ? To(sel.Direction) : (0f, -1f);
         var edge = EdgeMetresHere;
         return System.FormattableString.Invariant(
-            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"recoveries\":{_walker.Recoveries},\"lastEfforts\":{_walker.LastEfforts + LateEfforts},\"apexTwirls\":{_walker.ApexTwirls},\"belowRimSeconds\":{_walker.BelowRimSeconds:0.###},\"recoveryOpen\":{(_walker.RecoveryOpen ? "true" : "false")},\"gapClassAhead\":\"{GapClassAhead()}\",\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"routeBearing\":{rb:0.#},\"routeDistance\":{rd:0.##},\"routeJump\":{(step?.Jump == true ? "true" : "false")},\"routeLeft\":{step?.RemainingMetres ?? -1:0.##},\"gapAheadMetres\":{GapAheadMetres():0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
+            $"\"falling\":{(Falling ? "true" : "false")},\"fallsStarted\":{FallsStarted},\"fallReturns\":{FallReturns},\"recoveries\":{_walker.Recoveries},\"lastEfforts\":{_walker.LastEfforts + LateEfforts},\"apexTwirls\":{_walker.ApexTwirls},\"belowRimSeconds\":{_walker.BelowRimSeconds:0.###},\"recoveryOpen\":{(_walker.RecoveryOpen ? "true" : "false")},\"carrying\":{(_walker.Carrying ? "true" : "false")},{LeapStateJson()}\"airSeconds\":{_airSeconds:0.###},\"pressAfterSeconds\":{LastHazardPress.AfterSeconds:0.###},\"pressWas\":\"{LastHazardPress.Was}\",\"fallEfforts\":{LateEfforts},\"walkerEfforts\":{_walker.LastEfforts},\"gapClassAhead\":\"{GapClassAhead()}\",\"edgeMetres\":{(float.IsFinite(edge) ? edge : -1):0.##},\"holeBearing\":{hb:0.#},\"holeDistance\":{hd:0.##},\"childPad\":{child?.TargetId ?? -1},\"childPadBearing\":{cb:0.#},\"childPadDistance\":{cd:0.##},\"routeBearing\":{rb:0.#},\"routeDistance\":{rd:0.##},\"routeJump\":{(step?.Jump == true ? "true" : "false")},\"routeLeft\":{step?.RemainingMetres ?? -1:0.##},\"gapAheadMetres\":{GapAheadMetres():0.##},\"selPadBearing\":{sb:0.#},\"selPadDistance\":{sd:0.##},");
     }
 
     /// <summary>

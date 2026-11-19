@@ -555,16 +555,27 @@ public sealed partial class SkySynth
     /// A Hazard World's last effort (PLANET-62, AD-65): Space below the rim too late or too far. Two bells that start the
     /// twirl's figure and break off, out of the key and falling (the reach that does not connect), and a short strained
     /// glide down with a breathy flutter — then the fall's own sound takes over. Immediate.
+    /// <para>
+    /// AD-69 (2026-11-19, DJ: "pressing Space produced no visible effort", the fall's roar masked it): the music ducks by
+    /// <see cref="LastEffortDuck"/> for <see cref="LastEffortDuckSeconds"/>, a strained "hup" (a soft-square tone gliding up a
+    /// fifth through a vocal band) leads, and the figure is ≈ 9 dB louder than before. It may come many times in one
+    /// fall (every press is answered).
+    /// </para>
     /// </summary>
     public void LastEffort()
     {
         var now = _frame;
         var root = ClockAt(now).Profile.Root;
-        Enqueue(now, NoteSpec.Bell(PitchHz(2, 1), ratio: 3f, index: 1.0f, indexDecay: 0.2f) with { Attack = 0.002f, Decay = 0.25f, Gain = 0.06f, Pan = -0.15f, Send = 0.3f });
-        Enqueue(now + Frames(0.06f), NoteSpec.Bell(MidiHz(root + 13), ratio: 2.76f, index: 1.4f, indexDecay: 0.1f) with { Attack = 0.002f, Decay = 0.22f, Gain = 0.05f, Pan = 0.15f, Send = 0.35f });
-        Enqueue(now + Frames(0.08f), NoteSpec.Tone(Wave.Triangle, MidiHz(root + 19)) with { GlideToHz = MidiHz(root + 7), Glide = 0.3f, Attack = 0.01f, Decay = 0.35f, Gain = 0.07f, ToneHz = 1600, Send = 0.2f });
-        Enqueue(now + Frames(0.05f), NoteSpec.Noise(2400, 900, 0.3f, q: 2.2f) with { Attack = 0.02f, Decay = 0.3f, Gain = 0.035f, Send = 0.2f });
+        DuckMusic(LastEffortDuck, LastEffortDuckSeconds, attackSeconds: 0.005f);
+        Enqueue(now, NoteSpec.Tone(Wave.SoftSquare, MidiHz(root + 7)) with { GlideToHz = MidiHz(root + 14), Glide = 0.07f, Attack = 0.004f, Decay = 0.16f, Gain = 0.11f, ToneHz = 1400, Send = 0.15f });
+        Enqueue(now, NoteSpec.Bell(PitchHz(2, 1), ratio: 3f, index: 1.0f, indexDecay: 0.2f) with { Attack = 0.002f, Decay = 0.25f, Gain = 0.16f, Pan = -0.15f, Send = 0.3f });
+        Enqueue(now + Frames(0.06f), NoteSpec.Bell(MidiHz(root + 13), ratio: 2.76f, index: 1.4f, indexDecay: 0.1f) with { Attack = 0.002f, Decay = 0.22f, Gain = 0.13f, Pan = 0.15f, Send = 0.35f });
+        Enqueue(now + Frames(0.08f), NoteSpec.Tone(Wave.Triangle, MidiHz(root + 19)) with { GlideToHz = MidiHz(root + 7), Glide = 0.3f, Attack = 0.01f, Decay = 0.35f, Gain = 0.19f, ToneHz = 1600, Send = 0.2f });
+        Enqueue(now + Frames(0.05f), NoteSpec.Noise(2400, 900, 0.3f, q: 2.2f) with { Attack = 0.02f, Decay = 0.3f, Gain = 0.08f, Send = 0.2f });
     }
+
+    /// <summary>Under a last effort the music is lowered by this fraction of its level for this long, seconds, so the effort is heard over the fall (AD-69).</summary>
+    private const float LastEffortDuck = 0.5f, LastEffortDuckSeconds = 0.45f;
 
     /// <summary>A landing thump, louder and lower for harder landings. <paramref name="impactMetersPerSecond"/> is the downward speed at touchdown (≈ 12 m/s is a big drop).</summary>
     public void Land(float impactMetersPerSecond)

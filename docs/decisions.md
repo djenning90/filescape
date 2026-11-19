@@ -892,6 +892,78 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Revisit if:** DJ wants the orchestra back at 144 (one constant, `OrchestraBpm`) or quicker, the second themes more or
   less often (`PlaysSecondTheme`), in other worlds, or one of them dropped.
 
+## AD-69 Hazard World moves: a catch from the first instant, a long jump for taps, an answer to every press (2026-11-19; amends AD-65)
+
+- **Problem:** DJ (2026-11-19): "I couldn't get the late rim catch to work. Once falling, the character seemed completely
+  unresponsive. Pressing Space produced no visible effort … Separate and verify these two moves … Adjust the timing and
+  reach so a player can discover and repeat them. During a failed recovery attempt, give the character a visible and
+  audible effort, even if too late. Keep the fall and return-to-parent sequence moving promptly."
+- **Root cause (measured first, Core `HazardRecoveryTimingTests` on the code as it was; press time after the feet leave
+  the rim, 10 ms steps):**
+  1. **The app started the fall at the depth alone.** `PlanetWorld.BeginFallIfThrough` took over once the feet were
+     0.6 m below the rim (≈ 0.23 s after a walk-off), not when `SphereWalker.FallCommitted` said the walker was past
+     saving — AD-65 says it did, but the app never used `FallCommitted` (since PLANET-34). Core's 0.3 s window and 1.1 m
+     depth were never reachable in the app: every press after ≈ 0.23 s went to the fall phase.
+  2. **The first 0.12 s were a coyote jump into the open sky.** Over a hole, Space within the coyote time took off as an
+     ordinary jump from the rim, carrying the walker further out (walking or running, every press 0–0.11 s: no save) —
+     the real-input run's "0–0.07 s did not save".
+  3. **The catch's reach closed it almost at once.** 1.5 m from the walker's centre: walking, the catch was open
+     0.12–0.23 s (≈ 0.11 s); running, one 10 ms step (0.11 s). With W still held the catch lifted the walker and the air
+     steering carried it back out (every catch failed with W held).
+  4. **Dead presses.** One last effort per airtime: in the walker, the second and later presses did nothing; in the fall,
+     only a press in its first 0.6 s answered, once, and its flail and cue (gains 0.035–0.07) were lost under the fall's
+     roar and the camera's 4 m distance.
+  5. **The long jump needed a held Space.** A tapped jump and tapped twirl never crossed a leap (the twirl's rise took the
+     short-hop gravity); held 0.3 s the window was 0.11–0.23 s; held throughout 0.46 s.
+- **Decision — the rim catch** (`HazardMoveParams`, `SphereWalker`):
+  - The app starts the fall at `FallCommitted`; `RecoveryOpen` now also needs the twirl unused and (once 0.6 m down,
+    where it decides) ground in reach, so a run-off out of reach falls as promptly as before.
+  - In the coyote time over open sky, the press is the catch unless the coyote jump would land
+    (`CoyoteJumpLands`: a held, unsteered jump predicted to come down on ground with 1 m to spare); a late press at a
+    step still jumps it.
+  - Window 0.4 s (was 0.3) from the feet passing the rim's level — walking off, from the slip — and depth 1.8 m (was 1.1).
+  - Reach: any ground within 1.5 m as before (the far rim of a gap barely missed; it keeps a plain jump saved by the
+    catch short of a leap), and the rim last stood on within `ReturnReach` 3.2 m.
+  - The carry lands 0.6 m inside (was 0.7) at the lift's own air time (was a fixed 0.4 s, up to 9 m/s, was 6.5), holds
+    its course without air steering, waits while the feet are deeper than 0.15 m under the rim and the next move would
+    pass under the rock, and stops dead on landing (a 1.2 m bridge is not slid off).
+- **Decision — the long jump:** the timed twirl ("at the top") is now within ±4 m/s (was ±3, up to where a falling press
+  becomes the catch), and its rise keeps full gravity whether Space is held or tapped (`JumpModel.HoldRise`, what a hold
+  already did: the envelope's maximum is unchanged in kind). Plain jumps are untouched.
+- **Decision — every press answered:** any press on the way down over open sky that is not the catch or the twirl is a
+  last effort, every time (in the walker and, after the fall starts, in the app until the return); a flail with the
+  body leaning back 26° (was 18°) and a 0.22 m hop of the pose, a 0.7 m bump back up the fall's path in the spiral
+  (pose and path only: the fall's timing is unchanged), and the cue ≈ 9 dB louder with a strained "hup" in front and the
+  music ducked by half for 0.45 s. The return tip says "Press Space at once (within about 0.4 s)".
+- **Timing as measured (Core, a 22 m Hazard World):**
+
+  | Move | Press | Result |
+  |---|---|---|
+  | Rim catch, walking (6 m/s), W held or let go | 0.00–0.40 s after the feet leave the rim | caught, back on the rim ≈ 0.5 m in |
+  | Rim catch, running (11 m/s) | 0.00–0.27 s (W held) / 0.29 s (let go) | caught |
+  | Uncaught slip | — | the fall starts 0.40 s (walking) / 0.27–0.29 s (running) after the slip |
+  | Late jump at a step (≤ 2.6 m) | 0.00–0.10 s after leaving the edge | the coyote jump across |
+  | Long jump, leap 7.4 m (widest, with jags), walking, Space on the board 0.2–0.6 m before the edge | second press tapped 0.12 s: 0.19–0.42 s after take-off (0.26–0.43 from the board's far end); each held 0.3 s: 0.19–0.52 s; held: 0.15–0.65 s | across |
+  | Plain jump at a leap, walking | — | never across (a running jump is the other advanced way, as before) |
+  | Any other press on the way down / in the fall | any time until the return | a last effort (flail, hop, cry) |
+
+  Envelope: walking jump and twirl at best 10.1 m (was 9.8; chasms start at 11 m); a plain jump saved by the catch
+  6.4 m (leaps start at 6.9). The behaviour baseline's whole-planet trajectories are unaffected (nothing here runs off a
+  broken shell).
+- **Measured in-app (`planets-hazard`, real Space presses):** caught at 0.07 s (W held, inside the coyote time), 0.23 s
+  (W let go) and 0.38 s (W held); an uncaught slip fell 0.43 s after it (416 ms); three presses in the fall, three
+  efforts; fall to standing on the parent 3.7 s; the leap crossed with the twirl at 0.30 s and at 0.45 s after take-off;
+  the plain jump fell short.
+- **Alternatives:** dropping the coyote jump over open sky altogether (simpler, but a late press at a step would pull you
+  back instead of jumping it); a physical upward kick for the last effort (DJ's "maybe"): it lengthens a jump and so the
+  envelope the gap classes are sized by, so the bump is drawn, not simulated; a longer `Reach` (1.8 m made a plain jump
+  plus a catch clear a leap, AD-65); the catch carrying you onto whichever ground is nearest after a full jump (the take-off
+  rim is ≥ 4 m back after a full jump, so `ReturnReach` never carries one across a leap).
+- **Unknown:** how the 0.4 s window, the long jump's ≈ 0.25–0.4 s and the effort look and sound in DJ's hands; the real-input
+  probe (`os-planets-probe.ps1 -Hazard -Recovery`) is written and parse-checked, not run.
+- **Revisit if:** the catch feels too easy (shorten `Window` or `ReturnReach`), the long jump too strict for taps (widen
+  `ApexSpeed` no further than `LateSpeed`), or the effort too loud (`LastEffortDuck`, the cue's gains).
+
 ## AD-70 What E and the twirl do at landmarks and scenery: the telescope lifts you, the lighthouse lights, a few kinds of scenery answer (2026-11-19; amends AD-63)
 
 - **Problem:** DJ's fourth playtest (PLANET-73..75): "I tried the telescope and lighthouse and nothing happened."

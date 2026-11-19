@@ -6,6 +6,37 @@ Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** 
 
 ## Fourth playtest follow-up (2026-11-19)
 
+### Hazard World: the rim catch, the long jump, an answer to every press (PLANET-71..72, AD-69)
+
+DJ: "I couldn't get the late rim catch to work. Once falling, the character seemed completely unresponsive. Pressing
+Space produced no visible effort." **Root cause:** the app started the fall 0.6 m below the rim (≈ 0.23 s after a slip)
+without asking the walker whether a catch was still open, and Space in the first 0.12 s was a coyote jump further out,
+so walking the catch was open only ≈ 0.12–0.23 s (running, one frame); with W still held a catch was steered back out;
+after one last effort further presses did nothing, and in the fall only the first press in its first 0.6 s answered,
+too quietly to hear under the fall. A tapped long jump never crossed a leap.
+
+**How to play them (what to tell a player):**
+
+- **Rim catch:** slip off an edge? **Press Space at once — within 0.4 s of your feet leaving the rim** when walking (about
+  a quarter of a second when running). Holding W or letting go makes no difference. You land back on the rim. Too late,
+  and the character flails and cries out instead; every press on the way down does that, and the fall starts promptly.
+- **Long jump** (the "leap" gaps with amber take-off boards): **walk** at it, press Space on the amber board, then press
+  Space again **at the top of the jump, about a third of a second later** — anywhere from about 0.25 to 0.4 s works,
+  tapped or held (held, up to about 0.5 s). A plain jump never makes a leap; a running jump still does.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Rim catch from the first instant, 0–0.40 s walking (0–0.27 s running), W held or not, onto narrow bridges; late jumps at a step still jump (PLANET-71) | **Demonstrated** in Core and in-app | `HazardRecoveryTimingTests` (press time enumerated every 10 ms, walk/run, W held/let go); `planets-hazard`: real presses caught at 0.07, 0.23 and 0.38 s |
+| Long jump for taps and holds; plain jump never (PLANET-71) | **Demonstrated** in Core and in-app | twirl window ≥ 0.17 s tapped from every board position; `planets-hazard`: crossed with the twirl at the top and late (0.45 s), the plain jump falls short |
+| Every press answered: flail, hop, bump up the fall's path, louder cue (PLANET-72) | **Demonstrated** in Core and in-app; look and sound: DJ | 3 of 3 presses in the walker and in the fall; the cue +3.5 dB over the fall and the hazard score |
+| Fall and return prompt (PLANET-72) | **Demonstrated** in-app | uncaught slip falls 0.43 s after it (Core 0.40 s); fall to standing on the parent 3.7 s |
+| Checks | Core 711 passed / 0 failed (WSL); behaviour baseline identical; `planets-hazard` **82/0** | `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-hazard-recovery\planets-hazard-2\` |
+| Real input `os-planets-probe.ps1 -Hazard -Recovery` (early/mid/late presses, presses in the fall, the long jump and the plain jump on Debris Field) | **Unknown**: written and parse-checked, not run (the coordinator runs real input) | — |
+
+Instrument note: the old in-app probe pressed at 0.15 s, inside the 0.12–0.23 s that worked, so it never saw the dead
+window; the probes now time presses from the app's clock (`airSeconds`) and read back what each press did
+(`pressAfterSeconds`, `pressWas`).
+
 ### Landmark interactions and scenery that answers (PLANET-73..75, AD-70)
 
 DJ: "The bell works and sounds good. I tried the telescope and lighthouse and nothing happened." **Why the telescope
