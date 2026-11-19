@@ -103,12 +103,16 @@ public static class UniverseLayout
         var order = new List<int> { root };
         var queue = new Queue<int>();
         queue.Enqueue(root);
+        // Pinned folders not yet placed, kept as a running count (PLANET-77: the overview now pins every world it already
+        // draws, ≈ 1,500, so counting them afresh for every folder was quadratic). Children are never already in the
+        // order, so for each folder the count of pinned ids neither placed nor among its children is this minus mustHave.
+        var pinnedPending = pinned.Count(pid => pid != root);
         while (queue.TryDequeue(out var id))
         {
             var all = tree[id].Children.Where(c => tree[c].IsDirectory && (visible(tree[c]) || pinned.Contains(c))).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
             // Pinned folders first (never cut by the budget), then the rest in name order within what is left.
             var mustHave = all.Where(pinned.Contains).ToList();
-            var room = Math.Max(0, MaxBodies - order.Count - pinned.Count(pid => !order.Contains(pid) && !mustHave.Contains(pid)));
+            var room = Math.Max(0, MaxBodies - order.Count - (pinnedPending - mustHave.Count));
             var take = mustHave.Concat(all.Where(c => !pinned.Contains(c)).Take(Math.Max(0, Math.Min(MaxChildren, room) - mustHave.Count)))
                 .OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
             kids[id] = take;
@@ -117,6 +121,7 @@ public static class UniverseLayout
             {
                 order.Add(c);
                 queue.Enqueue(c);
+                if (pinned.Contains(c)) pinnedPending--;
             }
         }
 
