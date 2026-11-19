@@ -764,6 +764,11 @@ try {
     Check ((State).nav.shellCount -eq $shell0 -and -not (State).nav.listOpen) "nothing started or opened ($([int](State).nav.shellCount - $shell0) shell requests)"
 
     # ---- the lighthouse (PLANET-74): J to the Hearth world, walk to the lighthouse's foot; a twirl lights it, and E.
+    # Destinations lists where you can go from here (the way back, this world's worlds and their branches): the Hearth
+    # world is the Starter Sky's child, so go up from Music Box first (2026-11-19: typed from Music Box it matched nothing).
+    Hold-Key 'U' 60
+    for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.currentName -eq 'Starter Sky' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Seconds 1
     Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line ($HearthWorld -replace ' ', ''); Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
     for ($i = 0; $i -lt 80; $i++) { $s = State; if ($s.currentName -eq $HearthWorld -and $s.planets.phase -eq 'Walking' -and -not $s.nav.tripActive) { break }; Start-Sleep -Milliseconds 250 }
     Start-Sleep -Seconds 1; $s = State

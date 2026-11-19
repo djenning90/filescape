@@ -66,6 +66,9 @@ public partial class Main
         if (k.Keycode == Key.Escape)
         {
             if (!k.Echo) HandleEscape(); // the panel's own Esc: it closes, in the overview too (the overview stays)
+            // The last panel closed: let go of the toolbar button that opened it, or it keeps the focus and every shortcut
+            // stays blocked (R, J did nothing after ⚙ then Esc; os-planets-probe -Dialogs, 2026-11-19).
+            if (KeyboardPanel == KeyPanel.None) GetViewport().GuiReleaseFocus();
             GetViewport().SetInputAsHandled();
             return true;
         }
