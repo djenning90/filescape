@@ -431,6 +431,8 @@ try {
       try { Hold-Key $key 25 } finally { [array]::Reverse($mods); foreach ($m in $mods) { Key-Up $m } }
       Start-Sleep -Milliseconds 35
     }
+    # R reads the selected world's README, else this world's: two Esc first (an overlay, then the selection an earlier case
+    # left; 2026-11-19, once the panels' own Esc closed them at the first press, one Esc no longer reached the selection).
     # The typed set (as the in-app planets-dialog-keys): letters but the panel's own keys, digits, capitals, Space where
     # text is edited, the navigation keys and the chords a person types in a field.
     function Strokes($own, [bool]$editsText, [bool]$inResults) {
@@ -497,7 +499,7 @@ try {
         @('Settings', 'F4', { Hold-Key 'F4' 40 }, '', $false, $false),
         @('Settings', 'the Settings button', { Click-State (In).settingsButton }, '', $false, $false))
       if ($reader) {
-        $all += , @('Reader', 'R', { Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250; Hold-Key 'R' 40; for ($k = 0; $k -lt 30 -and -not (In).readerOpen; $k++) { Start-Sleep -Milliseconds 200 } }, 'r', $false, $false)
+        $all += , @('Reader', 'R', { Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250; Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250; Hold-Key 'R' 40; for ($k = 0; $k -lt 30 -and -not (In).readerOpen; $k++) { Start-Sleep -Milliseconds 200 } }, 'r', $false, $false)
         $all += , @('Reader', 'the Expand icon on the preview', {
             Hold-Key 'J' 40; Type-Now 'README'; Strike 'Down'; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 50
             for ($k = 0; $k -lt 40 -and -not ((In).previewOpen -and (In).previewExpand); $k++) { Start-Sleep -Milliseconds 250 }
