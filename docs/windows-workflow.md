@@ -30,7 +30,7 @@ tools/fs.sh export       # standalone build → %LOCALAPPDATA%\FileScape\build\F
 Input verification tools: `--automate=navigation --out=DIR` injects input events through Godot's input pipeline and writes `navigation.log`. `tools/os-input-probe.ps1` sends real Win32 SendInput keyboard and mouse events (and Alt-Tab) to a running FileScape started with `--state-file=PATH`; it moves the real mouse and takes focus, so run it only when that is acceptable.
 
 App arguments go after `--`:
-`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=places|classic|district` (default places; the legacy evidence scripts default to classic), `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress|navigation|flicker|places|places-scan|places-tour|places-debug|args --out=DIR [--open-test=NAME]`, `--state-file=PATH`.
+`--root=PATH`, `--synthetic=N`, `--synthetic-rate=N/s`, `--vis=planets|places|classic|district` (normal launches default to Planets; automated runs retain their existing defaults), `--quality=high|low`, `--window=WxH`, `--ui-scale=F`, `--automate=journey|perf|scanperf|live|qualitystress|navigation|flicker|places|places-scan|places-tour|places-debug|args --out=DIR [--open-test=NAME]`, `--state-file=PATH`.
 
 Places evidence (2026-11-04):
 - `FileScape.Fixtures.dll create-places` creates the deterministic "Atlas Studio" tree and an empty root under `%TEMP%\FileScape-fixtures\places-*` (marker-guarded; `delete-all` removes it, including its deny ACE and junction).
@@ -70,7 +70,7 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 - **`FileScape.exe`** is a window program: cmd and PowerShell return to their prompt at once. If it was started from a terminal, its log lines appear *after* that prompt. When the window closes, press Enter for a fresh prompt; FileScape says so in the console.
 - **`FileScape.console.exe`** (same folder, same arguments) waits until the window closes, shows the log and returns the exit code. Use it from a terminal.
 - **From WSL**, either one waits, because WSL interop waits for the Windows process.
-- **The hub:** `--root=hub` (or `--root="This PC"`) starts at This computer.
+- **Default launch.** With no arguments, FileScape opens in Planets at **This computer**. Use `--vis` to choose a view or `--root` to choose a starting folder. Use `--root=hub` (or `--root="This PC"`) to request the hub explicitly.
 
 ## Quirks found and how they are handled
 

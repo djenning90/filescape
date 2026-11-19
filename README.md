@@ -1,95 +1,63 @@
 # FileScape
 
-**Explore your files as little worlds you can run around.** Every folder is a small planet. Its subfolders hang in the
-sky above flower launchers: stand on one, press Space, and you fly there, landing on the next world. Files stand in
-groves you can walk up to and look at. Software projects have a workbench that shows where to start; This computer is
-the hub where your drives and Linux distributions wait. Each kind of place has its own music and sky; system folders that are best left alone are Hazard Worlds
-over a spinning black hole (step off an edge and you spiral down and back up to where you came from).
+**What if you could walk into a folder?**
 
-![A walk in the Starter Sky sample world](docs/media/planets-starter-sky.png)
+Land on a little planet, spot a folder hanging in the sky, and jump to it. Open a software project and climb onto a
+workbench to see the README and where to start. Pull back into space and see how the places you’ve explored fit
+together. Every kind of world has its own look, and the same melody might greet you as a quiet tune on one planet and
+a drum-and-bass track on another.
 
-![Falling off the edge of a Hazard World, round its black hole](docs/media/planets-black-hole.png)
+FileScape is a playable file explorer for Windows, including your WSL folders. The idea is to make your computer feel
+like a place you can get to know by exploring it. A file you need should be easy to reach, and a folder you’ve passed a
+hundred times should still be able to surprise you.
 
-FileScape only reads names, sizes and dates. It never changes, moves or deletes your files, and it opens a file with
-Windows only when you press Enter (or Open) yourself.
+![Starter Sky, FileScape’s sample world](docs/media/planets-starter-sky.png)
 
-> **Status:** a first playtest build for Windows (x64). It is a prototype: expect rough edges. See
-> [`docs/implementation-status.md`](docs/implementation-status.md) for what has been verified and what still needs judging by hand.
+## Play in a few minutes
 
-## Play
+1. **Get the Windows x64 ZIP.** The public download is being prepared for **Releases**. You can [build from source](#build-from-source) in the meantime.
+2. **Extract the ZIP and run `FileScape.exe`.** The app opens in **This computer**, with your drives and WSL distributions.
+3. **Choose Learn to play.** The guided walkthrough takes you to **Starter Sky**, a bundled sample world. You can replay it from **Help → Learn to play**.
 
-1. Download the Windows build (a zip from the project's releases), unzip it anywhere, and run **`FileScape.exe`**.
-   The build is not code-signed yet, so Windows SmartScreen may ask you to confirm ("More info" → "Run anyway").
-2. FileScape opens at **This computer**. The first time, it offers **Learn to play**: a few minutes of guided play in
-   a bundled sample world (the *Starter Sky*). You can also start it any time from **Help → Learn to play**, or open
-   the sample world from the toolbar's **Sample world** button.
+Drag with the left mouse button to look around, move with **WASD**, and press **Space** to jump. Step onto a launch pad
+and press **Space** again to fly to its folder. Press **T** to pull back into Overview, and **Esc** to return to the surface. Press **F1** for the full controls.
 
-The basics (the walkthrough teaches them):
+Looking for somewhere to go after the tutorial? Find **Event Horizon** in Starter Sky and see [what happens when you miss the edge](docs/media/planets-black-hole.png).
 
-| To… | Do this |
-|---|---|
-| Look around | drag with the left (or right) mouse button, or hold ← → |
-| Run | W A S D (Shift: faster) |
-| Jump / twirl higher | Space, and Space again in the air |
-| Fly to a folder | stand on its flower launcher and press Space (or click its world and press G) |
-| Look closer at a file | walk up to it and press E (Enter opens it with Windows) |
-| Up a level / back | U goes to the parent; Backspace goes back to where you were |
-| This world's list | J (type to filter, Enter to go) |
-| Overview of every folder you know | T (drag to orbit, click a world, Enter to land; Esc to come back down) |
-| Help | F1 |
+Exploring in FileScape leaves your files in place. You can preview supported files in the game or deliberately open
+them with Windows.
 
-Command-line options (for `FileScape.exe -- …`): `--root=hub` (This computer), `--root=sample` (the Starter Sky),
-`--root=C:\some\folder` (start in a folder), `--vis=planets|places|classic|district` (start in a view).
-`FileScape.console.exe` does the same from a terminal and waits for the window to close.
+## Help shape FileScape
 
-## Legacy views
+**Play it and tell us what happened.** What made you want to explore? Where did you get lost? Which folder would you
+love to see turned into a world? A few sentences about your first session are plenty. Share an idea or report a bug in
+**Issues**. For a bug, include the build ID and the steps that got you there. Starter Sky is a good place to capture a
+screenshot you’re comfortable sharing.
 
-FileScape began as a flat world of folders you walk through as doors (**Places**) and two whole-tree maps
-(**Classic FSN**, an FSN-inspired landscape, and **District**, a futuristic city). They still work: open them from
-the toolbar's **Legacy views** menu (or press V for Places and Tab for the maps). Their guide is in
-[`docs/legacy-views.md`](docs/legacy-views.md).
+**Make something with us.** Have an idea for a world, a musical variation, or a better way to get to your projects?
+Open an issue to sketch it, or send a pull request for a focused change. The [architecture guide](docs/architecture.md)
+is a starting point for the code, and the [design decisions](docs/decisions.md) explain how the game fits together.
 
 ## Build from source
 
-FileScape is a [Godot](https://godotengine.org) 4.7 .NET (C#) app over an engine-independent C# core.
-
-- **Windows** (the app targets Windows x64).
-- **.NET SDK** 8 or later (the tests use .NET 10).
-- **Godot 4.7.2 .NET** editor and its export templates (for building a standalone exe).
-- **Optional: WSL** (Ubuntu). The repository's scripts (`tools/fs.sh`) run from WSL and call the Windows tools;
-  set `FILESCAPE_GODOT_DIR` to the folder holding `Godot_v4.7.2-stable_mono_win64_console.exe` and, if needed,
-  `FILESCAPE_DOTNET` to `dotnet.exe`.
-
-From WSL:
-
-```
-tools/fs.sh build                         # compile the app and the core
-tools/fs.sh test                          # the core's tests (Windows dotnet; tools/fs.sh test-wsl for Linux)
-tools/fs.sh run                           # run from source (Planets at This computer)
-tools/fs.sh run -- --root=sample          # the Starter Sky sample world
-tools/fs.sh stage                         # export a standalone build into a fresh staging folder and smoke-test it
-tools/fs.sh package staging-<stamp>       # a release zip with licences and notices
-tools/fs.sh check smoke                   # quick end-to-end checks (full: the whole suite)
-```
-
-Without WSL: open `app/project.godot` in the Godot .NET editor and press Play, or run
-`dotnet test tests/FileScape.Core.Tests` for the core's tests. More in
-[`docs/windows-workflow.md`](docs/windows-workflow.md).
-
-## How it is made
-
-- `src/FileScape.Core`: the engine-free core (the folder tree and scanning, layouts, the planets' composition, the
-  walkers, the procedural music). Tested by `tests/FileScape.Core.Tests`.
-- `app/`: the Godot app (Planets, the legacy views, the HUD) and the journey probes that drive it in tests.
-- Everything you see and hear is original and generated in code: the worlds, the icons, the sample files, and the
-  music (synthesised from scratch, no samples). See [`docs/decisions.md`](docs/decisions.md) for why things are the
-  way they are, and [`docs/code-documentation.md`](docs/code-documentation.md) for how the code explains itself.
+Open `app/project.godot` in **Godot 4.7.2 .NET** on Windows with the **.NET SDK** installed, then press **Play**.
+The app targets .NET 8 and the core tests use .NET 10. See the [Windows workflow](docs/windows-workflow.md) for builds,
+tests, exports, and command-line launch options. The older flat worlds and maps are still available under
+[Legacy views](docs/legacy-views.md).
 
 ## Credits and licences
 
-FileScape is built with the Godot Engine (MIT licence) and .NET (MIT licence); a release zip carries their licences
-and third-party notices in its `licenses` folder. Planets is a spiritual descendant of the joyful planet-hopping in
-games such as *Super Mario Galaxy*, and Classic FSN is inspired by SGI's *FSN* file-system navigator; FileScape is not
-affiliated with or endorsed by Nintendo or SGI, and uses none of their assets.
+FileScape was built by one human director and two AI agents.
 
-FileScape's own licence: **to be decided** (see the publication notes before publishing).
+- **David — Creator and director.** Conceived FileScape, defined what good looks and feels like, and steered its
+  design through hands-on playtesting.
+- **OpenAI Codex — Technical manager and design partner (GPT-6.1 Sol, Medium reasoning effort).** Explored design
+  and architecture with David, wrote implementation prompts for Claude Code, and reviewed builds and evidence.
+- **Anthropic Claude Code — Lead implementation agent (Opus 5.5, Medium effort, Ultra Code enabled).** Wrote
+  the application, built its procedural worlds and synthesizer, tested features, and produced playable builds.
+
+Built with the Godot Engine and .NET. The Windows package includes their licences and third-party notices. Planets
+draws inspiration from *Super Mario Galaxy*, and Classic FSN from SGI’s *FSN* file-system navigator. FileScape’s worlds,
+art, and synthesized music are original.
+
+FileScape’s own licence is pending.

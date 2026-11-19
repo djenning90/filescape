@@ -1,0 +1,19 @@
+FileScape Windows playtest
+=========================
+
+FileScape turns folders into little worlds you can explore on foot.
+
+1. Extract the whole ZIP and keep its files together.
+2. Open FileScape.exe. The game starts in Planets at This computer.
+3. Choose Learn to play for a guided tour of Starter Sky, the bundled sample world.
+   You can reopen the tour from Help > Learn to play.
+
+Left-drag to look around, use WASD to move, and press Space to jump.
+Stand on a launcher and press Space to fly to its folder.
+Press T for Overview, Esc to return to the surface, and F1 for all controls.
+
+If you report a problem, include the build ID from build-info.txt and the steps
+that got you there. Starter Sky is a good place to capture a screenshot you
+are comfortable sharing.
+
+Third-party licences and notices are in the licenses folder.
