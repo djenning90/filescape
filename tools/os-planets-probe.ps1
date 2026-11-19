@@ -46,10 +46,19 @@
   (bellRings, bellSwing); then Help -> Learn to play, skip to the overview, T, a left-drag, and the real mouse wheel
   until the zoom step completes (uniZoom, uniWorlds), Esc.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
+  -Dialogs (PLANET-69/70, AD-68, 2026-11-19) checks keyboard ownership in every keyboard panel with real keys, the
+  recording test shell launching nothing: Destinations (J, the ☰ button), Locations (L, its button), Open location
+  (Ctrl+L, Ctrl+O, the Open… button), Settings (F4, ⚙) and the reader (R, the preview's Expand icon), each typed into at
+  once with every letter, the digits, capitals, Space where text is edited, Tab, Shift+Tab, Backspace, Delete, the Page,
+  Home/End and arrow keys and Ctrl+V/Z/Tab/B, then again from its results (Destinations, Locations), then Esc; again
+  after travel (Enter in the Destinations filter), home again (Backspace) and in the overview (T). Judged from the state
+  file: input.unhandledKeys, input.commands and input.viewChanges must not change, nor the experience, the folder, the
+  overview, the feet or the jumps; the panel stays open until Esc, which closes only it.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Dialogs)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -105,7 +114,7 @@ function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play -or $Landmarks -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks -or $Dialogs -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
@@ -214,6 +223,134 @@ try {
     Shot 'audio-after-move-resize' | Out-Null
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($Dialogs) {
+    # PLANET-69/70, AD-68 (2026-11-19): every keyboard panel opened through its shortcut and its toolbar entry, typed into
+    # at once with real keys, then from its results, then Esc; again after travel and in the overview. Judged from the
+    # state file: input.unhandledKeys (keys that reached the game's shortcuts), input.commands, input.viewChanges, the
+    # experience, the folder, the overview, the feet and the jumps must not change, and the panel must stay open.
+    # Every key and click goes through Guard / Guard-Pointer (os-input-probe.ps1): input only to the FileScape it started.
+    foreach ($c in [char[]]'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { $script:Vk[[string]$c] = [int][char]$c }
+    foreach ($d in 0..9) { $script:Vk[[string]$d] = 0x30 + $d }
+    $script:Vk['Ctrl'] = 0x11; $script:Vk['Delete'] = 0x2E; $script:Vk['F4'] = 0x73
+    $script:Vk['End'] = 0x23; $script:Vk['PageDown'] = 0x22; $script:Vk['PageUp'] = 0x21
+    $script:Extended += @('End', 'PageDown', 'PageUp', 'Delete')
+    function In { (State).input }
+    # One stroke by name ('a', '7', 'Shift+Q', 'Ctrl+V', 'PageDown'): modifiers down first, up last, at a typist's pace.
+    function Strike($name) {
+      $parts = @($name -split '\+'); $key = $parts[-1]; $mods = @($parts | Select-Object -SkipLast 1)
+      if ($key.Length -eq 1) { $key = $key.ToUpperInvariant() }
+      foreach ($m in $mods) { Key-Down $m }
+      try { Hold-Key $key 25 } finally { [array]::Reverse($mods); foreach ($m in $mods) { Key-Up $m } }
+      Start-Sleep -Milliseconds 35
+    }
+    # The typed set (as the in-app planets-dialog-keys): letters but the panel's own keys, digits, capitals, Space where
+    # text is edited, the navigation keys and the chords a person types in a field.
+    function Strokes($own, [bool]$editsText, [bool]$inResults) {
+      $s = @([char[]]'abcdefghijklmnopqrstuvwxyz' | Where-Object { -not $own.Contains([string]$_) } | ForEach-Object { [string]$_ })
+      $s += @(0..9 | ForEach-Object { [string]$_ })
+      $s += @('Shift+V', 'Shift+Q')
+      if ($editsText -and -not $inResults) { $s += 'Space' }
+      $s += @('Tab', 'Shift+Tab', 'Backspace', 'Delete', 'PageDown', 'PageUp', 'Home', 'End', 'Up', 'Down', 'Left', 'Right', 'Ctrl+V', 'Ctrl+Z', 'Ctrl+Tab', 'Ctrl+B')
+      return $s
+    }
+    function Is-Open($panel) { $i = In; switch ($panel) { 'Destinations' { return [bool]$i.listOpen } 'Locations' { return [bool]$i.locationsOpen } 'Open location' { return [bool]$i.locationsOpen } 'Settings' { return [bool]$i.settingsOpen } 'Reader' { return [bool]$i.readerOpen } }; return $false }
+    function Any-Open { $i = In; return ($i.listOpen -or $i.locationsOpen -or $i.settingsOpen -or $i.readerOpen -or $i.previewOpen) }
+    function Close-All { for ($k = 0; $k -lt 5 -and (Any-Open); $k++) { Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 300 } }
+    function Snap { $s = State; return [pscustomobject]@{ u = [int]$s.input.unhandledKeys; c = [int]$s.input.commands; v = [int]$s.input.viewChanges; at = $s.currentName; exp = $s.input.experience; ov = $s.planets.overview; feet = $s.planets.feet; jumps = [int]$s.planets.jumps; consumed = [int]$s.input.panelConsumed } }
+    function Moved($a, $b) { if (-not $a.feet -or -not $b.feet) { return 0 }; return [Math]::Sqrt([Math]::Pow($b.feet[0] - $a.feet[0], 2) + [Math]::Pow($b.feet[1] - $a.feet[1], 2) + [Math]::Pow($b.feet[2] - $a.feet[2], 2)) }
+    function Into-Results($panel) {
+      if ($panel -eq 'Destinations') {
+        for ($k = 0; $k -lt 40 -and (In).filterText; $k++) { Strike 'Backspace' }
+        if ((In).focus -ne 'results') { Strike 'Down'; Start-Sleep -Milliseconds 150 }
+        return ((In).focus -eq 'results')
+      }
+      for ($k = 0; $k -lt 3 -and (In).focus -ne 'locationRows'; $k++) { Strike 'Tab'; Start-Sleep -Milliseconds 150 }
+      return ((In).focus -eq 'locationRows')
+    }
+    function Dialog-Case($panel, $how, [scriptblock]$open, $own, [bool]$editsText, [bool]$hasResults, $where) {
+      Close-All
+      & $open
+      for ($k = 0; $k -lt 20 -and -not (Is-Open $panel); $k++) { Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Milliseconds 250
+      $tag = "$panel via $how ($where)"
+      if (-not (Is-Open $panel)) { Check $false "$tag`: open"; return }
+      foreach ($inResults in @($false) + @($(if ($hasResults) { $true }))) {
+        $phase = if ($inResults) { 'in the results' } else { 'typed at once' }
+        if ($inResults -and -not (Into-Results $panel)) { Check $false "$tag`: the keyboard moves into the results with keys (at '$((In).focus)')"; continue }
+        Start-Sleep -Milliseconds 300
+        $a = Snap
+        foreach ($k in (Strokes $own $editsText $inResults)) {
+          if ($inResults) { $f = (In).focus; if (($panel -eq 'Destinations' -and $f -ne 'results') -or ($panel -ne 'Destinations' -and $f -ne 'locationRows')) { [void](Into-Results $panel) } }
+          Strike $k
+        }
+        Start-Sleep -Milliseconds 400
+        $b = Snap
+        $ok = ($b.u -eq $a.u -and $b.c -eq $a.c -and $b.v -eq $a.v -and $b.at -eq $a.at -and $b.exp -eq 'Planets' -and $b.ov -eq $a.ov -and $b.jumps -eq $a.jumps -and (Moved $a $b) -lt 0.2 -and (Is-Open $panel))
+        Check $ok "$tag, $phase`: nothing reached the game ($($b.u - $a.u) key(s) reached the shortcuts, last [$((In).unhandledLast -join ',')]; $($b.c - $a.c) command(s); $($b.v - $a.v) view change(s), now $($b.exp); at $($b.at); moved $([Math]::Round((Moved $a $b), 2)) m; $($b.consumed - $a.consumed) key(s) kept by the panel; open: $(Is-Open $panel))"
+        if ($b.exp -and $b.exp -ne 'Planets') { Close-All; Hold-Key 'V' 40; Start-Sleep -Seconds 3 } # undo a leak to a legacy view
+        if (-not (Is-Open $panel)) { break }
+      }
+      $a = Snap
+      Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 350
+      if ($panel -eq 'Reader' -and (In).previewOpen) { Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 350 }
+      $b = Snap
+      Check (-not (Is-Open $panel) -and $b.at -eq $a.at -and $b.exp -eq 'Planets' -and $b.ov -eq $a.ov) "$tag`: Esc closes it and nothing else (at $($b.at), $($b.exp), overview $($b.ov))"
+    }
+    function Click-State($xy) { if ($xy) { Click-At $xy } }
+    function Cases($where, [bool]$reader, [string[]]$only = @()) {
+      $all = @(
+        @('Destinations', 'J', { Hold-Key 'J' 40 }, 'j', $true, $true),
+        @('Destinations', 'the Destinations button', { Click-State (State).nav.destButton }, 'j', $true, $true),
+        @('Locations', 'L', { Hold-Key 'L' 40 }, '', $false, $true),
+        @('Locations', 'the Locations (L) button', { Click-State (State).nav.locButton }, '', $false, $true),
+        @('Open location', 'Ctrl+L', { Strike 'Ctrl+L' }, '', $true, $true),
+        @('Open location', 'Ctrl+O', { Strike 'Ctrl+O' }, '', $false, $true),
+        @('Open location', 'the Open... button', { Click-State (In).openButton }, '', $false, $true),
+        @('Settings', 'F4', { Hold-Key 'F4' 40 }, '', $false, $false),
+        @('Settings', 'the Settings button', { Click-State (In).settingsButton }, '', $false, $false))
+      if ($reader) {
+        $all += , @('Reader', 'R', { Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250; Hold-Key 'R' 40; for ($k = 0; $k -lt 30 -and -not (In).readerOpen; $k++) { Start-Sleep -Milliseconds 200 } }, 'r', $false, $false)
+        $all += , @('Reader', 'the Expand icon on the preview', {
+            Hold-Key 'J' 40; Type-Now 'README'; Strike 'Down'; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 50
+            for ($k = 0; $k -lt 40 -and -not ((In).previewOpen -and (In).previewExpand); $k++) { Start-Sleep -Milliseconds 250 }
+            Start-Sleep -Milliseconds 600
+            Click-State (In).previewExpand
+            for ($k = 0; $k -lt 30 -and -not (In).readerOpen; $k++) { Start-Sleep -Milliseconds 200 }
+          }, 'r', $false, $false)
+      }
+      foreach ($c in $all) { if ($only.Count -eq 0 -or $only -contains $c[1]) { Dialog-Case $c[0] $c[1] $c[2] $c[3] $c[4] $c[5] $where } }
+      Close-All
+    }
+    function Type-Now($text) { foreach ($ch in [char[]]$text) { if ([char]::IsUpper($ch)) { Strike "Shift+$ch" } elseif ($ch -eq ' ') { Strike 'Space' } else { Strike ([string]$ch) } }; Start-Sleep -Milliseconds 300 }
+    Client-Pos $w 900 300
+
+    Cases 'home' $true
+    Shot 'dialogs-home' | Out-Null
+    # Travel by Enter in the Destinations filter, then every panel again (shortcut and toolbar).
+    Hold-Key 'J' 40; Type-Now 'Lantern'; Hold-Key 'Enter' 50
+    for ($k = 0; $k -lt 125; $k++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq 'Lantern Workshop' -and -not $s.nav.tripActive) { break }; Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Milliseconds 1200
+    Check ((State).currentName -eq 'Lantern Workshop') "Enter in the Destinations filter goes to Lantern Workshop ($((State).currentName))"
+    Cases 'after travel' $false
+    # Home with Backspace (nothing open: History back), then the reader and Locations again.
+    Close-All; Hold-Key 'Backspace' 40
+    for ($k = 0; $k -lt 125; $k++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq 'Starter Sky') { break }; Start-Sleep -Milliseconds 200 }
+    Start-Sleep -Milliseconds 1200
+    Check ((State).currentName -eq 'Starter Sky') "with every panel closed Backspace is History back again: home ($((State).currentName))"
+    Cases 'home again' $true @('R', 'the Expand icon on the preview', 'L', 'the Locations (L) button')
+    # In the overview.
+    Hold-Key 'T' 40; for ($k = 0; $k -lt 20 -and -not (State).planets.overview; $k++) { Start-Sleep -Milliseconds 150 }
+    Start-Sleep -Seconds 1
+    Cases 'overview' $false @('J', 'L', 'Ctrl+L', 'F4')
+    Check ([bool](State).planets.overview) "the overview stays open through the panels and their Esc"
+    Hold-Key 'T' 40; Start-Sleep -Seconds 2
+    Shot 'dialogs-end' | Out-Null
+    Log "OS planets probe: $fails failure(s)"
+    if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000) }
+    $log | Set-Content (Join-Path $Out 'os-planets.log')
     exit $fails
   }
 
