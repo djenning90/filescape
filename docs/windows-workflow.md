@@ -54,13 +54,14 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 | `tools/fs.sh check harness` | ≈ 3 s | the harness's own judging, every pass/fail path with test doubles (nothing launched) | after changing `verify.sh` or `verify-lib.sh` |
 | `tools/fs.sh check fast` | ≈ 3.5 min (205 s, 2026-11-19) | app build, Core tests on Windows and WSL | every change |
 | `tools/fs.sh check smoke` | ≈ 10 min | fast + `fs.sh stage --reuse` + walk-explore, the hub → project journey and the planets journey on the Starter Sky (UI 1.0, functional) | before a commit that touches the app |
-| `tools/fs.sh check full` | ≈ 32 min of steps (2026-11-19: 1,888 s, plus any launch-lock waits) | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids, aerial limit (budgets 24 and 8) at 1.0; explore, places and planets at 1.25 (functional); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
-| `tools/fs.sh check release` | ≈ 50 min (not re-measured) | full with measurements, walk at 1.25, walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recordings (planets journey, explore) | evidence for a report |
+| `tools/fs.sh check full` | ≈ 32 min of steps (2026-11-19: 1,888 s, plus any launch-lock waits) | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids, aerial limit (budgets 24 and 8) at 1.0 (planets-sound at 1.25; the 1.25 repeats are in release, AD-88); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
+| `tools/fs.sh check release` | ≈ 50 min (not re-measured) | full with measurements, the UI 1.25 repeats (explore, places, planets, walk), walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recordings (planets journey, explore) | evidence for a report |
 | `tools/fs.sh check journeys NAME...` | the named steps | only the named journeys (shell patterns: `'planets-nav*'`), on a staged build (reused) and without Core tests; real-input steps (`os-*`) only by exact name; `--measure` keeps measurement segments; `--list` prints every step name | while working on a journey |
 
 - **Output:** each run writes `%LOCALAPPDATA%\FileScape\evidence\checks\<tier>-<stamp>\summary.txt`, with every step's seconds, its exit code, and its PASS/FAIL/SKIP counts.
 - **Timing table (TEST-05, AD-80):** every run ends with one table: each step's name, result (`pass`, `fail`, `timeout`, `skipped`, `interrupted`) and seconds, then the total and the counts. It is printed last, appended to `summary.txt` and written to `timing.txt` in the same folder. It also appears after a failure, a timeout, an early exit (no fixtures, no staged build) and Ctrl+C or SIGTERM. A signal stops the running step's command (only the process the harness started) and marks that step `interrupted`. The Core tests' rows carry their counts (`734 passed, 0 failed, 26 skipped of 760`).
 - **Shared desktop: `FS_LAUNCH_LOCK=/path`.** Each app launch (every journey, real-input probe and recording, the stage's smoke launch, `fs.sh run`) holds this flock for that launch only. The lock's descriptor is closed in the launched command. A step's seconds are its own run. Its wait for the lock is in its note (`lock wait 48.2 s`), and the TOTAL line sums the waits. Example: `FS_LAUNCH_LOCK=/tmp/claude-1000/filescape-journey.lock tools/fs.sh check full`.
+- **Accounting (TEST-06, AD-88):** the table's last three lines are `active` (the steps' own seconds), `lock-wait` (waiting for the shared desktop) and `reruns` (steps this session had already run, with their seconds and names). Each step that ran is also appended to the session timing log (`~/.local/state/filescape/timing.tsv`, or `FS_TIMING_LOG`; `off` disables it). A session is the git branch (`FS_TIMING_SESSION` overrides), so each worktree's agent has its own totals. A step whose name the session has already logged is a rerun; say why with `FS_RERUN_WHY="…"`. Ad-hoc launches go into the same log: `tools/fs.sh timed NAME [--lock] [--why=…] -- CMD…` runs CMD (holding `FS_LAUNCH_LOCK` with `--lock`), keeps CMD's exit code and takes nested lock waits (a stage's smoke launch) out of the active seconds. Do not wrap `fs.sh check` in it, because check logs its own steps. `tools/fs.sh timing [--rows] [--all|--session=S]` prints the three totals for the handoff.
 - **What runs side by side:** the WSL Core tests run as three `dotnet test --no-build` processes with complementary filters (SkySynthTests with "theme" in the name, SkySynthTests without, everything else). Each test runs exactly once, and a shard without a result line fails. The WSL tests run in the background beside the build, the Windows tests and the stage, because they use their own `obj/`, `bin/` and SDK. The journeys wait for them, because their timing checks must not share the machine.
 - **Upper bounds:** build 600 s, each host's tests 1,200 s, stage 1,800 s. A hang ends as a `timeout` row.
 - **Functional tier (`--tier=functional`):** keeps every assertion. It leaves out measurement-only frame recordings and logs each one as `SKIP perf …`, so a functional run is visibly not a performance run.
@@ -70,6 +71,86 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 - **Aerial budget:** `--test-max-islands=N --automate=walk-aerial-limit --root=<Wayfarer>` runs the aerial-limit journey with a small budget.
 - **Planets (2026-11-11):** `--vis=planets` starts in the planetary world; `--root=sample` starts on the Starter Sky (the app writes it once into `%APPDATA%\Godot\app_userdata\FileScape\samples`); `--automate=planets-journey` (or `planets-reel`, the first part only, for a recording) (the first minutes: arrive, walk, twirl, overlook, launch, inspect a picture, open it, V to Places and back, fly back, warp, piles, the list, empty moon, workshop, music box) and `--automate=planets-fixture --root=<Wayfarer> [--wsl-root=\\wsl.localhost\…]`. `--test-shell=record` records Open/Reveal on live files and starts nothing. `--experiment=planet-gallery [--automate=planet-gallery --out=DIR]` shows every planet, object, launcher, landmark and the traveller. `FileScape.Fixtures create-sky [parent]` makes the Starter Sky as a fixture.
 - **No parallel journeys:** journeys share the screen, focus and GPU, and their speed checks must not contend, so they run one at a time.
+
+## Choosing the smallest test set (TEST-06..09, AD-88)
+
+Run the cheapest check that can catch the regression you might have made. Run a broader tier only when the change
+crosses a boundary the cheap check cannot see. Typical costs (2026-11-20): one Core test class on WSL takes 10–40 s,
+including the build. `check fast` takes ≈ 3.5 min. A stage takes ≈ 30 s on a quiet machine, ≈ 150 s under load, and
+0 s when reused. One journey takes 5–260 s (see `timing.txt` of the last full run). `check full` takes ≈ 42 min.
+
+**While developing:**
+
+1. **Logic first, in Core.** Write or extend a Core test that calls the entry point the app calls. For a bug, write
+   it before the fix and see it fail. Run only that test, then its neighbours:
+   `tools/fs.sh test-wsl --filter 'FullyQualifiedName~HazardSampleReplayTests'`. Use several classes with `|`, for
+   example `'FullyQualifiedName~Hazard|FullyQualifiedName~SphereWalker'`. Windows-only behaviour (paths, shell,
+   junctions) uses `tools/fs.sh test --filter …`.
+2. **Then the app, only where the change reaches it.** Build once with `tools/fs.sh build` (≈ 20–50 s). Stage once
+   with `tools/fs.sh stage --reuse`, which reuses a staging folder of the same source state. Then run only the
+   journeys that exercise the change:
+   `FS_LAUNCH_LOCK=/tmp/claude-1000/filescape-journey.lock tools/fs.sh check journeys planets-hazard --exe='C:\…\staging-…\FileScape.exe'`.
+   Use `--list` for the names and shell patterns (`'planets-nav*'`). With `--exe` the stage step is skipped
+   altogether. A probe-only change still needs a new stage, because the probes are compiled into the build.
+3. **A rerun needs a reason.** Set `FS_RERUN_WHY="…"` (or `fs.sh timed … --why=…`) so the session's accounting
+   says why the step ran again. Before rerunning a failed journey, read its log and decide whether the failure is
+   in the instrument or in the product. A load-sensitive timing step that fails once is not by itself a product
+   defect.
+4. **Ad-hoc launches and probes** (`fs.sh run`, `powershell.exe -File tools/os-*.ps1`, a stage) go through
+   `tools/fs.sh timed NAME [--lock] -- CMD…`, so they appear in `tools/fs.sh timing` with their lock waits apart.
+
+**Broader tiers:**
+
+| Change touches | Also run |
+|---|---|
+| Core only (no app call sites changed) | the Core classes for that area; `check fast` before the commit |
+| app code, but not input, rendering or audio | `check fast`; the journeys for that feature |
+| input routing, keyboard ownership, focus, panels | the feature's journeys, plus `planets-dialog-keys` and `planets-destinations-keys`; real input (`os-planets-probe.ps1`) for the input path you changed |
+| rendering, camera, animation, sound | the feature's journeys (they measure frames, screen positions, audio levels); a recording if the look matters |
+| `verify.sh`, `verify-lib.sh`, `fs.sh` | `tools/fs.sh check harness` (≈ 5 s) |
+| a merge of several streams, or a build to hand over | `check full`, run once by the integrator; `check release` for a report's evidence |
+
+Never run `check full` in a parallel stream. The integrator runs it once on the merged candidate.
+
+**Moving journey assertions into Core (the path for later assignments).** For each slow journey:
+
+1. List its assertions (`grep -E 'PASS|FAIL' <evidence>\<journey>\<journey>.log`) and mark each one as either
+   input delivery, rendering, animation, audio, Windows integration, or the boundary between systems. Those stay.
+   Deterministic state or timing is the rest, and it can move.
+2. Find (or extract) the Core entry point the app uses for that logic: PlanetComposer, SphereWalker,
+   DestinationTree, OverviewDiscovery, HazardRules, KeyboardOwner policy and so on. Write the Core test with the
+   journey's own inputs: its fixture (the Starter Sky can be written and scanned in Core: `SampleSkyFixture`,
+   `ScanRunner`), its stand points and press timing, and the measured input lag (2 frames, AD-88).
+3. **Show equivalence.** Inject one regression that the journey step catches. Run the unchanged journey on a
+   staged build with the regression, and run the Core test. Both must fail. Then remove the regression.
+4. Trim the journey. Keep one representative path through the running app per feature, so the boundary is still
+   exercised. Leave a comment naming the Core test. Measure the journey before and after on the same staged builds
+   under the same load, and record both numbers in the implementation status.
+
+**Next opportunities, ranked by estimated seconds saved per full run** (from `full-20261120-062206`; estimates):
+
+| # | Journey (s) | Assertions to move | Core home | Est. saved |
+|---|---|---|---|---|
+| 1 | planets-overview-enter (256) | Enter lands, or says why not, for each overview selection state (PLANET-83); the held-back listing's message | the overview's Enter policy, extracted from Main.Planets | ≈ 150 s (stream 2's area this pass) |
+| 2 | planets-music (164) | which piece plays where, the minimum dwell through quick hops, a return resuming the overlook (AD-79) | the music selector with simulated time (SkySynth's selection, not playback) | ≈ 120 s; keep the underrun check and one transition (stream 5's area) |
+| 3 | planets-dialog-keys (172) | for each panel and key, who owns the key (AD-68) | Main.KeyboardOwner's decision as a pure table | ≈ 110 s; keep one typed route per panel (stream 3's area) |
+| 4 | planets-look (135) | the pitch's return while walking (rate 2.5/s, delay 0.5 s, snap), a drag holding, the overlook pitch | `ReturnPitchWhileWalking`, extracted from PlanetWorld.Walk into a Core camera-pitch model | ≈ 70 s; keep the drags (input) and one sweep (rendering) |
+| 5 | planets-tutorial-cues (100) | which cue shows (beacon, edge arrow, horizon pin) for a target's screen position | a Core cue-placement policy over projected points | ≈ 50 s |
+| 6 | planets-navigation (84) | the trip state machine: hop by hop, Stop, Esc in a wind-up, an unavailable hop, Backspace | the trip and history state (PlaceNavigator, DestinationTree) | ≈ 45 s; keep one trip and the delayed listing |
+| 7 | places-tree (51) | its two own assertions (a bounded tree scan does not travel through a junction; the map lays out the whole tree) | the scanner and the place layout | ≈ 45 s, by dropping the journey (its other assertions duplicate places-connected) |
+| 8 | planets-hazard (≈ 70 after TEST-09) | an uncaught slip falls within 0.55 s; the efforts in the fall; the classification of the sample | HazardRecoveryTimingTests and HazardRules (much is already there) | ≈ 15 s |
+| 9 | planets-overview-hub vs -sample (22 each) | the same overview check from two starting routes | — (one of them could move to release) | ≈ 22 s |
+| — | legacy views: walk-ui1.0, places ×3, explore, navigation, map-journey, aerial ×2 (≈ 330 s) | — | whether they belong in `check full` at all is DJ's call (docs/legacy-views.md) | up to ≈ 330 s |
+
+**Fixed waits (TEST-07, 2026-11-20 review).** The shared helpers already wait on conditions. `ProbeBase.Until`, and
+`Fly` and `WaitSettled` in PlanetsProbe, poll every frame with a timeout. The launch overhead is ≈ 1–4 s per journey.
+The fixed `await Seconds(…)` calls are settle times before a screenshot or a measurement inside each journey. They add
+up to about 470 s over all probe files, but only part of that runs in any one journey. The largest are
+PlanetsProbe.Music (133 s in 12 waits: dwell times the music checks measure, so they are not avoidable),
+PlanetsProbe.cs (48 s, shared by planets-ui and the flows), Travel (25 s), Actions (25 s), Discovery (21 s) and
+Lookouts (20 s). When you replace one of them with `Until(condition, timeout)`, the condition must be what the
+following check needs (for example `P.CameraSettled` before a framing screenshot), and the journey must keep the same
+PASS lines.
 
 ## Launching and closing (AD-28, AD-76)
 
