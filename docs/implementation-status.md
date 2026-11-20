@@ -38,7 +38,7 @@ The legacy maps keep "Parent (Esc)" and "Fly to (F)".
 | Card actions, every view × target, buttons and shortcuts (PLANET-87) | **Demonstrated** in-app; real mouse and keys: unknown | `planets-selection-actions` 44/0 on the Starter Sky (`fix1-sample`, root `C:\`) and 44/0 on the WSL fixture (`fix1-wsl`, root `\\wsl.localhost\Ubuntu-24.04`); base 13 failures (`base-sample`); Core `SelectionActionsTests` 4/4 |
 | Real Windows open, app not running, then running (PLANET-88) | **Demonstrated** for Edge with `.xml`; other handlers unknown | `tools/os-open-probe.ps1`: base and fix 5/5 each. The first fixture opened in a new Edge window titled with its name; the second landed in that same Edge process, which came forward; both stayed open after FileScape closed. On the fix build Edge's parent is Explorer, on the base FileScape |
 | Command Prompt after X, DJ's command typed at an interactive conhost cmd (PLANET-89) | **Demonstrated** for conhost; DJ's own terminal (likely Windows Terminal): unknown | `tools/os-shutdown-probe.ps1`, table below |
-| Core | 738 passed, 26 skipped, 0 failed (WSL) | `tools/fs.sh test-wsl` |
+| Core | WSL 738 passed, 26 skipped, 0 failed; Windows 737 passed, 29 skipped, 0 failed (a first Windows run had 2 failures whose names were not captured, under the other streams' load: **unknown**) | `tools/fs.sh test-wsl`, `tools/fs.sh test` |
 
 **Command Prompt, reproduced first.** All runs used `--root=sample` or a fixture, plus a probe preferences file. X was sent as `WM_SYSCOMMAND SC_CLOSE` to FileScape's own window. Evidence: `%TEMP%\FileScape-shutdown\out\` (`base`, `base-zip`, `base-open-edge`, `fix`, `fix-open-edge`).
 
