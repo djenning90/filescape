@@ -164,20 +164,27 @@ journey() {
 [[ $LIST == 1 ]] || log "out: $OUTW"
 
 if [[ "$TIER" != journeys ]]; then
+  # The WSL tests use the Linux SDK and their own obj/ and bin/ (Directory.Build.props), so they run beside the Windows
+  # build, the Windows tests and the export; they are waited for before the first journey, whose timing checks must
+  # not share the machine with them. Each host runs its tests in parallel shards (tools/fs.sh core_tests).
+  bg_step tests-wsl "$TESTS_TIMEOUT_S" "$REPO/tools/fs.sh" test-wsl
   step build "$BUILD_TIMEOUT_S" "$REPO/tools/fs.sh" build
   run_cmd tests-windows "$TESTS_TIMEOUT_S" 0 "$OUT/tests-windows.out" "$REPO/tools/fs.sh" test
   step_done tests-windows "$RUN_CODE" "$RUN_SECS" "$(test_counts "$OUT/tests-windows.out")"
-  run_cmd tests-wsl "$TESTS_TIMEOUT_S" 0 "$OUT/tests-wsl.out" "$REPO/tools/fs.sh" test-wsl
-  step_done tests-wsl "$RUN_CODE" "$RUN_SECS" "$(test_counts "$OUT/tests-wsl.out")"
 fi
 
 if [[ "$LEVEL" != fast ]]; then
   if [[ $LIST == 1 ]]; then EXE=/nonexistent
   else
     if [[ -z "$EXEW" ]]; then
-      STEP_NOTE=""; reuse=()
+      # The same commit and the same uncommitted changes are exported once (fs.sh stage --reuse finds the verified,
+      # smoke-launched staging folder by its source_state); --fresh-stage exports again.
+      STEP_NOTE=""; reuse=(--reuse); [[ $FRESH == 1 ]] && reuse=()
       run_cmd stage "$STAGE_TIMEOUT_S" 0 "$OUT/stage.out" "$REPO/tools/fs.sh" stage "${reuse[@]}"
       grep -q 'stage reused' "$OUT/stage.out" && STEP_NOTE="reused $(grep -oE 'staging-[0-9-]+' "$OUT/stage.out" | tail -1)"
+      # The smoke launch's wait for FS_LAUNCH_LOCK is taken out of the step's seconds, as for the journeys.
+      sw="$(grep -oE 'smoke launch lock wait [0-9.]+' "$OUT/stage.out" | grep -oE '[0-9.]+$' | tail -1)"
+      [[ -n "$sw" ]] && { RUN_SECS="$(printf '%.1f' "$(echo "$RUN_SECS - $sw" | bc)")"; STEP_NOTE+="${STEP_NOTE:+; }lock wait $sw s"; }
       step_done stage "$RUN_CODE" "$RUN_SECS" "$STEP_NOTE"
       EXEW="$(grep -oE '[A-Z]:\\[^ ]*staging-[^ ]*\\FileScape.exe' "$OUT/stage.out" | tail -1)"
     fi

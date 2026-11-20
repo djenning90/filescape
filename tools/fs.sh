@@ -126,8 +126,18 @@ reusable_stage() {
   return 1
 }
 
-# launch CMD...: runs an app launch, holding FS_LAUNCH_LOCK if it is set (-o: what the command starts does not inherit it).
-launch() { if [[ -n "${FS_LAUNCH_LOCK:-}" ]]; then flock -o "$FS_LAUNCH_LOCK" "$@"; else "$@"; fi; }
+# launch CMD...: runs an app launch, holding FS_LAUNCH_LOCK if it is set; the lock's descriptor is closed in the command,
+# so nothing it starts keeps the lock. Sets LAUNCH_WAIT (seconds spent waiting for the lock, one decimal).
+LAUNCH_WAIT=0
+launch() {
+  [[ -n "${FS_LAUNCH_LOCK:-}" ]] || { "$@"; return; }
+  local t c=0 lfd; t=$(date +%s.%N)
+  exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"
+  LAUNCH_WAIT="$(printf '%.1f' "$(echo "$(date +%s.%N) - $t" | bc)")"
+  "$@" {lfd}>&- || c=$?
+  exec {lfd}>&-
+  return $c
+}
 
 # Core tests (TEST-05, AD-80). xunit runs test classes in parallel but each class's tests one after another, and
 # SkySynthTests alone is ~145 s of that (the rest of the suite ~125 s spread over many classes), so one run takes ~140 s.
@@ -149,7 +159,7 @@ core_tests() {
   local -a dn extra; local proj
   if [[ "$host" == windows ]]; then dn=("$(find_dotnet)"); proj="$(wslpath -w "$REPO/tests/FileScape.Core.Tests")"; extra=("${NOSERVERS[@]}")
   else dn=(dotnet); proj="$REPO/tests/FileScape.Core.Tests"; extra=(); fi
-  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-0}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
+  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-1}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
   local t0=$SECONDS
   "${dn[@]}" build "$proj" -nologo -v q "${extra[@]}" || { echo "fs.sh: Core tests did not build ($host)" >&2; return 1; }
   local tmp i code=0; tmp="$(mktemp -d)"
@@ -182,9 +192,10 @@ smoke_build() {
   # Launch the staged exe on synthetic data: it must compose a place and quit cleanly (--automate=smoke).
   local dw="$1" d="$2"
   set +e
-  (cd "$d" && launch timeout 120 ./FileScape.exe -- --automate=smoke "--out=$dw\\smoke" --window=640x360 --ui-scale=1 >/dev/null 2>&1)
+  launch env -C "$d" timeout 120 ./FileScape.exe -- --automate=smoke "--out=$dw\\smoke" --window=640x360 --ui-scale=1 >/dev/null 2>&1
   local code=$?
   set -e
+  [[ -n "${FS_LAUNCH_LOCK:-}" ]] && echo "fs.sh: smoke launch lock wait $LAUNCH_WAIT s"
   [[ $code -eq 0 ]] && grep -q "smoke ok" "$d/smoke/smoke.log" 2>/dev/null && { echo "fs.sh: smoke launch OK ($(grep 'smoke ok' "$d/smoke/smoke.log" | tail -1))"; return 0; }
   echo "fs.sh: smoke launch failed (exit $code)" >&2; return 1
 }
