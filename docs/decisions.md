@@ -1640,6 +1640,88 @@ as FileScape while naming remains open.
   light's strength, and whether pan × 3 is right. **Revisit if:** the overview gains a telescope reuse (stream 5) that
   needs a different return target, or DJ wants Esc to keep the overview's selection framed on the way down.
 
+## AD-84 Every departure leaves from the launcher that leads there; Esc takes a dialog's move back; F again turns back (2026-11-20; extends AD-74)
+
+- **Problem (DJ, sixth pass):** "Some dialog-based navigation still launches the character from wherever they stand."
+  AD-74 sent every departure through one routine, but it looked only for the destination's *own* pad. Anything not a
+  neighbour in this sky — a deeper Destinations row, Straight there, a favourite or repository, Ctrl+L, the breadcrumb,
+  Locations, Ctrl+Home, Backspace to a place further away, the walkthrough's way back — had no pad, so it wound up where
+  you stood with a burst. Esc stopped only departures whose navigator move was still to come, so a dialog's choice could
+  not be stopped. F turned the camera with no way back.
+- **Reproduced first (Core, the API the app calls):** `DepartureTests` builds the query each entry point builds. Against
+  the earlier rule, 12 of 23 failed: exactly the entry points above. The 11 that passed are the ones that had a pad
+  before (pad press, G, U, Backspace to a child, trip hops, a world here from a dialog), plus the pad-less, sky and cap cases.
+- **Decision — the rule (`DeparturePlanner.Plan`, Core):**
+  1. The launcher of the link the navigator went through (Role Link).
+  2. Else the destination's own launcher, or the way back for the parent (Own, WayBack).
+  3. Else, for a place below this world, the launcher of the child on the way down (Toward). A link the navigator went
+     through elsewhere counts as where the way leads.
+  4. Else, for a place not below, the way back: up and over (WayOut).
+  5. Else no pad: a belt moon or a place below one, or the top of the tree.
+
+  A pad press is always on its pad. The overview and a fall leave from the sky. The run's timing and cap moved to Core
+  with the rule: 0.3 s plus 1 s per 30 m, at most 0.8 s, or 1.1 s on a Hazard World. Within 0.8 of a pad's radius
+  you are on it, and no time is added.
+- **Decision — the departure:** the app's `PlanetWorld.Depart` calls the planner for every entry point. It then runs
+  to the pad, or winds up on it, or winds up where you stand. A pad that leads on charges as usual, and the wind-up looks
+  up at the world it leads to. The warp then rises from that pad (the destination is not in this sky). A pad-less
+  departure now *kindles* a soft ring of the world's accent at the feet as the wind-up begins (mark `kindle`), and still
+  bursts at the release. A run starts from the feet's height: before, the overlook's platform or a jump dropped to the
+  ground in the run's first frame. Ctrl+O's new root in a live world is now travelled to like any change. Before, it
+  was cut to: `Reset` raises no change, and the world rebuilt on the mismatch.
+- **Decision — Esc:** before the take-off, Esc stops every departure. A move a dialog already made is taken back with
+  `PlaceNavigator.Revert`. It applies only when that change is the navigator's last move (`CanRevert`), and pops it
+  as Back does, so current, the entry link and history are as before. The app hears a Back change to where it stands
+  and does nothing. A Reset's move cannot be taken back, so Esc leaves it alone. The target stays marked visited and
+  listed: that is harmless, and not undone.
+- **Decision — F reversible (`FaceToggle<T>`, Core):** each Face records the heading before it and where things stood
+  just after. The next F turns back if all of these hold:
+  - the same world and the same selection;
+  - moved ≤ 2.5 m (a shuffle, ≈ a third of a second's run);
+  - the heading within 20° of what F turned to (turning by hand makes the old view stale);
+  - within 20 s.
+
+  Otherwise it is a fresh Face, and the stale record is forgotten. A departure forgets it. A toast says "Turned back
+  to your earlier view (F faces it again)". Help (F1) and the card's tooltip say so. The overview's "Zoom to (F)" is
+  not made reversible here: stream 2 owns the overview's camera, and `FaceToggle` takes any view type when it wants one.
+- **Inventory of entry points (planets; the legacy views travel through their own gates and aerial view):**
+
+| Entry point | Code path | Entry | Navigator moves | Launcher (rule) |
+|---|---|---|---|---|
+| Space on a pad | Walk → `BeginLaunch` | PadPress | at the release | its pad (on it) |
+| G, the card's Go inside, a world/pad double-clicked, the planet list's or Destinations' Enter on a world or link here, the bench list | `LaunchToSelection` → `BeginLaunch` | GoInside | at the release | own; for a selection not here (chosen in the overview, say): toward / way out |
+| Destinations, a folder deeper down (Enter) — a multi-hop trip | `StartTrip` → each hop `BeginLaunch` | TripHop | each hop at its release | each hop's own pad |
+| Destinations, Straight there (Shift+Enter); a trip to a place not below | `TravelInto` → `GoTo` → `OnNavChanged` | NavigatorChange | at once (Esc reverts) | toward / way out |
+| Destinations, a link deeper down | `TravelInto` → `FollowLink` (resolves) → `OnNavChanged` | NavigatorChange (via the link) | when the link answers | toward the link's folder |
+| Destinations, the way back row | `TravelUp` → `OnNavChanged` | NavigatorChange | at once | way back |
+| Destinations, a favourite or repository | `TravelInto` / `GoToPath` → `OnNavChanged` | NavigatorChange | at once (or when found) | own / toward / way out |
+| U | `LaunchUp` | Parent | at the release | way back |
+| Backspace (history) | `LaunchBack` | HistoryBack | at the release | own / toward / way out |
+| Breadcrumb; Locations, This PC; Ctrl+L Go to path; Ctrl+Home | Main → `PlaceNavigator` → `OnNavChanged` | NavigatorChange | at once (Esc reverts) | own / toward / way out |
+| Ctrl+O, a new root in the live world | `Reset` + `OnPlaceChanged` (new) | NavigatorChange | at once (not revertible) | toward / way out |
+| Ctrl+O / Starter Sky / a rescan making a new tree | the world is rebuilt (an arrival, not a departure) | — | — | — |
+| The walkthrough's start and "Back to the lesson" | `GoTo` → `OnNavChanged` | NavigatorChange | at once | own / way back / way out |
+| A link answering late; a move during a flight | the departure is retargeted / launches on from the landing | NavigatorChange | — | as the rule says from there |
+| The overview: Enter, G, double-click, the list or a trip while it is open | `BeginUniverseLanding` / `LandFromOverview` | Overview | at the dive's end | from the sky (the overview's own dive; stream 2) |
+| The telescope | today E opens the Destinations list (rows as above); stream 5's survey calls `DepartFor(target, Telescope)` | Telescope | at the release | own / toward / way out |
+| A fall off a Hazard World | `OnNavChangedWhileFalling` | FallWayBack | the fall's TravelUp | from the sky |
+| The selection card's Face it (F), Parent; Home | not travel (a turn, a selection, a hop to the meadow) | — | — | — |
+
+- **Alternatives:**
+  - *A pad-less burst for every non-neighbour* (AD-74): the launch did not say which way you go.
+  - *Walk the whole route*, through each world on the way: that is the trip (Enter), and it is slow.
+  - *A dedicated "far travel" pad on each world*: a new landmark on every world, and the way down and the way back
+    already say where the trip leads.
+  - *Making every dialog move uncommitted* (the navigator moves at the take-off): the breadcrumb, Locations, Ctrl+L
+    and the explorer's replies all move the navigator in Main, so a revert is smaller and covers them all.
+- **Unknown / for DJ:**
+  - whether "up and over" reads right for a far place;
+  - whether the kindle is visible enough;
+  - whether F's window (20 s, 2.5 m, 20°) feels right.
+
+  **Revisit if:** DJ wants a far destination to show its route (the way down several levels), or the overview's Zoom
+  to reversible as well.
+
 ## AD-87 Open opens the thing, Show in folder selects it where it lives; what Windows cannot do is off with its reason; the planetoid prototype is retired (2026-11-20; amends AD-76)
 
 - **Problem (DJ, sixth pass):** "Open on a folder and Show in Explorer appeared to do the same thing. Make their

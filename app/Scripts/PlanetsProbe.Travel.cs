@@ -73,6 +73,17 @@ public partial class PlanetsProbe
         return ok;
     }
 
+    /// <summary>
+    /// AD-84: the departure just made left from the launcher the rule names (<paramref name="role"/>); with
+    /// <paramref name="expectPad"/>, its marks show it on a pad (a run that reached it, or a wind-up without the pad-less kindle).
+    /// </summary>
+    private void DepartedFrom(string entry, List<string> marks, string role, bool expectPad)
+    {
+        var onPad = marks.Contains("depart-run") ? marks.Contains("depart-pad") : marks.Contains("windup") && !marks.Contains("kindle");
+        Check(P.LastDepartureRole == role && (!expectPad || onPad),
+            F($"{entry}: left from the launcher ({P.LastDepartureEntry}: {P.LastDepartureRole}, {P.LastDepartureKind}, run {P.LastDepartureRunSeconds:0.00} s; marks {string.Join(" ", marks)})"));
+    }
+
     /// <summary>The Starter Sky's travel tour (see the class summary).</summary>
     private async Task TravelRun()
     {
@@ -169,7 +180,9 @@ public partial class PlanetsProbe
             foreach (var (h, i) in hopDepartures.Select((h, i) => (h, i))) _departures.Add(($"trip: hop {i + 2} (landing → take-off, incl. the {0.55:0.00} s pause)", h, double.NaN, ""));
             Check(App.Navigator.Current == fern && P.LastTripOutcome == "arrived", F($"the trip arrived at Fern Trail: {lands.Count} landings, take-offs at {string.Join(", ", offs.Select(o => o.ToString("0.00", CultureInfo.InvariantCulture)))} s"));
             await Seconds(0.8);
+            var tripBack = P.LaunchLog.Count;
             await Timed("Backspace (history, the whole trip)", () => Key(Godot.Key.Backspace), root);
+            DepartedFrom("Backspace (history, the whole trip)", P.LaunchLog.Skip(tripBack).Select(l => l.Phase).ToList(), "WayOut", true);
         }
 
         // 7. Shift+Enter straight there: a warp (no pad leads there).
@@ -177,6 +190,7 @@ public partial class PlanetsProbe
         if (deep >= 0)
         {
             await Seconds(0.8);
+            var shiftFrom = P.LaunchLog.Count;
             await Timed("Destinations: Shift+Enter straight there (warp)", async () =>
             {
                 await Key(Godot.Key.J);
@@ -190,8 +204,83 @@ public partial class PlanetsProbe
                 Inject(new InputEventKey { Keycode = Godot.Key.Shift, PhysicalKeycode = Godot.Key.Shift, Pressed = false });
                 await Frames(2);
             }, deep);
+            DepartedFrom("Destinations: Shift+Enter straight there", P.LaunchLog.Skip(shiftFrom).Select(l => l.Phase).ToList(), "Toward", true);
             await Seconds(0.8);
+            var backFrom = P.LaunchLog.Count;
             await Timed("Backspace (history, from the warp)", () => Key(Godot.Key.Backspace), root);
+            DepartedFrom("Backspace (history, from the warp)", P.LaunchLog.Skip(backFrom).Select(l => l.Phase).ToList(), "WayOut", true);
+        }
+
+        // 7b. AD-84: dialog-based navigation leaves from the launcher that leads there. Ctrl+L to the folder three levels
+        // down runs to Long Way Down's pad first (the way down), then warps from it; Backspace from there leaves by the way
+        // back (up and over); Esc during the run of a dialog's departure takes the move back.
+        if (deep >= 0 && lwd >= 0)
+        {
+            var lwdPad = P.Composition!.LauncherFor(lwd);
+            async Task CtrlL()
+            {
+                await KeyCombo(Godot.Key.L, ctrl: true);
+                await Frames(3);
+                await TypeText(Tree.FullPath(deep));
+                await Key(Godot.Key.Enter);
+            }
+
+            await Seconds(0.8);
+            var from = P.LaunchLog.Count;
+            await Timed("Go to path (Ctrl+L) three levels down", CtrlL, deep);
+            var marks = P.LaunchLog.Skip(from).Select(l => l.Phase).ToList();
+            DepartedFrom("Go to path (Ctrl+L) three levels down", marks, "Toward", lwdPad != null);
+            await Seconds(0.8);
+            from = P.LaunchLog.Count;
+            await Timed("Backspace from three levels down", () => Key(Godot.Key.Backspace), root);
+            DepartedFrom("Backspace from three levels down", P.LaunchLog.Skip(from).Select(l => l.Phase).ToList(), "WayOut", true);
+
+            // Esc during the run of a departure a dialog already made (the navigator moved at Enter): taken back.
+            await Seconds(0.8);
+            await Key(Godot.Key.Home); // from the meadow, so the run is a long one
+            await Until(() => !P.Hopping, 3);
+            await Seconds(0.4);
+            var history = App.Navigator.History.ToList();
+            from = P.LaunchLog.Count;
+            await CtrlL();
+            await Until(() => P.PhaseName == "Departing", 3);
+            var running = P.PhaseName == "Departing" && App.Navigator.Current == deep;
+            await Key(Godot.Key.Escape);
+            await Until(() => !P.Busy && !P.Hopping, 3);
+            await Seconds(0.6);
+            var log = P.LaunchLog.Skip(from).Select(l => l.Phase).ToList();
+            Check(running && App.Navigator.Current == root && App.Navigator.History.SequenceEqual(history) && !log.Contains("warp") && !log.Contains("flight") && log.Contains("cancel") && P.Walker.Grounded && P.Composition?.FolderId == root,
+                F($"Esc during a dialog's departure takes it back: here {Tree[App.Navigator.Current].Name}, history {(App.Navigator.History.SequenceEqual(history) ? "as before" : "CHANGED")} (marks {string.Join(" ", log)})"));
+            await Key(Godot.Key.Home);
+            await Until(() => !P.Hopping, 3);
+            await Seconds(0.6);
+        }
+
+        // 7c. F / Face is reversible (PLANET-123): F faces the selected world; F again turns back to the earlier heading.
+        {
+            var faceAt = pads.FirstOrDefault(l => MathF.Abs(Mathf.Wrap(P.HeadingTo(l.TargetId) - P.CameraHeadingDegrees(), -180f, 180f)) > 60f);
+            if (faceAt != null)
+            {
+                App.Select(faceAt.TargetId); // [direct] the selection (a click on its world does the same)
+                await Frames(3);
+                var h0 = P.CameraHeadingDegrees();
+                await Key(Godot.Key.F);
+                await Seconds(1.0); // the camera eases to its new heading (rate-based, ≈ 0.5 s to settle)
+                var h1 = P.CameraHeadingDegrees();
+                var first = P.LastFaceAction;
+                await Key(Godot.Key.F);
+                await Seconds(1.0);
+                var h2 = P.CameraHeadingDegrees();
+                var second = P.LastFaceAction;
+                var turned = MathF.Abs(Mathf.Wrap(h1 - h0, -180f, 180f));
+                var back = MathF.Abs(Mathf.Wrap(h2 - h0, -180f, 180f));
+                Check(first == "face" && second == "restore" && turned > 30f && back < 3f,
+                    F($"F faces, F again turns back: {first} turned {turned:0} deg, then {second} ended {back:0.0} deg from the start"));
+                await Key(Godot.Key.F);
+                await Seconds(0.6);
+                Check(P.LastFaceAction == "face", $"a third F faces again ({P.LastFaceAction})");
+            }
+            else Log("no world off to the side to face (skipped the F check)");
         }
 
         // 8. A belt moon (no pad of its own), when this world has one.

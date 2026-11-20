@@ -470,6 +470,9 @@ public partial class Hud : CanvasLayer
                 "    [b]Enter[/b] lands there · [b]Esc[/b] or [b]T[/b] flies back down to where you stood (press again to hurry)\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
                 "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
+                "  Every journey leaves from a launcher: you hop to the pad that leads there (toward a deeper folder, or the way back for\n" +
+                "    somewhere else; with no pad, a ring of light at your feet), then take off · [b]Esc[/b] before take-off stays\n" +
+                "  [b]F[/b] face the selection; [b]F[/b] again turns back to your earlier view (same world, within 20 s, if you have not walked off or looked away)\n" +
                 "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
                 "    jump the gaps; step off and you fall back up to the folder above. J, U, Backspace and every file action work as anywhere.\n\n" +
                 "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +

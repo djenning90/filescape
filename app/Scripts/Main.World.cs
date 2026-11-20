@@ -198,8 +198,12 @@ public partial class Main
                 // Open folder… in a live world: a new arrival root, reached without restarting.
                 _pendingNewRoot = -1;
                 if (!_tree[target].IsDirectory) target = _tree[target].ParentId;
+                var from = _nav.Current;
                 _nav.Reset(target);
                 _place = null;
+                // On the planets the new root is travelled to like any other change (AD-84: from the launcher that leads
+                // there), not cut to; Reset raises no change of its own.
+                if (_experience == Experience.Planets && from != target) OnPlaceChanged(new PlaceChange(from, target, PlaceMove.Jump));
                 return;
             }
 
