@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # FileScape helper for working from WSL against the Windows toolchain. The source of truth stays in this WSL repo.
 #   tools/fs.sh build            build the Godot C# project (and Core) with Windows dotnet
-#   tools/fs.sh test [args]      run the test suite with Windows dotnet (includes Windows-only tests)
-#   tools/fs.sh test-wsl         run the test suite with the Linux SDK (Windows-only tests skip)
+#   tools/fs.sh test [args]      run the test suite with Windows dotnet (includes Windows-only tests); without args it
+#                                builds once and runs three shards side by side, then prints one combined count
+#   tools/fs.sh test-wsl [args]  the same with the Linux SDK (Windows-only tests skip)
 #   tools/fs.sh run [-- args]    launch the app on Windows (args after -- go to FileScape, e.g. --root='C:\some dir')
 #   tools/fs.sh editor           open the Godot editor on the project
 #   tools/fs.sh export           export to a fresh staging dir, verify (files, hashes, a smoke launch), then promote it to
 #                                %LOCALAPPDATA%\FileScape\build, keeping the previous build as previous-<stamp>
-#   tools/fs.sh stage            the same export, verification and smoke launch into a fresh staging dir, never promoted
-#                                (for verification runs while DJ uses the installed build)
+#   tools/fs.sh stage [--reuse]  the same export, verification and smoke launch into a fresh staging dir, never promoted
+#                                (for verification runs while DJ uses the installed build); --reuse names an existing
+#                                verified staging dir of the same source state (commit + uncommitted changes) instead
 #   tools/fs.sh promote NAME     promote a verified staging dir (staging-<stamp>) to build, with export's safety checks
-#   tools/fs.sh check TIER       verification tiers: fast | smoke | full | release (tools/verify.sh; timings in its summary)
+#   tools/fs.sh check TIER       verification tiers: fast | smoke | full | release, or journeys NAME... (tools/verify.sh;
+#                                every run ends with a timing table: each step's result and seconds, and the total)
 #   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
 #   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
 #   tools/fs.sh which            print the discovered tools
@@ -18,6 +21,8 @@
 # Windows programs are executed directly through WSL interop (no PowerShell command strings), so every argument
 # keeps its boundaries (spaces and apostrophes included) and the real exit code is returned. Override discovery
 # with FILESCAPE_DOTNET (path to dotnet.exe) or FILESCAPE_GODOT_DIR (folder containing the Godot .exe files).
+# FS_LAUNCH_LOCK=/path: every app launch (run, the smoke launch, and verify.sh's journeys and probes) holds that flock
+# for the launch only, so several people or agents sharing one desktop take turns at the screen.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -86,6 +91,7 @@ write_build_info() {
     echo "commit $(git -C "$REPO" rev-parse HEAD)"
     echo "uncommitted_paths $dirty"
     echo "files $(find "$data" -maxdepth 1 -type f | wc -l)"
+    echo "source_state $(source_state)"
     echo "sha256 FileScape.exe $(sha256sum "$d/FileScape.exe" | cut -d' ' -f1)"
     echo "sha256 FileScape.console.exe $(sha256sum "$d/FileScape.console.exe" | cut -d" " -f1)"
     echo "sha256 FileScape.App.dll $(sha256sum "$data/FileScape.App.dll" | cut -d' ' -f1)"
@@ -93,11 +99,90 @@ write_build_info() {
   } > "$d/build-info.txt"
 }
 
+# source_state: a hash of what an export is built from: the commit, the uncommitted changes to tracked files and the
+# untracked files that are not ignored (TEST-05). Two exports with the same source_state are of the same sources, so
+# `stage --reuse` may use the earlier one. What it must preserve: any change to a file the export reads changes it.
+source_state() {
+  {
+    git -C "$REPO" rev-parse HEAD
+    git -C "$REPO" diff HEAD --binary
+    (cd "$REPO" && git ls-files -o --exclude-standard -z | xargs -0 -r sha256sum)
+  } | sha256sum | cut -c1-16
+}
+
+# reusable_stage BASE: the newest staging dir that is complete, smoke-launched and of this source state; a clean tree
+# also matches a build-info written before source_state existed by its full commit and "uncommitted_paths 0".
+reusable_stage() {
+  local base="$1" state head clean d
+  state="$(source_state)"; head="$(git -C "$REPO" rev-parse HEAD)"
+  clean=0; [[ -z "$(git -C "$REPO" status --porcelain)" ]] && clean=1
+  for d in $(ls -1d "$base"/staging-* 2>/dev/null | sort -r); do
+    [[ -s "$d/build-info.txt" ]] && grep -q "smoke ok" "$d/smoke/smoke.log" 2>/dev/null || continue
+    if grep -qx "source_state $state" "$d/build-info.txt" \
+       || { [[ $clean == 1 ]] && ! grep -q '^source_state ' "$d/build-info.txt" && grep -qx "commit $head" "$d/build-info.txt" && grep -qx "uncommitted_paths 0" "$d/build-info.txt"; }; then
+      verify_build "$d" 2>/dev/null && { echo "$d"; return 0; }
+    fi
+  done
+  return 1
+}
+
+# launch CMD...: runs an app launch, holding FS_LAUNCH_LOCK if it is set (-o: what the command starts does not inherit it).
+launch() { if [[ -n "${FS_LAUNCH_LOCK:-}" ]]; then flock -o "$FS_LAUNCH_LOCK" "$@"; else "$@"; fi; }
+
+# Core tests (TEST-05, AD-80). xunit runs test classes in parallel but each class's tests one after another, and
+# SkySynthTests alone is ~145 s of that (the rest of the suite ~125 s spread over many classes), so one run takes ~140 s.
+# Three processes with complementary filters (SkySynthTests whose name contains "theme", SkySynthTests whose name does
+# not, everything else) run every test exactly once by construction and finish in about the longest shard's time. A
+# shard that reports no result fails the run, so a filter that matched nothing cannot pass silently.
+CORE_TEST_SHARDS=(
+  'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName~theme'
+  'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName!~theme'
+  'FullyQualifiedName!~.SkySynthTests.'
+)
+# shard_count NAME LINE: the number after "NAME:" in dotnet test's result line.
+shard_count() { grep -oE "$1: *[0-9]+" <<<"$2" | grep -oE '[0-9]+$'; }
+# core_tests HOST(windows|wsl) [ARGS...]: with ARGS (or FS_TEST_SHARDS=0) one plain `dotnet test` as before; otherwise
+# a build, the shards side by side, their output one after another, and one line "Core tests (HOST, ...): Passed!/Failed!
+# - Failed: N, Passed: N, Skipped: N, Total: N" summed over the shards.
+core_tests() {
+  local host="$1"; shift
+  local -a dn extra; local proj
+  if [[ "$host" == windows ]]; then dn=("$(find_dotnet)"); proj="$(wslpath -w "$REPO/tests/FileScape.Core.Tests")"; extra=("${NOSERVERS[@]}")
+  else dn=(dotnet); proj="$REPO/tests/FileScape.Core.Tests"; extra=(); fi
+  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-0}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
+  local t0=$SECONDS
+  "${dn[@]}" build "$proj" -nologo -v q "${extra[@]}" || { echo "fs.sh: Core tests did not build ($host)" >&2; return 1; }
+  local tmp i code=0; tmp="$(mktemp -d)"
+  SHARD_PIDS=()
+  trap 'kill "${SHARD_PIDS[@]}" 2>/dev/null; exit 130' INT TERM
+  for i in "${!CORE_TEST_SHARDS[@]}"; do
+    ( s=$SECONDS; "${dn[@]}" test "$proj" --no-build -nologo "${extra[@]}" --filter "${CORE_TEST_SHARDS[$i]}" > "$tmp/$i.out" 2>&1; echo "$? $((SECONDS - s))" > "$tmp/$i.code" ) &
+    SHARD_PIDS+=($!)
+  done
+  wait "${SHARD_PIDS[@]}" || true
+  trap - INT TERM
+  local f=0 p=0 k=0 n=0 line c secs
+  for i in "${!CORE_TEST_SHARDS[@]}"; do
+    read -r c secs < "$tmp/$i.code" || { c=1; secs='?'; }
+    echo "---- shard $((i + 1))/${#CORE_TEST_SHARDS[@]} ($host, ${secs} s, exit $c): ${CORE_TEST_SHARDS[$i]}"
+    cat "$tmp/$i.out"
+    line="$(grep -E '(Passed|Failed)! +- Failed:' "$tmp/$i.out" | tail -1 || true)"
+    if [[ -z "$line" ]]; then echo "fs.sh: shard $((i + 1)) reported no test result" >&2; code=1; continue; fi
+    [[ $c -ne 0 ]] && code=1
+    f=$((f + $(shard_count Failed "$line"))); p=$((p + $(shard_count Passed "$line")))
+    k=$((k + $(shard_count Skipped "$line"))); n=$((n + $(shard_count Total "$line")))
+  done
+  rm -rf "$tmp"
+  local word="Passed!"; [[ $code -ne 0 || $f -gt 0 ]] && word="Failed!"
+  echo "Core tests ($host, ${#CORE_TEST_SHARDS[@]} shards side by side, $((SECONDS - t0)) s with the build): $word  - Failed: $f, Passed: $p, Skipped: $k, Total: $n"
+  return $code
+}
+
 smoke_build() {
   # Launch the staged exe on synthetic data: it must compose a place and quit cleanly (--automate=smoke).
   local dw="$1" d="$2"
   set +e
-  (cd "$d" && timeout 120 ./FileScape.exe -- --automate=smoke "--out=$dw\\smoke" --window=640x360 --ui-scale=1 >/dev/null 2>&1)
+  (cd "$d" && launch timeout 120 ./FileScape.exe -- --automate=smoke "--out=$dw\\smoke" --window=640x360 --ui-scale=1 >/dev/null 2>&1)
   local code=$?
   set -e
   [[ $code -eq 0 ]] && grep -q "smoke ok" "$d/smoke/smoke.log" 2>/dev/null && { echo "fs.sh: smoke launch OK ($(grep 'smoke ok' "$d/smoke/smoke.log" | tail -1))"; return 0; }
@@ -127,12 +212,12 @@ case "$cmd" in
   build)
     "$(find_dotnet)" build "$APP_W\\FileScape.App.csproj" -nologo -v q "${NOSERVERS[@]}" ;;
   test)
-    "$(find_dotnet)" test "$(wslpath -w "$REPO/tests/FileScape.Core.Tests")" -nologo "${NOSERVERS[@]}" "$@" ;;
+    core_tests windows "$@" ;;
   test-wsl)
-    dotnet test "$REPO/tests/FileScape.Core.Tests" -nologo "$@" ;;
+    core_tests wsl "$@" ;;
   run)
     G="$(find_godot_dir)"
-    "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --path "$APP_W" -- "$@" ;;
+    launch "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --path "$APP_W" -- "$@" ;;
   editor)
     G="$(find_godot_dir)"
     "$G/Godot_v4.7.2-stable_mono_win64.exe" --editor --path "$APP_W" >/dev/null 2>&1 & ;;
@@ -146,6 +231,10 @@ case "$cmd" in
     G="$(find_godot_dir)"
     BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"
     check_base "$BASE"
+    if [[ "$cmd" == stage && "${1:-}" == --reuse ]] && found="$(reusable_stage "$BASE")"; then
+      echo "fs.sh: stage reused (same source state $(source_state); not exported again) -> $BASE_W\\$(basename "$found")\\FileScape.exe ($(grep '^build ' "$found/build-info.txt" | cut -d' ' -f2-))"
+      exit 0
+    fi
     STAMP="$(date -u +%Y%m%d-%H%M%S)-$$"
     STAGE_W="$BASE_W\\staging-$STAMP"; STAGE="$BASE/staging-$STAMP"
     OUT_W="$BASE_W\\build"; OUT="$BASE/build"
@@ -246,5 +335,5 @@ case "$cmd" in
       rm -rf -- "$d"; echo "deleted: $dw"
     done ;;
   *)
-    sed -n '2,17p' "$0"; exit 2 ;;
+    sed -n '2,25p' "$0"; exit 2 ;;
 esac
