@@ -26,8 +26,14 @@ public partial class PlanetVisual
     /// <summary>The bounds for this planet's pictures (<see cref="ThumbBudget"/>'s defaults: 2 in flight, 64 shown, 8 sharp).</summary>
     public static readonly ThumbBudget Budget = new();
 
-    /// <summary>How often the plan is asked, seconds (5 a second: walking 1 m between asks at a run; cheap for 64 pictures).</summary>
+    /// <summary>How often the plan is asked while nothing finishes, seconds (5 a second: walking 1 m between asks at a run;
+    /// cheap for 64 pictures). A finished request asks again at once (measured: 62 canvases from Windows' cache took
+    /// 5.9 s at one plan per 0.2 s, the cache answering in 8 ms).</summary>
     private const float PlanEverySeconds = 0.2f;
+
+    /// <summary>The largest cloud-only picture fetched just to fill its canvas, bytes (8 MiB: the old automatic read
+    /// limit; a 64-canvas world then fetches at most ≈ 0.5 GB, typically far less — photos are 1–5 MB).</summary>
+    private const long AutoFetchMaxBytes = 8L * 1024 * 1024;
 
     private static Shader? _faceShader;
 
@@ -143,6 +149,7 @@ public partial class PlanetVisual
     {
         while (_answers.TryDequeue(out var a))
         {
+            _planIn = 0; // a request finished: its slot is free now, so plan again this frame (not up to 0.2 s later)
             if (CanvasFor(a.Id) is not { } c) continue;
             c.Loading = ThumbTier.None;
             if (a.Answer.Image is { } img)
@@ -201,7 +208,10 @@ public partial class PlanetVisual
             if (c.Shown == ThumbTier.None) SetState(c);
             AutoThumbnailsRequested++;
             var video = FileCategories.Of(n.Name) == FileCategory.Video;
-            _ = GalleryThumbnails.RequestAsync(tree, n, pixels, decode: !video).ContinueWith(t => _answers.Enqueue((id, tier, t.IsCompletedSuccessfully ? t.Result : new GalleryThumbnails.Answer(null, "none", 0, 0, "it could not be read", 0))));
+            // A cloud-only picture Windows has no thumbnail of is fetched for its canvas only when small (DJ allowed
+            // downloads; walking past a gallery of large photos must not pull gigabytes): larger ones wait for E or R.
+            var mayFetch = GalleryRules.Verdict(n) != GalleryRules.PictureVerdict.Download || n.Size <= AutoFetchMaxBytes;
+            _ = GalleryThumbnails.RequestAsync(tree, n, pixels, decode: !video && mayFetch).ContinueWith(t => _answers.Enqueue((id, tier, t.IsCompletedSuccessfully ? t.Result : new GalleryThumbnails.Answer(null, "none", 0, 0, "it could not be read", 0))));
         }
 
         PeakInFlight = Math.Max(PeakInFlight, _canvases.Values.Count(c => c.Loading != ThumbTier.None));

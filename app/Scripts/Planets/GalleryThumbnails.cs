@@ -69,6 +69,7 @@ public static class GalleryThumbnails
                 var why = verdict switch
                 {
                     GalleryRules.PictureVerdict.TooLarge => $"it is {FileScape.Core.Interaction.SizeFormat.Short(n.Size)} and Windows has no thumbnail of it",
+                    GalleryRules.PictureVerdict.Download => "it is only in the cloud and Windows has no thumbnail of it yet (E fetches it)",
                     _ => "Windows has no thumbnail of it, and FileScape does not decode this kind of picture",
                 };
                 return Note(new Answer(null, "none", 0, 0, why, sw.Elapsed.TotalMilliseconds));
