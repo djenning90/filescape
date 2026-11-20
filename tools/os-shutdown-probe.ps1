@@ -206,6 +206,11 @@ if ($OpenedApp) {
   foreach ($a in $apps) { $pp = Get-Process -Id $a.ProcessId -ErrorAction SilentlyContinue; if ($pp -and $pp.MainWindowHandle -ne 0) { [void][FsCon]::PostMessageW($pp.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } }
   Start-Sleep -Seconds 4
   foreach ($a in $apps) { if (Get-Process -Id $a.ProcessId -ErrorAction SilentlyContinue) { Log "  ending $OpenedApp #$($a.ProcessId) (started during this run)"; Stop-Process -Id $a.ProcessId -Force } }
+  # Edge relaunches itself in the background (--no-startup-window) when its window closes: end what descends from the
+  # instances this run started, and nothing else.
+  Start-Sleep -Seconds 2
+  $mine = @($apps | ForEach-Object { [int]$_.ProcessId }); $all = @(Get-CimInstance Win32_Process -Filter "Name='$OpenedApp.exe'"); $grew = $true
+  while ($grew) { $grew = $false; foreach ($x in $all) { if ($mine -notcontains [int]$x.ProcessId -and $mine -contains [int]$x.ParentProcessId) { $mine += [int]$x.ProcessId; $grew = $true; Log "  $OpenedApp #$($x.ProcessId) relaunched by this run's instance: ending it"; Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue } } }
   Log ("  closed {0} ({1:0.0} s)" -f $OpenedApp, ($sw.Elapsed.TotalSeconds - $closedAt))
   if ($verdict -eq 'busy') {
     $back = $false

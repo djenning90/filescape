@@ -97,6 +97,10 @@ try {
   foreach ($p in @($started.Keys)) { foreach ($w in [FsWin]::Windows()) { $x = $w.Split('|', 3); if ([int]$x[0] -eq $p) { [void][FsWin]::PostMessageW([IntPtr][long]$x[1], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } } }
   Start-Sleep -Seconds 4
   foreach ($p in @($started.Keys)) { if (Get-Process -Id $p -ErrorAction SilentlyContinue) { Log "  $Handler #$p still running after WM_CLOSE: ending it (started by this run)"; Stop-Process -Id $p -Force } else { Log "  $Handler #$p closed" } }
+  # Edge relaunches itself in the background (--no-startup-window) when its window closes (2026-11-19): end what descends
+  # from a process this run started, and nothing else.
+  $all = @(Get-CimInstance Win32_Process -Filter "Name='$Handler.exe'"); $mine = @($started.Keys | ForEach-Object { [int]$_ }); $grew = $true
+  while ($grew) { $grew = $false; foreach ($x in $all) { if ($mine -notcontains [int]$x.ProcessId -and $mine -contains [int]$x.ParentProcessId) { $mine += [int]$x.ProcessId; $grew = $true; Log "  $Handler #$($x.ProcessId) was relaunched by this run's instance (parent #$($x.ParentProcessId)): ending it"; Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue } } }
   Log "open probe: $fails failure(s); fixtures in $dir"
   $log | Set-Content -Encoding utf8 (Join-Path $Out 'open-probe.log')
 }
