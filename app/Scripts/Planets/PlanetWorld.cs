@@ -513,7 +513,8 @@ public partial class PlanetWorld : Node3D
         body.Visual = TakeOrBuild(tree, body, full: true);
         body.Node.AddChild(body.Visual);
         body.Full = true;
-        body.AutoThumbnails = InStarterSky(tree, body.FolderId);
+        // The app's own sample, or a folder marked as a gallery (PLANET-96: the marker is the folder's "yes" to pictures read as you walk).
+        body.AutoThumbnails = InStarterSky(tree, body.FolderId) || (_s.IsLive && GalleryRules.IsGallery(tree, body.FolderId));
     }
 
     /// <summary>Gives a body its preview visual (how a world looks hanging in the sky).</summary>

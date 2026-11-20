@@ -23,6 +23,12 @@ public partial class PlanetWorld
     public bool PreviewPlaying => _previewPlayer.Playing;
     public int ThumbnailsShown => _current?.Visual?.ThumbnailsShown ?? 0;
 
+    /// <summary>The way back's pad carries its marker treatment on this world (PLANET-95; probes and the state file).</summary>
+    public bool WayBackMarked => _current?.Visual?.WayBackMarked ?? false;
+
+    /// <summary>The planet you stand on, as drawn (probes read its thumbnail counters).</summary>
+    public PlanetVisual? CurrentVisual => _current?.Visual;
+
     /// <summary>The chase camera's distance, metres (the wheel zooms it; PLANET-52: the wheel over a reader must not).</summary>
     public float ChaseDistanceMetres => _camDistance;
 

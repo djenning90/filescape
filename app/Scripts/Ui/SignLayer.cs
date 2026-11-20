@@ -8,6 +8,8 @@ namespace FileScape.App.Ui;
 /// <param name="Focus">Approached, selected or hovered: placed first, larger, with its detail line.</param>
 /// <param name="Boost">Priority, world units: the sign ranks as if this much nearer than it is.</param>
 /// <param name="FixedAnchor">Pinned straight above its anchor with a stem (planets); only ever raised straight up on a longer stem (one slot, or just over the signs in its way), and sized by nearness.</param>
+/// <param name="Frame">A frame round the sign in this colour (null: none). The planets' way back (PLANET-95) is the one
+/// sign that wears one, so it stands out among ordinary destinations; a focused sign keeps its gold focus frame.</param>
 public readonly record struct SignCandidate(
     int Id,
     Vector3 Anchor,
@@ -17,7 +19,8 @@ public readonly record struct SignCandidate(
     IconKind Icon,
     bool Focus,
     float Boost = 0f,
-    bool FixedAnchor = false); // pinned straight above its anchor with a stem (planets); only ever raised straight up
+    bool FixedAnchor = false, // pinned straight above its anchor with a stem (planets); only ever raised straight up
+    Color? Frame = null);
 
 /// <summary>
 /// Glanceable destination names (LABEL-01, AD-25): screen-space signs for every gate (or aerial place) in view, so a
@@ -150,6 +153,21 @@ public partial class SignLayer : Control
         _focusBack.SetCornerRadiusAll(5);
         _icons = FileIcons.Atlas;
     }
+
+    private readonly Dictionary<Color, StyleBoxFlat> _framed = [];
+
+    /// <summary>The plain sign's box with a frame of <paramref name="color"/> (1.5 px; cached per colour).</summary>
+    private StyleBoxFlat FramedBack(Color color)
+    {
+        if (_framed.TryGetValue(color, out var box)) return box;
+        box = (StyleBoxFlat)_back.Duplicate();
+        box.BorderColor = color;
+        box.SetBorderWidthAll(FrameWidthPixels);
+        return _framed[color] = box;
+    }
+
+    /// <summary>A framed sign's border width, pixels (at the sign's own scale).</summary>
+    private const int FrameWidthPixels = 2;
 
     /// <summary>Removes every sign (leaving a world, or when no candidates apply).</summary>
     public void Clear()
@@ -396,7 +414,7 @@ public partial class SignLayer : Control
             // The box and text are drawn at the whole font size, scaled about the sign's corner by the fractional rest.
             DrawSetTransform(r.Position, 0, new Vector2(p.Scale, p.Scale));
             r = new Rect2(Vector2.Zero, r.Size / p.Scale);
-            DrawStyleBox(p.C.Focus ? _focusBack : _back, r);
+            DrawStyleBox(p.C.Focus ? _focusBack : p.C.Frame is { } frame ? FramedBack(frame) : _back, r);
             var iconSize = p.FontSize + 2;
             var x = r.Position.X + 6;
             var nameY = r.Position.Y + 2 + _font.GetAscent(p.FontSize);

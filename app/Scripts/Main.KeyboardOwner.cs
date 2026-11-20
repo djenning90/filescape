@@ -5,7 +5,8 @@ namespace FileScape.App;
 /// <summary>
 /// Keyboard ownership by open panels (PLANET-69/70, AD-68): the one place that decides whether a key press that no
 /// control consumed may reach the game's shortcuts. While a panel that takes the keyboard is open — the reading view,
-/// Settings, Locations / Open location, or the planets' Destinations list (and its pile/telescope form) — the topmost
+/// Settings, Locations / Open location, the planets' Destinations list (and its pile/telescope form), or the planets'
+/// picture viewer (PLANET-96: always topmost, its own keys in PlanetWorld.ViewerKey) — the topmost
 /// one gets the key first (its own handler: <see cref="ReaderKey"/>, <see cref="Planets.PlanetWorld.ListKey"/>), Esc
 /// closes it (<see cref="HandleEscape"/>, never the overview or a gameplay layer behind it), and only these still pass
 /// to the game: the F keys, Ctrl+L and Ctrl+O exactly (they open the navigation panels themselves), and J from the
@@ -28,7 +29,7 @@ namespace FileScape.App;
 public partial class Main
 {
     /// <summary>The panels that take the keyboard while open, topmost first in <see cref="KeyboardPanel"/>.</summary>
-    public enum KeyPanel { None, Reader, Settings, Locations, Destinations }
+    public enum KeyPanel { None, Viewer, Reader, Settings, Locations, Destinations }
 
     /// <summary>
     /// The open panel that owns the keyboard, or <see cref="KeyPanel.None"/>: the one holding the GUI focus (Locations and
@@ -37,6 +38,7 @@ public partial class Main
     /// </summary>
     public KeyPanel KeyboardPanel =>
         _hud == null ? KeyPanel.None
+        : _experience == Experience.Planets && _planets.ViewerOpen ? KeyPanel.Viewer // PLANET-96: the picture viewer covers everything
         : GetViewport().GuiGetFocusOwner() is { } f && FocusPanel(f) is var held && held != KeyPanel.None ? held
         : _hud.ReadmeVisible ? KeyPanel.Reader
         : _hud.SettingsVisible ? KeyPanel.Settings
@@ -62,6 +64,11 @@ public partial class Main
         var panel = KeyboardPanel;
         if (panel == KeyPanel.None) return false;
         if (panel == KeyPanel.Reader && ReaderKey(k)) return true;
+        if (panel == KeyPanel.Viewer && _planets.ViewerKey(k))
+        {
+            GetViewport().SetInputAsHandled();
+            return true;
+        }
         if (panel == KeyPanel.Destinations && _planets.ListKey(k)) return true;
         if (k.Keycode == Key.Escape)
         {

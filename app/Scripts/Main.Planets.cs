@@ -60,6 +60,7 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.RootPlace) || key.CtrlPressed) return false; // Ctrl+Home (root), Ctrl+L, Ctrl+O: shared
         if (key.IsAction(InputBindings.Home)) { _planets.ReturnToArrival(); return true; }
         if (key.IsAction(InputBindings.Readme) && _planets.ExpandPreview()) return true; // R with a text preview open: read it in full (PLANET-44)
+        if (key.IsAction(InputBindings.Readme) && _planets.OpenViewer()) return true; // R with a picture's preview open: view it large (PLANET-96)
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
@@ -92,6 +93,26 @@ public partial class Main : IWorldSession
         var parent = System.IO.Path.Combine(OS.GetUserDataDir(), "samples");
         System.IO.Directory.CreateDirectory(parent);
         return FileScape.Core.Samples.SampleSky.Create(parent);
+    }
+
+    /// <summary>
+    /// The picture gallery sample (PLANET-96, <c>--root=gallery</c>): a mixed folder of generated pictures and other files
+    /// that FileScape writes for itself beside the Starter Sky (in its own data folder, never anywhere else), or null with
+    /// a toast saying why it could not be written. From the Starter Sky it is one world up (U) and across.
+    /// </summary>
+    private string? TryGallerySample()
+    {
+        try
+        {
+            var parent = System.IO.Path.Combine(OS.GetUserDataDir(), "samples");
+            System.IO.Directory.CreateDirectory(parent);
+            return FileScape.Core.Samples.GallerySample.Create(parent);
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _hud.Toast($"The picture gallery sample could not be written: {e.Message}");
+            return null;
+        }
     }
 
     /// <summary>The Starter Sky's path, or null (with a toast saying why) if it could not be written.</summary>

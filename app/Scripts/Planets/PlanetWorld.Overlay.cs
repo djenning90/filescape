@@ -102,6 +102,7 @@ public partial class PlanetWorld
         BuildBenchPanel(root);
         BuildRootMarkPanel(root); // PLANET-45 (PlanetWorld.RootMark.cs)
         BuildDiscoveryPanel(root); // PLANET-76 (PlanetWorld.Discovery.cs)
+        BuildPictureViewer(); // PLANET-96 (PlanetWorld.Gallery.cs)
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
     }
@@ -179,7 +180,8 @@ public partial class PlanetWorld
         if (!tree.Contains(folderId) || _current == null) return;
         _title.Text = tree.DisplayName(folderId);
         var c = _current.Comp;
-        var world = PlanetText.WorldName(c.Theme);
+        // PLANET-96: a gallery says so, and how to look (its easels fill with pictures as you walk).
+        var world = _s.IsLive && GalleryRules.IsGallery(tree, folderId) ? "a picture gallery: E on a picture, then R to view it large" : PlanetText.WorldName(c.Theme);
         var parts = new List<string> { world, _s.Summary(folderId) };
         var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
         if (piled > 0) parts.Add($"{c.Items.Count(i => i.Kind != PlanetItemKind.Pile):N0} stand here, {piled:N0} more in piles (J lists them all)");
@@ -341,6 +343,7 @@ public partial class PlanetWorld
         _current?.Visual?.ShowThumbnail(id, img); // the easel shows the picture you looked at
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
         _previewImage.Texture = ImageTexture.CreateFromImage(img);
+        _expandButton.Visible = _s.IsLive; // PLANET-96: ⤢ (or R) views the picture large
     }
 
     /// <summary>A few seconds of a sound file (read on a worker, bounded and shared), the music ducked underneath.</summary>
@@ -397,6 +400,10 @@ public partial class PlanetWorld
 
     /// <summary>Pads further than this from the camera are not named unless they are in focus, metres (AD-45).</summary>
     private const float PadNameReachMetres = 46f;
+
+    /// <summary>The way back's sign (PLANET-95): its name in a pale sky blue and a frame in the marker's blue, the only
+    /// framed sign on a world, so it is found among ordinary destinations by its outline as well as its ▲.</summary>
+    private static readonly Color WayBackSignColor = new(0.8f, 0.86f, 1f), WayBackFrameColor = new(0.55f, 0.78f, 1f, 0.9f);
 
     /// <summary>A world's name sits just above its top: this many of its drawn radii above its centre.</summary>
     private const float WorldNameLiftRadii = 1.06f;
@@ -469,14 +476,14 @@ public partial class PlanetWorld
             if (d > PadNameReachMetres && !focus) continue;
             var n = tree[l.TargetId];
             var detail = l.IsParent ? "the way back" : l.IsLink ? PlaceText.LinkShort(tree, n) : FolderSummary.Gate(n, Listing.Of(n));
-            var color = l.IsParent ? new Color(0.8f, 0.86f, 1f) /* the way back: a pale sky blue */ : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
+            var color = l.IsParent ? WayBackSignColor : PlanetArt.Palette(SkyTheme(l)).Accent.Lightened(0.35f);
             var mark = ProminenceMark(l.TargetId);
             var padHidden = RayPlanet(camPos, (anchor - camPos).Normalized(), groundTest) is { } ph && ph < d - OcclusionSlackMetres;
             // Counted as named only if it is on screen, 8 px inside the edges (else the world in the sky must carry the name).
             if (!padHidden && !_camera.IsPositionBehind(anchor) && GetViewport().GetVisibleRect().Grow(-8).HasPoint(_camera.UnprojectPosition(anchor))) padNamed.Add(l.TargetId);
             _signs.Add(new SignCandidate(l.TargetId, anchor, mark + tree.DisplayName(l.TargetId), detail, color,
                 // Priority (higher wins an overlap): up to 40 for being looked at, plus 6 for a prominent folder.
-                l.IsParent ? IconKind.Up : FileIcons.For(n), focus, 40f * Looked(anchor) + (mark.Length > 0 ? 6f : 0f), FixedAnchor: true));
+                l.IsParent ? IconKind.Up : FileIcons.For(n), focus, 40f * Looked(anchor) + (mark.Length > 0 ? 6f : 0f), FixedAnchor: true, Frame: l.IsParent ? WayBackFrameColor : null));
         }
 
         // Worlds in the sky: named when looked at, pointed at or selected (and all of them from the overlook).
@@ -495,7 +502,7 @@ public partial class PlanetWorld
             var detail = isParent ? "the way back" : FolderSummary.Gate(tree[b.FolderId], Listing.Of(tree[b.FolderId]));
             var color = PlanetArt.Palette(b.Comp.Theme).Accent.Lightened(0.35f);
             // A world's look boost (60) is larger than a pad's (40); rationale not recorded.
-            _signs.Add(new SignCandidate(-100_000 - b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, 60f * looked, FixedAnchor: true));
+            _signs.Add(new SignCandidate(-100_000 - b.FolderId, top, tree.DisplayName(b.FolderId), detail, color, isParent ? IconKind.Up : FileIcons.For(tree[b.FolderId]), focus, 60f * looked, FixedAnchor: true, Frame: isParent ? WayBackFrameColor : null));
         }
 
         foreach (var b in _children.Values) AddWorld(b, false);
@@ -564,8 +571,9 @@ public partial class PlanetWorld
     /// <summary>Lets the planet's easels load pictures, at most two loading at once; by themselves only in the Starter Sky (FILE-02/DEV-02).</summary>
     private void UpdateThumbnails()
     {
+        _viewer.Tick(); // PLANET-96: the picture viewer's finished decodes (main thread)
         if (_current?.Visual is not { } v || !_s.IsLive || _s.Tree is not { } tree) return;
-        v.PumpThumbnails(tree, maxConcurrent: 2, automatic: _current.AutoThumbnails);
+        v.PumpThumbnails(tree, maxConcurrent: 2, automatic: _current.AutoThumbnails, near: Nv(_camera.GlobalPosition));
     }
 
     // ------------------------------------------------------------------ travel effects
@@ -585,8 +593,15 @@ public partial class PlanetWorld
     private void AnimateScene(float dt)
     {
         _current?.Visual?.Animate(dt, Nv(_camera.GlobalPosition), _s.Selection.Selected, FocusNodeId);
-        foreach (var c in _children.Values) c.Visual?.Animate(dt, Nv(_camera.GlobalPosition), -1, -1);
+        _current?.Visual?.ShowWayBack(true); // PLANET-95: only the planet you stand on shows its way back's marker
+        foreach (var c in _children.Values)
+        {
+            c.Visual?.Animate(dt, Nv(_camera.GlobalPosition), -1, -1);
+            c.Visual?.ShowWayBack(false);
+        }
+
         _parent?.Visual?.Animate(dt, Nv(_camera.GlobalPosition), -1, -1);
+        _parent?.Visual?.ShowWayBack(false);
         _flightTrail.Tick(dt);
         _landFx.Tick(dt);
     }

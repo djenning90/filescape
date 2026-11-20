@@ -457,7 +457,8 @@ public partial class PlanetWorld
                 var n = tree[it2.NodeId];
                 var sel = _s.Selection.Selected == n.Id;
                 // The twirl's preview is named before you do it (PLANET-43); opening stays Enter (or a double-click).
-                SetPrompt(sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
+                var picture = sel && _previewPanel.Visible && _s.IsLive && GalleryRules.IsPicture(n.Name);
+                SetPrompt(picture ? $"R · view it large   ·   Enter · open {n.Name} with Windows   ·   E · close" : sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
             }
         }
         else if (_focusTelescope && OnBenchWorld)
@@ -640,6 +641,7 @@ public partial class PlanetWorld
     /// <summary>Esc: close the planet's own overlays first (list, preview); false when there was nothing to close.</summary>
     public bool CloseOverlay()
     {
+        if (_viewer.IsOpen) { _viewer.Close(); return true; }
         if (_contentsPanel.Visible) { CloseContents(); return true; }
         if (_previewPanel.Visible) { ClosePreview(); return true; }
         if (_benchPanel.Visible) { _benchPanel.Visible = false; return true; }
@@ -654,6 +656,7 @@ public partial class PlanetWorld
     /// </summary>
     private void CloseOverlays()
     {
+        CloseViewerForTravel(); // PLANET-96
         CloseContents();
         _benchPanel.Visible = false;
         _rootPanel.Visible = false;

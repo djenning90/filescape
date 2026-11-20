@@ -831,7 +831,7 @@ internal static class Png
     }
 
     /// <summary>Writes one PNG chunk: big-endian length, type, data, and the CRC-32 of type and data.</summary>
-    private static void Chunk(Stream s, string type, byte[] data)
+    internal static void Chunk(Stream s, string type, byte[] data)
     {
         Span<byte> word = stackalloc byte[4];
         BinaryPrimitives.WriteInt32BigEndian(word, data.Length);
