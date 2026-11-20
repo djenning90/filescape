@@ -264,6 +264,7 @@ public partial class PlanetWorld
         _sinceOrbitSeconds = 0;
         var up = Gd(_walker.Up);
         _camFwd = _camFwd.Rotated(up, -screenPixels.X * Mathf.DegToRad(OrbitYawDegreesPerPixel)).Normalized();
+        if (screenPixels.Y != 0) _sincePitchLookSeconds = 0; // the walk's return to the usual pitch waits (PLANET-84)
         var lo = LowestLookDegrees - _framingPitchDegrees;
         var hi = MaxCamPitchDegrees - _framingPitchDegrees;
         _camPitchDegrees = Mathf.Clamp(Mathf.Clamp(_camPitchDegrees, lo, hi) + screenPixels.Y * OrbitPitchDegreesPerPixel, lo, hi);

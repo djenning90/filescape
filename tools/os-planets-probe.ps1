@@ -77,6 +77,10 @@
   it back). -LookPrefs writes the probe's own preferences file first: 'default' (none: the app's defaults, both look axes
   reversed and levelling on), 'usual' (both reverse settings and levelling off) or 'reversed' (both on, levelling off);
   the planets camera must behave the same under each (it does not use the Places look settings, AD-67).
+  PLANET-84 (AD-75, 2026-11-19): after a sharp real drag down (then up) standing still, W brings the chosen pitch back to
+  the usual (planets.camPitch within 1 deg of 18) and the view to the usual walking view, keeping the heading (camYaw);
+  a right-drag held down while walking keeps the pitch where it put it until the button is let go, then the walk brings it
+  back; the overview keeps its own orbit (checked as before).
 
   -Dialogs (PLANET-69/70, AD-68, 2026-11-19) checks keyboard ownership in every keyboard panel with real keys, the
   recording test shell launching nothing: Destinations (J, the ☰ button), Locations (L, its button), Open location
@@ -387,6 +391,48 @@ try {
     $s = State; Check ([double]$s.planets.arrivalFraming -le 0) "look: a short walk released the arrival framing ($($s.planets.arrivalFraming))"
     Look-Check 'after walking' 'right' 200
     Look-Check 'after walking' 'left' -200
+
+    # PLANET-84 (AD-75): walking brings a sharp look back to the usual perspective; a held drag wins while it is held.
+    function Yaw { [double](State).planets.camYaw }
+    function Turned-By($a, $b) { $d = [Math]::Abs($b - $a) % 360; if ($d -gt 180) { 360 - $d } else { $d } }
+    Key-Down 'W'; try { Start-Sleep -Milliseconds 1500; $usual = View } finally { Key-Up 'W' }
+    Start-Sleep -Milliseconds 1000
+    Log ("look: the usual walking view {0:0.0} deg (chosen pitch {1:0.0})" -f $usual, [double](State).planets.camPitch)
+    foreach ($d in @(@('down', 400), @('up', -400))) {
+      Client-Pos $script:w 800 560
+      Drag 'right' 0 $d[1]
+      Wait-Settle
+      $v1 = View; Start-Sleep -Seconds 2; $s1 = State; $v2 = [double]$s1.planets.viewPitch; $c1 = [double]$s1.planets.camPitch; $y1 = [double]$s1.planets.camYaw
+      Check ([Math]::Abs($v2 - $v1) -le $maxDrift -and [Math]::Abs($v1 - $usual) -ge 15) ("look: standing, a sharp real drag {0} stays put: {1:0.0} -> {2:0.0}, {3:0.0} 2 s later (chosen {4:0.0})" -f $d[0], $usual, $v1, $v2, $c1)
+      Shot "look-sharp-$($d[0])" | Out-Null
+      $samples = New-Object System.Collections.Generic.List[double]
+      Key-Down 'W'
+      try {
+        $sw = [Diagnostics.Stopwatch]::StartNew(); $seq = -1
+        while ($sw.ElapsedMilliseconds -lt 2000) { $q = State; if ([int]$q.seq -ne $seq) { $seq = [int]$q.seq; $samples.Add([double]$q.planets.viewPitch) }; Start-Sleep -Milliseconds 5 }
+        $s2 = State
+      } finally { Key-Up 'W' }
+      $maxStep = 0.0; for ($k = 1; $k -lt $samples.Count; $k++) { $maxStep = [Math]::Max($maxStep, [Math]::Abs($samples[$k] - $samples[$k - 1])) }
+      $c2 = [double]$s2.planets.camPitch; $v3 = [double]$s2.planets.viewPitch; $turn = Turned-By $y1 ([double]$s2.planets.camYaw)
+      Check ([Math]::Abs($c2 - 18) -le 1.0 -and [Math]::Abs($v3 - $usual) -le 2.0 -and $maxStep -le 3.0 -and $turn -le 3.0) ("look: after the sharp look {0}, 2 s of W bring the camera back smoothly: chosen {1:0.0} -> {2:0.0} (usual 18), view {3:0.0} -> {4:0.0} (usual walking {5:0.0}), largest step {6:0.00} deg between {7} snapshots, heading turned {8:0.0} deg" -f $d[0], $c1, $c2, $v2, $v3, $usual, $maxStep, $samples.Count, $turn)
+      Start-Sleep -Milliseconds 1000
+    }
+    # A right-drag held down while walking: the drag owns the camera until it is let go, then the walk brings it back.
+    Client-Pos $script:w 800 560
+    Key-Down 'W'
+    try {
+      Start-Sleep -Milliseconds 800
+      Right-Down
+      try {
+        Start-Sleep -Milliseconds 60; Drag-Relative 0 200 20
+        Start-Sleep -Milliseconds 400; $h0 = [double](State).planets.camPitch
+        Start-Sleep -Milliseconds 1500; $h1 = [double](State).planets.camPitch
+      } finally { Right-Up }
+      Check ([Math]::Abs($h1 - $h0) -lt 0.2 -and [Math]::Abs($h0 - 18) -gt 20) ("look: while walking, a real right-drag held down keeps the camera where it put it: chosen {0:0.0} -> {1:0.0} 1.5 s later, button down" -f $h0, $h1)
+      Start-Sleep -Milliseconds 2500; $h2 = [double](State).planets.camPitch
+    } finally { Key-Up 'W' }
+    Check ([Math]::Abs($h2 - 18) -le 1.0) ("look: once the drag is let go, the walk brings the pitch back: {0:0.0} -> {1:0.0} (usual 18)" -f $h1, $h2)
+    Start-Sleep -Milliseconds 1000
 
     Hold-Key 'B' 60; Start-Sleep -Milliseconds 1200
     $s = State; Check ([double]$s.planets.overlookView -ge 0.99) "look: B, the overlook view ($($s.planets.overlookView))"

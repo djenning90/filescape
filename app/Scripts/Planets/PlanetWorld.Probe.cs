@@ -146,8 +146,8 @@ public partial class PlanetWorld
     /// chosen pitch with the arrival, overlook, hazard and edge framings applied (probes).</summary>
     public float BoomPitchDegrees => _boomPitchDegrees;
 
-    /// <summary>The walking camera's usual pitch and the arrival framing's, degrees (probes compare with them).</summary>
-    public const float StartPitch = StartCamPitchDegrees, ArrivalPitch = ArrivalPitchDegrees;
+    /// <summary>The walking camera's usual pitch, the arrival framing's and the overlook view's, degrees (probes compare with them).</summary>
+    public const float StartPitch = StartCamPitchDegrees, ArrivalPitch = ArrivalPitchDegrees, OverlookPitch = OverlookPitchDegrees;
 
     /// <summary>The overlook view's weight now, 0..1 (probes).</summary>
     public float OverlookView01 => _overlook01;
