@@ -22,6 +22,16 @@ public enum Discovery
 public sealed record UniverseBody(int NodeId, int ParentId, Vector3 Position, float Radius, int Depth, Discovery Discovery, int HiddenChildren, Vector3 OrbitNormal, float OrbitRadius);
 
 /// <summary>
+/// A place the player's attention is on, for the overview's budget (PLANET-101, AD-81): a folder and how far its
+/// attention is discounted, in attention units (<see cref="UniverseLayout.Attention"/>): 0 for where you stand and the
+/// selected world, a little more for the approached world, more again for worlds you looked at before.
+/// </summary>
+public readonly record struct AttentionFocus(int Id, float Offset);
+
+/// <summary>The room a system was given in an earlier layout, metres: its ring's radius and its whole extent (PLANET-105).</summary>
+public readonly record struct Reserve(float Ring, float Extent);
+
+/// <summary>
 /// The overview of the known folder hierarchy in 3D (PLANET-19, AD-46, 2026-11-11; "Universe Sandbox–style"): every known
 /// folder is a world; a folder's subfolders orbit it on one tilted ring, so the hierarchy reads as nested star systems.
 /// <para>
@@ -92,12 +102,16 @@ public static class UniverseLayout
     private static uint Hash(int id) => (uint)(id * KnuthMultiplier);
 
     /// <param name="pinned">Folders that are always shown whatever the budget (the way to where you stand).</param>
-    public static IReadOnlyList<UniverseBody> Compute(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null)
+    /// <param name="attention">Null: the budget goes breadth-first from the root (the rule before PLANET-101, and the
+    /// behaviour baseline's). Otherwise it goes to the worlds nearest the player's attention first (<see cref="Attention"/>),
+    /// and systems keep at least the room they were given in earlier layouts (<see cref="Attention.Reserves"/>).</param>
+    public static IReadOnlyList<UniverseBody> Compute(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null, Attention? attention = null)
     {
         pinned ??= new HashSet<int>();
         if (tree.Count == 0 || !tree.Contains(root)) return [];
         visible ??= _ => true;
-        var (order, kids, hidden) = Select(tree, visible, root, pinned);
+        var (order, kids, hidden) = attention == null ? Select(tree, visible, root, pinned) : SelectByAttention(tree, visible, root, pinned, attention);
+        var reserves = attention?.Reserves;
 
         // Bottom-up: body radius from size, ring radius from the children's extents, extent of the whole system.
         var bodyRadius = new Dictionary<int, float>();
@@ -111,10 +125,14 @@ public static class UniverseLayout
             var r = MinBodyRadius + BodyRadiusPerDecade * MathF.Log10(1 + size);
             bodyRadius[id] = r;
             var children = kids[id];
+            var reserved = reserves != null && reserves.TryGetValue(id, out var rv) ? rv : default;
             if (children.Count == 0)
             {
-                ringRadius[id] = 0;
-                extent[id] = r;
+                // A system whose children gave way to attention elsewhere keeps its room (PLANET-105): its ring's radius
+                // stays as its haze, and its neighbours do not close in on it.
+                ringRadius[id] = reserved.Ring;
+                extent[id] = MathF.Max(r, reserved.Extent);
+                if (reserves != null) reserves[id] = new Reserve(ringRadius[id], extent[id]);
                 continue;
             }
 
@@ -137,8 +155,10 @@ public static class UniverseLayout
                 }
             }
 
+            ring = MathF.Max(ring, reserved.Ring);
             ringRadius[id] = ring;
-            extent[id] = ring + maxExt;
+            extent[id] = MathF.Max(ring + maxExt, reserved.Extent);
+            if (reserves != null) reserves[id] = new Reserve(ring, extent[id]);
         }
 
         // Top-down: place children on their parent's tilted ring, angles by cumulative extent.
@@ -193,12 +213,240 @@ public static class UniverseLayout
     /// exactly what the overview would draw, without the cost of placing it): each with its depth below
     /// <paramref name="root"/>, in the layout's breadth-first order. Same rules and budget as <see cref="Compute"/>.
     /// </summary>
-    public static IReadOnlyList<(int Id, int Depth)> Selection(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null)
+    public static IReadOnlyList<(int Id, int Depth)> Selection(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null, Attention? attention = null)
     {
         if (tree.Count == 0 || !tree.Contains(root)) return [];
-        var (order, _, _) = Select(tree, visible ?? (_ => true), root, pinned ?? new HashSet<int>());
+        var (order, _, _) = attention == null ? Select(tree, visible ?? (_ => true), root, pinned ?? new HashSet<int>()) : SelectByAttention(tree, visible ?? (_ => true), root, pinned ?? new HashSet<int>(), attention);
         var rootDepth = tree[root].Depth;
         return order.Select(id => (id, tree[id].Depth - rootDepth)).ToList();
+    }
+
+    /// <summary>
+    /// How the overview spends its budget when it follows attention (PLANET-101..105, AD-81). Each folder's <b>attention
+    /// cost</b> is its distance in the tree from the nearest focus — <see cref="UpCost"/> per level up to where the two
+    /// paths meet, <see cref="DownCost"/> per level down from there — plus that focus's offset; and never more than the
+    /// background's <see cref="BackgroundCostPerLevel"/> × its depth below the overview's root, so the top of the hierarchy
+    /// is always there for scale. The budget goes to the cheapest folders first (then the shallower, then name order):
+    /// the selected world's children (cost 1), its grandchildren and its siblings (2), its great-grandchildren, nephews and
+    /// aunts (3), and so on, whatever else was explored before. A folder's parent is always cheaper than the folder or on
+    /// a focus's way (which is cheaper still), so what is laid out is always connected.
+    /// </summary>
+    public sealed record Attention
+    {
+        /// <summary>The foci (ids not in the tree are ignored).</summary>
+        public IReadOnlyList<AttentionFocus> Foci { get; init; } = [];
+
+        /// <summary>The most worlds laid out. <see cref="MaxBodies"/> by default; the app passes its measured budget.</summary>
+        public int Budget { get; init; } = MaxBodies;
+
+        /// <summary>Attention cost per level up from a focus (to a sibling's branch, an aunt's…).</summary>
+        public float UpCost { get; init; } = 1f;
+
+        /// <summary>Attention cost per level down (to a child, a grandchild…).</summary>
+        public float DownCost { get; init; } = 1f;
+
+        /// <summary>
+        /// The background's cost per level below the root: 2 makes the root's children as dear as the selected world's
+        /// grandchildren, so the top two or three levels of the whole hierarchy stay in view (scale) without taking the
+        /// budget from where you look.
+        /// </summary>
+        public float BackgroundCostPerLevel { get; init; } = 2f;
+
+        /// <summary>Folders laid out last time: they give way only to folders clearly nearer attention (hysteresis, so a
+        /// small move of attention does not fold and unfold systems at the edge of the budget).</summary>
+        public IReadOnlySet<int>? Retained { get; init; }
+
+        /// <summary>How much nearer, in attention units, a new folder must be to take a retained folder's place.</summary>
+        public float RetainBonus { get; init; } = 1.5f;
+
+        /// <summary>
+        /// In and out: each system's room from earlier layouts while the overview stays open (<see cref="Reserve"/>). A
+        /// system never gets less room than it had, so when its children give way to attention elsewhere it stays where it
+        /// is and nothing round it moves (PLANET-105); the dictionary is updated with this layout's room. Null: no memory.
+        /// </summary>
+        public IDictionary<int, Reserve>? Reserves { get; init; }
+    }
+
+    /// <summary>
+    /// A folder's attention cost (see <see cref="Attention"/>), or +∞ when it is not below <paramref name="root"/>. Walks
+    /// up from the folder once per focus (O(depth × foci)): for candidates and status, not for whole trees. The retained
+    /// bonus is not applied (it is the layout's hysteresis, not attention).
+    /// </summary>
+    public static float AttentionCost(FsTree tree, int id, int root, Attention attention)
+    {
+        if (!tree.Contains(id) || !tree.Contains(root)) return float.PositiveInfinity;
+        var rootDepth = tree[root].Depth;
+        var below = false;
+        for (var a = id; a >= 0; a = tree[a].ParentId)
+        {
+            if (a != root) continue;
+            below = true;
+            break;
+        }
+
+        if (!below) return float.PositiveInfinity;
+        var best = attention.BackgroundCostPerLevel * (tree[id].Depth - rootDepth);
+        foreach (var f in attention.Foci)
+        {
+            if (!tree.Contains(f.Id)) continue;
+            // The deepest common ancestor: walk both up to the same depth, then together.
+            int a = id, b = f.Id;
+            while (a >= 0 && b >= 0 && tree[a].Depth > tree[b].Depth) a = tree[a].ParentId;
+            while (a >= 0 && b >= 0 && tree[b].Depth > tree[a].Depth) b = tree[b].ParentId;
+            while (a >= 0 && b >= 0 && a != b)
+            {
+                a = tree[a].ParentId;
+                b = tree[b].ParentId;
+            }
+
+            if (a < 0 || b < 0) continue;
+            var common = tree[a].Depth;
+            best = MathF.Min(best, f.Offset + attention.UpCost * (tree[f.Id].Depth - common) + attention.DownCost * (tree[id].Depth - common));
+        }
+
+        return best;
+    }
+
+    /// <summary>The cost of a folder on the way to a focus (plus the focus's offset): below every other cost, so the ways
+    /// to all foci are laid out first.</summary>
+    private const float WayCost = -1000f;
+
+    /// <summary>
+    /// Pass 1 with attention (<see cref="Attention"/>): best-first from the root by attention cost. A folder's children
+    /// enter the frontier when it is laid out (the pinned ones first, then the cheapest, then name order, at most
+    /// <see cref="MaxChildren"/>); the cheapest in the frontier is laid out next, until the budget is spent. Pinned folders
+    /// always make it in. What is left in the frontier is counted as its parent's hidden folders.
+    /// </summary>
+    private static (List<int> Order, Dictionary<int, List<int>> Kids, Dictionary<int, int> Hidden) SelectByAttention(FsTree tree, Func<FsNode, bool> visible, int root, IReadOnlySet<int> pinned, Attention attention)
+    {
+        var foci = new List<AttentionFocus>(attention.Foci.Count);
+        foreach (var f in attention.Foci)
+        {
+            if (tree.Contains(f.Id)) foci.Add(f);
+        }
+
+        var nf = foci.Count;
+        // The way to each focus: folder → (focus index, levels above it). A folder on several ways keeps each.
+        var ways = new Dictionary<int, List<(int Focus, int Up)>>();
+        for (var k = 0; k < nf; k++)
+        {
+            var up = 0;
+            for (var a = foci[k].Id; a >= 0; a = tree[a].ParentId)
+            {
+                if (!ways.TryGetValue(a, out var list)) ways[a] = list = new List<(int, int)>(1);
+                list.Add((k, up++));
+            }
+        }
+
+        // Each folder's distance to every focus, in one flat array (nf per slot): on a focus's way it is the levels up;
+        // off it, one level further down than its parent's.
+        var dist = new List<float>(1024 * Math.Max(1, nf));
+        var slot = new Dictionary<int, int>();
+        var rootDepth = tree[root].Depth;
+
+        int Place(int id, int parentSlot)
+        {
+            var s = dist.Count / Math.Max(1, nf);
+            for (var k = 0; k < nf; k++) dist.Add(parentSlot >= 0 ? dist[parentSlot * nf + k] + attention.DownCost : float.PositiveInfinity);
+            if (ways.TryGetValue(id, out var on))
+            {
+                foreach (var (k, up) in on) dist[s * nf + k] = attention.UpCost * up;
+            }
+
+            slot[id] = s;
+            return s;
+        }
+
+        float CostOf(int id, int s)
+        {
+            var c = attention.BackgroundCostPerLevel * (tree[id].Depth - rootDepth);
+            var onWay = ways.TryGetValue(id, out var on) ? on : null;
+            for (var k = 0; k < nf; k++) c = MathF.Min(c, foci[k].Offset + dist[s * nf + k]);
+            if (onWay != null)
+            {
+                // The way to a focus comes before anything else (it is how the focus hangs in the picture: a deep selected
+                // world's ancestors must not lose to the shallow levels of other branches), the most attended focus's first.
+                foreach (var (k, _) in onWay) c = MathF.Min(c, WayCost + foci[k].Offset);
+            }
+
+            if (attention.Retained?.Contains(id) == true) c -= attention.RetainBonus;
+            return c;
+        }
+
+        var kids = new Dictionary<int, List<int>>();
+        var hidden = new Dictionary<int, int>();
+        var order = new List<int>();
+        var frontier = new PriorityQueue<int, (float Cost, int Depth, int Seq)>();
+        var seq = 0;
+        var pinnedPending = 0;
+        foreach (var pid in pinned)
+        {
+            if (pid != root && tree.Contains(pid)) pinnedPending++;
+        }
+
+        Place(root, -1);
+        frontier.Enqueue(root, (float.NegativeInfinity, 0, seq++));
+        var scored = new List<(int Id, float Cost, bool Pinned)>();
+        var byName = Comparer<(int Id, float Cost, bool Pinned)>.Create((x, y) =>
+        {
+            if (x.Pinned != y.Pinned) return x.Pinned ? -1 : 1;
+            var c = x.Cost.CompareTo(y.Cost);
+            if (c != 0) return c;
+            c = NaturalNameOrder.Instance.Compare(tree[x.Id].Name, tree[y.Id].Name);
+            return c != 0 ? c : x.Id.CompareTo(y.Id);
+        });
+        while (frontier.TryDequeue(out var id, out _))
+        {
+            var isPinned = id == root || pinned.Contains(id);
+            if (!isPinned && order.Count + pinnedPending >= attention.Budget)
+            {
+                // Out of budget: it stays folded inside its parent (pinned folders still come through the queue).
+                var p = tree[id].ParentId;
+                hidden[p] = hidden.GetValueOrDefault(p) + 1;
+                continue;
+            }
+
+            if (isPinned && id != root) pinnedPending--;
+            order.Add(id);
+            var s = slot[id];
+            scored.Clear();
+            var pinnedKids = 0;
+            foreach (var c in tree[id].Children)
+            {
+                var cn = tree[c];
+                var p = pinned.Contains(c);
+                if (!cn.IsDirectory || !p && !visible(cn)) continue;
+                var cs = Place(c, s);
+                scored.Add((c, p ? float.NegativeInfinity : CostOf(c, cs), p));
+                if (p) pinnedKids++;
+            }
+
+            // At most MaxChildren per system (a ring of more is unreadable), the pinned ones always among them.
+            var take = Math.Min(scored.Count, Math.Max(MaxChildren, pinnedKids));
+            scored.Sort(byName); // also orders ties by name, so the layout's order (discovery's tie-break) is name order
+            hidden[id] = hidden.GetValueOrDefault(id) + scored.Count - take;
+            for (var i = 0; i < take; i++) frontier.Enqueue(scored[i].Id, (scored[i].Cost, tree[scored[i].Id].Depth, seq++));
+        }
+
+        // Only what was laid out is a child in the layout, in name order round its parent's ring.
+        foreach (var id in order) kids[id] = [];
+        foreach (var id in order)
+        {
+            if (id != root) kids[tree[id].ParentId].Add(id);
+            hidden.TryAdd(id, 0);
+        }
+
+        var nameOrder = Comparer<int>.Create((x, y) =>
+        {
+            var c = NaturalNameOrder.Instance.Compare(tree[x].Name, tree[y].Name);
+            return c != 0 ? c : x.CompareTo(y);
+        });
+        foreach (var list in kids.Values)
+        {
+            if (list.Count > 1) list.Sort(nameOrder);
+        }
+
+        return (order, kids, hidden);
     }
 
     /// <summary>Pass 1 of <see cref="Compute"/>: breadth-first selection within the budget (see the class summary).</summary>
