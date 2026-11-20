@@ -160,6 +160,60 @@ public sealed class OverviewDiscoveryTests
     }
 
     [Fact]
+    public void Pausing_says_so_at_once_not_at_the_next_step()
+    {
+        // AD-77: the "X pauses" check read the indicator ≈ 80 ms after X; the state changed only at the next step (every
+        // 0.1 s), so it failed whenever that step fell after the read. The state now follows the flag at once.
+        var fs = new SimFs(Uniform(3, 4));
+        var d = new OverviewDiscovery();
+        d.Step(fs.Tree, fs.Drawn(), [], TimeSpan.Zero, _ => true);
+        d.State.Should().Be(OverviewDiscoveryState.Discovering);
+        d.Paused = true;
+        d.State.Should().Be(OverviewDiscoveryState.Paused, "no step has run since X");
+        d.Paused = false;
+        d.State.Should().Be(OverviewDiscoveryState.Discovering, "resuming says so at once too");
+    }
+
+    [Fact]
+    public void During_play_the_current_world_goes_first_then_its_parent_at_the_quieter_pace()
+    {
+        // PLANET-90: focus in priority order (the current world, then its parent), the play pace (2 a second, 2 in flight).
+        var fs = new SimFs(Uniform(3, 5));
+        var limits = new OverviewDiscovery.Limits();
+        var d = new OverviewDiscovery(limits);
+        // List levels 1 and 2 first (as a visit would), so there is a frontier under both b and a/…
+        var t = Run(fs, new OverviewDiscovery(new OverviewDiscovery.Limits { ListingsPerSecond = 1000, BurstListings = 1000, MaxInFlight = 1000 }), 0.1);
+        var a = fs.Tree[0].Children.Single(i => fs.Tree[i].Name == "a");
+        var ab = fs.Tree[a].Children.Single(i => fs.Tree[i].Name == "b");
+        var pending = new List<(int Id, TimeSpan Due)>();
+        var before = fs.ListedOrder.Count;
+        var maxInFlight = 0;
+        for (var k = 0; k < 100; k++)
+        {
+            var now = TimeSpan.FromSeconds(t + k * 0.1);
+            foreach (var p in pending.Where(p => p.Due <= now).ToList())
+            {
+                pending.Remove(p);
+                fs.Answer(p.Id);
+            }
+
+            foreach (var id in d.Step(fs.Tree, fs.Drawn(), [ab, a, 0], now, _ => true, OverviewDiscovery.Pace.Play, focusInOrder: true))
+                pending.Add((id, now + TimeSpan.FromSeconds(0.6)));
+            maxInFlight = Math.Max(maxInFlight, d.InFlight);
+        }
+
+        var listed = fs.ListedOrder.Skip(before).ToList();
+        maxInFlight.Should().BeLessThanOrEqualTo(limits.PlayMaxInFlight);
+        d.Requested.Should().BeLessThanOrEqualTo((int)(limits.PlayListingsPerSecond * 10) + limits.BurstListings, "the play pace");
+        // a/b's own subtree (1 + 3 + 9 folders) first; a slot left while its next level is in flight goes to its parent's
+        // other folders (its neighbours), never yet to the rest of the tree.
+        listed.Should().HaveCountGreaterThanOrEqualTo(13);
+        listed[0].Should().Be("/a/b", "the current world first");
+        listed.Take(13).Count(p => p.StartsWith("/a/b", StringComparison.Ordinal)).Should().BeGreaterThanOrEqualTo(9, "then mostly its own subtree");
+        listed.Should().OnlyContain(p => p.StartsWith("/a/", StringComparison.Ordinal), "its neighbours before the rest of the tree");
+    }
+
+    [Fact]
     public void Everything_drawn_is_listed_then_discovery_is_complete()
     {
         var fs = new SimFs(Uniform(2, 3));

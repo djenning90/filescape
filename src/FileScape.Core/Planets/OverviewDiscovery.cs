@@ -74,6 +74,27 @@ public sealed class OverviewDiscovery
 
         /// <summary>A request with no change of state after this long frees its slot and is not asked for again.</summary>
         public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(20);
+
+        /// <summary>
+        /// New listings per second while you play (the overview closed, PLANET-90): slower than the overview's pace,
+        /// so the tree grows quietly in the background and the walking world's frame time is untouched (each listing
+        /// lands on the main thread). ≈ 120 folders a minute.
+        /// </summary>
+        public double PlayListingsPerSecond { get; init; } = 2;
+
+        /// <summary>Listings in flight while you play: two, so two of the explorer's four workers are always free for
+        /// what the visit itself asks for (destinations, previews, a landing).</summary>
+        public int PlayMaxInFlight { get; init; } = 2;
+    }
+
+    /// <summary>Which pace a step runs at: the overview's (watching it grow) or the quieter one during play (PLANET-90).</summary>
+    public enum Pace
+    {
+        /// <summary>The overview is open: <see cref="Limits.ListingsPerSecond"/>, <see cref="Limits.MaxInFlight"/>.</summary>
+        Overview,
+
+        /// <summary>Ordinary play: <see cref="Limits.PlayListingsPerSecond"/>, <see cref="Limits.PlayMaxInFlight"/>.</summary>
+        Play,
     }
 
     /// <summary>One drawn world the scheduler may list: its node, its depth below the overview's root, and its index in
@@ -94,8 +115,24 @@ public sealed class OverviewDiscovery
 
     public Limits Bounds => _limits;
 
-    /// <summary>Paused by the player: nothing new is asked for (listings already asked for still arrive).</summary>
-    public bool Paused { get; set; }
+    /// <summary>
+    /// Paused by the player: nothing new is asked for (listings already asked for still arrive). Setting it updates
+    /// <see cref="State"/> at once, so the indicator says "paused" in the frame X is pressed; before 2026-11-19 (fifth
+    /// follow-up) the state changed only at the next <see cref="Step"/> (up to 0.1 s later), and the discovery journey's
+    /// "X pauses" check, read ≈ 80 ms after the key, failed whenever the step fell after it (AD-77).
+    /// </summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            _paused = value;
+            if (value) State = OverviewDiscoveryState.Paused;
+            else if (State == OverviewDiscoveryState.Paused) State = InFlight > 0 || Frontier > 0 ? OverviewDiscoveryState.Discovering : OverviewDiscoveryState.Complete;
+        }
+    }
+
+    private bool _paused;
 
     public OverviewDiscoveryState State { get; private set; } = OverviewDiscoveryState.Complete;
 
@@ -124,34 +161,49 @@ public sealed class OverviewDiscovery
     /// <paramref name="inScope"/> the caller's rule for what may be listed ahead (the app: inside the arrival folder or
     /// below a place visited this session).
     /// </summary>
-    public IReadOnlyList<int> Step(FsTree tree, IReadOnlyList<Candidate> drawn, IReadOnlyCollection<int> focus, TimeSpan now, Func<int, bool> inScope)
+    /// <para>
+    /// <paramref name="pace"/> picks the rate and the in-flight bound (<see cref="Pace"/>). With
+    /// <paramref name="focusInOrder"/> the focus list is a priority order (the current world, then its parent, then its
+    /// grandparent: PLANET-90's "what I'm visiting first"): a world ranks by the first focus it lies below; without it
+    /// every focus ranks the same (the overview's selected and zoomed-toward worlds, AD-71).
+    /// </para>
+    public IReadOnlyList<int> Step(FsTree tree, IReadOnlyList<Candidate> drawn, IReadOnlyCollection<int> focus, TimeSpan now, Func<int, bool> inScope,
+        Pace pace = Pace.Overview, bool focusInOrder = false)
     {
         Settle(tree, now);
         var elapsed = _lastStep is { } last ? Math.Max(0, (now - last).TotalSeconds) : 0;
         _lastStep = now;
-        _tokens = Math.Min(_limits.BurstListings, _tokens + elapsed * _limits.ListingsPerSecond);
+        var rate = pace == Pace.Play ? _limits.PlayListingsPerSecond : _limits.ListingsPerSecond;
+        var maxInFlight = pace == Pace.Play ? _limits.PlayMaxInFlight : _limits.MaxInFlight;
+        _tokens = Math.Min(_limits.BurstListings, _tokens + elapsed * rate);
 
         var frontier = new List<(int Id, int Rank, int Depth, int Order)>();
-        var focusDepth = new Dictionary<int, int>();
+        var focusDepth = new Dictionary<int, (int Depth, int Rank)>();
+        var k = 0;
         foreach (var f in focus)
         {
-            if (tree.Contains(f)) focusDepth[f] = tree[f].Depth;
+            if (tree.Contains(f) && !focusDepth.ContainsKey(f)) focusDepth[f] = (tree[f].Depth, focusInOrder ? k : 0);
+            k++;
         }
+
+        var outside = focusInOrder ? focusDepth.Count : 1;
 
         foreach (var c in drawn)
         {
             if (!tree.Contains(c.Id) || _tried.Contains(c.Id) || _inflight.ContainsKey(c.Id) || !Eligible(tree[c.Id])) continue;
-            // Below a focus: ranked first, breadth-first from that focus (its own depth subtracted).
-            var rank = 1;
+            // Below a focus: ranked first, breadth-first from that focus (its own depth subtracted). The nearest focus
+            // above it decides (in priority order, the current world's subtree before its parent's).
+            var rank = outside;
             var depth = c.Depth;
             if (focusDepth.Count > 0)
             {
                 for (var a = c.Id; a >= 0; a = tree[a].ParentId)
                 {
                     if (!focusDepth.TryGetValue(a, out var fd)) continue;
-                    rank = 0;
-                    depth = tree[c.Id].Depth - fd;
-                    break;
+                    if (fd.Rank > rank) continue;
+                    rank = fd.Rank;
+                    depth = tree[c.Id].Depth - fd.Depth;
+                    if (!focusInOrder) break;
                 }
             }
 
@@ -160,7 +212,7 @@ public sealed class OverviewDiscovery
 
         Frontier = frontier.Count;
         var picked = new List<int>();
-        if (Paused)
+        if (_paused)
         {
             State = OverviewDiscoveryState.Paused;
             return picked;
@@ -175,7 +227,7 @@ public sealed class OverviewDiscovery
         frontier.Sort((x, y) => x.Rank != y.Rank ? x.Rank.CompareTo(y.Rank) : x.Depth != y.Depth ? x.Depth.CompareTo(y.Depth) : x.Order.CompareTo(y.Order));
         foreach (var (id, _, _, _) in frontier)
         {
-            if (_inflight.Count >= _limits.MaxInFlight || _tokens < 1) break;
+            if (_inflight.Count >= maxInFlight || _tokens < 1) break;
             _tried.Add(id);
             // Checked only for the folders about to be asked for: a path is built per check.
             if (!inScope(id) || ListAhead.Refusal(tree.FullPath(id), ListAheadKind.Background) != null)

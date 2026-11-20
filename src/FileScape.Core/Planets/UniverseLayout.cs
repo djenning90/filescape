@@ -97,33 +97,7 @@ public static class UniverseLayout
         pinned ??= new HashSet<int>();
         if (tree.Count == 0 || !tree.Contains(root)) return [];
         visible ??= _ => true;
-        // Breadth-first selection within the budget (the hierarchy near the root first).
-        var kids = new Dictionary<int, List<int>>();
-        var hidden = new Dictionary<int, int>();
-        var order = new List<int> { root };
-        var queue = new Queue<int>();
-        queue.Enqueue(root);
-        // Pinned folders not yet placed, kept as a running count (PLANET-77: the overview now pins every world it already
-        // draws, ≈ 1,500, so counting them afresh for every folder was quadratic). Children are never already in the
-        // order, so for each folder the count of pinned ids neither placed nor among its children is this minus mustHave.
-        var pinnedPending = pinned.Count(pid => pid != root);
-        while (queue.TryDequeue(out var id))
-        {
-            var all = tree[id].Children.Where(c => tree[c].IsDirectory && (visible(tree[c]) || pinned.Contains(c))).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
-            // Pinned folders first (never cut by the budget), then the rest in name order within what is left.
-            var mustHave = all.Where(pinned.Contains).ToList();
-            var room = Math.Max(0, MaxBodies - order.Count - (pinnedPending - mustHave.Count));
-            var take = mustHave.Concat(all.Where(c => !pinned.Contains(c)).Take(Math.Max(0, Math.Min(MaxChildren, room) - mustHave.Count)))
-                .OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
-            kids[id] = take;
-            hidden[id] = all.Count - take.Count;
-            foreach (var c in take)
-            {
-                order.Add(c);
-                queue.Enqueue(c);
-                if (pinned.Contains(c)) pinnedPending--;
-            }
-        }
+        var (order, kids, hidden) = Select(tree, visible, root, pinned);
 
         // Bottom-up: body radius from size, ring radius from the children's extents, extent of the whole system.
         var bodyRadius = new Dictionary<int, float>();
@@ -212,5 +186,52 @@ public static class UniverseLayout
         }
 
         return bodies;
+    }
+
+    /// <summary>
+    /// The worlds the overview would lay out, without laying them out (PLANET-90: background discovery during play lists
+    /// exactly what the overview would draw, without the cost of placing it): each with its depth below
+    /// <paramref name="root"/>, in the layout's breadth-first order. Same rules and budget as <see cref="Compute"/>.
+    /// </summary>
+    public static IReadOnlyList<(int Id, int Depth)> Selection(FsTree tree, Func<FsNode, bool>? visible = null, int root = 0, IReadOnlySet<int>? pinned = null)
+    {
+        if (tree.Count == 0 || !tree.Contains(root)) return [];
+        var (order, _, _) = Select(tree, visible ?? (_ => true), root, pinned ?? new HashSet<int>());
+        var rootDepth = tree[root].Depth;
+        return order.Select(id => (id, tree[id].Depth - rootDepth)).ToList();
+    }
+
+    /// <summary>Pass 1 of <see cref="Compute"/>: breadth-first selection within the budget (see the class summary).</summary>
+    private static (List<int> Order, Dictionary<int, List<int>> Kids, Dictionary<int, int> Hidden) Select(FsTree tree, Func<FsNode, bool> visible, int root, IReadOnlySet<int> pinned)
+    {
+        // Breadth-first selection within the budget (the hierarchy near the root first).
+        var kids = new Dictionary<int, List<int>>();
+        var hidden = new Dictionary<int, int>();
+        var order = new List<int> { root };
+        var queue = new Queue<int>();
+        queue.Enqueue(root);
+        // Pinned folders not yet placed, kept as a running count (PLANET-77: the overview now pins every world it already
+        // draws, ≈ 1,500, so counting them afresh for every folder was quadratic). Children are never already in the
+        // order, so for each folder the count of pinned ids neither placed nor among its children is this minus mustHave.
+        var pinnedPending = pinned.Count(pid => pid != root);
+        while (queue.TryDequeue(out var id))
+        {
+            var all = tree[id].Children.Where(c => tree[c].IsDirectory && (visible(tree[c]) || pinned.Contains(c))).OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
+            // Pinned folders first (never cut by the budget), then the rest in name order within what is left.
+            var mustHave = all.Where(pinned.Contains).ToList();
+            var room = Math.Max(0, MaxBodies - order.Count - (pinnedPending - mustHave.Count));
+            var take = mustHave.Concat(all.Where(c => !pinned.Contains(c)).Take(Math.Max(0, Math.Min(MaxChildren, room) - mustHave.Count)))
+                .OrderBy(c => tree[c].Name, NaturalNameOrder.Instance).ThenBy(c => c).ToList();
+            kids[id] = take;
+            hidden[id] = all.Count - take.Count;
+            foreach (var c in take)
+            {
+                order.Add(c);
+                queue.Enqueue(c);
+                if (pinned.Contains(c)) pinnedPending--;
+            }
+        }
+
+        return (order, kids, hidden);
     }
 }
