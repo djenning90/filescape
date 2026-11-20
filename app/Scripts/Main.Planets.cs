@@ -63,6 +63,9 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
+        // U and Backspace leave through their pad like any launch (PLANET-82): the navigator moves at the take-off, so Esc can still stop them.
+        if (key.IsAction(InputBindings.UpPlace) && _planets.LaunchUp()) return true;
+        if (key.IsAction(InputBindings.HistoryBack) && _planets.LaunchBack()) return true;
         if (key.IsAction(InputBindings.FlightToggle)) { _planets.ToggleUniverse(); _hud.SetPlanetsOverview(_planets.UniverseOpen); return true; }
         return false;
     }

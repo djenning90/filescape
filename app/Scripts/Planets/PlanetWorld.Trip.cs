@@ -124,9 +124,9 @@ public partial class PlanetWorld
     {
         if (_trip is not { } t) return;
         t.StopRequested = true;
-        if (_phase == Phase.WindUp && _transfer is { Released: false })
+        if (_phase is Phase.Departing or Phase.WindUp && _transfer is { Released: false })
         {
-            CancelLaunch(null); // the navigator has not moved: you stay where you are
+            CancelDeparture(); // the navigator has not moved: you stay where you are (a run to the pad lands on it, PlanetWorld.Departure)
             t.InHop = false;
             EndTrip("stopped");
             return;
@@ -208,7 +208,7 @@ public partial class PlanetWorld
         var launcher = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == next);
         t.InHop = true;
         BeginLaunch(next, launcher?.Direction ?? _walker.Up, fromPad: false);
-        if (_phase != Phase.WindUp)
+        if (_phase is not (Phase.Departing or Phase.WindUp))
         {
             t.InHop = false;
             EndTrip("refused");
@@ -267,7 +267,8 @@ public partial class PlanetWorld
     /// <summary>Esc during a trip stops it (before anything else sees the key, Main.KeyboardOwner); J waits until the trip is over.</summary>
     public bool TripKey(InputEvent e)
     {
-        if (_trip == null || e is not InputEventKey { Pressed: true, Echo: false } k) return false;
+        if (_trip == null) return DepartureKey(e); // a departure's own Esc (PlanetWorld.Departure)
+        if (e is not InputEventKey { Pressed: true, Echo: false } k) return false;
         if (k.Keycode == Key.Escape)
         {
             RequestStopTrip();

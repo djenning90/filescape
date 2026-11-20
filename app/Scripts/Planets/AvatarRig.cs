@@ -16,6 +16,8 @@ namespace FileScape.App.Planets;
 /// <param name="Flying">Travelling between planets: the streamlined pose.</param>
 /// <param name="Twirl">Ask for a twirl (as on an air jump) without the event.</param>
 /// <param name="Flail">A last effort this frame (PLANET-62): arms thrown up, legs kicking, a lean back — the reach that misses.</param>
+/// <param name="FlightPose01">In flight, how streamlined the pose is to be, 0 (standing, feet first) to 1 (nearly prone);
+/// null: fully streamlined, eased in. A travel's flight lowers it to 0 before touchdown (PLANET-81).</param>
 public readonly record struct AvatarState(
     float SpeedMetersPerSecond = 0,
     bool Grounded = true,
@@ -26,7 +28,8 @@ public readonly record struct AvatarState(
     float WindUp01 = 0,
     bool Flying = false,
     bool Twirl = false,
-    bool Flail = false);
+    bool Flail = false,
+    float? FlightPose01 = null);
 
 /// <summary>
 /// The traveller (original character, "Lantern Cosmos"): a small rounded figure ≈ 1.1 m tall — a cloak-like body, a
@@ -256,7 +259,9 @@ public partial class AvatarRig : Node3D
         float Ease(float current, float target, float ratePerSecond) => current + (target - current) * (1 - Mathf.Exp(-ratePerSecond * dt));
         var speed = Mathf.Max(0, state.SpeedMetersPerSecond);
         _run = Ease(_run, state.Grounded && !state.Flying ? Mathf.Clamp(speed / FullRunMetresPerSecond, 0, 1) : 0, RunEaseRate);
-        _fly = Ease(_fly, state.Flying ? 1 : 0, FlyEaseRate);
+        // The flight pose eases in after a take-off; a pose the caller lowers (feet first for a landing, PLANET-81) is
+        // followed exactly, so it is a function of the flight's time and a long frame cannot make it jump.
+        _fly = state.Flying && state.FlightPose01 is { } pose ? MathF.Min(Ease(_fly, pose, FlyEaseRate), pose) : Ease(_fly, state.Flying ? 1 : 0, FlyEaseRate);
         _wind = Ease(_wind, Mathf.Clamp(state.WindUp01, 0, 1), WindEaseRate);
         _air = Ease(_air, state.Grounded || state.Flying ? 0 : 1, AirEaseRate);
         _vertical = Ease(_vertical, state.VerticalSpeedMetersPerSecond, VerticalEaseRate);
