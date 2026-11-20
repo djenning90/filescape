@@ -4,6 +4,44 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Sixth pass (2026-11-20)
+
+### Stream 6: the picture world as a gallery, Windows' thumbnails, media worlds, the yellow cube (PLANET-130..136, AD-86)
+
+Branch `worktree-agent-a2c2a4ab8c25ac9ed` from `7680d22`. Runs from the worktree project (`fs.sh run`, the shared
+launch lock held per launch), not an exported build. Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-stream6\`
+(`base-cube` = the stray highlight reproduced before its fix; `work-*` the fixture; `real-*` DJ's OneDrive Pictures and
+a Screenshots folder, counts only in the logs, screenshots local). Fixture: `FileScape.Fixtures create-gallery` (now with
+unmarked crowds of 3, 30 and 300 pictures beside the stress gallery).
+
+**Found first:** on DJ's PC the Pictures known folder is redirected to `OneDrive\Pictures`; its top level holds 42
+pictures, 4 videos and `desktop.ini` (49 of 53 files cloud-only: attributes `0x401620`; the rest `0x420`, synced and on
+this PC); Saved Pictures is **empty**; Screenshots folders hold 1 and 31 pictures. Every synced file carries OneDrive's
+Cloud Files tag, which FileScape read as "placeholder", hence a warning on every photo. The yellow cube is the legacy
+views' selection box left drawn after switching to Planets (AD-86): reproduced on the base code (`base-cube`: "drawn in
+Places True; after Planets drawn True").
+
+| Area | Status | Evidence |
+|---|---|---|
+| Media character by marker, contents, picture library (redirected Pictures), inside a gallery; mixed folders ordinary (PLANET-130) | **Demonstrated** (Core, in-app, DJ's folders) | `MediaWorldTests` 6/6 (written first, 6/6 failing on stubs); `GalleryTests` (Sketches inherits, Desk ordinary, a crowd by contents); `planets-gallery`: Sketches fills by itself, the Desk reads nothing (0 asked); DJ's Pictures and Screenshots: Gallery (MostlyPictures), the arrival card "a picture gallery of 42 pictures" |
+| Windows' thumbnails first, then FileScape's decoder; bounded (PLANET-131) | **Demonstrated** | `ShellThumbnailTests` (Windows) pass; `ThumbnailPlanTests` 8/8 (7 seen failing on stubs first); fixture: 136 answers from Windows' cache, median 8 ms (p95 12 ms); DJ's Screenshots: 46 from the cache, median 14 ms; peaks 2 in flight, ≤ 62 shown, ≤ 3 sharp everywhere |
+| Cloud-only thumbnails | **Provisional** | On DJ's PC every cloud-only picture Windows had **cached** came from the cache without a download; for the uncached ones Windows' extraction returned nothing (`0 extracted`, 24 then 8 "none"), so FileScape fetched (downloaded) the picture to decode it — allowed by DJ, ≈ 0.4–2.5 s each. Since the last change a canvas fetches only pictures ≤ 8 MiB by itself; larger ones wait for E or R. **17 of DJ's cloud-only pictures in `OneDrive\Pictures` are now on this PC** because of the first real run (contents unchanged; nothing pinned, moved or renamed) |
+| Readable canvases: scale 2 facing the arrival, fitted in a mat; 3 / 30 / 300 (PLANET-132) | **Demonstrated** (Core, screenshots); composition by feel: DJ | `PlanetComposerTests` 3/30/300 (written with the change, not before); crowds: 3 + 0, 30 + 0, 62 + 238 in the pile, radii 17.6 / 26.2 / 31.9 m; screenshots `work-4\14..16` |
+| Loading and failure on the canvas; near pictures sharpen; frame time (PLANET-133) | **Demonstrated** on the fixture; **provisional** on DJ's folder | fixture frames while 62 canvases fill: p95 18 ms, max 35 ms; the damaged picture's canvas "failed: could not be decoded"; beside the dawn picture its canvas is sharp. DJ's Pictures: p95 41 ms, max 214 ms while filling (the planet was recomposed once its listing finished; not separated) |
+| Fill time | **Demonstrated** (fixture, before the last change) | crowd of 300: first canvas 16 ms, half 2.4 s, all 62 in 5.9 s; crowd of 30: all in 2.4 s; DJ's Screenshots (31): all 30 in 3.2 s. The plan asked only every 0.2 s although the cache answered in 8 ms: it now plans again as soon as a request finishes. After that change (`work-5`, 62/0) the gallery's 11 canvases were answered within 0.1 s of the arrival settling, and in each crowd (3, 30, 62 of 300) every canvas was already filled when the arrival had settled (Windows' thumbnail cache warm from the earlier runs) |
+| Memory | **Demonstrated** | canvas textures 0.8 / 7.5 / 15.5 MiB at 3 / 30 / 62 canvases; session cache ≤ 30.5 MiB (of 64); Godot texture memory 318 → 349 MiB across the three crowds; working set 671–706 MiB (the whole app) |
+| Progressive viewer, cloud fetch, oversize / 63 Mpx / HEIC via Windows, damaged refused (PLANET-134) | **Demonstrated** | fixture: a picture in the viewer's first frame (canvas thumbnail or Windows' 1,024 px in 7–11 ms), then the decode; the 24.1 MiB poster and the 63 Mpx scan shown from Windows' thumbnail with the reason; damaged refused. DJ's folders: quick picture in 13–41 ms, cloud-only photos fetched and decoded in 0.4–2.5 s (Pictures) and 0.7–12.5 s (Screenshots; three wide ones 11.6–12.5 s); GIFs shown from Windows' thumbnail |
+| No warnings for ordinary photos; Open without the question (PLANET-135) | **Demonstrated** | Core verdicts; preview of a cloud-only photo shows the picture (no "cloud file" text); Enter in the viewer: no question, Windows opened it (`real-screenshots`, `--open-one`: Photos started, PID tracked and closed by me afterwards; it was not running before) |
+| The yellow cube (PLANET-136) | **Demonstrated** | failed on the base code, passes after (fixture, DJ's Pictures, Screenshots) |
+| Existing journeys after the change | **Demonstrated** in-app | `planets-gallery --root=gallery` (the app's sample, now version 2 with the Desk) 46/0; `planets-journey` 41/0 (the Starter Sky's Garden Photos is now a gallery by its contents); the fixture journey 62/0 (`work-5`), added to `verify.sh` as `planets-gallery-fixture` (skipped when no `create-gallery` fixture with crowds exists) |
+| Runs and time | — | 11 launches, 451 s active, 2,940 s waiting for the shared launch lock. Reruns: `work-1..3` (a stale planet reference in the probe after the Places round trip, then a diagnosis line — instrument), `real-pictures-2` (the same stale reference in the fill measurement — instrument), `work-4/5` (after the fixes). No product rerun |
+| Core | WSL 801 passed, 29 skipped, 5 failed — all five are render/layout **timing bounds** (`…_is_cheap`, `Layout_is_deterministic_and_fast…`) in code this stream did not touch, measured at load average ≈ 7.6 with other streams' runs (**environment**) | `tools/fs.sh test-wsl` (227 s) |
+
+**How to play:** any folder that is mostly pictures — or any folder in your Pictures (also when Pictures lives in
+OneDrive) with some pictures — is a gallery: the pictures stand large, facing where you land, and fill in as you walk
+(nearest first; the one beside you sharpens). E on a picture, R to view it large: it appears at once and sharpens; a
+photo only in OneDrive is fetched (the caption says so). Enter opens it with Windows, without a question.
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
