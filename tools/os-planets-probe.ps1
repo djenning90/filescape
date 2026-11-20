@@ -46,7 +46,7 @@
 
   -Landmarks (PLANET-54..56, PLANET-73..75; 2026-11-17, extended 2026-11-19) on the Starter Sky with the recording
   test shell: walks towards the overlook until the telescope's sign and its prompt "E · up to the telescope" appear,
-  E there lifts you onto the platform (telescopeClimbs), E again opens the list (telescopeLists); walks to the nearest
+  E there lifts you onto the platform (telescopeClimbs), E again looks through it (scope.views; Right steps, Esc back, AD-85); walks to the nearest
   piece of scenery that answers (sceneryBearing/sceneryDistance), a real jump and twirl beside it makes it answer
   (sceneryReplies); J to Music Box, a twirl beside the bell tower rings nothing, walks under the bell, a jump rings
   nothing, a jump and twirl rings it once (bellRings, bellSwing); J to the sample's Hearth world (-HearthWorld, default
@@ -966,12 +966,23 @@ try {
     for ($i = 0; $i -lt 20 -and -not ((State).planets.onOverlook -and (State).planets.grounded); $i++) { Start-Sleep -Milliseconds 150 }
     Start-Sleep -Milliseconds 800; $s = (State).planets
     Check ($s.onOverlook -and [int]$s.telescopeClimbs -eq $c0 + 1 -and -not $s.listOpen) "a real E at the approach lifts you onto the overlook (climbs +$([int]$s.telescopeClimbs - $c0), feet $($s.height) m): '$($s.prompt)'"
-    Check ($s.prompt -clike 'E*Telescope:*') "on the platform the prompt: '$($s.prompt)'"
+    Check ($s.prompt -like '*look through the telescope*') "on the platform the prompt says what E does: '$($s.prompt)'"
     Shot 'landmarks-telescope-top' | Out-Null
-    Hold-Key 'E' 60; Start-Sleep -Milliseconds 700
-    Check ((State).nav.listOpen -and [int](State).planets.telescopeLists -ge 1) "E at the telescope opens this world's list"
-    Shot 'landmarks-telescope-list' | Out-Null
-    Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400
+    # PLANET-125..127 (AD-85): E opens the view through the telescope (it used to open the list); a real Right steps to
+    # the next framed world, a real Esc glides back to where you stood.
+    $v0 = [int]$s.scope.views
+    Hold-Key 'E' 60
+    for ($i = 0; $i -lt 20 -and -not (State).planets.scope.open; $i++) { Start-Sleep -Milliseconds 100 }
+    Start-Sleep -Milliseconds 1200; $sc = (State).planets.scope
+    Check ($sc.open -and [int]$sc.views -eq $v0 + 1 -and -not (State).nav.listOpen -and [int]$sc.targets -ge 1) "a real E at the telescope looks through it ($($sc.targets) worlds framed, aim $($sc.aimError)°, lens $($sc.fov)°; the list stays shut)"
+    Shot 'landmarks-telescope-view' | Out-Null
+    $t0 = [int]$sc.target
+    Hold-Key 'Right' 60; Start-Sleep -Milliseconds 900; $sc = (State).planets.scope
+    Check ($sc.open -and ([int]$sc.targets -lt 2 -or [int]$sc.target -ne $t0)) "a real Right steps to the next world ($t0 -> $($sc.target) of $($sc.targets))"
+    Hold-Key 'Escape' 60
+    for ($i = 0; $i -lt 30 -and (State).planets.scope.open; $i++) { Start-Sleep -Milliseconds 100 }
+    Start-Sleep -Milliseconds 600; $s = (State).planets
+    Check (-not $s.scope.open -and [double]$s.scope.standError -lt 0.05 -and $s.onOverlook) "a real Esc steps back to where you stood (off by $($s.scope.standError) m, still on the overlook)"
 
     # ---- scenery that answers (PLANET-75): walk to the nearest answering piece (a lantern on the Starter Sky) and twirl.
     $s = Steer-By 'sceneryBearing' 'sceneryDistance' 1.1 120
