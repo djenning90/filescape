@@ -93,8 +93,13 @@ public partial class PlanetsProbe
         if (Cue.Phase == TutorialCuePhase.Far)
         {
             await WalkUntil(lm.Direction, () => Cue.Phase != TutorialCuePhase.Far || App.TutorialStep != 1, 12);
-            Check(App.TutorialStep == 1 && Cue.Phase == TutorialCuePhase.Near && Cue.Mode == TutorialCueMode.OnScreen && Cue.Action.Length > 0,
-                F($"approaching: the cue says near ({Cue.Phase}, {Cue.DistanceMetres:0.0} m from the ring; chevron at y {Cue.Anchor.Y:0}, was {farY:0}; pill '{Cue.Action}')"));
+            // Since walking eases the camera back to its usual pitch (PLANET-84), the low walking view can see the ring's centre
+            // just past the planet's brow: the cue is then pinned at the horizon over the tower (the screenshot shows the chevron
+            // on the tower and the ring in view), which is as good as on screen for a player walking up to it.
+            var shown = Cue.Mode == TutorialCueMode.OnScreen
+                || (Cue.Mode == TutorialCueMode.Horizon && Cue.Anchor.X > 0 && Cue.Anchor.X < view.X && Cue.Anchor.Y > 0 && Cue.Anchor.Y < view.Y);
+            Check(App.TutorialStep == 1 && Cue.Phase == TutorialCuePhase.Near && shown && Cue.Action.Length > 0,
+                F($"approaching: the cue says near ({Cue.Phase}, mode {Cue.Mode}, step {App.TutorialStep}, {Cue.DistanceMetres:0.0} m from the ring; chevron at y {Cue.Anchor.Y:0}, was {farY:0}; pill '{Cue.Action}')"));
             await Shot("cues-7-tower-near");
         }
         else
