@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # FileScape verification tiers (TEST-01, AD-29; see docs/windows-workflow.md "Verification tiers").
 #   tools/fs.sh check harness   ~3 s     the harness's own judging, with test doubles (tools/verify-selftest.sh).
-#   tools/fs.sh check fast      ~1.5 min app build + Core tests (Windows and WSL side by side). Every commit.
+#   tools/fs.sh check fast      ~3.5 min app build + Core tests (Windows and WSL side by side). Every commit.
 #   tools/fs.sh check smoke     ~5 min   fast + a staged export (reused for the same source state) + the short end-to-end
 #                                        journeys (walk-explore, hub → project → README/editor, the planets basics).
-#   tools/fs.sh check full      ~30 min  smoke + every functional journey (assertions only; measurement segments
+#   tools/fs.sh check full      ~32 min  smoke + every functional journey (assertions only; measurement segments
 #                                        are logged as SKIP) at UI 1.0, and the HUD-sensitive journeys at UI 1.25.
 #   tools/fs.sh check release   ~40 min  full, with measurements, plus walk at 1.25, walk-perf, real OS input at 1.0
 #                                        and 1.25 (moves the real mouse and takes focus), and the recording.

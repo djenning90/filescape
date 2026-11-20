@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # FileScape helper for working from WSL against the Windows toolchain. The source of truth stays in this WSL repo.
 #   tools/fs.sh build            build the Godot C# project (and Core) with Windows dotnet
-#   tools/fs.sh test [args]      run the test suite with Windows dotnet (includes Windows-only tests); without args it
-#                                builds once and runs three shards side by side, then prints one combined count
-#   tools/fs.sh test-wsl [args]  the same with the Linux SDK (Windows-only tests skip)
+#   tools/fs.sh test [args]      run the test suite with Windows dotnet (includes Windows-only tests), one process
+#                                (FS_TEST_SHARDS=1: three shards side by side, then one combined count)
+#   tools/fs.sh test-wsl [args]  the Linux SDK (Windows-only tests skip); without args three shards side by side
 #   tools/fs.sh run [-- args]    launch the app on Windows (args after -- go to FileScape, e.g. --root='C:\some dir')
 #   tools/fs.sh editor           open the Godot editor on the project
 #   tools/fs.sh export           export to a fresh staging dir, verify (files, hashes, a smoke launch), then promote it to
@@ -144,6 +144,9 @@ launch() {
 # Three processes with complementary filters (SkySynthTests whose name contains "theme", SkySynthTests whose name does
 # not, everything else) run every test exactly once by construction and finish in about the longest shard's time. A
 # shard that reports no result fails the run, so a filter that matched nothing cannot pass silently.
+# Default per host (2026-11-19 measurement): WSL shards (152 s -> 80 s); Windows stays one process. Windows shards gained
+# nothing (169 s sharded beside the WSL tests vs 154 s plain) and six test processes at once pushed the timing-bound
+# "Rendering_one_second_of_music_with_six_effects_is_cheap" (best < 60 ms) to 63.8 ms. FS_TEST_SHARDS=1 or 0 forces it.
 CORE_TEST_SHARDS=(
   'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName~theme'
   'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName!~theme'
@@ -159,14 +162,16 @@ core_tests() {
   local -a dn extra; local proj
   if [[ "$host" == windows ]]; then dn=("$(find_dotnet)"); proj="$(wslpath -w "$REPO/tests/FileScape.Core.Tests")"; extra=("${NOSERVERS[@]}")
   else dn=(dotnet); proj="$REPO/tests/FileScape.Core.Tests"; extra=(); fi
-  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-1}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
+  local shards=1; [[ "$host" == windows ]] && shards=0
+  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-$shards}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
   local t0=$SECONDS
   "${dn[@]}" build "$proj" -nologo -v q "${extra[@]}" || { echo "fs.sh: Core tests did not build ($host)" >&2; return 1; }
   local tmp i code=0; tmp="$(mktemp -d)"
   SHARD_PIDS=()
   trap 'kill "${SHARD_PIDS[@]}" 2>/dev/null; exit 130' INT TERM
   for i in "${!CORE_TEST_SHARDS[@]}"; do
-    ( s=$SECONDS; "${dn[@]}" test "$proj" --no-build -nologo "${extra[@]}" --filter "${CORE_TEST_SHARDS[$i]}" > "$tmp/$i.out" 2>&1; echo "$? $((SECONDS - s))" > "$tmp/$i.code" ) &
+    # The subshell inherits set -e: the exit code is caught with || so a failing shard still writes its code file.
+    ( s=$SECONDS; c=0; "${dn[@]}" test "$proj" --no-build -nologo "${extra[@]}" --filter "${CORE_TEST_SHARDS[$i]}" > "$tmp/$i.out" 2>&1 || c=$?; echo "$c $((SECONDS - s))" > "$tmp/$i.code" ) &
     SHARD_PIDS+=($!)
   done
   wait "${SHARD_PIDS[@]}" || true

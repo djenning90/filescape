@@ -20,8 +20,9 @@ To remove everything: delete `C:\Users\David\tools\godot` and `%LOCALAPPDATA%\Fi
 
 ```
 tools/fs.sh build        # Windows dotnet build of app + Core (fails loudly on errors)
-tools/fs.sh test         # full test suite with Windows dotnet.exe (includes Windows-only tests)
-tools/fs.sh test-wsl     # Linux SDK; the 10 Windows-only tests skip with a reason
+tools/fs.sh test         # full test suite with Windows dotnet.exe (includes Windows-only tests), one process (FS_TEST_SHARDS=1: shards)
+tools/fs.sh test-wsl     # Linux SDK in three shards side by side; the Windows-only tests skip with a reason
+tools/fs.sh test --filter 'FullyQualifiedName~PlaceTests'   # with arguments: one plain `dotnet test` (FS_TEST_SHARDS=0 too)
 tools/fs.sh run -- --root='C:\some\folder'      # run from the project via the editor binary
 tools/fs.sh editor       # open the Godot editor on app/
 tools/fs.sh export       # standalone build → %LOCALAPPDATA%\FileScape\build\FileScape.exe (+ data_FileScape.App_windows_x86_64\)
@@ -51,14 +52,19 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\File
 | Command | Takes | Runs | When |
 |---|---|---|---|
 | `tools/fs.sh check harness` | ≈ 3 s | the harness's own judging, every pass/fail path with test doubles (nothing launched) | after changing `verify.sh` or `verify-lib.sh` |
-| `tools/fs.sh check fast` | ≈ 0.5 min | app build, Core tests on Windows and WSL | every change |
-| `tools/fs.sh check smoke` | ≈ 3.5 min | fast + `fs.sh stage` + walk-explore, the hub → project journey and the planets journey on the Starter Sky (UI 1.0, functional) | before a commit that touches the app |
-| `tools/fs.sh check full` | ≈ 11 min | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids, aerial limit (budgets 24 and 8) at 1.0; explore, places and planets at 1.25 (functional); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
-| `tools/fs.sh check release` | ≈ 20 min | full with measurements, walk at 1.25, walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recordings (planets journey, explore) | evidence for a report |
+| `tools/fs.sh check fast` | ≈ 3.5 min (205 s, 2026-11-19) | app build, Core tests on Windows and WSL | every change |
+| `tools/fs.sh check smoke` | ≈ 10 min | fast + `fs.sh stage --reuse` + walk-explore, the hub → project journey and the planets journey on the Starter Sky (UI 1.0, functional) | before a commit that touches the app |
+| `tools/fs.sh check full` | ≈ 32 min of steps (2026-11-19: 1,888 s, plus any launch-lock waits) | smoke + walk, places (connected, tree), scan, navigation, map journey, planetoids, aerial limit (budgets 24 and 8) at 1.0; explore, places and planets at 1.25 (functional); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
+| `tools/fs.sh check release` | ≈ 50 min (not re-measured) | full with measurements, walk at 1.25, walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recordings (planets journey, explore) | evidence for a report |
+| `tools/fs.sh check journeys NAME...` | the named steps | only the named journeys (shell patterns: `'planets-nav*'`), on a staged build (reused) and without Core tests; real-input steps (`os-*`) only by exact name; `--measure` keeps measurement segments; `--list` prints every step name | while working on a journey |
 
 - **Output:** each run writes `%LOCALAPPDATA%\FileScape\evidence\checks\<tier>-<stamp>\summary.txt`, with every step's seconds, its exit code, and its PASS/FAIL/SKIP counts.
+- **Timing table (TEST-05, AD-80):** every run ends with one table: each step's name, result (`pass`, `fail`, `timeout`, `skipped`, `interrupted`) and seconds, then the total and the counts. It is printed last, appended to `summary.txt` and written to `timing.txt` in the same folder. It also appears after a failure, a timeout, an early exit (no fixtures, no staged build) and Ctrl+C or SIGTERM. A signal stops the running step's command (only the process the harness started) and marks that step `interrupted`. The Core tests' rows carry their counts (`734 passed, 0 failed, 26 skipped of 760`).
+- **Shared desktop: `FS_LAUNCH_LOCK=/path`.** Each app launch (every journey, real-input probe and recording, the stage's smoke launch, `fs.sh run`) holds this flock for that launch only. The lock's descriptor is closed in the launched command. A step's seconds are its own run. Its wait for the lock is in its note (`lock wait 48.2 s`), and the TOTAL line sums the waits. Example: `FS_LAUNCH_LOCK=/tmp/claude-1000/filescape-journey.lock tools/fs.sh check full`.
+- **What runs side by side:** the WSL Core tests run as three `dotnet test --no-build` processes with complementary filters (SkySynthTests with "theme" in the name, SkySynthTests without, everything else). Each test runs exactly once, and a shard without a result line fails. The WSL tests run in the background beside the build, the Windows tests and the stage, because they use their own `obj/`, `bin/` and SDK. The journeys wait for them, because their timing checks must not share the machine.
+- **Upper bounds:** build 600 s, each host's tests 1,200 s, stage 1,800 s. A hang ends as a `timeout` row.
 - **Functional tier (`--tier=functional`):** keeps every assertion. It leaves out measurement-only frame recordings and logs each one as `SKIP perf …`, so a functional run is visibly not a performance run.
-- **Reusing a build:** `--exe=<staged FileScape.exe>` reuses a build, and `fs.sh stage` makes one without installing it.
+- **Reusing a build:** `--exe=<staged FileScape.exe>` reuses a build, and `fs.sh stage` makes one without installing it. Since 2026-11-19 the tiers call `fs.sh stage --reuse`. It uses the newest staging folder that is complete, passed its smoke launch and has the same `source_state` in `build-info.txt`: a hash of the commit, the uncommitted diff and the untracked files that are not ignored. A clean tree also matches an older build-info by its full commit and `uncommitted_paths 0`. The stage row then says `reused staging-…`. `--fresh-stage` always exports a new one.
 - **How a step is judged (AD-37, `tools/verify-lib.sh`):** it fails on a non-zero exit (a timeout is named), a missing or empty result file, a result file with no PASS/FAIL lines, or any FAIL; a recording fails without exit 0 and a non-empty video. The reason is printed on the step's line. A partial result file with passing lines never hides a crash or timeout.
 - **Real input, right-hold:** `tools/os-righthold-repeat.ps1 -Exe … -Root … -Out … [-Cycles 20] [-Launches 1] [-UiScale 1]` repeats the right-hold look check with per-cycle timing from the state file (`seq`, `appMs`, `lookBeganMs`, last long frame). It moves the mouse and takes focus; it closes only the process it started.
 - **Aerial budget:** `--test-max-islands=N --automate=walk-aerial-limit --root=<Wayfarer>` runs the aerial-limit journey with a small budget.
