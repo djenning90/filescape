@@ -1562,3 +1562,34 @@ as FileScape while naming remains open.
 - **Unknown:** nobody has listened. Whether the star chart and the second light are good, whether the aurora sounds belong,
   and whether 3.5 s feels right through hops are DJ's call by ear. **Revisit if:** DJ wants the overlook on B left out, a
   different dwell (`GameMinimumDwell`), Dorian for fewer places, or the aurora in a world's arrangement.
+
+## AD-80 Every check ends with a timing table; the Core tests and the export stop costing avoidable minutes (2026-11-19, TEST-05)
+
+- **Problem:** DJ: make testing time visible and reduce avoidable waits. `verify.sh` printed each step's seconds as it
+  went, but no end-of-run table. A failure, an early exit or Ctrl+C left no total, and skips were not counted. Agents
+  sharing the desktop also needed one lock per app launch, and the lock wait must not count as a step's time.
+- **Measured before** (`check full` on `c8f5e96`, the reporting only, beside six other streams): 2,706 s of steps
+  plus 4,866 s of launch-lock waits. The steps before the journeys took 1,007 s: tests 268 + 223 s and stage 493 s
+  (including its smoke launch's lock wait), all inflated by the load. The quiet run that morning on `78a41f3` took
+  2 + 154 + 148 + 31 s. The journeys took 1,696 s, and their launch overhead is ≈ 1.2 s each. On each host the Core
+  tests' wall time is SkySynthTests (≈ 145 s run serially, as one xunit collection).
+- **Decision:**
+  - A table at the end of every run (`verify-lib.sh` `timing_table`, printed from an EXIT trap, also to
+    `timing.txt`). Results are pass/fail/timeout/skipped/interrupted. A signal stops only the step the harness started.
+  - `FS_LAUNCH_LOCK` takes a flock for each launch. The lock descriptor is closed in the child, and the wait is
+    reported apart from the step's seconds.
+  - The WSL tests run in the background beside the build, the Windows tests and the stage. Their outputs are
+    separate (Directory.Build.props). They are waited for before the first journey.
+  - The WSL tests run as three complementary filter shards, so each test runs exactly once and a shard without a
+    result fails. Windows keeps one process: sharding there gained nothing, and six test processes at once pushed a
+    best-of timing bound (60 ms) to 63.8 ms.
+  - `stage --reuse` reuses a verified staging folder of the same `source_state` (commit + diff + untracked files).
+  - `check journeys NAME...` runs only the named steps. Real-input steps run only when named exactly.
+- **Not done (kept as they are):**
+  - Journeys were not merged.
+  - Frame-bound typing (`planets-dialog-keys`, 170 s) was not sped up: that would change frame pacing, which the
+    checks depend on.
+  - Fixed waits inside journeys are mostly settle times (≤ 4 s) before a measurement, and were not changed.
+  - SkySynthTests was not split into classes, which would conflict with streams editing it.
+- **Revisit when:** the Core tests exceed ≈ 2 min on a quiet machine, or a timing-bound test fails beside the other
+  host's tests.

@@ -59,6 +59,44 @@ expect rec-empty       fail "empty video file"          recording_step rec-empty
 echo "summary lines written by the harness:"; sed 's/^/  /' "$SUM"
 echo "failing steps counted: $FAILS (expected 12)"
 [[ $FAILS -eq 12 ]] || BAD=$((BAD + 1))
+
+# Timing rows (TEST-05): every judged step has one, with the result word the table shows.
+skip_step skipped-one "an optional fixture is missing"
+# row NAME RESULT: the step's row has this result.
+row() {
+  local r; r="$(printf '%s\n' "${TIMING_ROWS[@]}" | grep -E "^$1\|" | tail -1 | cut -d'|' -f2)"
+  if [[ "$r" == "$2" ]]; then printf 'ok    %-26s row %s\n' "$1" "$2"; else printf 'WRONG %-26s row %s, wanted %s\n' "$1" "$r" "$2"; BAD=$((BAD + 1)); fi
+}
+row clean pass; row assertion-fail fail; row exit-nonzero fail; row timed-out timeout; row missing fail
+row rec-clean pass; row rec-timeout timeout; row rec-empty fail; row skipped-one skipped
+[[ ${#TIMING_ROWS[@]} -eq 15 ]] || { echo "WRONG timing rows: ${#TIMING_ROWS[@]}, wanted 15"; BAD=$((BAD + 1)); }
+
+# The launch lock: the wait for it is in the note, not in the step's seconds.
+LOCK="$OUT/launch.lock"
+flock "$LOCK" sleep 1.5 & holder=$!
+sleep 0.2
+FS_LAUNCH_LOCK="$LOCK" probe_step locked 5 "$R/locked.txt" probe bash -c "double '$R/locked.txt' '$P2' 0" > /dev/null
+wait "$holder"
+locked="$(printf '%s\n' "${TIMING_ROWS[@]}" | grep '^locked|')"
+lsecs="$(cut -d'|' -f3 <<<"$locked")"; lwait="$(grep -oE 'lock wait [0-9.]+' <<<"$locked" | grep -oE '[0-9.]+$')"
+if [[ -n "$lwait" ]] && (( $(echo "$lwait >= 1.0 && $lsecs < 1.0" | bc) )); then echo "ok    locked                     waited $lwait s for the lock, ran $lsecs s"
+else echo "WRONG locked: $locked"; BAD=$((BAD + 1)); fi
+
+# Interrupted: a signal during a step (SIGTERM here: a background shell starts with SIGINT ignored, so the test cannot
+# send Ctrl+C; verify.sh traps both) stops its command at once, records it as interrupted, and the table still prints.
+INT_OUT="$OUT/int"; mkdir -p "$INT_OUT"
+bash -c '
+  source "$1/tools/verify-lib.sh"; OUT="$2"; SUM="$2/summary.txt"; FAILS=0; export -f double 2>/dev/null
+  trap "interrupt_current; timing_table interrupted-run 9.9; exit 143" TERM
+  probe_step long 30 "$2/long.txt" probe sleep 20
+' _ "$REPO" "$INT_OUT" > "$INT_OUT/table.txt" 2>&1 & runner=$!
+sleep 0.5; t=$(date +%s.%N); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
+if grep -qE '^long +interrupted' "$INT_OUT/table.txt" && grep -q '^TOTAL .*1 interrupted' "$INT_OUT/table.txt" && (( $(echo "$took < 3" | bc) )); then
+  echo "ok    interrupted                stopped in $took s, row and table printed"
+else echo "WRONG interrupted (took $took s):"; sed 's/^/      /' "$INT_OUT/table.txt"; BAD=$((BAD + 1)); fi
+pgrep -f 'sleep 20' > /dev/null && pgrep -af 'sleep 20' | grep -q "$INT_OUT" && { echo "WRONG interrupted: its command still runs"; BAD=$((BAD + 1)); }
+
+echo "timing table:"; timing_table selftest 1.0 | sed 's/^/  /'
 rm -rf "$OUT"
 if [[ $BAD -eq 0 ]]; then echo "verify harness self-test: all paths judged as expected"; else echo "verify harness self-test: $BAD WRONG"; fi
 exit $(( BAD > 0 ? 1 : 0 ))

@@ -322,6 +322,66 @@ on a ring that must stay open are drawn down to 2.5 px.
 growing in 4-second steps while discovery lists your own world. Not run: real input; an exported build; `check full`
 (the integrator runs it). On `C:\` the 1,500-world layout budget still limits how far discovery reaches.
 
+### Testing time made visible, avoidable waits removed (TEST-05, AD-80)
+
+DJ: measure the integration suite's elapsed time and report total and per-step durations on every run, including
+failures and timeouts; find the slowest steps and take straightforward savings without weakening coverage.
+
+**What was already there:** `verify.sh` printed each step's seconds as it went and a TOTAL line. There was no
+end-of-run table, nothing after an early exit or Ctrl+C, and skips were not counted.
+
+**Before and after.** Both runs were `check full` with `FS_LAUNCH_LOCK` on a desktop shared with six other streams.
+Step seconds exclude lock waits.
+
+| Segment | Before (`c8f5e96`, reporting only) | After (`5461f7b`) |
+|---|---|---|
+| build | 23.7 s | 21.0 s |
+| tests-windows | 267.6 s (1 process) | 169.2 s (3 shards; Windows now back to 1 process: see below) |
+| tests-wsl | 222.5 s, after Windows | 122.8 s (3 shards), **beside** build, Windows tests and stage |
+| stage | 493.3 s (with the smoke launch's lock wait) | 33.8 s (lock wait 0.0 s, reported apart) |
+| Up to the first journey (wall) | ≈ 1,007 s | ≈ 224 s |
+| 43 journeys (sum) | 1,695.7 s | 1,661.0 s (unchanged: no probe code changed) |
+| Steps total / wall | 2,706 s / 7,573 s (4,866 s lock waits) | 1,888 s / 5,187 s (3,298 s lock waits) |
+| Counts | 44 pass, 1 fail, 2 skipped | 43 pass, 2 fail, 2 skipped |
+
+- **Final configuration** (`check fast` after the Windows change, quiet desktop): tests-windows 202.4 s as one
+  process, tests-wsl 90.9 s in shards beside it, 205.3 s wall. Counts: 736/0/27 of 763 and 734/0/26 of 760, the same
+  as before.
+- **The quiet morning reference** (`78a41f3`, serial): 2 + 154 + 148 + 31 s before the first journey.
+- **Journey counts:** every journey's PASS/FAIL/SKIP counts are identical before and after, except
+  `planets-overview-discovery` "X pauses". It passed before and failed after. This is the intermittent failure from
+  the fourth follow-up (cause **unknown**), not caused by this work.
+- **Failures in these runs (instrument, from load):**
+  - Before: `WorldLayoutTests.Layout_is_deterministic_and_fast_for_thousands_of_folders` on WSL, 242 ms against a
+    150 ms bound, beside the other streams.
+  - After: `SkySynthTests.Rendering_one_second_of_music_with_six_effects_is_cheap` on Windows, 63.8 ms against a
+    60 ms bound, with six test processes at once. Windows therefore runs as one process again.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Timing table at the end of every run (pass/fail/timeout/skipped/interrupted, seconds, total), from an EXIT trap, also in `timing.txt` | **Demonstrated** | Both full runs; an early exit (no staged exe) printed the table; `check harness`: rows for every judged path, a skip, a lock wait kept out of the seconds, SIGTERM mid-step (stopped in 0.0 s, row `interrupted`) |
+| `FS_LAUNCH_LOCK` per launch (journeys, probes, recordings, smoke launch, `fs.sh run`), wait reported apart | **Demonstrated** | Both full runs (waits 0–644 s per journey while the step seconds matched the quiet run to ≈ 1 s) |
+| WSL Core tests in three complementary shards (each test once; a shard without a result fails) | **Demonstrated** | 152 s → 80 s alone, 734/26/760 as before |
+| WSL tests beside build, Windows tests and stage | **Demonstrated** | After run, `check fast` |
+| `stage --reuse` by `source_state` | **Provisional**: the code is in the tiers by default, but no measured re-run hit the cache (the after-run's commit was new; the integrator's next run on the same commit is the first real use). Saves ≈ 31 s per run | — |
+| `check journeys NAME...`, `--list`, `--measure` | **Demonstrated** for `--list` and an unmatched name; no journey launched through it yet | — |
+
+**Commands:** `FS_LAUNCH_LOCK=/tmp/claude-1000/filescape-journey.lock tools/fs.sh check full`;
+`tools/fs.sh check journeys 'planets-nav*' planets-look`; `tools/fs.sh check journeys --list`;
+`FS_TEST_SHARDS=0|1 tools/fs.sh test[-wsl]`.
+
+**Not changed:**
+- No journeys were merged.
+- `planets-dialog-keys` (170 s) is frame-bound typing; speeding it up would change the frame pacing its checks rely on.
+- The fixed waits inside journeys are settle times of 4 s or less before a measurement.
+- SkySynthTests was not split into separate classes, which would conflict with the streams editing it.
+
+**Open:**
+- SkySynthTests is still the WSL critical path (about 75 s per shard).
+- The Windows tests (150–200 s) are now the longest step before the journeys.
+- Timing-bound Core tests fail under heavy load: an instrument problem to address in the tests, not by serialising
+  the harness.
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)
