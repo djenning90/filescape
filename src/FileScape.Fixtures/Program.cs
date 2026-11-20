@@ -7,6 +7,7 @@ using FileScape.Fixtures;
 //   FileScape.Fixtures create-places [parent] creates the Places fixture (PLACE-*) and prints its roots
 //   FileScape.Fixtures create-walk [parent]   creates the walking-world fixture (links, identities, visibility)
 //   FileScape.Fixtures create-deep [parent]   creates "Deep Atlas" (7 levels × 3 folders, links, denied; PLANET-76)
+//   FileScape.Fixtures create-vast [parent] [moons]  creates "Vast Reach" (16 regions, ≈ 45,600 folders, routes 18 deep; PLANET-101..109)
 //   FileScape.Fixtures create-sky [parent]    creates a marked sky-<stamp>-<hex> holding the "Starter Sky" sample; prints its path
 //   FileScape.Fixtures create-gallery [parent] creates a marked gallery-<stamp>-<hex> holding "Picture Gallery" with its stress cases (PLANET-96)
 //     and, beside it, "Crowd of 3", "Crowd of 30" and "Crowd of 300" (unmarked; galleries by their contents, PLANET-130/132)
@@ -23,6 +24,9 @@ switch (args.FirstOrDefault())
         return 0;
     case "create-deep":
         Console.WriteLine(DeepFixture.Create(args.Length > 1 ? args[1] : null));
+        return 0;
+    case "create-vast":
+        Console.WriteLine(VastFixture.Create(args.Length > 1 && args[1] != "-" ? args[1] : null, args.Length > 2 ? int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 12));
         return 0;
     case "create-sky":
         Console.WriteLine(SkyFixture.Create(args.Length > 1 ? args[1] : null));
@@ -42,7 +46,7 @@ switch (args.FirstOrDefault())
         Console.WriteLine($"Deleted {FixtureBuilder.DeleteAllUnderDefaultParent()} fixture(s) under {FixtureBuilder.DefaultParent}");
         return 0;
     default:
-        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-places [parentDir] | create-sky [parentDir] | create-gallery [parentDir] | delete <fixtureRoot> | delete-all");
+        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-vast [parentDir|-] [moons] | create-places [parentDir] | create-sky [parentDir] | create-gallery [parentDir] | delete <fixtureRoot> | delete-all");
         return 2;
 }
 

@@ -1594,6 +1594,82 @@ as FileScape while naming remains open.
 - **Revisit when:** the Core tests exceed ≈ 2 min on a quiet machine, or a timing-bound test fails beside the other
   host's tests.
 
+## AD-81 The overview follows attention: its budget, discovery and status are spent nearest where you look (2026-11-20; amends AD-71, AD-77)
+
+- **Problem:** DJ (sixth pass, PLANET-101..109): after exploring toward `\\wsl.localhost\Ubuntu-24.04\home\david\src\filescape\app`
+  selecting folders stopped revealing their children; reopening the overview at a deeper folder sometimes showed only
+  that folder; the indicator said discovery was done at 1,500 worlds, clipped behind its Pause button. **Cause (product,
+  reproduced in Core before any change, `OverviewAttentionTests`, through the app's old calls):** the layout's budget
+  (1,500) went breadth-first from the root, and every relayout pinned every world already drawn (AD-71's "only adds").
+  Once the budget was full nothing could be added: a selected world's listing arrived but its children stayed folded as
+  "+N more"; discovery, whose candidates are the laid-out worlds, had nothing left near it and reported Complete ("done
+  at 1,500"). A fresh overview at a deep world spent the budget on the shallow levels and pinned only the way down, so
+  the world was drawn alone. The old message was one 520-wide line, longer than its label beside the button.
+- **Decision — attention (Core `OverviewAttention`, `UniverseLayout.Attention`):** the foci are the selected world (offset
+  0), where you stand (0; 1 while another world is selected, so on a root discovery does not go four levels deep
+  everywhere while you look elsewhere), the approached world (1) and the last four worlds selected or stood on (1.5, 2.5, 3.5,
+  4.5). A folder's attention cost is its tree distance to the nearest focus (one per level up to the common ancestor,
+  one per level down) plus that focus's offset, never more than a background of 2 per level below the root (so the top
+  two levels of everything stay, for scale). The budget is spent best-first by cost (then depth, then name), the ways
+  to every focus first. A folder's parent is always cheaper or on a way, so what is laid out stays connected. Without
+  attention (`null`) the layout is exactly the old one (behaviour baseline identical).
+- **Decision — give way, do not refuse; keep places:** nothing is pinned but the way to where you stand. What the last
+  layout drew is retained against small moves (`RetainBonus` 0.5: a world gives way only to one at least half a level
+  nearer attention; a bonus of 1.5 kept old neighbourhoods and left the new one folded). While the overview stays open,
+  every system keeps at least the ring and extent it had (`Reserves`): when its children give way it becomes a folded
+  world with its haze where its ring was, and nothing round it moves (Core: 28 m of drift on a 48 m ring without, < 1 ‰
+  with). Opening the overview starts fresh. Nothing learned is forgotten: the tree keeps every listing, and attention
+  returning lays a branch out again at the next relayout without listing it again.
+- **Decision — relayout on attention:** when the budget is full (something was folded by it) and the foci changed, the
+  overview lays out again after 0.3 s (a select is answered at once; the approached world, which changes while gliding,
+  cannot relay out every frame). When everything fits, attention changes nothing in the picture and nothing is redone.
+  The anchored glide (AD-71) is unchanged.
+- **Decision — discovery's reach:** discovery is offered only the laid-out worlds known by name within attention cost 4:
+  four levels below the selected world and where you stand (five drawn), three below the approached world, two below
+  the root by the background. No recursive discovery through distant branches; play discovery (AD-77) uses the same
+  attention (where you stand) and reach.
+- **Decision — the neighbourhood and the indicator:** the neighbourhood is the attended world (selected, else where you
+  stand) and three levels below; it is complete when no laid-out world in its first three levels is waiting to be
+  listed (denied, failed, refused and out-of-scope folders are counted as can't-be-listed). The indicator has two lines
+  in their own column beside a fixed-width button (`OverviewStatus`): "◐ Discovering round app: 5 of 12 folders listed · X
+  pauses" or "✓ Round app: complete, 3 levels", then "312 farther folders wait until you look there · 4,000 worlds" (the
+  laid-out folders known only by name beyond the reach, plus what the budget folded). It never says discovery is done
+  because a budget is full. Names are cut to 24 characters; the panel is 680 × 50 viewport units; a probe checks every
+  line's text width against its label and the button at UI 1.0 and 1.25.
+- **Decision — the budget (PLANET-108): 6,000 laid-out worlds** (`OverviewAttention.DefaultBudget`, 4 × the old
+  1,500). Measured on the staged build (Release; 1600 × 900, no vsync, the Radeon 890M, the machine shared with seven
+  other streams, so absolute numbers carry their load) on the vast fixture, orbiting for 4 s:
+
+  | Laid out | Frame p50 / p95, the level of detail on (≈ 30–80 drawn) | Every world drawn | Relayout (layout + scene) |
+  |---|---|---|---|
+  | 1,500 | before 10.3 / 12.7 → after 17.0 / 22.4 (load) | 13.3 / 20.2 ms | 11–24 + 3–5 ms |
+  | 6,000 | 14.6 / 16.6 → 10.3 / 19.1 ms | 17.1 / 20.3 ms | 30–33 + 4–6 ms |
+  | 10,000 | 17.2 / 21.3 → 10.5 / 18.4 ms | 20.8 / 28.3 ms | 36–43 + 6–12 ms |
+  | 20,000 | 23.0 / 26.7 → 12.9 / 32.5 ms | 35.8 / 59.1 ms | 109–115 + 24–35 ms |
+  | 46,000 | 39.6 / 47.5 → 12.9 / 23.5 ms | 45.4 / 62.0 ms | 62–113 + 24–31 ms |
+
+  ("before → after": before and after drawing only what is shown.) The GPU is not the limit (≈ 150 draw calls
+  throughout; one draw for all solid worlds); per frame, once only shown worlds are sent, the cost hardly grows with what
+  is laid out. The limit is the relayout on the main thread, which grows with it: at 6,000 a relayout costs about two
+  frames, at 20,000 about eight. Relayouts come at most every 1.5 s while the tree grows and 0.3 s after a move of
+  attention when the budget is full. A larger budget wants the layout off the main thread first.
+- **Decision — far systems:** a folded system's haze (AD-77) now holds a cluster of faint lights (4–18, more the more it
+  holds, seeded by the folder so they stay put), so distance reads as a crowd of stars; with no lights the haze is drawn
+  exactly as before. The solid worlds are placed through one buffer per batch each frame instead of one engine call per
+  world.
+- **Instrument:** `FileScape.Fixtures create-vast` ("Vast Reach": 16 regions × 6 × 6 × 6 systems × 12 moons, ≈ 46,200
+  folders, three routes 18 levels deep); `--automate=planets-overview-attention` (the journey; `--counts-only
+  --route=a/b/c` on a real root); `--automate=planets-overview-bodies --budgets=…` and `--test-overview-budget=N` (the
+  measurement).
+- **Considered, not built:** laying out on a worker thread (the tree is main-thread only; a snapshot would cost what it
+  saves at these sizes); evicting by screen size instead of attention (the level of detail already folds by screen size,
+  AD-77; the budget is about what is known and placed); a fractal layout with reserved room per level (AD-71's reason
+  stands); keeping reserves across overview openings (the picture would keep empty room for systems no longer attended).
+- **Revisit if:** DJ finds old neighbourhoods fold too soon or too late (`RecentFoci`, `RecentOffset`, `RetainBonus`),
+  discovery too timid or too eager away from the selection (`DiscoveryReach`), three levels too few or many
+  (`NeighbourhoodLevels`), the lights too busy or faint, or a much larger tree makes relayouts noticeable (then: a
+  worker-thread layout over a tree snapshot).
+
 ## AD-82 The overview's controls and transitions: per-control Shift, a zoom-and-pan way back with a hand-over, resuming after legacy views (2026-11-20, PLANET-110..114)
 
 - **Problem:** DJ (sixth pass): Shift should accelerate the overview as it does walking, with a suitable gain per

@@ -55,29 +55,71 @@ public partial class PlanetWorld
     public Rect2 DiscoveryButtonRect => _discoveryButton.GetGlobalRect();
     public bool DiscoveryIndicatorShown => _discoveryPanel.Visible;
 
-    /// <summary>The indicator: a small panel above the prompt (bottom centre), one line and a button.</summary>
+    /// <summary>
+    /// The indicator: a small panel above the prompt (bottom centre): two short lines (PLANET-107: the neighbourhood you
+    /// attend to, then everything else) and the Pause button in its own column. Before AD-81 it was one 520-wide line whose
+    /// longest message ("Discovery done: the overview's 1,500 worlds are as listed as they will be") ran under the button.
+    /// </summary>
     private void BuildDiscoveryPanel(Control root)
     {
         _discoveryPanel = new PanelContainer { Visible = false };
         var style = PanelStyle();
-        style.ContentMarginTop = style.ContentMarginBottom = 4;
+        style.ContentMarginTop = style.ContentMarginBottom = 5;
         _discoveryPanel.AddThemeStyleboxOverride("panel", style);
         _discoveryPanel.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
-        // Viewport units: above the prompt box (whose top is 150 above the bottom edge), centred, 520 wide.
-        _discoveryPanel.OffsetLeft = -260; _discoveryPanel.OffsetRight = 260; _discoveryPanel.OffsetTop = -196; _discoveryPanel.OffsetBottom = -158;
+        // Viewport units: above the prompt box (whose top is 150 above the bottom edge), centred.
+        _discoveryPanel.OffsetLeft = -DiscoveryPanelWidth / 2; _discoveryPanel.OffsetRight = DiscoveryPanelWidth / 2;
+        _discoveryPanel.OffsetTop = -158 - DiscoveryPanelHeight; _discoveryPanel.OffsetBottom = -158;
         _discoveryPanel.GrowVertical = Control.GrowDirection.Begin;
         root.AddChild(_discoveryPanel);
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
+        row.AddThemeConstantOverride("separation", 12);
         _discoveryPanel.AddChild(row);
+        var lines = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center };
+        lines.AddThemeConstantOverride("separation", 0);
+        row.AddChild(lines);
         _discoveryLabel = MakeLabel(14, new Color(0.82f, 0.9f, 1f), HorizontalAlignment.Left, outline: 0);
         _discoveryLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _discoveryLabel.VerticalAlignment = VerticalAlignment.Center;
-        row.AddChild(_discoveryLabel);
+        lines.AddChild(_discoveryLabel);
+        _discoveryElsewhere = MakeLabel(12, new Color(0.66f, 0.72f, 0.86f), HorizontalAlignment.Left, outline: 0);
+        _discoveryElsewhere.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        lines.AddChild(_discoveryElsewhere);
         // No keyboard focus: a focused button would take the overview's keys (WASD, Enter) away from it.
-        _discoveryButton = new Button { Text = "Pause", FocusMode = Control.FocusModeEnum.None, TooltipText = "Pause or resume listing more folders for the overview (X)" };
+        _discoveryButton = new Button { Text = "Pause", FocusMode = Control.FocusModeEnum.None, TooltipText = "Pause or resume listing more folders for the overview (X)", CustomMinimumSize = new Vector2(DiscoveryButtonWidth, 0), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
         _discoveryButton.Pressed += ToggleDiscoveryPause;
         row.AddChild(_discoveryButton);
+    }
+
+    /// <summary>The indicator's size, viewport units: wide enough for <see cref="OverviewStatus"/>'s longest first line
+    /// (a 24-character name) beside the button, and two lines high.</summary>
+    private const float DiscoveryPanelWidth = 680f, DiscoveryPanelHeight = 50f;
+
+    /// <summary>The Pause/Resume button's width, viewport units: the same for both words, so the lines never shift.</summary>
+    private const float DiscoveryButtonWidth = 84f;
+
+    private Label _discoveryElsewhere = null!;
+
+    /// <summary>The indicator's second line (probes).</summary>
+    public string DiscoveryElsewhereText => _discoveryElsewhere.Text;
+
+    /// <summary>
+    /// The indicator's lines fit (probes, PLANET-107): each line's text is no wider than its label, and neither label
+    /// reaches the button. With the detail of the first failure, or null.
+    /// </summary>
+    public string? DiscoveryIndicatorOverflow()
+    {
+        var button = _discoveryButton.GetGlobalRect();
+        foreach (var l in new[] { _discoveryLabel, _discoveryElsewhere })
+        {
+            var font = l.GetThemeFont("font");
+            var size = l.GetThemeFontSize("font_size");
+            var w = font.GetStringSize(l.Text, HorizontalAlignment.Left, -1, size).X;
+            var r = l.GetGlobalRect();
+            if (w > r.Size.X + 0.5f) return System.FormattableString.Invariant($"\"{l.Text}\" is {w:0} wide in a {r.Size.X:0} label");
+            if (r.Intersects(button)) return System.FormattableString.Invariant($"the label ({r.Position.X:0}..{r.End.X:0}) reaches the button ({button.Position.X:0}..{button.End.X:0})");
+        }
+
+        return null;
     }
 
     /// <summary>The overview opened: discovery resumes where it was (paused stays paused).</summary>
@@ -90,14 +132,20 @@ public partial class PlanetWorld
         }
 
         _lastDiscoveryStep = TimeSpan.Zero;
+        _discoveryStatusAt = TimeSpan.MinValue;
         foreach (var (b, _) in _uniBodies) _uniEverDrawn.Add(b.NodeId);
         DiscoveryRelayouts = 0;
         _discoveryPanel.Visible = DiscoveryAvailable;
         UpdateDiscoveryIndicator();
     }
 
-    /// <summary>The overview closed: nothing more is asked for (listings in flight still arrive in the tree).</summary>
-    private void CloseDiscovery() => _discoveryPanel.Visible = false;
+    /// <summary>The overview closed: nothing more is asked for (listings in flight still arrive in the tree). The
+    /// selected world becomes a recent focus: while you play, attention is where you stand.</summary>
+    private void CloseDiscovery()
+    {
+        _discoveryPanel.Visible = false;
+        NoteSelectionForAttention(-1);
+    }
 
     /// <summary>X or the indicator's button: pause or resume.</summary>
     public void ToggleDiscoveryPause()
@@ -120,14 +168,16 @@ public partial class PlanetWorld
         if (_s.Explorer is { } explorer && now - _lastDiscoveryStep >= DiscoveryStepInterval)
         {
             _lastDiscoveryStep = now;
-            var drawn = new List<OverviewDiscovery.Candidate>(_uniBodies.Count);
-            for (var i = 0; i < _uniBodies.Count; i++) drawn.Add(new OverviewDiscovery.Candidate(_uniBodies[i].Body.NodeId, _uniBodies[i].Body.Depth, i));
+            // The laid-out worlds within attention's reach (PLANET-104): never recursive discovery far from where you look.
+            var worlds = new List<(int Id, int Depth)>(_uniBodies.Count);
+            foreach (var (b, _) in _uniBodies) worlds.Add((b.NodeId, b.Depth));
+            var drawn = Attention.Candidates(tree, worlds, tree.Root.Id);
             var focus = new List<int>(2) { _uniSelected };
             if (ZoomedToward() is >= 0 and var toward && toward != _uniSelected) focus.Add(toward);
             foreach (var id in _discovery.Step(tree, drawn, focus, now, _s.MayListAhead)) explorer.Discover(id);
         }
 
-        if (tree.Version != _uniLayoutVersion && _uniLanding == null && (now - _uniLayoutAt).TotalSeconds >= UniverseRelayoutSeconds)
+        if (_uniLanding == null && (tree.Version != _uniLayoutVersion && (now - _uniLayoutAt).TotalSeconds >= UniverseRelayoutSeconds || AttentionWantsRelayout()))
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var bodies = ComputeUniverse(tree, keepDrawn: true);
@@ -199,9 +249,10 @@ public partial class PlanetWorld
             // The overview's own selection (ComputeUniverse with nothing drawn yet): the way to where you stand pinned.
             var onTheWay = new HashSet<int>();
             for (var a = folder; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
-            var selection = UniverseLayout.Selection(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay);
-            _playCandidates = new List<OverviewDiscovery.Candidate>(selection.Count);
-            for (var i = 0; i < selection.Count; i++) _playCandidates.Add(new OverviewDiscovery.Candidate(selection[i].Id, selection[i].Depth, i));
+            // Attention while you play is where you stand (and what you attended to before): PLANET-104's reach applies too.
+            NoteCurrentForAttention();
+            var selection = Attention.Selection(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay);
+            _playCandidates = Attention.Candidates(tree, selection, tree.Root.Id);
             _playCandidatesVersion = tree.Version;
             _playCandidatesAt = now;
             _playCandidatesFolder = folder;
@@ -256,20 +307,29 @@ public partial class PlanetWorld
     /// <summary>The spinner's step time, seconds.</summary>
     private const double DiscoverySpinnerSeconds = 0.25;
 
+    /// <summary>How often the indicator's neighbourhood and deferred counts are worked out, seconds: each is a pass over
+    /// the laid-out worlds (with a walk up the tree for each), so not every frame.</summary>
+    private const double DiscoveryStatusSeconds = 0.25;
+
+    private TimeSpan _discoveryStatusAt = TimeSpan.MinValue;
+    private (NeighbourhoodStatus Near, int Deferred) _discoveryStatus;
+
     private void UpdateDiscoveryIndicator()
     {
         if (!_discoveryPanel.Visible) return;
-        var worlds = _uniBodies.Count;
-        var (listed, partial, _, _) = UniverseCounts;
-        var spin = DiscoverySpinner[(int)(_s.Now.TotalSeconds / DiscoverySpinnerSeconds) % DiscoverySpinner.Length];
-        _discoveryLabel.Text = _discovery.State switch
+        var now = _s.Now;
+        if (_discoveryStatusAt == TimeSpan.MinValue || (now - _discoveryStatusAt).TotalSeconds >= DiscoveryStatusSeconds || now < _discoveryStatusAt)
         {
-            OverviewDiscoveryState.Paused => $"Discovery paused · {worlds:N0} worlds, {listed + partial:N0} listed · X resumes",
-            OverviewDiscoveryState.LimitReached => $"Discovery stopped at {_discovery.Bounds.MaxTreeNodes:N0} known entries · {worlds:N0} worlds",
-            OverviewDiscoveryState.Complete when worlds >= UniverseLayout.MaxBodies => $"Discovery done: the overview's {worlds:N0} worlds are as listed as they will be",
-            OverviewDiscoveryState.Complete => $"Discovery done · {worlds:N0} worlds, {listed + partial:N0} listed",
-            _ => $"{spin} Discovering… {worlds:N0} worlds, {listed + partial:N0} listed · X pauses",
-        };
+            _discoveryStatus = AttentionStatus(); // PlanetWorld.Attention.cs
+            _discoveryStatusAt = now;
+        }
+
+        var spin = DiscoverySpinner[(int)(now.TotalSeconds / DiscoverySpinnerSeconds) % DiscoverySpinner.Length];
+        var focus = NeighbourhoodFocus();
+        var name = _s.Tree is { } t && t.Contains(focus) ? t.DisplayName(focus) : "here";
+        var (near, elsewhere) = OverviewStatus.Text(_discovery.State, _discoveryStatus.Near, name, _discoveryStatus.Deferred, _uniBodies.Count, _discovery.Bounds.MaxTreeNodes, spin);
+        _discoveryLabel.Text = near;
+        _discoveryElsewhere.Text = elsewhere;
         _discoveryButton.Text = _discovery.Paused ? "Resume" : "Pause";
         _discoveryButton.Disabled = !_discovery.Paused && _discovery.State is OverviewDiscoveryState.Complete or OverviewDiscoveryState.LimitReached;
     }
@@ -350,6 +410,6 @@ public partial class PlanetWorld
         var deepest = levels.Count > 0 ? levels.Keys.Max() : -1;
         var deepestListed = levels.Where(l => l.Value.Listed > 0).Select(l => l.Key).DefaultIfEmpty(-1).Max();
         return System.FormattableString.Invariant(
-            $"\"discovery\":{{\"state\":\"{_discovery.State}\",\"paused\":{(_discovery.Paused ? "true" : "false")},\"worlds\":{_uniBodies.Count},\"requested\":{_discovery.Requested},\"listed\":{_discovery.Listed},\"failed\":{_discovery.Failed},\"inFlight\":{_discovery.InFlight},\"frontier\":{_discovery.Frontier},\"levels\":{deepest + 1},\"deepestListed\":{deepestListed},\"relayouts\":{DiscoveryRelayouts},\"relayoutMsMax\":{DiscoveryRelayoutMsMax:0.0},\"button\":[{DiscoveryButtonRect.GetCenter().X:0},{DiscoveryButtonRect.GetCenter().Y:0}],\"indicator\":{(DiscoveryIndicatorShown ? "true" : "false")},\"selected\":{_uniSelected},\"clickable\":{(UniverseClickable() is { } uc ? $"[{uc.Id},{uc.Centre.X:0},{uc.Centre.Y:0}]" : "null")}}},");
+            $"\"discovery\":{{\"state\":\"{_discovery.State}\",\"paused\":{(_discovery.Paused ? "true" : "false")},\"worlds\":{_uniBodies.Count},\"requested\":{_discovery.Requested},\"listed\":{_discovery.Listed},\"failed\":{_discovery.Failed},\"inFlight\":{_discovery.InFlight},\"frontier\":{_discovery.Frontier},\"levels\":{deepest + 1},\"deepestListed\":{deepestListed},\"relayouts\":{DiscoveryRelayouts},\"relayoutMsMax\":{DiscoveryRelayoutMsMax:0.0},\"button\":[{DiscoveryButtonRect.GetCenter().X:0},{DiscoveryButtonRect.GetCenter().Y:0}],\"indicator\":{(DiscoveryIndicatorShown ? "true" : "false")},\"selected\":{_uniSelected},\"clickable\":{(UniverseClickable() is { } uc ? $"[{uc.Id},{uc.Centre.X:0},{uc.Centre.Y:0}]" : "null")}}},") + AttentionStateJson();
     }
 }

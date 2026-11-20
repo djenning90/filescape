@@ -99,7 +99,13 @@ public partial class PlanetWorld
 
     /// <summary>The drawn bodies' batches and the indices (into <see cref="_uniBodies"/>) in each, in instance order
     /// (re-placed and re-scaled every frame, see DrawnRadius and <see cref="PlaceUniverse"/>).</summary>
-    private readonly List<(MultiMesh Mesh, List<int> Bodies)> _uniBatches = [];
+    /// <para>PLANET-108 (AD-81): each batch draws only the worlds shown now (<see cref="LiveMultiMesh"/>), with each world's
+    /// colour and custom data kept here per batch entry; one engine call per laid-out world, every frame, was most of a
+    /// frame at tens of thousands of worlds while a few hundred were drawn.</para>
+    private readonly List<(LiveMultiMesh Mesh, List<int> Bodies, Color[] Base, Color[] Custom)> _uniBatches = [];
+
+    /// <summary>A world, ring or haze whose fade is below this is not drawn at all (it would be under a pixel).</summary>
+    private const float LiveFadeMin = 0.002f;
 
     /// <summary>
     /// The smallest a world is drawn in the overview, pixels of radius (FOLLOW-1, 2026-11-17): a world is 1.2–4 m across
@@ -154,7 +160,10 @@ public partial class PlanetWorld
     private readonly List<int> _uniRingBodies = [];
     private readonly List<(int Parent, int Child)> _uniChains = [];
     private readonly List<int> _uniVisited = [];
-    private MultiMesh? _uniRingMesh, _uniChainMesh, _uniVisitedMesh;
+    private MultiMesh? _uniChainMesh, _uniVisitedMesh;
+
+    /// <summary>The rings, only those of shown open systems drawn (PLANET-108).</summary>
+    private LiveMultiMesh? _uniRingMesh;
     private MeshInstance3D? _uniHalo;
     private int _uniHere = -1;
 
@@ -200,6 +209,13 @@ public partial class PlanetWorld
         EndOrbit();
         CloseOverlays();
         _jumpQueued = false;
+        // Attention (PlanetWorld.Attention.cs, PLANET-101): where you stand and the world selected before opening (in the
+        // list or the sky) are what the budget unfolds first, however deep they are.
+        NoteCurrentForAttention();
+        var sharedBefore = _s.Selection.Selected;
+        NoteSelectionForAttention(sharedBefore >= 0 && tree.Contains(sharedBefore) && tree[sharedBefore].IsDirectory ? sharedBefore : _current.FolderId);
+        _uniApproached = -1;
+        Attention.Approached = -1;
         var bodies = ComputeUniverse(tree, keepDrawn: false);
         if (bodies.Count == 0) return;
         _universe = new Node3D { Name = "Universe", Position = UniverseOrigin };
@@ -231,25 +247,21 @@ public partial class PlanetWorld
     }
 
     /// <summary>
-    /// The overview's layout of the tree as it is now. The way to where you stand is always shown, even through a hidden
-    /// folder (AppData is hidden on Windows); with <paramref name="keepDrawn"/> every world drawn now is kept too (pinned),
-    /// so a relayout only ever adds worlds (PLANET-77): when the budget is full, newly listed folders count as "+N more"
-    /// instead of pushing out worlds you were looking at.
+    /// The overview's layout of the tree as it is now, spent on attention (PLANET-101, AD-81: <see cref="OverviewAttention"/>).
+    /// The way to where you stand is always shown, even through a hidden folder (AppData is hidden on Windows). With
+    /// <paramref name="keepDrawn"/> (a relayout while open) what is drawn is retained against small moves of attention and
+    /// every system keeps its room, so a relayout adds worlds and folds distant ones in place without moving their
+    /// neighbours (PLANET-105); before AD-81 every drawn world was pinned, so once the budget was full nothing near a new
+    /// selection could be added.
     /// </summary>
     private IReadOnlyList<UniverseBody> ComputeUniverse(FsTree tree, bool keepDrawn)
     {
         var onTheWay = new HashSet<int>();
         for (var a = _current!.FolderId; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
-        var pinned = new HashSet<int>(onTheWay);
-        if (keepDrawn)
-        {
-            foreach (var (b, _) in _uniBodies)
-            {
-                if (tree.Contains(b.NodeId) && _s.IsVisible(tree[b.NodeId])) pinned.Add(b.NodeId);
-            }
-        }
-
-        return UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, pinned);
+        NoteCurrentForAttention();
+        var bodies = Attention.Layout(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay, keepDrawn);
+        _uniAttentionSignature = Attention.Signature();
+        return bodies;
     }
 
     /// <summary>
@@ -358,14 +370,11 @@ public partial class PlanetWorld
         _uniBatches.Clear();
         MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, (Color Base, Color Custom)> look, bool custom)
         {
-            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere, InstanceCount = list.Count };
-            _uniBatches.Add((mm, list));
-            for (var i = 0; i < list.Count; i++)
-            {
-                var (c, d) = look(bodies[list[i]]);
-                mm.SetInstanceColor(i, c);
-                if (custom) mm.SetInstanceCustomData(i, d);
-            }
+            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere };
+            var baseColors = new Color[list.Count];
+            var customs = new Color[list.Count];
+            for (var i = 0; i < list.Count; i++) (baseColors[i], customs[i]) = look(bodies[list[i]]);
+            _uniBatches.Add((new LiveMultiMesh(mm), list, baseColors, customs));
 
             return new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         }
@@ -399,9 +408,9 @@ public partial class PlanetWorld
 
         // Per-instance colours (white, alpha = the level of detail's fade) multiply the line colour: a folded system's ring fades out.
         var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f), VertexColorUseAsAlbedo = true };
-        _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
+        _uniRingMesh = _uniRingBodies.Count > 0 ? new LiveMultiMesh(new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines() }) : null;
         _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
-        foreach (var mm in new[] { _uniRingMesh, _uniChainMesh })
+        foreach (var mm in new[] { _uniRingMesh?.Mesh, _uniChainMesh })
         {
             if (mm != null) _universe.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = lineMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
@@ -492,31 +501,49 @@ public partial class PlanetWorld
         }
 
         UpdateUniverseDetail(dt); // PlanetWorld.Detail.cs (PLANET-91): which systems are open at this distance
-        foreach (var (mm, list) in _uniBatches)
+        var cam = _camera.GlobalPosition;
+        var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
+        foreach (var (live, list, baseColors, customs) in _uniBatches)
         {
+            live.Begin();
             for (var k = 0; k < list.Count; k++)
             {
                 var i = list[k];
+                var show = ShowScale(i) * AppearScale(i);
+                if (show < LiveFadeMin) continue; // folded away: not drawn at all
                 var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
-                var r = DrawnRadius(radius, _uniBodies[i].At, MinPixelsAt(i)) * AppearScale(i) * ShowScale(i);
-                mm.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
+                // DrawnRadius, with the view's scale worked out once a frame.
+                var r = MathF.Max(radius, cam.DistanceTo(_uniBodies[i].At) * MinPixelsAt(i) / pixelsPerRadian) * show;
+                var o = live.Next();
+                var buf = live.Buffer;
+                LiveMultiMesh.WriteTransform(buf, o, new Vector3(r, 0, 0), new Vector3(0, r, 0), new Vector3(0, 0, r), _uniLocal[i]);
+                LiveMultiMesh.WriteColor(buf, o + 12, baseColors[k]);
+                if (live.Stride > 16) LiveMultiMesh.WriteColor(buf, o + 16, customs[k]);
             }
+
+            live.End();
         }
 
         if (_uniRingMesh != null)
         {
+            _uniRingMesh.Begin();
             for (var k = 0; k < _uniRingBodies.Count; k++)
             {
                 // The ring's plane axes as the layout builds them: a = n × X (or Z when n is nearly along X), c = n × a.
                 var i = _uniRingBodies[k];
+                var fade = ShowScale(i) * OpenScale(i);
+                if (fade < LiveFadeMin) continue; // a folded or hidden system's ring is not drawn
                 var b = _uniBodies[i].Body;
                 var n = Gd(b.OrbitNormal);
                 var a = n.Cross(MathF.Abs(n.X) < 0.9f ? Vector3.Right : Vector3.Back).Normalized();
                 var c = n.Cross(a);
                 var r = Mathf.Lerp(_uniMotion[i].OrbitFrom, b.OrbitRadius, e);
-                _uniRingMesh.SetInstanceTransform(k, new Transform3D(new Basis(a * r, n * r, c * r), _uniLocal[i]));
-                _uniRingMesh.SetInstanceColor(k, new Color(1, 1, 1, ShowScale(i) * OpenScale(i)));
+                var o = _uniRingMesh.Next();
+                LiveMultiMesh.WriteTransform(_uniRingMesh.Buffer, o, a * r, n * r, c * r, _uniLocal[i]);
+                LiveMultiMesh.WriteColor(_uniRingMesh.Buffer, o + 12, new Color(1, 1, 1, fade));
             }
+
+            _uniRingMesh.End();
         }
 
         if (_uniChainMesh != null)
@@ -568,7 +595,8 @@ public partial class PlanetWorld
         _uniRingBodies.Clear();
         _uniChains.Clear();
         _uniVisited.Clear();
-        _uniRingMesh = _uniChainMesh = _uniVisitedMesh = null;
+        _uniRingMesh = null;
+        _uniChainMesh = _uniVisitedMesh = null;
         _uniHalo = null;
         _uniHere = -1;
         _uniLanding = null;
@@ -681,17 +709,22 @@ public partial class PlanetWorld
         var camPos = _camera.GlobalPosition;
         var camFwd = -_camera.GlobalBasis.Z;
         var screenUp = _camera.GlobalBasis.Y;
+        // Only drawn worlds are measured (PLANET-108: at tens of thousands laid out, most are folded away).
         var nearby = _uniBodies
-            .Select((b, i) => (b, i, d: b.At.DistanceTo(camPos), look: camFwd.Dot((b.At - camPos).Normalized())))
-            .Where(x => Drawn(x.i) && x.look > 0.94f && x.d < _uniDistance * 1.6f)
+            .Select((b, i) => (b, i))
+            .Where(x => Drawn(x.i))
+            .Select(x => (x.b, x.i, d: x.b.At.DistanceTo(camPos), look: camFwd.Dot((x.b.At - camPos).Normalized())))
+            .Where(x => x.look > 0.94f && x.d < _uniDistance * 1.6f)
             .OrderBy(x => x.d)
             .Take(10)
             .Select(x => x.b.Body.NodeId)
             .ToHashSet();
         // The biggest folded systems in view are named too, with what they hold (PLANET-91: a clear indication).
         foreach (var id in _uniBodies
-                     .Select((b, i) => (b, i, look: camFwd.Dot((b.At - camPos).Normalized())))
-                     .Where(x => Drawn(x.i) && FoldedAt(x.i) >= FoldedLabelMin && x.look > 0.85f)
+                     .Select((b, i) => (b, i))
+                     .Where(x => Drawn(x.i) && FoldedAt(x.i) >= FoldedLabelMin)
+                     .Select(x => (x.b, x.i, look: camFwd.Dot((x.b.At - camPos).Normalized())))
+                     .Where(x => x.look > 0.85f)
                      .OrderByDescending(x => FoldedAt(x.i))
                      .Take(FoldedLabels)
                      .Select(x => x.b.Body.NodeId)) nearby.Add(id);
@@ -731,8 +764,9 @@ public partial class PlanetWorld
     private void PlaceUniverseCamera()
     {
         var offset = new Vector3(Mathf.Sin(_uniYaw) * Mathf.Cos(_uniPitch), Mathf.Sin(_uniPitch), Mathf.Cos(_uniYaw) * Mathf.Cos(_uniPitch));
-        _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
-        _camera.LookAt(_uniFocus, Vector3.Up);
+        // Looking along −offset rather than LookAt(focus): far out in a vast overview (hundreds of km from the origin)
+        // Godot's LookAt judges a few metres "the same position" (relative tolerance) and fails (AD-81, the vast fixture).
+        _camera.GlobalTransform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), _uniFocus + offset * _uniDistance);
         _camera.Fov = OverviewFovDegrees;
     }
 
@@ -926,6 +960,7 @@ public partial class PlanetWorld
     {
         if (_uniReturn != null || !_uniIndex.TryGetValue(id, out var i)) return;
         _uniSelected = id;
+        NoteSelectionForAttention(id); // PlanetWorld.Attention.cs: its neighbourhood unfolds at the next relayout
         _s.Select(id);
         _audio.Select();
         _uniFocusTarget = UniverseOrigin + _uniMotion[i].To; // where it is headed if a relayout is gliding it

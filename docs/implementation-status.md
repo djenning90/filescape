@@ -252,6 +252,63 @@ OneDrive) with some pictures — is a gallery: the pictures stand large, facing 
 (nearest first; the one beside you sharpens). E on a picture, R to view it large: it appears at once and sharpens; a
 photo only in OneDrive is fetched (the caption says so). Enter opens it with Windows, without a question.
 
+### Stream 1 — the overview follows attention at any depth (PLANET-101..109, AD-81)
+
+DJ: "Wherever I focus, I should be able to see and explore the surrounding filesystem. The current 1,500-world budget
+becomes visible as a failure." Branch `worktree-agent-a4bcda4b3c3edd056` from `7680d22`. Staged (not installed):
+`%LOCALAPPDATA%\FileScape\staging-20261120-193820-2389243` (`f2514ea` + uncommitted docs). Evidence:
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-20-stream1\` (`att-*`, `bodies-*`, `wsl-route-1`) and
+`…\evidence\checks\journeys-20261120-195315\`.
+
+**The failure, reproduced first in Core through the app's own calls (product defect):** the layout's 1,500-world budget
+went breadth-first from the root and every relayout pinned every world already drawn. Once the explored branches filled
+it, a selected world's listing arrived but its children stayed folded ("+N more"); discovery, offered only laid-out
+worlds, had nothing left near the selection and said "done … 1,500 worlds"; a fresh overview at a deep world spent the
+budget on the shallow levels and drew the world alone. On the base code: selecting down a 14-level spine after
+exploring twelve wide branches revealed children at the first level only ("found 1"); reopening at level 10 drew the
+world with 0 of its 5 folders. The indicator's longest line ran past its 520-wide label beside the button.
+
+**What changed (AD-81):** the budget is spent by attention (`OverviewAttention`, `UniverseLayout.Attention`): the selected
+world, where you stand, the approached world and the last four attended to, the ways to them first, a background of two
+levels for scale; nothing is pinned but the way to where you stand; distant detail folds in place (each system keeps its
+room while the overview is open); discovery only within four levels of attention; the indicator in two lines ("✓ Round
+app: complete, 3 levels" / "312 farther folders wait until you look there · 4,000 worlds") beside a fixed button; the
+budget 1,500 → 6,000 from measurements; only shown worlds, rings and hazes are sent to the GPU each frame; a folded
+system's haze holds a cluster of faint lights.
+
+| Area | Status | Evidence |
+|---|---|---|
+| A selected world reveals its folders at any depth after many branches were explored (PLANET-101) | **Demonstrated** in Core (failing first on the base) and in-app | `After_exploring_wide_branches_every_selected_world_down_a_deep_spine_reveals_its_children`; `att-3`: three distant regions and a sector in each, then Region 09's route passage by passage to Passage 14 (level 16 below the arrival): every focus's folders drawn (102 PASS / 0 FAIL) |
+| The overview reopened at a deep world shows its folders at once (PLANET-102) | **Demonstrated** in Core (failing first) and in-app | `Reopening_the_overview_at_a_deep_visited_world_shows_its_children`; `att-3`: landed on Passage 12 (level 14), T: 5 of 5 folders laid out at once, neighbourhood 19 worlds complete at 0.0 s |
+| Three levels of the neighbourhood unfold and complete (PLANET-103) | **Demonstrated** | Core `A_deep_neighbourhood_unfolds_three_levels_and_is_complete_while_far_branches_wait` (5 / 17 / 17 per level); in-app every focus complete within 0.0–8.2 s (a cluster's 79 worlds in ≈ 8 s at 10 listings a second) |
+| No recursive discovery far from attention (PLANET-104) | **Demonstrated** in Core | `Discovery_never_recurses_far_from_attention` (far branches listed two levels below the root at most). In-app the deep fixture's discovery journey now lists to level 5 in 30 s (619 worlds) where it listed to 6 (905): the reach, as intended |
+| Distant detail folds in place; nothing relisted; returning is immediate (PLANET-105) | **Demonstrated** in Core; in-app the return | `Distant_detail_gives_way_in_place_and_returns_without_listing_again` (without the kept room 28 m of drift on a 48 m ring, with it < 1 ‰; fails without `Reserves`); `att-3`: back at Region 01/Sector C/Cluster 4 after the route, its 6 folders laid out within 1 s and its 79-world neighbourhood complete at 0.0 s. In-app with the budget full: `att-4-budget1500` (`--test-overview-budget=1500`): the budget full from the third region on (up to 508 folders folded by it), every focus down to Passage 14 still unfolded and completed, the return to Cluster 4 laid out again and complete at once, 102 PASS / 0 FAIL |
+| Stable camera and selection; ring order (PLANET-106) | **Demonstrated** | `planets-overview-discovery` 26/0 (jumps, anchor, camera never reset) and `planets-overview-navigate` 13/0 on the staged build; **product defect found and fixed**: with attention the bodies came in cost order, so [ after ] did not step back (`navigate` 11/2 on `b7cc538`); Core `The_layouts_order_is_breadth_first_by_name_whatever_is_selected` (fails without the fix) |
+| The indicator: complete here vs deferred elsewhere, never "done" at a budget, fits at UI 1.0 and 1.25 (PLANET-107) | **Demonstrated** in Core and in-app; the wording: DJ | Core `The_status_tells_a_complete_neighbourhood_from_discovery_deferred_elsewhere`; `att-3`: every focus "complete" and its text within its label and clear of the button; at 1.00 and 1.25 (`07-`/`08-attention-status-*.png`) |
+| The budget from measurements; far systems as haze and lights (PLANET-108) | **Demonstrated** (measured); the look: DJ | `bodies-2`/`bodies-3` (table in AD-81): with the level of detail on, per-frame cost no longer grows with what is laid out (46,000: p50 39.6 → 12.9 ms); the relayout on the main thread does (6,000: ≈ 35 ms; 20,000: ≈ 140 ms), so 6,000 |
+| The real route (PLANET-109) | **Demonstrated** (counts only) | `wsl-route-1`, `\\wsl.localhost\Ubuntu-24.04\` → `home\david\src\filescape\app` (5 levels): at every step the folders drawn and the neighbourhood complete within 1.0–8.6 s (the root's: 428 worlds, 12 can't be listed); 886 worlds laid out of 6,000; no names logged, no screenshots |
+| Frame time while attention moves | **Demonstrated** (vsync) | `att-3`: 2,888 frames p50 16.7 / p95 16.7 / p99 18.1 ms, max 66.6 ms; longest relayout 21.3 ms |
+| Core | **Demonstrated** | the area's tests (layout, discovery, detail, attention, baseline) 34 passed on WSL; behaviour baseline identical before/after (the layout without attention is unchanged). The full suites are the integrator's |
+
+**Instrument defects:** `att-1` failed 10 of 41 "the indicator says complete" checks: the indicator works out its counts
+every 0.25 s and the probe read it in the same frame as its own count (it now waits up to 1.5 s). The discovery journey's
+"a small indicator says discovery is going on" read only the first line; at 0 s the arrival's neighbourhood is already
+complete (the visit listed it), so it now reads either line (an expectation updated for AD-81). **Product defects found
+on the way and fixed:** the ring order above; the overview camera's `LookAt` failed far out in the vast overview (Godot
+judges a few metres "the same position" at hundreds of km; the camera now looks along its offset).
+
+**Open / for DJ:** how far old neighbourhoods should persist (`RecentFoci` 4, `RetainBonus` 0.5); whether three levels is
+the right neighbourhood; the indicator's wording; the haze's lights; the deep fixture's 30 s view drew more overlapping
+pairs in this run (38 % of on-screen worlds at the journey's close zoom, against 6 % in stream 4's run; not
+investigated, the camera's place differs between runs); a larger budget wants the layout off the main thread. Not run:
+real input (`os-planets-probe.ps1 -Discovery`), `check full`.
+
+**Time (this stream):** app launches (journeys, measurements, journey checks) active ≈ 836 s, plus two stages ≈ 165 s of
+their own; waiting for the launch lock ≈ 2,880 s (the desktop shared with seven streams; one first attempt was stopped
+in the queue to move the lock wait out of its timeout); reruns: `att-1` (instrument),
+`bodies-2`/`-3` and `att-2`/`-3` (after each optimisation, on new staged builds), the discovery/navigate pair (after the
+ring-order fix). Core: the attention tests run in ≈ 7 s (WSL).
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### Stream 3: every panel's keyboard and mouse ownership (PLANET-115..119, AD-83)

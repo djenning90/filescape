@@ -197,7 +197,7 @@ public partial class Main : Node3D
         _testListDelayMs = args.TestListDelayMs ?? 0;
         _testListDelayMatch = args.TestListDelayMatch;
         _testBroad = args.TestBroad;
-        _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain);
+        _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain, args.TestOverviewBudget);
         _testRootLook = args.TestRootLook switch { "windows" => FileScape.Core.Planets.WorldKind.WindowsRoot, "wsl" => FileScape.Core.Planets.WorldKind.WslRoot, _ => null };
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
@@ -282,7 +282,7 @@ public partial class Main : Node3D
     private bool _testBroad; // --test-broad (PLANET-76 instrument): no background listing of the arrival folder
 
     /// <summary>--test-play-discovery=off, --test-overview-detail=off, --test-overview-look=plain (AppArgs; PLANET-90..92 before/after instruments).</summary>
-    private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain) _testInstruments;
+    private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain, int? OverviewBudget) _testInstruments;
 
     /// <summary>--test-root-look (instrument, PLANET-119): the launch folder shown with a root's look; null for a person's launch.</summary>
     private FileScape.Core.Planets.WorldKind? _testRootLook;

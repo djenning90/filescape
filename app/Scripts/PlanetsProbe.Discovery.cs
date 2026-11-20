@@ -120,7 +120,7 @@ public partial class PlanetsProbe
         var root = App.Navigator.Current;
         Check(P.DiscoveryAvailable, "discovery is available (a live explorer)");
         if (!countsOnly) Log($"arrival: {Tree.FullPath(root)}");
-        Log(F($"limits: {P.DiscoveryScheduler.Bounds.MaxInFlight} in flight, {P.DiscoveryScheduler.Bounds.ListingsPerSecond} listings/s (burst {P.DiscoveryScheduler.Bounds.BurstListings}), stop at {P.DiscoveryScheduler.Bounds.MaxTreeNodes} entries, request timeout {P.DiscoveryScheduler.Bounds.RequestTimeout.TotalSeconds} s; overview draws ≤ {UniverseLayout.MaxBodies} worlds, ≤ {UniverseLayout.MaxChildren} per system"));
+        Log(F($"limits: {P.DiscoveryScheduler.Bounds.MaxInFlight} in flight, {P.DiscoveryScheduler.Bounds.ListingsPerSecond} listings/s (burst {P.DiscoveryScheduler.Bounds.BurstListings}), stop at {P.DiscoveryScheduler.Bounds.MaxTreeNodes} entries, request timeout {P.DiscoveryScheduler.Bounds.RequestTimeout.TotalSeconds} s; overview lays out ≤ {P.Attention.Tuning.Budget} worlds, ≤ {UniverseLayout.MaxChildren} per system"));
 
         // ---- open, then wait without touching anything
         await Key(Godot.Key.T);
@@ -129,7 +129,10 @@ public partial class PlanetsProbe
         var s0 = Snap(root, 0);
         LogSnap(s0);
         LogDetail("at 0 s"); // PlanetsProbe.Detail.cs (PLANET-91: drawn, folded, overlap)
-        Check(P.DiscoveryIndicatorShown && P.DiscoveryText.Contains("Discover", StringComparison.Ordinal), F($"a small indicator says discovery is going on: \"{(countsOnly ? P.DiscoveryText.Split('·')[0].Trim() : P.DiscoveryText)}\""));
+        // AD-81: the first line is about the attended neighbourhood (complete at 0 s when the visit listed it), the second
+        // about the rest ("Listing what you can see" while discovery goes on beyond it).
+        Check(P.DiscoveryIndicatorShown && (P.DiscoveryText.Contains("Discover", StringComparison.Ordinal) || P.DiscoveryElsewhereText.Contains("Listing", StringComparison.Ordinal)),
+            F($"a small indicator says discovery is going on: \"{(countsOnly ? P.DiscoveryText.Split('·')[0].Trim() : P.DiscoveryText)}\" / \"{(countsOnly ? "" : P.DiscoveryElsewhereText)}\""));
         if (!countsOnly) await Shot("discovery-0s");
         await Seconds(2.5); // the opening pull-back settles before motion is judged
         var aim0 = P.UniverseCameraAim;
@@ -147,7 +150,7 @@ public partial class PlanetsProbe
         var drift = anchorAt is { } a0 && anchorNow is { } a1 ? a0.DistanceTo(a1) / h : float.NaN;
         Check(s10.Worlds > s0.Worlds, F($"waiting reveals more worlds: {s0.Worlds} at 0 s → {s10.Worlds} at 10 s"));
         if (!countsOnly) Check(s10.DeepestDrawn >= s0.DeepestDrawn + 2, F($"…and more levels without a visit: levels drawn 0..{s0.DeepestDrawn} → 0..{s10.DeepestDrawn}, deepest listed {s0.DeepestListed} → {s10.DeepestListed}"));
-        else Check(s10.DeepestDrawn >= s0.DeepestDrawn + 1 || s10.Worlds >= UniverseLayout.MaxBodies, F($"…and deeper: levels drawn 0..{s0.DeepestDrawn} → 0..{s10.DeepestDrawn} (or the overview's budget is full)"));
+        else Check(s10.DeepestDrawn >= s0.DeepestDrawn + 1 || s10.Worlds >= P.Attention.Tuning.Budget, F($"…and deeper: levels drawn 0..{s0.DeepestDrawn} → 0..{s10.DeepestDrawn} (or the overview's budget is full)"));
         Check(_discoveryMaxJump < DiscoveryJumpShare, F($"no world jumps while the overview grows: largest per-frame move {_discoveryMaxJump * 100:0.0} % of the screen height ({P.DiscoveryRelayouts} relayouts glided); {_discoveryJumpWhat}"));
         Check(_discoveryAnchorMaxStep < AnchorFrameShare && (float.IsNaN(drift) || drift < AnchorWaitShare), F($"the selected world keeps its place on screen: ≤ {_discoveryAnchorMaxStep * 100:0.00} % a frame, {drift * 100:0.0} % over the wait"));
         Check(MathF.Abs(aim10.Yaw - aim0.Yaw) < 1e-4f && MathF.Abs(aim10.Pitch - aim0.Pitch) < 1e-4f && aim10.Focus.DistanceTo(aim0.Focus) < 0.5f, F($"the camera is never reset: yaw {aim0.Yaw:0.000} → {aim10.Yaw:0.000}, pitch {aim0.Pitch:0.000} → {aim10.Pitch:0.000}, focus moved {aim10.Focus.DistanceTo(aim0.Focus):0.00} m"));
