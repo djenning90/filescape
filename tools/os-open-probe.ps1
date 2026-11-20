@@ -64,7 +64,13 @@ function Open-With-FileScape($file, $tag) {
   $name = [IO.Path]::GetFileNameWithoutExtension($file)
   $w = $null
   for ($i = 0; $i -lt $WaitSeconds * 4 -and -not $w; $i++) { Start-Sleep -Milliseconds 250; $w = Window-With $name }
-  foreach ($p in Handler-Pids) { if (-not $started.ContainsKey($p)) { $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$p"; $started[$p] = $proc.ParentProcessId; Log "  $Handler #$p started (parent #$($proc.ParentProcessId) $((Get-Process -Id $proc.ParentProcessId -ErrorAction SilentlyContinue).ProcessName))" } }
+  foreach ($p in Handler-Pids) {
+    if ($started.ContainsKey($p)) { continue }
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$p"
+    if (-not $proc) { $started[$p] = -1; continue } # a helper that has already ended
+    $started[$p] = $proc.ParentProcessId
+    Log "  $Handler #$p started (parent #$($proc.ParentProcessId) $((Get-Process -Id $proc.ParentProcessId -ErrorAction SilentlyContinue).ProcessName))"
+  }
   $fg = [FsWin]::GetForegroundWindow(); $fgPid = 0; [void][FsWin]::GetWindowThreadProcessId($fg, [ref]$fgPid)
   if ($w) { Log ("  window '{0}' owned by {1} #{2} after {3:0.0} s; foreground: #{4}" -f $w.Title, $Handler, $w.Pid, $sw.Elapsed.TotalSeconds, $fgPid) }
   return [pscustomobject]@{ FileScape = $fs; Window = $w; Foreground = $fgPid }
@@ -92,6 +98,8 @@ try {
   Check ($null -ne $two.Window -and $two.Foreground -eq $two.Window.Pid) "the running $Handler came forward with the second file (foreground #$($two.Foreground))"
   Start-Sleep -Seconds 2
   Close-FileScape $two.FileScape
+} catch {
+  $fails++; Log "FAIL OPEN the probe stopped: $($_.Exception.Message)"
 } finally {
   # Close only what this run started: the handler's windows, then (if still there) its PIDs.
   foreach ($p in @($started.Keys)) { foreach ($w in [FsWin]::Windows()) { $x = $w.Split('|', 3); if ([int]$x[0] -eq $p) { [void][FsWin]::PostMessageW([IntPtr][long]$x[1], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } } }
