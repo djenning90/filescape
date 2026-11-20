@@ -135,3 +135,30 @@ public sealed class GalleryTests(GallerySampleFixture gallery) : IClassFixture<G
         GalleryRules.IsPicture("notes.txt").Should().BeFalse();
     }
 }
+
+/// <summary>
+/// Windows' own thumbnails (PLANET-131, AD-86): <see cref="ShellThumbnails"/> asks the system thumbnail cache and the
+/// file type's handler for a picture, fitted to the size asked with its shape kept, opaque, and nothing for a file that
+/// has no thumbnail (never an icon instead). Windows only: the shell is what is tested.
+/// </summary>
+public sealed class ShellThumbnailTests(GallerySampleFixture gallery) : IClassFixture<GallerySampleFixture>
+{
+    [WindowsFact]
+    public void Windows_gives_a_fitted_opaque_thumbnail_of_a_picture_and_nothing_for_other_files()
+    {
+        foreach (var (name, w, h) in GallerySample.Viewable.Take(3))
+        {
+            var t = ShellThumbnails.Get(Path.Combine(gallery.Root, name), 96, cacheOnly: false);
+            t.Should().NotBeNull(name);
+            Math.Max(t!.Width, t.Height).Should().BeLessThanOrEqualTo(96, name);
+            ((float)t.Width / t.Height).Should().BeApproximately((float)w / h, 0.05f * w / h, $"{name} keeps its shape");
+            t.Rgba.Length.Should().Be(t.Width * t.Height * 4);
+            Enumerable.Range(0, t.Width * t.Height).All(i => t.Rgba[i * 4 + 3] == 255).Should().BeTrue("a photo's thumbnail is opaque");
+            Enumerable.Range(0, t.Width * t.Height).Any(i => t.Rgba[i * 4] + t.Rgba[i * 4 + 1] + t.Rgba[i * 4 + 2] > 30).Should().BeTrue("not blank");
+        }
+
+        ShellThumbnails.Get(Path.Combine(gallery.Root, "captions.txt"), 96, cacheOnly: false).Should().BeNull("a text file has no thumbnail, and never an icon instead");
+        ShellThumbnails.Get(Path.Combine(gallery.Root, "no-such-picture.png"), 96, cacheOnly: false).Should().BeNull();
+        ShellThumbnails.GetAsync(Path.Combine(gallery.Root, GallerySample.Viewable[0].Name), 256).Result.Should().NotBeNull("the worker threads answer too");
+    }
+}
