@@ -183,14 +183,8 @@ public partial class Main : Node3D
 
         _stateFile = args.StateFile;
         _stateWriteInterval = args.StateIntervalMs is { } sim ? TimeSpan.FromMilliseconds(Math.Max(0, sim)) : DefaultStateWriteInterval;
-        if (args.Experiment == "planetoids")
-        {
-            // An isolated experiment (PLANET-02): its own scene; nothing of FileScape is built or scanned.
-            _experimentOnly = true;
-            AddChild(new Experiments.PlanetoidExperiment(args.Automation == "planetoids", args.OutputDirectory ?? OS.GetUserDataDir()));
-            return;
-        }
-
+        // An isolated scene: nothing of FileScape is built or scanned. (The planetoid prototype, PLANET-02, was retired
+        // on 2026-11-20 once the planets superseded it: docs/planetoid-feasibility.md keeps its account.)
         if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
 
         FileScape.Core.Planets.PlanetComposer.ClassicReliefForComparison = args.TestClassicRelief;

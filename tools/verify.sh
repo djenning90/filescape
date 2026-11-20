@@ -226,7 +226,6 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   journey places-scan places-scan.log 300 --automate=places-scan --synthetic=50000 --synthetic-rate=10000 --ui-scale=1
   journey navigation navigation.log 300 --automate=navigation --ui-scale=1
   journey map-journey journey.log 400 --automate=journey --ui-scale=1
-  journey planetoids planetoids.log 200 --experiment=planetoids --automate=planetoids --ui-scale=1
   # AERIAL-07: a deliberately small aerial budget, the current place outside breadth-first (kept), then beyond it (recovery).
   journey aerial-limit-24 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=24 --ui-scale=1
   journey aerial-limit-8 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=8 --ui-scale=1

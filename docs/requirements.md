@@ -195,7 +195,7 @@ DJ's assessment of build `e03dd62adb62`: the place concept and circular gates wo
 | AERIAL-05 | **Scope and limits stated.** The aerial world is the explored namespace (connected world) or the scanned tree (bounded mode), laid out to 4,000 places; beyond that the deepest are counted on their parents, except the current place and its way down (AERIAL-07). The chip and Help say what is shown. | Core truncation test; chip text. | Demonstrated (Core; chip) |
 | AERIAL-06 | **An aerial recovery view.** B (Ascend) frames this place, its parent and its child places from above, from walking or flight. | Injected: B shows the neighbourhood with child places named. | Demonstrated (injected; framed clear of the HUD at 1.25) |
 | PLANET-01 | **Planetoid feasibility assessed**, system by system, with a recommended path (`docs/planetoid-feasibility.md`). | Document. | Demonstrated (document) |
-| PLANET-02 | **Isolated planetoid experiment** (`--experiment=planetoids`), never the default: two original worlds, walking with the unchanged walker in each body's chart, a launch to the other world and a landing. | Core tests; `--automate=planetoids` 4/4 with screenshots. | Demonstrated (Core tests; experiment 4/0) |
+| PLANET-02 | **Isolated planetoid experiment** (`--experiment=planetoids`; **retired 2026-11-20**, superseded by the planets: the code, its tests and its journey were removed, see `docs/planetoid-feasibility.md`), never the default: two original worlds, walking with the unchanged walker in each body's chart, a launch to the other world and a landing. | Core tests; `--automate=planetoids` 4/4 with screenshots. | Demonstrated (Core tests; experiment 4/0) |
 
 ### Place identity (IDENT)
 

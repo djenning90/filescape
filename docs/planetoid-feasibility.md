@@ -1,5 +1,10 @@
 # Planetoid worlds: feasibility assessment (2026-11-06)
 
+> **Historical (2026-11-20).** The experiment described here was retired once the planets (PLANET-10 onward) superseded
+> it: `--experiment=planetoids`, `Experiments/Planetoids.cs`, `PlanetoidTests`, `Experiments/PlanetoidExperiment.cs`,
+> its shader and the `planetoids` journey are gone from the tree (they are in the history before commit
+> "Retire the planetoid prototype"). The findings below stand as the record of what was tested.
+
 DJ's next direction: a world of small planetoids, a folder possibly becoming an inhabitable body, with travel between them, in the spirit of *Super Mario Galaxy*'s playful small worlds. This page looks at what that would ask of the current systems. The experiment's results are **demonstrated** (code and tests); the effort estimates are **provisional**.
 
 ## The question and how it was tested
