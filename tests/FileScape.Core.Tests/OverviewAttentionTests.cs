@@ -309,6 +309,26 @@ public sealed class OverviewAttentionTests
         loop.Asked.Should().OnlyHaveUniqueItems();
     }
 
+    /// <summary>
+    /// PLANET-106: the layout's order does not follow attention. The app steps round a ring in it ([ and ], PLANET-93);
+    /// in the costs' order the selected world moved to the front of its ring at every selection, and [ after ] did not
+    /// step back (found by <c>planets-overview-navigate</c> on the staged build).
+    /// </summary>
+    [Fact]
+    public void The_layouts_order_is_breadth_first_by_name_whatever_is_selected()
+    {
+        var fs = new SimFs(Vast);
+        foreach (var b in fs.Tree[0].Children.ToList()) fs.Answer(b);
+        var ring = fs.Tree[0].Children.OrderBy(c => fs.Tree[c].Name, StringComparer.Ordinal).ToList();
+        foreach (var selected in new[] { ring[0], ring[5], ring[^1] })
+        {
+            var a = new OverviewAttention(Small) { Current = 0, Selected = selected };
+            var bodies = a.Layout(fs.Tree, null, 0, null, keep: false);
+            bodies.Where(b => b.ParentId == 0).Select(b => b.NodeId).Should().Equal(ring, $"the root's ring in name order with {fs.PathOf(selected)} selected");
+            bodies.Select(b => b.Depth).Should().BeInAscendingOrder("breadth-first");
+        }
+    }
+
     /// <summary>PLANET-107: the indicator's words.</summary>
     [Fact]
     public void The_status_tells_a_complete_neighbourhood_from_discovery_deferred_elsewhere()

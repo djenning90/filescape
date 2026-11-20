@@ -129,7 +129,10 @@ public partial class PlanetsProbe
         var s0 = Snap(root, 0);
         LogSnap(s0);
         LogDetail("at 0 s"); // PlanetsProbe.Detail.cs (PLANET-91: drawn, folded, overlap)
-        Check(P.DiscoveryIndicatorShown && P.DiscoveryText.Contains("Discover", StringComparison.Ordinal), F($"a small indicator says discovery is going on: \"{(countsOnly ? P.DiscoveryText.Split('·')[0].Trim() : P.DiscoveryText)}\""));
+        // AD-81: the first line is about the attended neighbourhood (complete at 0 s when the visit listed it), the second
+        // about the rest ("Listing what you can see" while discovery goes on beyond it).
+        Check(P.DiscoveryIndicatorShown && (P.DiscoveryText.Contains("Discover", StringComparison.Ordinal) || P.DiscoveryElsewhereText.Contains("Listing", StringComparison.Ordinal)),
+            F($"a small indicator says discovery is going on: \"{(countsOnly ? P.DiscoveryText.Split('·')[0].Trim() : P.DiscoveryText)}\" / \"{(countsOnly ? "" : P.DiscoveryElsewhereText)}\""));
         if (!countsOnly) await Shot("discovery-0s");
         await Seconds(2.5); // the opening pull-back settles before motion is judged
         var aim0 = P.UniverseCameraAim;

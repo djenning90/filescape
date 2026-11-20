@@ -454,7 +454,12 @@ public static class UniverseLayout
             if (list.Count > 1) list.Sort(nameOrder);
         }
 
-        return (order, kids, hidden);
+        // The layout's order is breadth-first by name over what was laid out, as without attention: the app steps round a
+        // ring in this order ([ and ], PLANET-93) and discovery breaks ties by it, so it must not follow the costs (which
+        // change with every selection: in pop order the selected world moved to the front of its ring and [ ] skipped).
+        var ordered = new List<int>(order.Count) { root };
+        for (var k = 0; k < ordered.Count; k++) ordered.AddRange(kids[ordered[k]]);
+        return (ordered, kids, hidden);
     }
 
     /// <summary>Pass 1 of <see cref="Compute"/>: breadth-first selection within the budget (see the class summary).</summary>
