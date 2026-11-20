@@ -128,7 +128,10 @@ run_cmd() {
     w0=$(date +%s.%N)
     exec {lfd}>>"$FS_LAUNCH_LOCK"
     flock "$lfd"
-    LOCK_NOTE="lock wait $(secs_since "$w0") s"
+    local waited; waited="$(secs_since "$w0")"
+    LOCK_NOTE="lock wait $waited s"
+    # FS_LOCK_WAIT_FILE (set by fs.sh timed): each wait is appended, so a timed command's nested waits are summed (TEST-06).
+    [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
   fi
   CUR_NAME="$name"; CUR_START=$(date +%s.%N)
   # In the background and waited for, so Ctrl+C reaches the caller's trap at once (a foreground child would be waited

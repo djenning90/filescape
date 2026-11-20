@@ -114,6 +114,14 @@ summary="$("$REPO/tools/fs.sh" timing)"
 if [[ $tc -eq 3 ]] && awk -F'\t' '$3 == "timed" && $4 == "ad-hoc" && $5 == "fail"' "$FS_TIMING_LOG" | grep -q . && grep -q '1 ad-hoc' <<<"$summary" && grep -qE 'reruns +[0-9.]+ s in 1 row' <<<"$summary"; then
   echo "ok    timed                      exit 3 kept, row logged, fs.sh timing sums the session"
 else echo "WRONG timed (exit $tc):"; sed 's/^/      /' <<<"$summary"; BAD=$((BAD + 1)); fi
+# fs.sh timed --lock: the wait for the desktop is logged apart from the active seconds.
+flock "$LOCK" sleep 1.2 & holder=$!
+sleep 0.2
+FS_LAUNCH_LOCK="$LOCK" "$REPO/tools/fs.sh" timed waited --lock -- true 2> /dev/null
+wait "$holder"
+IFS=$'\t' read -r _ _ _ _ _ tsecs twait _ < <(awk -F'\t' '$4 == "waited"' "$FS_TIMING_LOG")
+if (( $(echo "${twait:-0} >= 0.8 && ${tsecs:-9} < 0.5" | bc) )); then echo "ok    timed --lock               waited $twait s, active $tsecs s"
+else echo "WRONG timed --lock: wait '$twait', active '$tsecs'"; BAD=$((BAD + 1)); fi
 
 echo "timing table:"; timing_table selftest 1.0 | sed 's/^/  /'
 rm -rf "$OUT"

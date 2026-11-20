@@ -137,6 +137,7 @@ launch() {
   local t c=0 lfd; t=$(date +%s.%N)
   exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"
   LAUNCH_WAIT="$(printf '%.1f' "$(echo "$(date +%s.%N) - $t" | bc)")"
+  [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$LAUNCH_WAIT" >> "$FS_LOCK_WAIT_FILE"   # fs.sh timed sums nested waits (TEST-06)
   "$@" {lfd}>&- || c=$?
   exec {lfd}>&-
   return $c
@@ -347,17 +348,17 @@ case "$cmd" in
     done
     [[ "${1:-}" == -- ]] && shift
     [[ $# -gt 0 ]] || { echo "usage: fs.sh timed NAME [--lock] [--why=TEXT] -- CMD..." >&2; exit 2; }
-    LAUNCH_WAIT=0; c=0
-    if [[ $lock == 1 && -n "${FS_LAUNCH_LOCK:-}" ]]; then
-      # launch() measures the lock wait; the active seconds start once the lock is held.
-      t_all=$(date +%s.%N); launch "$@" || c=$?
-      secs="$(printf '%.1f' "$(echo "$(date +%s.%N) - $t_all - $LAUNCH_WAIT" | bc)")"
-    else
-      t0=$(date +%s.%N); "$@" || c=$?; secs="$(secs_since "$t0")"
-    fi
+    # Every lock wait inside CMD (its own with --lock, and nested ones: fs.sh stage's smoke launch, fs.sh run) is written to
+    # FS_LOCK_WAIT_FILE and taken out of the active seconds. Not for `fs.sh check`, which logs its own steps.
+    c=0; export FS_LOCK_WAIT_FILE; FS_LOCK_WAIT_FILE="$(mktemp)"
+    t0=$(date +%s.%N)
+    if [[ $lock == 1 ]]; then launch "$@" || c=$?; else "$@" || c=$?; fi
+    all="$(secs_since "$t0")"
+    waited="$(printf '%.1f' "$(awk '{ s += $1 } END { print s + 0 }' "$FS_LOCK_WAIT_FILE")")"; rm -f "$FS_LOCK_WAIT_FILE"
+    secs="$(printf '%.1f' "$(echo "$all - $waited" | bc)")"
     result=pass; [[ $c -eq 124 ]] && result=timeout; [[ $c -ne 0 && $c -ne 124 ]] && result=fail
-    rerun="$(timing_log_append timed "$name" "$result" "$secs" "$LAUNCH_WAIT")"
-    echo "fs.sh timed: $name $result ${secs} s active, lock wait ${LAUNCH_WAIT} s$([[ $rerun == 1 ]] && echo ", rerun (${FS_RERUN_WHY:-no reason given})") -> $(timing_log_path)" >&2
+    rerun="$(timing_log_append timed "$name" "$result" "$secs" "$waited")"
+    echo "fs.sh timed: $name $result ${secs} s active, lock wait ${waited} s$([[ $rerun == 1 ]] && echo ", rerun (${FS_RERUN_WHY:-no reason given})") -> $(timing_log_path)" >&2
     exit $c ;;
   timing)
     # TEST-06: the session's totals from the timing log: active seconds, lock-wait seconds and reruns, kept apart.
