@@ -22,8 +22,8 @@ public enum MusicExperience
 // AD-79 (PLANET-97, PLANET-98): the variation scheme's three questions, asked in order, and the minimum dwell.
 //   1. Activity picks the piece: MusicExperience (World → the place's arrangement as before; Overlook → the Lydian overlook;
 //      Overview → the star chart). A change of activity is heard at once (the next beat), never held by the dwell.
-//   2. Place picks the key and the mode family: the world's theme gives the root (the pieces are transposed into it); the
-//      overlook is always Lydian; the overview is Ionian, or Dorian where the place's own key is Dorian already.
+//   2. Place picks the key: the world's theme gives the root (the pieces are transposed into it); the overlook is always
+//      Lydian; the overview always Dorian (AD-85; AD-79 had Ionian, or Dorian where the place's own key was Dorian already).
 //   3. Visits pick the variation: as for the worlds (AD-49), the visits count starts a forgotten place on a later cycle and
 //      a remembered one resumes where it was (for a piece, at its next section), and the pieces' variations take turns by cycle.
 //   Minimum dwell: a world's music, once begun, keeps playing for at least MinimumDwell and then to its next two-bar
@@ -117,15 +117,15 @@ public sealed partial class SkySynth
     public static bool IsExperience(MusicIdentity id) => id is MusicIdentity.Overlook or MusicIdentity.Overview;
 
     /// <summary>
-    /// The mode an identity is heard in at a place, as AD-79's scheme picks it for the experience pieces: the overlook Lydian;
-    /// the overview Dorian where the place's own key (its identity's, <see cref="KeyFor(PlanetTheme, WorldCharacter)"/>) is
-    /// Dorian already (the WSL root, the deep woods, the underglow, a Theatre folder), else Ionian, the mode DJ liked best
-    /// (a hazard world's overview is Ionian: the view out is the relief). Locrian and Phrygian are never chosen. For a world identity, Ionian (unused).
+    /// The mode an identity is heard in at a place: the overlook Lydian (AD-79); the overview Dorian from every place (AD-85:
+    /// DJ chose Star Chart Dorian as the overview's identity; AD-79 had given it Ionian except where the place was Dorian
+    /// already). Locrian and Phrygian are never chosen. For a world identity, Ionian (unused). <paramref name="theme"/> and
+    /// <paramref name="place"/> give the key's root elsewhere, never the mode.
     /// </summary>
     public static DiatonicMode ExperienceModeFor(MusicIdentity id, PlanetTheme theme, WorldCharacter place) => id switch
     {
         MusicIdentity.Overlook => DiatonicMode.Lydian,
-        MusicIdentity.Overview => KeyProfiles[(int)IdentityOf(place)][(int)theme].Scale.SequenceEqual(Dorian) ? DiatonicMode.Dorian : DiatonicMode.Ionian,
+        MusicIdentity.Overview => DiatonicMode.Dorian,
         _ => DiatonicMode.Ionian,
     };
 
@@ -133,7 +133,7 @@ public sealed partial class SkySynth
     public static ExperiencePiece? PieceFor(MusicIdentity id, PlanetTheme theme, WorldCharacter place) => id switch
     {
         MusicIdentity.Overlook => ExperiencePieces.Overlook,
-        MusicIdentity.Overview => ExperiencePieces.StarChart(ExperienceModeFor(id, theme, place)),
+        MusicIdentity.Overview => ExperiencePieces.Overview, // AD-85: Star Chart Dorian from every place
         _ => null,
     };
 

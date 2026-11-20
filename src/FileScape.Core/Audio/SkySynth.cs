@@ -129,7 +129,7 @@ public enum MusicIdentity
     /// </summary>
     Overlook,
 
-    /// <summary>AD-79: the overview's own music, the star chart, Ionian or Dorian by the place you look out from (<see cref="ExperiencePieces.StarChart"/>).</summary>
+    /// <summary>AD-79: the overview's own music, the star chart; AD-85: Star Chart Dorian from every place (<see cref="ExperiencePieces.Overview"/>).</summary>
     Overview,
 }
 

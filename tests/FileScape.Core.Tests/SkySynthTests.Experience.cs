@@ -105,16 +105,15 @@ public partial class SkySynthTests
                 s.SetExperience(MusicExperience.Overview);
                 RenderUntil(s, () => s.PlayingIdentity == MusicIdentity.Overview, 1).Should().BeTrue();
                 var mode = SkySynth.ExperienceModeFor(MusicIdentity.Overview, theme, c);
-                mode.Should().Be(place.IntervalsSemitones.SequenceEqual([0, 2, 3, 5, 7, 9, 10]) ? DiatonicMode.Dorian : DiatonicMode.Ionian, $"{theme} {c}: the overview is Dorian only where the place is ({place.Mode})");
-                s.Key.Mode.Should().StartWith(mode == DiatonicMode.Dorian ? "dorian" : "ionian");
+                mode.Should().Be(DiatonicMode.Dorian, $"{theme} {c}: the overview is Star Chart Dorian from every place (AD-85; the place is {place.Mode})");
+                s.Key.Mode.Should().StartWith("dorian");
                 s.Key.RootMidiNote.Should().Be(place.RootMidiNote);
                 families[mode] = families.GetValueOrDefault(mode) + 1;
             }
         }
 
         output.WriteLine("the overview's mode across " + families.Values.Sum() + " places: " + string.Join(", ", families.Select(f => $"{f.Key} {f.Value}")));
-        families.Keys.Should().BeSubsetOf([DiatonicMode.Ionian, DiatonicMode.Dorian]);
-        families[DiatonicMode.Ionian].Should().BeGreaterThan(families[DiatonicMode.Dorian], "weighted to the mode DJ liked best");
+        families.Keys.Should().Equal([DiatonicMode.Dorian], "AD-85: DJ chose Star Chart Dorian as the overview's identity");
         ExperiencePieces.Overlook.Mode.Should().Be(DiatonicMode.Lydian);
     }
 
@@ -323,7 +322,7 @@ public partial class SkySynthTests
         ExperiencePieces.Overlook.Variations[1].Notes.Should().NotEqual(heard.Notes);
         SkySynth.ThemeTempoFor(MusicIdentity.Overlook).Should().Be((float)ExperiencePieces.Overlook.BeatsPerMinute);
         SkySynth.ThemeTempoFor(MusicIdentity.Overview).Should().Be((float)ExperiencePieces.StarChart(DiatonicMode.Ionian).BeatsPerMinute);
-        foreach (var piece in new[] { ExperiencePieces.Overlook, ExperiencePieces.StarChart(DiatonicMode.Ionian), ExperiencePieces.StarChart(DiatonicMode.Dorian) })
+        foreach (var piece in new[] { ExperiencePieces.Overlook, ExperiencePieces.Overview, ExperiencePieces.StarChart(DiatonicMode.Ionian), ExperiencePieces.StarChart(DiatonicMode.Dorian) }.Concat(ExperiencePieces.Reserved.Select(r => r.Piece)))
         {
             foreach (var v in piece.Variations) v.Notes.Max(n => n.Start).TotalSeconds.Should().BeLessThan(16 * 4 * 60 / piece.BeatsPerMinute, $"{v.Name} fits one cycle");
             piece.SectionStarts[0].Should().Be(0);
@@ -499,8 +498,8 @@ public partial class SkySynthTests
     /// <summary>
     /// AD-79's listening folder (SKYSYNTH_MUSIC_DIR), every piece as the game plays it (the synth driven by the app's calls,
     /// the game's dwell on): the overlook on a first visit (the world, the climb, a whole cycle, back down), its second light,
-    /// the star chart Ionian (from the hub) and Dorian (from the deep woods), its second variation, the DSP before/after, and
-    /// the dwell demo (twelve hops 1.5 s apart, without and with the dwell). SKYSYNTH_MUSIC_THEME picks the world's theme
+    /// the overview's Star Chart Dorian (AD-85: from the hub and from the deep woods), its deep sky (a revisit), the reserved
+    /// Ionian star chart and second variation (AD-85, rendered as written), the DSP before/after, and the dwell demo (twelve hops 1.5 s apart, without and with the dwell). SKYSYNTH_MUSIC_THEME picks the world's theme
     /// (default Hearth). Logs each file's duration, sample and true peak, loudness and silent runs; fails on clipping or a gap.
     /// </summary>
     [SkySynthMusicFact]
@@ -553,9 +552,11 @@ public partial class SkySynthTests
         {
             ("overlook-first-visit", Played(theme, Hub, [(6, MusicExperience.Overlook, 1), (6 + cycleOverlook + 1, MusicExperience.World, 1)], 6 + cycleOverlook + 9)),
             ("overlook-second-light", Played(theme, Hub, [(2, MusicExperience.Overlook, 2)], 2 + cycleOverlook + 3)),
-            ("overview-star-chart-ionian", Played(theme, Hub, [(3, MusicExperience.Overview, 1), (3 + cycleChart + 0.5, MusicExperience.World, 1)], 3 + cycleChart + 6)),
+            ("overview-star-chart-dorian-from-hub", Played(theme, Hub, [(3, MusicExperience.Overview, 1), (3 + cycleChart + 0.5, MusicExperience.World, 1)], 3 + cycleChart + 6)),
             ("overview-star-chart-dorian", Played(PlanetTheme.Workshop, Band(3), [(3, MusicExperience.Overview, 1), (3 + cycleChart + 0.5, MusicExperience.World, 1)], 3 + cycleChart + 6)),
-            ("overview-star-chart-second", Played(theme, Hub, [(2, MusicExperience.Overview, 2)], 2 + cycleChart + 3)),
+            ("overview-deep-sky", Played(theme, Hub, [(2, MusicExperience.Overview, 2)], 2 + cycleChart + 3)),
+            ("reserved-star-chart-ionian", SkySynth.RenderSketch(ModeSketches.StarChart(DiatonicMode.Ionian, 0), Rate)),
+            ("reserved-star-chart-second", SkySynth.RenderSketch(ModeSketches.StarChart(DiatonicMode.Ionian, 1), Rate)),
             ("dsp-before-saws", SkySynth.RenderSketch(ModeSketches.AuroraComparison(aurora: false), Rate)),
             ("dsp-after-aurora", SkySynth.RenderSketch(ModeSketches.AuroraComparison(aurora: true), Rate)),
             ("dwell-demo-before-hops-cut", Hopped(dwell: false)),
