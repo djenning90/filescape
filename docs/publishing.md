@@ -4,6 +4,15 @@ A review of what a fresh clone and a release package would expose (2026-11-15, P
 build after the second playtest), what has been fixed, how the history is backed up and prepared for publication, the
 decisions that are DJ's to make, and the exact remaining steps. Nothing has been pushed or published.
 
+## 2026-11-20 (evening) refresh at a glance
+
+| Item | State |
+|---|---|
+| Off-machine backup (GitHub, private) | **remote set up by DJ**: `origin` = github.com/djenning90/filescape with Git Credential Manager; `origin/main` is `7680d22` (the fifth follow-up). The sixth pass (main, 60+ commits ahead) is **not pushed**: agents don't push (CLAUDE.md); DJ pushes |
+| Windows ZIP | **`5ba12f91daa3`**, 74.8 MB, 199 entries, checked from a clean extraction; a fresh clone staged and packaged it by itself |
+| Name | FileScape for now (AD-73); the naming note is preserved there |
+| Decisions | unchanged: [Decisions for DJ](#decisions-for-dj-before-publishing) (licence first) |
+
 ## 2026-11-20 refresh at a glance
 
 | Item | State |
