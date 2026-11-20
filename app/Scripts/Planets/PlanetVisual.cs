@@ -123,6 +123,19 @@ public partial class PlanetVisual : Node3D
 
     private const int ThumbnailMaxPixels = 192;
 
+    /// <summary>Pictures read by themselves on one planet, at most (PLANET-96): above the sample's largest picture world
+    /// (Garden Photos, 16) and a gallery's usual size, well under the 64 objects a planet shows; ≈ 6 MB of 192 px
+    /// thumbnails with mipmaps. A picture you look at (E) is always shown.</summary>
+    public const int MaxAutoThumbnails = 32;
+
+    private int _autoThumbnails;
+
+    /// <summary>Pictures read by themselves on this planet so far (probes: never above <see cref="MaxAutoThumbnails"/>).</summary>
+    public int AutoThumbnailsRequested => _autoThumbnails;
+
+    /// <summary>The way back's pad has its marker treatment (PLANET-95).</summary>
+    public bool WayBackMarked { get; private set; }
+
     /// <summary>Easel pictures shown since the planet was built (diagnostics).</summary>
     public int ThumbnailsShown { get; private set; }
 
@@ -187,6 +200,7 @@ public partial class PlanetVisual : Node3D
         BuildOverlook(surf);
         BuildArrivalMark(surf);
         BuildLaunchers(tree, surf);
+        BuildWayBackMarker(surf); // PLANET-95: the way back's rim and spire (PlanetVisual.WayBack.cs)
         BuildRingLights(surf);
         var tLaunch = sw.Elapsed.TotalMilliseconds;
         BuildItems(tree, surf);
@@ -479,6 +493,7 @@ public partial class PlanetVisual : Node3D
         AnimateBell(dt); // PLANET-56: the bell tower's bell swings when rung (PlanetVisual.Bell.cs)
         AnimateTelescopeCue(dt); // PLANET-55: the telescope's sign on approach (PlanetVisual.Telescope.cs)
         AnimateWhimsy(dt); // PLANET-74/75: the lighthouse's beam, the answering scenery and its shimmer (PlanetVisual.Whimsy.cs)
+        AnimateWayBack(); // PLANET-95: the way back's spire climbs (PlanetVisual.WayBack.cs)
         var surf = _comp.Surface;
         foreach (var (id, node) in _launchers)
         {
@@ -551,7 +566,7 @@ public partial class PlanetVisual : Node3D
     /// <paramref name="automatic"/> (only the app's own Starter Sky, FILE-02/DEV-02: your files' contents are read only
     /// when you ask), loads the rest two at a time off the main thread. Cloud placeholders and links are never read.
     /// </summary>
-    public void PumpThumbnails(FsTree tree, int maxConcurrent, bool automatic = true)
+    public void PumpThumbnails(FsTree tree, int maxConcurrent, bool automatic = true, NVector3? near = null)
     {
         lock (_thumbReady)
         {
@@ -566,15 +581,19 @@ public partial class PlanetVisual : Node3D
             _thumbReady.Clear();
         }
 
-        if (!automatic || Volatile.Read(ref _thumbLoading) >= maxConcurrent) return;
-        foreach (var (id, e) in _items)
+        if (!automatic || Volatile.Read(ref _thumbLoading) >= maxConcurrent || _autoThumbnails >= MaxAutoThumbnails) return;
+        // Nearest first (PLANET-96): the pictures you walk towards fill in before the far ones.
+        var order = near is { } at ? _items.OrderBy(kv => NVector3.DistanceSquared(kv.Value.Item.Direction * _comp.Shape.Radius, at)) : _items.AsEnumerable();
+        foreach (var (id, e) in order)
         {
+            if (_autoThumbnails >= MaxAutoThumbnails) break;
             if (Volatile.Read(ref _thumbLoading) >= maxConcurrent) break;
             if (id < 0 || e.Art.FaceSurface < 0 || _thumbRequested.Contains(id) || !tree.Contains(id)) continue;
             var n = tree[id];
             var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
             if (n.Kind != NodeKind.File || (n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0 || ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp") || n.Size > ThumbnailMaxFileBytes) { _thumbRequested.Add(id); continue; }
             _thumbRequested.Add(id);
+            _autoThumbnails++;
             Interlocked.Increment(ref _thumbLoading);
             var path = tree.FullPath(id);
             _ = Thumbnails.LoadAsync(path, ThumbnailMaxPixels, maxBytes: ThumbnailReadMaxBytes).ContinueWith(t =>

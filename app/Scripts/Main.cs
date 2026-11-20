@@ -226,6 +226,12 @@ public partial class Main : Node3D
             if (TryStarterSky() is { } sky) StartLive(sky); // the curated sample worlds (real files the app writes for itself)
             else StartScan(new SyntheticTreeSource());
         }
+        else if (args.Root is "gallery")
+        {
+            // PLANET-96: the picture gallery sample, beside the Starter Sky in the app's own data folder.
+            if (TryGallerySample() is { } gallery) StartLive(gallery);
+            else StartScan(new SyntheticTreeSource());
+        }
         else if (args.Root is { } root)
         {
             if (args.BoundedTree) StartBoundedTree(root, confirmBroad: false);

@@ -8,6 +8,7 @@ using FileScape.Fixtures;
 //   FileScape.Fixtures create-walk [parent]   creates the walking-world fixture (links, identities, visibility)
 //   FileScape.Fixtures create-deep [parent]   creates "Deep Atlas" (7 levels × 3 folders, links, denied; PLANET-76)
 //   FileScape.Fixtures create-sky [parent]    creates a marked sky-<stamp>-<hex> holding the "Starter Sky" sample; prints its path
+//   FileScape.Fixtures create-gallery [parent] creates a marked gallery-<stamp>-<hex> holding "Picture Gallery" with its stress cases (PLANET-96)
 //   FileScape.Fixtures delete <fixtureRoot>  deletes a fixture; refuses directories without the marker
 //   FileScape.Fixtures delete-all            deletes every marked fixture under the default parent
 switch (args.FirstOrDefault())
@@ -25,6 +26,9 @@ switch (args.FirstOrDefault())
     case "create-sky":
         Console.WriteLine(SkyFixture.Create(args.Length > 1 ? args[1] : null));
         return 0;
+    case "create-gallery":
+        Console.WriteLine(GalleryFixture.Create(args.Length > 1 ? args[1] : null));
+        return 0;
     case "create-places":
         var places = PlacesFixture.Create(args.Length > 1 ? args[1] : null);
         Console.WriteLine(places);
@@ -37,8 +41,26 @@ switch (args.FirstOrDefault())
         Console.WriteLine($"Deleted {FixtureBuilder.DeleteAllUnderDefaultParent()} fixture(s) under {FixtureBuilder.DefaultParent}");
         return 0;
     default:
-        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-places [parentDir] | create-sky [parentDir] | delete <fixtureRoot> | delete-all");
+        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-places [parentDir] | create-sky [parentDir] | create-gallery [parentDir] | delete <fixtureRoot> | delete-all");
         return 2;
+}
+
+/// <summary>
+/// The picture gallery fixture (PLANET-96): an owned, marked directory (gallery-&lt;stamp&gt;-&lt;hex&gt;) holding the mixed
+/// "Picture Gallery" sample with its stress cases (a damaged picture, a 63-megapixel one, one over the 24 MiB read limit),
+/// for the <c>planets-gallery</c> journey.
+/// </summary>
+internal static class GalleryFixture
+{
+    /// <summary>Creates the fixture under <paramref name="parent"/> (default: the fixtures parent) and returns the gallery's path.</summary>
+    public static string Create(string? parent)
+    {
+        parent ??= FixtureBuilder.DefaultParent;
+        var dir = Path.Combine(parent, "gallery-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, FixtureBuilder.MarkerName), "FileScape picture gallery fixture. Safe to delete.\n");
+        return FileScape.Core.Samples.GallerySample.Create(dir, stress: true);
+    }
 }
 
 /// <summary>

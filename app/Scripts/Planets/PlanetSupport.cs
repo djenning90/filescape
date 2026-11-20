@@ -47,12 +47,18 @@ public static class PlanetText
 
 /// <summary>
 /// Picture thumbnails, read off the main thread (bounded size, read-only). The image is decoded and shrunk on a worker
-/// thread; the texture is made on the main thread by the caller.
+/// thread; the texture is made on the main thread by the caller. Every read is bounded by bytes (the caller's limit) and
+/// by pixels: since PLANET-96 the size in the picture's header is checked against <see cref="MaxDecodedPixels"/> before
+/// decoding (<see cref="ImageHeader"/>), so a small file that would decode into a huge buffer is refused without decoding.
 /// </summary>
 public static class Thumbnails
 {
-    /// <summary>A decoded picture larger than this many pixels (≈ 7746 × 7746) is dropped before resizing: not worth the memory.</summary>
-    private const int MaxDecodedPixels = 60_000_000;
+    /// <summary>A picture larger than this many pixels (≈ 7746 × 7746) is refused: by its header before decoding (PLANET-96),
+    /// or, for a header this cannot read, after decoding and before resizing. Not worth the memory (≈ 240 MB decoded).</summary>
+    public const int MaxDecodedPixels = 60_000_000;
+
+    /// <summary>A picture read, or why not (said to the player as it is: "too many pixels", "could not be decoded").</summary>
+    public readonly record struct Result(Image? Image, int SourceWidth, int SourceHeight, string? Refusal);
 
     /// <summary>The read buffer, bytes (64 KiB: large sequential reads, few system calls).</summary>
     private const int ReadBufferBytes = 64 * 1024;
@@ -83,11 +89,19 @@ public static class Thumbnails
     /// <paramref name="maxPixels"/>, with mipmaps; null for a file over <paramref name="maxBytes"/> (24 MiB by default),
     /// an unknown format, a decoding error or a pathologically large picture. Never throws.
     /// </summary>
-    public static Task<Image?> LoadAsync(string path, int maxPixels, long maxBytes = 24L * 1024 * 1024) => Task.Run(() =>
+    public static Task<Image?> LoadAsync(string path, int maxPixels, long maxBytes = 24L * 1024 * 1024) => Task.Run(() => Load(path, maxPixels, maxBytes).Image);
+
+    /// <summary>As <see cref="LoadAsync"/>, with the picture's own size and the reason when it is refused.</summary>
+    public static Task<Result> LoadWithReasonAsync(string path, int maxPixels, long maxBytes) => Task.Run(() => Load(path, maxPixels, maxBytes));
+
+    private static Result Load(string path, int maxPixels, long maxBytes)
     {
         try
         {
-            if (ReadBounded(path, maxBytes) is not { } bytes) return null;
+            if (ReadBounded(path, maxBytes) is not { } bytes) return new Result(null, 0, 0, "it could not be read here (too large, or not readable)");
+            var size = ImageHeader.TryReadSize(bytes.AsSpan(0, Math.Min(bytes.Length, ImageHeader.ProbeBytes)));
+            if (size is { } s && (long)s.Width * s.Height > MaxDecodedPixels)
+                return new Result(null, s.Width, s.Height, $"it is {s.Width:N0} × {s.Height:N0} pixels, more than the {MaxDecodedPixels / 1_000_000} million FileScape decodes");
             var img = new Image();
             var ext = Path.GetExtension(path).ToLowerInvariant();
             var err = ext switch
@@ -98,20 +112,20 @@ public static class Thumbnails
                 ".bmp" => img.LoadBmpFromBuffer(bytes),
                 _ => Error.FileUnrecognized,
             };
-            if (err != Error.Ok || img.IsEmpty()) return null;
-            if ((long)img.GetWidth() * img.GetHeight() > MaxDecodedPixels) return null; // a pathological picture: not worth the memory
+            if (err != Error.Ok || img.IsEmpty()) return new Result(null, size?.Width ?? 0, size?.Height ?? 0, "it could not be decoded (damaged, or a kind of picture FileScape does not read)");
             var w = img.GetWidth();
             var h = img.GetHeight();
+            if ((long)w * h > MaxDecodedPixels) return new Result(null, w, h, "it has more pixels than FileScape decodes"); // a pathological picture: not worth the memory
             var k = MathF.Min(1f, maxPixels / (float)Math.Max(w, h));
             if (k < 1f) img.Resize(Math.Max(1, (int)(w * k)), Math.Max(1, (int)(h * k)), Image.Interpolation.Bilinear);
             img.GenerateMipmaps();
-            return img;
+            return new Result(img, w, h, null);
         }
         catch (Exception)
         {
-            return null;
+            return new Result(null, 0, 0, "it could not be decoded");
         }
-    });
+    }
 }
 
 /// <summary>

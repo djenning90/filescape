@@ -1,4 +1,5 @@
 using FileScape.App.Planets;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using FileScape.Core.Samples;
 using Godot;
@@ -100,8 +101,18 @@ public partial class Main
     }
 
     private PanelContainer _lessonCard = null!;
-    private Label _lessonTitle = null!, _lessonText = null!, _lessonFeedback = null!;
-    private HBoxContainer _lessonKeys = null!;
+    private Label _lessonTitle = null!, _lessonFeedback = null!;
+
+    /// <summary>The instruction (PLANET-94): BBCode from <see cref="LessonText"/> — the current action in gold, keys as caps,
+    /// a short tip under it.</summary>
+    private RichTextLabel _lessonText = null!;
+
+    /// <summary>The card's text sizes at UI scale 1, pixels: the action line (one step up from the 17 px of before, so the
+    /// caps read at a glance) and the quieter tip line under it.</summary>
+    private const int LessonActionPixels = 18, LessonTipPixels = 15;
+
+    /// <summary>The tip line's colour: a pale blue-grey, quieter than the action.</summary>
+    private const string LessonTipColor = "#bcc6e2";
     private Button _lessonBack = null!, _lessonSkip = null!, _lessonRestart = null!, _lessonLeave = null!, _lessonExplore = null!, _lessonStay = null!;
     private PanelContainer _welcome = null!;
     private bool _welcomeOpen;
@@ -125,6 +136,9 @@ public partial class Main
 
     public bool WelcomeOpen => _welcomeOpen;
 
+    /// <summary>The card's instruction as shown, with its key caps (probes: the card must name its keys).</summary>
+    public string LessonShownText => _lessonText.GetParsedText();
+
     public Rect2 WelcomeButtonRect(int index) => ((Button)_welcomeButtons.GetChild(index)).GetGlobalRect();
 
     public Rect2 LessonButtonRect(string which) => (which switch { "back" => _lessonBack, "skip" => _lessonSkip, "restart" => _lessonRestart, "leave" => _lessonLeave, "explore" => _lessonExplore, _ => _lessonStay }).GetGlobalRect();
@@ -147,16 +161,22 @@ public partial class Main
         _lessonTitle = new Label();
         _lessonTitle.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.45f));
         _lessonTitle.AddThemeFontSizeOverride("font_size", 15);
-        _lessonText = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(400, 0), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        _lessonText.AddThemeFontSizeOverride("font_size", 17);
-        // The step's keys as key caps beside the instruction: the cue for a step with no place to go (AD-55).
-        _lessonKeys = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        _lessonKeys.AddThemeConstantOverride("separation", 4);
-        var textRow = new HBoxContainer();
-        textRow.AddThemeConstantOverride("separation", 10);
-        textRow.AddChild(_lessonText);
-        textRow.AddChild(_lessonKeys);
+        _lessonText = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(540, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _lessonText.AddThemeFontSizeOverride("normal_font_size", LessonActionPixels);
+        _lessonText.AddThemeFontSizeOverride("bold_font_size", LessonActionPixels);
+        _lessonText.AddThemeConstantOverride("line_separation", 4); // room for the caps' backgrounds between wrapped lines
+        var textRow = _lessonText;
         _lessonFeedback = new Label { Visible = false };
+        _lessonFeedback.AddThemeFontSizeOverride("font_size", LessonTipPixels);
         _lessonFeedback.AddThemeColorOverride("font_color", TutorialCue.CueColor);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 6);
@@ -298,44 +318,44 @@ public partial class Main
 
         return
         [
-            new("1 · Look around", "Hold the left mouse button and drag to look around.", ["drag", "← →"], () => root, () => null,
+            new("1 · Look around", "*Look around:* hold the left mouse button and {drag}.\nOr turn with {←} {→}.", ["drag", "← →"], () => root, () => null,
                 () => _tutHeadingTurned >= LookAroundDegrees,
                 () => { _tutHeadingTurned = 0; _tutLastHeading = _planets.CameraHeadingDegrees(); }),
-            new("1 · Walk to the tower", "Walk into the green ring round the tower with W A S D. You run where the camera looks.", ["W A S D"], () => root,
+            new("1 · Walk to the tower", "*Walk into the green ring* round the tower: {W A S D}.\nYou run where the camera looks.", ["W A S D"], () => root,
                 () => _planets.Composition?.Landmark is { } lm ? new TutorialTarget(lm.Direction, "Walk into the ring", 0f, lm.Radius + LandmarkRingMetres, lm.Top + MarkerOverGroundMetres) : null,
                 () => _planets.Composition?.Landmark is { } lm && _planets.DistanceTo(lm.Direction) <= lm.Radius + LandmarkReachMetres),
-            new("2 · Jump", "Press Space to jump. Press it again in the air to twirl higher.", ["Space"], () => root, () => null,
+            new("2 · Jump", "*Jump:* press {Space}.\nPress it again in the air to twirl higher.", ["Space"], () => root, () => null,
                 () => _planets.Walker.Jumps > _tutJumps0,
                 () => _tutJumps0 = _planets.Walker.Jumps),
-            new("2 · Fly to a folder", "Folders hang in the sky above flower launchers. Follow the green beacon to the Lantern Workshop launcher, stand on it and press Space.", ["Space"], () => root,
+            new("2 · Fly to a folder", "*Fly to Lantern Workshop:* stand on its launcher and press {Space}.\nFollow the green beacon. Each folder hangs in the sky above a flower launcher.", ["Space"], () => root,
                 () => Pad(workshop, "Stand here · press Space to fly"),
                 () => Here() == workshop && !_planets.Busy),
-            new("3 · A software project", "Lantern Workshop is a project, so its lookout is a workbench. Follow the beacon and jump onto the bench.", ["Space"], () => workshop,
+            new("3 · A software project", "*Jump onto the workbench:* run at it and press {Space}.\nLantern Workshop is a software project, so its lookout is a workbench.", ["Space"], () => workshop,
                 () => Bench("Run at it and press Space"),
                 () => _planets.BenchRevealed),
-            new("3 · Read the README", "Press E on the bench to read the project's README. (Feeling playful? Spin: Space, then Space again in the air.)", ["E"], () => workshop,
+            new("3 · Read the README", "*Read the README:* press {E} on the bench.\nFeeling playful? Spin instead: {Space}, then {Space} again in the air.", ["E"], () => workshop,
                 () => Bench("Press E to read the README"),
                 () => _planets.PreviewOpen && _selection.Selected >= 0 && t.Contains(_selection.Selected) && t[_selection.Selected].Name.StartsWith("README", StringComparison.OrdinalIgnoreCase)),
-            new("4 · Up a level", "Press U to go up to the parent world: the Starter Sky.", ["U"], () => workshop, () => null,
+            new("4 · Up a level", "*Go up a level:* press {U}.\nUp takes you to the parent world, the Starter Sky.", ["U"], () => workshop, () => null,
                 () => Here() == root && !_planets.Busy),
-            new("4 · Straight to a folder", "Press J for this world's list, then choose Music Box (double-click, or ↓ and Enter).", ["J", "↓", "Enter"], () => root, () => null,
+            new("4 · Straight to a folder", "*Go straight to Music Box:* press {J}, then {↓} and {Enter}.\nJ lists every world you can reach. Double-clicking a row works too.", ["J", "↓", "Enter"], () => root, () => null,
                 () => Here() == musicBox && !_planets.Busy),
-            new("4 · Up is the parent", "Press U. Up always goes to the folder above: the Starter Sky.", ["U"], () => musicBox, () => null,
+            new("4 · Up is the parent", "*Go up:* press {U}.\nUp always goes to the folder above: the Starter Sky.", ["U"], () => musicBox, () => null,
                 () => Here() == root && !_planets.Busy),
-            new("4 · Back is your history", "Now press Backspace. Back retraces your steps: to Music Box, where you just were — not further up.", ["Backspace"], () => root, () => null,
+            new("4 · Back is your history", "*Go back:* press {Backspace}.\nBack retraces your steps: to Music Box, where you just were, not further up.", ["Backspace"], () => root, () => null,
                 () => Here() == musicBox && !_planets.Busy),
-            new("5 · The overview", "Press T to see every folder you know as star systems.", ["T"], () => musicBox, () => null,
+            new("5 · The overview", "*Open the overview:* press {T}.\nEvery folder you know, drawn as star systems.", ["T"], () => musicBox, () => null,
                 () => _planets.UniverseOpen,
                 () => _tutFeetBeforeOverview = _planets.Walker.Feet),
-            new("5 · Look round it", "Drag with the left mouse button to orbit. Click a world to select it if you like.", ["drag"], () => musicBox, () => null,
+            new("5 · Look round it", "*Orbit the overview:* {drag} with the left mouse button.\nClick a world to select it if you like.", ["drag"], () => musicBox, () => null,
                 () => _planets.UniverseOpen && MathF.Abs(_planets.UniverseYaw - _tutYaw0) >= OverviewOrbitRadians,
                 () => _tutYaw0 = _planets.UniverseYaw),
             // PLANET-54 (DJ 2026-11-17: "When Overview opens zoomed in, I don't know I can see more. Prompt me to scroll down
             // to zoom out"): done once the wheel has pulled the camera well back and you can see more worlds than before.
-            new("5 · Zoom out", "Scroll the mouse wheel down to zoom out until you see the Starter Sky's worlds around you. (Scroll up zooms back in.)", ["wheel ↓"], () => musicBox, () => null,
+            new("5 · Zoom out", "*Zoom out:* scroll the {wheel ↓} until the Starter Sky's worlds are around you.\nScrolling up zooms back in.", ["wheel ↓"], () => musicBox, () => null,
                 () => _planets.UniverseOpen && ZoomedOutEnough(),
                 () => { var z = _planets.UniverseZoom; _tutZoom0 = MathF.Max(z.Now, z.Target); _tutWorlds0 = _planets.UniverseWorldsInView; }),
-            new("5 · Back where you stood", "Press Esc to come back down to the exact spot you left.", ["Esc"], () => musicBox, () => null,
+            new("5 · Back where you stood", "*Come back down:* press {Esc}.\nYou land on the exact spot you left.", ["Esc"], () => musicBox, () => null,
                 () => !_planets.UniverseOpen && !_planets.Busy && NVector3.Distance(_planets.Walker.Feet, _tutFeetBeforeOverview) <= BackWhereYouStoodMetres),
         ];
     }
@@ -426,27 +446,6 @@ public partial class Main
         _offRouteFor = 0;
         _lessonBack.Visible = false;
         ShowLesson($"Learn to play · {lesson.Title}", lesson.Instruction, $"step {_lesson + 1} of {_lessons.Count}", feedback: null);
-        ShowKeys(lesson.Keys);
-    }
-
-    /// <summary>The step's keys as key caps on the card (dark caps with a lime edge and lime letters).</summary>
-    private void ShowKeys(string[] keys)
-    {
-        foreach (var c in _lessonKeys.GetChildren()) c.QueueFree();
-        foreach (var k in keys)
-        {
-            var cap = new Label { Text = k, VerticalAlignment = VerticalAlignment.Center };
-            cap.AddThemeFontSizeOverride("font_size", 15);
-            cap.AddThemeColorOverride("font_color", TutorialCue.CueColor);
-            var box = new StyleBoxFlat { BgColor = new Color(0.08f, 0.12f, 0.08f), BorderColor = TutorialCue.CueColor, ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 2, ContentMarginBottom = 3 };
-            box.SetBorderWidthAll(1);
-            box.BorderWidthBottom = 3; // a key's front edge
-            box.SetCornerRadiusAll(5);
-            cap.AddThemeStyleboxOverride("normal", box);
-            _lessonKeys.AddChild(cap);
-        }
-
-        _lessonKeys.Visible = keys.Length > 0;
     }
 
     /// <summary>The current step's keys as shown on the card, joined with "+" (probes and the state file).</summary>
@@ -463,8 +462,7 @@ public partial class Main
             _lesson = -1;
             _tutorialFinished = true;
             _planets.SetTutorialTarget(null);
-            ShowKeys([]);
-            ShowLesson("Learn to play · done", "You've got the basics: look, run, jump, fly, read a project's README, go up and back, and the overview. Explore your own computer next?", "", feedback: "✓ All done!");
+            ShowLesson("Learn to play · done", "*You've got the basics!*\nLook, run, jump, fly, read a README, go up and back, and the overview. Explore your own computer next?", "", feedback: "✓ All done!");
             return;
         }
 
@@ -485,7 +483,7 @@ public partial class Main
     {
         _lessonCard.Visible = true;
         _lessonTitle.Text = progress.Length > 0 ? $"{title}    ({progress})" : title;
-        _lessonText.Text = text;
+        _lessonText.Text = LessonBbcode(text);
         _lessonFeedback.Text = feedback ?? "";
         _lessonFeedback.Visible = feedback != null;
         var running = !_tutorialFinished;
@@ -495,6 +493,17 @@ public partial class Main
         _lessonExplore.Visible = _tutorialFinished;
         _lessonStay.Visible = _tutorialFinished;
         _lessonBack.Visible = false;
+    }
+
+    /// <summary>
+    /// A lesson's text as the card shows it (PLANET-94): the first line is the action, with its keys as caps
+    /// (<see cref="LessonText"/>); a second line after a line break is a short tip, smaller and quieter.
+    /// </summary>
+    private static string LessonBbcode(string lesson)
+    {
+        var cut = lesson.IndexOf('\n');
+        if (cut < 0) return LessonText.ToBbcode(lesson);
+        return LessonText.ToBbcode(lesson[..cut]) + $"\n[font_size={LessonTipPixels}][color={LessonTipColor}]{LessonText.ToBbcode(lesson[(cut + 1)..])}[/color][/font_size]";
     }
 
     /// <summary>The welcome dialog, the walkthrough and their buttons (centres in window pixels) for the real-input probe's state file.</summary>

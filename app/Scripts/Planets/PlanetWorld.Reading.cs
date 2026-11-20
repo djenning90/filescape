@@ -54,7 +54,10 @@ public partial class PlanetWorld
     {
         _expandButton = new Button { Text = "⤢ Expand (R)", FocusMode = Control.FocusModeEnum.None, Visible = false, TooltipText = "Expand: read the whole file in the large reading view (R). Esc or R closes it." };
         _expandButton.AddThemeFontSizeOverride("font_size", ExpandIconPixels);
-        _expandButton.Pressed += () => ExpandPreview();
+        _expandButton.Pressed += () =>
+        {
+            if (!ExpandPreview()) OpenViewer(); // a text file reads in the reading view; a picture opens the picture viewer (PLANET-96)
+        };
         return _expandButton;
     }
 

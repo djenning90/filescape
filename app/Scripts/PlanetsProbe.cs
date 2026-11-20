@@ -128,6 +128,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-overview-discovery") await OverviewDiscoveryRun(); // PlanetsProbe.Discovery.cs (PLANET-76..78)
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
         else if (Mode == "planets-music") await MusicRun(); // PlanetsProbe.Music.cs (AD-79, PLANET-97/98)
+        else if (Mode == "planets-looks") await LooksRun(); // PlanetsProbe.Looks.cs (PLANET-94/95)
+        else if (Mode == "planets-gallery") await GalleryRun(); // PlanetsProbe.Gallery.cs (PLANET-96)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }
