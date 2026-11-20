@@ -130,7 +130,11 @@ public partial class PlanetWorld : Node3D
 
     // ------------------------------------------------------------------ activation (the shared session switches worlds)
 
-    /// <summary>Shows the planetary world at the session's current folder (arriving next to the selected file if it is here).</summary>
+    /// <summary>
+    /// Shows the planetary world at the session's current folder: back where you stood if you left it for a legacy view
+    /// and nothing has moved meanwhile (PLANET-112, <see cref="SurfaceResume"/>), else arriving next to the selected file
+    /// if it is here, else at the arrival with the establishing shot.
+    /// </summary>
     public void Activate(WorldEnvironment world, DirectionalLight3D sun, bool frame)
     {
         _worldEnv = world;
@@ -146,22 +150,75 @@ public partial class PlanetWorld : Node3D
         if (_s.Tree is { Count: > 0 } tree && !_s.AwaitingArrival)
         {
             if (!ReferenceEquals(tree, _tree)) ResetForTree(tree);
-            BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
-            var beside = ArriveBesideSelection(tree);
-            SnapCamera();
-            if (!beside) PlayEstablishingShot();
+            LastResume = SurfaceResume.Decide(_resume, tree, _s.Navigator.Current, _s.Selection.Selected);
+            if (LastResume == SurfaceResumeDecision.Resume && _resume is { } r)
+            {
+                // Rebuilt where you stand (−2: not an arrival, so no arrival count, chord or caution), then put back.
+                BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -2);
+                Resume(r);
+            }
+            else
+            {
+                BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
+                var beside = ArriveBesideSelection(tree);
+                SnapCamera();
+                if (!beside) PlayEstablishingShot();
+            }
+
             ShowTitleCard(tree, _s.Navigator.Current, frame ? "Planets" : null);
         }
+
+        _resume = null;
     }
+
+    /// <summary>Where you stood when a legacy view was shown (PLANET-112): kept by <see cref="Deactivate"/>, used once by
+    /// <see cref="Activate(WorldEnvironment, DirectionalLight3D, bool)"/>.</summary>
+    private SurfaceResume? _resume;
+
+    /// <summary>What the last activation decided about resuming (probes, the log).</summary>
+    public SurfaceResumeDecision LastResume { get; private set; } = SurfaceResumeDecision.NothingSaved;
+
+    /// <summary>
+    /// Keeps where you stand and how the camera looks (PLANET-112), when the moment allows: walking on the ground, nothing
+    /// travelling, not on a Hazard World (its route and caution are set up by an arrival; resuming one is not attempted).
+    /// </summary>
+    private void CaptureResume()
+    {
+        _resume = null;
+        if (_current == null || _s.Tree is not { } tree || _current.Comp.Hazard != null) return;
+        if (!SurfaceResume.MayCapture(_phase == Phase.Walking, _walker.Grounded, Busy || _hop != null || _transfer != null)) return;
+        _resume = new SurfaceResume(tree, _current.FolderId, _s.Selection.Selected, _walker.Up, _walker.Facing, Nv(_camFwd), _camPitchDegrees, _camDistance)
+        {
+            ArrivalFraming = _arrival01,
+            ArrivalReleased = _arrivalReleased,
+        };
+    }
+
+    /// <summary>Stands the traveller where <paramref name="r"/> says and puts the camera back as it was (no establishing shot).</summary>
+    private void Resume(SurfaceResume r)
+    {
+        if (_current == null) return;
+        _walker.Teleport(_current.Comp.Surface, r.Up, r.Facing);
+        _camPitchDegrees = r.CameraPitchDegrees;
+        _camDistance = r.CameraDistanceMetres;
+        _arrival01 = r.ArrivalFraming;
+        _arrivalReleased = r.ArrivalReleased;
+        SnapCamera(Gd(r.CameraForward));
+        Resumes++;
+    }
+
+    /// <summary>Activations that resumed where you stood (probes).</summary>
+    public int Resumes { get; private set; }
 
     /// <summary>
     /// Hides the planetary world and gives back what it borrowed: the shared environment and the sun's shadow settings
     /// (saved by <see cref="Activate(WorldEnvironment, DirectionalLight3D, bool)"/>), the mouse, the music. Any travel in progress is dropped; on the next
-    /// activation the world is built wherever the navigator then is.
+    /// activation the world is built wherever the navigator then is — where you stood, if nothing moved (PLANET-112).
     /// </summary>
     public void Deactivate()
     {
         if (!_active) return;
+        CaptureResume(); // before anything below resets the walk (PLANET-112)
         CloseUniverse(returnToSurface: false);
         _active = false;
         Visible = false;

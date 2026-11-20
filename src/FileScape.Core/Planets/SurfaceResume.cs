@@ -20,6 +20,13 @@ namespace FileScape.Core.Planets;
 /// </summary>
 public sealed record SurfaceResume(FsTree Tree, int FolderId, int Selected, Vector3 Up, Vector3 Facing, Vector3 CameraForward, float CameraPitchDegrees, float CameraDistanceMetres)
 {
+    /// <summary>The arrival framing's weight at the time (0…1; 1 just after landing, PLANET-67), so a view framed for the
+    /// arrival comes back framed.</summary>
+    public float ArrivalFraming { get; init; }
+
+    /// <summary>Whether you had moved since arriving (the framing was easing out).</summary>
+    public bool ArrivalReleased { get; init; } = true;
+
     /// <summary>Whether the planets should resume here, and if not, why (logged; probes read it).</summary>
     public static SurfaceResumeDecision Decide(SurfaceResume? saved, FsTree? tree, int folderId, int selected) =>
         saved == null ? SurfaceResumeDecision.NothingSaved

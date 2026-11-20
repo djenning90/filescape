@@ -212,6 +212,8 @@ if [[ "$LEVEL" != fast ]]; then
   # 2026-11-17 (FOLLOW-1): the overview from the routes into the sample draws worlds you can see (DJ saw it blank).
   journey planets-overview-sample planets-overview-routes.log 300 --automate=planets-overview-routes --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-overview-hub planets-overview-routes.log 300 --automate=planets-overview-routes --root=hub --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # PLANET-110..112 (AD-82): Shift in the overview, Esc's way back down traced frame by frame, the legacy view round trip.
+  journey planets-overview-controls planets-overview-controls.log 240 --automate=planets-overview-controls --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   # FOLLOW-2: no audio gaps at startup, in travel, or while the main loop stalls (the Windows move/resize loop).
   journey planets-audio-gaps planets-audio-gaps.log 300 --automate=planets-audio-gaps --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-hazard planets-hazard.log 300 --automate=planets-hazard --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"

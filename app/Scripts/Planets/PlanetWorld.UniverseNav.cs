@@ -1,3 +1,4 @@
+using FileScape.Core.Planets;
 using Godot;
 
 namespace FileScape.App.Planets;
@@ -9,7 +10,7 @@ namespace FileScape.App.Planets;
 /// again; WASD and middle-drag pan; the wheel zooms toward the orbit's centre only. Added here:
 /// <list type="bullet">
 /// <item><b>The wheel zooms toward the pointer:</b> rolling in over a world also slides the orbit's centre a share of the
-/// way to it (<see cref="WheelTowardShare"/>), so a few notches dive into the system you point at without a click; once
+/// way to it (<see cref="OverviewControls.WheelTowardShare"/>; with Shift two notches' worth, PLANET-110), so a few notches dive into the system you point at without a click; once
 /// it is the world nearest the centre it is "approached" and its system opens (PLANET-91).</item>
 /// <item><b>[ and ]</b> step to the previous or next world round the selected world's ring (its siblings in the layout's
 /// name order), each a selection (anchor, frame, card): panning through nearby systems one at a time.</item>
@@ -22,10 +23,6 @@ namespace FileScape.App.Planets;
 /// </summary>
 public partial class PlanetWorld
 {
-    /// <summary>One wheel notch in over a world moves the orbit's centre this share of the way to it (and the distance by
-    /// <see cref="WheelZoomIn"/>): about five notches centre it. Higher dives faster but makes the view swing more.</summary>
-    private const float WheelTowardShare = 0.3f;
-
     /// <summary>How long the controls hint stays when the overview opens, seconds, before fading over
     /// <see cref="UniHintFadeSeconds"/>; shorter after the first few openings (<see cref="UniHintRepeatSeconds"/>).</summary>
     private const float UniHintSeconds = 9f, UniHintRepeatSeconds = 4f, UniHintFadeSeconds = 0.8f;
@@ -56,13 +53,15 @@ public partial class PlanetWorld
         style.ContentMarginTop = style.ContentMarginBottom = 6;
         _uniHintPanel.AddThemeStyleboxOverride("panel", style);
         _uniHintPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
-        // Viewport units: 620 wide, centred, 64 below the top edge (clear of the toolbar).
-        _uniHintPanel.OffsetLeft = -310; _uniHintPanel.OffsetRight = 310; _uniHintPanel.OffsetTop = 64; _uniHintPanel.OffsetBottom = 120;
+        // Viewport units: 700 wide, three lines of ≤ 80 characters at 15 px, centred, 150 below the top edge: clear of the
+        // toolbar and of the "You are in" bar under it (at 64 the bar covered the hint's left half; PLANET-113).
+        _uniHintPanel.OffsetLeft = -350; _uniHintPanel.OffsetRight = 350; _uniHintPanel.OffsetTop = 150; _uniHintPanel.OffsetBottom = 236;
         root.AddChild(_uniHintPanel);
         _uniHintLabel = MakeLabel(15, new Color(0.88f, 0.93f, 1f), HorizontalAlignment.Center, outline: 0);
         _uniHintLabel.MouseFilter = Control.MouseFilterEnum.Ignore;
         _uniHintLabel.Text = "Click a world to orbit it · F frames it · the wheel zooms toward the pointer\n"
-            + "[ ] the next world round its ring · Z up a level · WASD pan · a haze holds folded worlds: come closer";
+            + "[ ] the next world round its ring · Z up a level · WASD or middle-drag pan\n"
+            + "Shift: faster · Esc: back down · F1: every control · a haze holds folded worlds";
         _uniHintPanel.AddChild(_uniHintLabel);
     }
 
@@ -101,12 +100,12 @@ public partial class PlanetWorld
     }
 
     /// <summary>A wheel notch in at <paramref name="screen"/>: the orbit's centre slides toward the world there, if any.</summary>
-    private void ZoomTowardPointer(Vector2 screen)
+    private void ZoomTowardPointer(Vector2 screen, bool fast)
     {
         var id = PickUniverse(screen);
         if (id < 0 || !_uniIndex.TryGetValue(id, out var i)) return;
         var to = UniverseOrigin + _uniMotion[i].To;
-        _uniFocusTarget = _uniFocusTarget.Lerp(to, WheelTowardShare);
+        _uniFocusTarget = _uniFocusTarget.Lerp(to, OverviewControls.WheelTowardShareFor(fast));
     }
 
     /// <summary>[ or ]: the previous or next world round the selected world's ring (wrapping), selected and framed.</summary>

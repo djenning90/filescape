@@ -216,6 +216,42 @@ public sealed class OverviewCameraTests
         SurfaceResume.MayCapture(walking: true, grounded: true, travelling: true).Should().BeFalse();
     }
 
+    // ---------------------------------------------------------------- Enter in the overview (PLANET-83, PLANET-114)
+
+    [Fact]
+    public void A_row_chosen_in_the_list_is_what_the_overviews_Enter_lands_on()
+    {
+        // The fifth pass's second silent failure: a row clicked in the list, then Enter acted on "you are here".
+        const int here = 1, row = 7;
+        bool Drawn(int id) => id is 1 or 7 or 9;
+        var target = OverviewEnter.Target(cardSelection: row, overviewSelected: here, Drawn);
+        target.Should().Be(row);
+        OverviewEnter.Decide(target, here, Drawn, landing: false).Should().Be(OverviewEnterAction.FlyInto);
+        // A card selection the overview does not draw (a file, a hidden folder) leaves the overview's own choice.
+        OverviewEnter.Target(cardSelection: 42, overviewSelected: 9, Drawn).Should().Be(9);
+        OverviewEnter.Target(cardSelection: -1, overviewSelected: 9, Drawn).Should().Be(9);
+    }
+
+    [Fact]
+    public void Every_Enter_in_the_overview_lands_goes_back_down_or_says_why()
+    {
+        bool Drawn(int id) => id is 1 or 7;
+        OverviewEnter.Decide(7, here: 1, Drawn, landing: false).Should().Be(OverviewEnterAction.FlyInto);
+        OverviewEnter.Decide(1, here: 1, Drawn, landing: false).Should().Be(OverviewEnterAction.BackDown);
+        OverviewEnter.Decide(30, here: 1, Drawn, landing: false).Should().Be(OverviewEnterAction.TravelOutOfLight);
+        OverviewEnter.Decide(-1, here: 1, Drawn, landing: false).Should().Be(OverviewEnterAction.SayChooseFirst);
+        OverviewEnter.Decide(7, here: 1, Drawn, landing: true).Should().Be(OverviewEnterAction.Wait);
+    }
+
+    [Fact]
+    public void With_the_overview_open_a_commit_lands_through_it_never_as_a_surface_trip()
+    {
+        // The fifth pass's first silent failure: a folder two levels down chosen in the list started a trip whose hops
+        // never ran under the overview (wind-up heard, nothing happened).
+        OverviewEnter.CommitLandsThroughOverview(overviewOpen: true).Should().BeTrue();
+        OverviewEnter.CommitLandsThroughOverview(overviewOpen: false).Should().BeFalse();
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static void Close(OverviewView a, OverviewView b)

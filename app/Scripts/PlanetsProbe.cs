@@ -118,6 +118,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-landmarks") await LandmarksRun(); // PlanetsProbe.Landmarks.cs (PLANET-45)
         else if (Mode == "planets-lookouts") await LookoutsRun(); // PlanetsProbe.Lookouts.cs (PLANET-55, PLANET-56)
         else if (Mode == "planets-overview-routes") await OverviewRoutes(); // PlanetsProbe.Overview.cs (FOLLOW-1)
+        else if (Mode == "planets-overview-controls") await OverviewControlsRun(); // PlanetsProbe.OverviewControls.cs (PLANET-110..112)
         else if (Mode == "planets-audio-gaps") await AudioGaps(); // PlanetsProbe.Audio.cs (FOLLOW-2)
         else if (Mode == "planets-navigation") await NavigationRun(); // PlanetsProbe.Navigation.cs
         else if (Mode == "planets-navigation-denied") await NavigationDeniedRun();
@@ -990,8 +991,8 @@ public partial class PlanetsProbe : ProbeBase
         await Key(Godot.Key.T);
         await Seconds(1.2);
         await Key(Godot.Key.Escape);
-        await Until(() => !P.UniverseOpen, 2);
-        await Until(() => P.CameraSettled, 3);
+        await Until(() => !P.UniverseOpen, 4); // the way back down takes up to 1.8 s (PLANET-111)
+        await Until(() => P.CameraSettled, 4);
         await Frames(5);
         Check(!P.UniverseOpen && System.Numerics.Vector3.Distance(standing, P.Walker.Feet) < 0.05f && App.Navigator.Current == before, "Esc leaves the overview and you are where you stood");
         await Shot("overview-back-where-you-stood");

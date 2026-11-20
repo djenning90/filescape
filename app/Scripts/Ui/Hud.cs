@@ -465,6 +465,9 @@ public partial class Hud : CanvasLayer
                 "  Each folder is a small world; its folders hang in the sky above flower launchers; files stand in groves.\n" +
                 "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
                 "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
+                "  [b]In the overview[/b]: click a world to orbit it · drag or ← → orbit · wheel zooms toward the pointer · middle-drag or WASD pan ·\n" +
+                "    [b][ ][/b] the next world round its ring · [b]Z[/b] up a level · [b]F[/b] frame it · [b]Shift[/b] faster (pan ×3, ← → ×1.6, a wheel notch counts twice) ·\n" +
+                "    [b]Enter[/b] lands there · [b]Esc[/b] or [b]T[/b] flies back down to where you stood (press again to hurry)\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
                 "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
                 "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
