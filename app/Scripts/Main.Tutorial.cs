@@ -228,7 +228,7 @@ public partial class Main
         _welcomeButtons.AddThemeConstantOverride("separation", 10);
         Button W(string text, Action act)
         {
-            var b = new Button { Text = text, FocusMode = Control.FocusModeEnum.None };
+            var b = new Button { Text = text, FocusMode = Control.FocusModeEnum.All }; // AD-83: ← → / Tab choose, Enter answers
             b.Pressed += act;
             _welcomeButtons.AddChild(b);
             return b;
@@ -258,6 +258,24 @@ public partial class Main
         if (args.Automation != null || args.Root != null || args.Experience != null || !_prefs.ShowWelcome) return;
         _welcome.Visible = true;
         _welcomeOpen = true;
+        FocusWelcome();
+    }
+
+    /// <summary>
+    /// The welcome's first answer ("Learn to play") takes the keyboard (AD-83, PLANET-116): ← → and Tab move between the
+    /// three answers, Enter or Space gives the focused one, Esc is "Explore on my own" (Main.KeyboardOwner).
+    /// </summary>
+    private void FocusWelcome()
+    {
+        if (_welcomeOpen && _welcomeButtons.GetChildCount() > 0) ((Button)_welcomeButtons.GetChild(0)).GrabFocus();
+    }
+
+    /// <summary>[instrument] Shows the welcome as a person's first launch does (probes check its keyboard and clicks).</summary>
+    public void ProbeShowWelcome()
+    {
+        _welcome.Visible = true;
+        _welcomeOpen = true;
+        FocusWelcome();
     }
 
     private void CloseWelcome()

@@ -276,6 +276,16 @@ public partial class PlanetWorld
     /// <summary>Whether a control is part of the open list (Main.KeyboardOwner: the panel holding the focus owns the keys).</summary>
     public bool ListHolds(Control c) => _contentsPanel.Visible && _contentsPanel.IsAncestorOf(c);
 
+    /// <summary>
+    /// AD-83: a panel that was over the open list closed and left the keyboard nowhere (or on a control outside the list):
+    /// the filter takes it again, as when the list opened.
+    /// </summary>
+    public void FocusListIfLost()
+    {
+        if (!_contentsPanel.Visible || GetViewport().GuiGetFocusOwner() is { } f && _contentsPanel.IsAncestorOf(f)) return;
+        FocusFilter();
+    }
+
     public bool ListKey(InputEvent e)
     {
         if (!_contentsPanel.Visible || e is not InputEventKey { Pressed: true } k) return false;

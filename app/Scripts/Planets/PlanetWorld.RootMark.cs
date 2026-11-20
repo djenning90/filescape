@@ -42,9 +42,14 @@ public interface IDeveloperSession
 /// panel whose rows each say what they do: <b>1</b> open a terminal in this folder (Windows Terminal or PowerShell; for
 /// WSL the distribution's own shell), <b>2</b> show it in File Explorer, <b>3</b>/<b>4</b> copy the path in its native
 /// form and the other side's, then a few useful places on that filesystem (number keys or click; choosing one travels
-/// there). A twirl within reach is the quick route (AD-63): it opens the panel with the terminal armed, another twirl arms
-/// Explorer, Enter runs the armed one. Nothing runs on walking up, on jumping or twirling, or on opening the panel: only
-/// Enter on an armed row, a button or its number key does anything.
+/// there). A twirl within reach is the quick route (AD-63): it opens the panel with the terminal highlighted.
+/// <para>
+/// PLANET-115 (AD-83): the open panel owns the keyboard (<c>Main.KeyboardOwner</c>, <see cref="Core.Interaction.PanelId.LocationActions"/>),
+/// however it opened: ↑ ↓ (and Tab, Shift+Tab, Home, End) move the highlight, Enter runs the highlighted row, a number runs
+/// its row, E or Esc closes, and nothing else reaches the walk (DJ: at the Ubuntu root the arrows went on walking with the
+/// panel open). A click on the world closes it. Nothing runs on walking up, on jumping or twirling, or on opening the
+/// panel: only Enter, a number key or a click on a row does anything.
+/// </para>
 /// <para>
 /// The panel acts on the current folder (on a real root, the root; probes may show a root's look on a fixture folder).
 /// It is rebuilt each time it opens, so it always describes where you stand.
@@ -111,7 +116,7 @@ public partial class PlanetWorld
         _rootPath = MakeLabel(13, new Color(0.78f, 0.84f, 0.98f), HorizontalAlignment.Left, outline: 0);
         _rootRows = new VBoxContainer();
         _rootRows.AddThemeConstantOverride("separation", 3);
-        var hint = new Label { Text = "Press a number or click (Enter runs a row a twirl armed) · E or Esc closes · nothing runs until you choose it", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        var hint = new Label { Text = RootPanelHint, AutowrapMode = TextServer.AutowrapMode.WordSmart };
         hint.AddThemeFontSizeOverride("font_size", 12);
         hint.AddThemeColorOverride("font_color", new Color(0.7f, 0.76f, 0.9f));
         v.AddChild(_rootTitle);
@@ -119,6 +124,9 @@ public partial class PlanetWorld
         v.AddChild(_rootRows);
         v.AddChild(hint);
     }
+
+    /// <summary>The panel's own line of keys (PLANET-115).</summary>
+    public const string RootPanelHint = "↑ ↓ choose · Enter or its number runs it · click a row · E or Esc closes · nothing runs until you choose it";
 
     /// <summary>Walking away this far beyond reach closes the panel, metres (it describes the mark you stood at).</summary>
     private const float RootPanelCloseBeyondMetres = 2f;
@@ -154,12 +162,11 @@ public partial class PlanetWorld
         }
         else if (_rootArmed >= 0)
         {
-            var next = _rootQuick.Count > 1 ? _rootActions[_rootQuick[(_rootQuick.IndexOf(_rootArmed) + 1) % _rootQuick.Count]].Label : "";
-            SetPrompt($"Enter · {RootMarkArmed}" + (next.Length > 0 ? $"   ·   twirl again · {next}" : "") + "   ·   E · close", what);
+            SetPrompt($"Enter · {RootMarkArmed}   ·   ↑ ↓ choose   ·   E · close", what);
         }
         else
         {
-            SetPrompt("number keys or click · choose   ·   E · close", what);
+            SetPrompt("↑ ↓ choose · Enter or a number runs it   ·   E · close", what);
         }
 
         return true;
@@ -171,11 +178,14 @@ public partial class PlanetWorld
     /// <summary>E at the mark: opens (or closes) its panel. Nothing runs here.</summary>
     private void ToggleRootMarkPanel()
     {
-        if (_rootPanel.Visible) { _rootPanel.Visible = false; return; }
+        if (_rootPanel.Visible) { CloseRootMarkPanel(); return; }
         if (RootMark is not { } m || _s.Tree is not { } tree || _current == null) return;
         _audio.Inspect();
         FillRootMarkPanel(tree, m);
+        _rootArmed = _rootActions.Count > 0 ? 0 : -1; // PLANET-115: the keyboard starts on the first action (Enter runs it)
+        ShowRootQuick();
         _rootPanel.Visible = true;
+        RootPanelOpens++;
         GD.Print($"[planets] root mark panel: {string.Join(" | ", _rootActions.Select((a, i) => $"{i + 1} {a.Label}"))}");
     }
 
@@ -185,6 +195,7 @@ public partial class PlanetWorld
         foreach (var c in _rootRows.GetChildren()) c.QueueFree();
         _rootButtons.Clear();
         _rootDoes.Clear();
+        _rootDetails.Clear();
         _rootArmed = -1;
         _rootActions.Clear();
         var path = tree.FullPath(_current!.FolderId);
@@ -249,7 +260,8 @@ public partial class PlanetWorld
         var index = _rootActions.Count;
         _rootActions.Add((label, act));
         _rootDoes.Add(does ?? detail ?? "");
-        var b = new Button { Text = detail != null ? $"{index + 1}   {label}    ·  {detail}" : $"{index + 1}   {label}", FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip, Alignment = HorizontalAlignment.Left, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
+        _rootDetails.Add(detail);
+        var b = new Button { Text = RowText(index, label, detail), FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip, Alignment = HorizontalAlignment.Left, ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         b.AddThemeFontSizeOverride("font_size", 14);
         b.Pressed += () => ChooseRootAction(index);
         _rootRows.AddChild(b);
@@ -271,6 +283,18 @@ public partial class PlanetWorld
 
     private readonly List<Button> _rootButtons = [];
     private readonly List<string> _rootDoes = [];
+    private readonly List<string?> _rootDetails = [];
+
+    /// <summary>A row's text: its number while a number key reaches it (1–9), the label, and a place's detail.</summary>
+    private static string RowText(int index, string label, string? detail)
+    {
+        var cap = Core.Interaction.PanelOwnership.RowKeyCap(index);
+        var key = cap.Length > 0 ? cap : " ";
+        return detail != null ? $"{key}   {label}    ·  {detail}" : $"{key}   {label}";
+    }
+
+    /// <summary>Times the panel opened, by E or a twirl (probes).</summary>
+    public int RootPanelOpens { get; private set; }
 
     /// <summary>Twirls at the mark that armed a row (probes).</summary>
     public int RootQuickArms { get; private set; }
@@ -285,11 +309,12 @@ public partial class PlanetWorld
     private static readonly Color ArmedColor = Planets.TutorialCue.CueColor;
 
     /// <summary>
-    /// A twirl within reach of the mark (AD-63): the quick route. The first twirl opens the panel (if it is closed) with
-    /// "Open terminal here" armed — highlighted, and the prompt says Enter runs it; another twirl moves to "Show in
-    /// Explorer", and round again. Nothing starts from the twirl itself: an external program starts only from Enter, a
-    /// number key or a click (as AD-57 requires of movement). Away from the mark (or with nothing to arm, as on sample
-    /// data) a twirl is only a twirl. True when the twirl was the mark's.
+    /// A twirl within reach of the mark (AD-63): the quick route. The twirl opens the panel (if it is closed) with
+    /// "Open terminal here" highlighted, and the prompt says Enter runs it. From then on the panel owns the keyboard
+    /// (PLANET-115, AD-83): ↑ ↓ move to "Show in Explorer" and the other rows (a second twirl used to; with the keys the
+    /// panel's, Space no longer jumps). Nothing starts from the twirl itself: an external program starts only from Enter,
+    /// a number key or a click (as AD-57 requires of movement). Away from the mark a twirl is only a twirl; with nothing
+    /// to arm (sample data) it opens the panel on its first row. True when the twirl was the mark's.
     /// </summary>
     private bool TwirlAtRootMark()
     {
@@ -298,9 +323,16 @@ public partial class PlanetWorld
         {
             FillRootMarkPanel(tree, m);
             _rootPanel.Visible = true;
+            RootPanelOpens++;
         }
 
-        if (_rootQuick.Count == 0) return true; // the panel opened; nothing to arm
+        if (_rootQuick.Count == 0)
+        {
+            _rootArmed = _rootActions.Count > 0 ? 0 : -1; // nothing to arm: the keyboard starts on the first row
+            ShowRootQuick();
+            return true;
+        }
+
         var at = _rootQuick.IndexOf(_rootArmed);
         _rootArmed = _rootQuick[(at + 1) % _rootQuick.Count];
         RootQuickArms++;
@@ -310,7 +342,7 @@ public partial class PlanetWorld
         return true;
     }
 
-    /// <summary>Shows which row is armed (none when the panel was opened with E, or after a choice).</summary>
+    /// <summary>Shows which row is highlighted (the one Enter runs): a lime border, "▶" and "Enter" on it.</summary>
     private void ShowRootQuick()
     {
         for (var i = 0; i < _rootButtons.Count; i++)
@@ -325,13 +357,13 @@ public partial class PlanetWorld
                 box.SetCornerRadiusAll(4);
                 b.AddThemeStyleboxOverride("normal", box);
                 b.AddThemeColorOverride("font_color", ArmedColor);
-                b.Text = $"▶ {i + 1}   {_rootActions[i].Label}   ·   Enter";
+                b.Text = $"▶ {RowText(i, _rootActions[i].Label, null)}   ·   Enter";
             }
             else if (b.HasThemeStyleboxOverride("normal"))
             {
                 b.RemoveThemeStyleboxOverride("normal");
                 b.RemoveThemeColorOverride("font_color");
-                b.Text = $"{i + 1}   {_rootActions[i].Label}";
+                b.Text = RowText(i, _rootActions[i].Label, i < _rootDetails.Count ? _rootDetails[i] : null);
             }
         }
     }
@@ -350,7 +382,7 @@ public partial class PlanetWorld
         var (label, act) = _rootActions[index];
         GD.Print($"[planets] root mark: {index + 1} {label}");
         _audio.Select();
-        _rootArmed = -1; // chosen: the quick route starts again from the terminal
+        _rootArmed = index; // the highlight stays on the chosen row (Enter again repeats it; ↑ ↓ move on)
         ShowRootQuick();
         act();
     }
@@ -360,28 +392,67 @@ public partial class PlanetWorld
     {
         if (_s is not IDeveloperSession dev) return;
         var target = place.Path == RootPlaces.WslHomeMarker && Distro(from) is { } distro ? WslHome.Resolve(distro) : place.Path;
-        _rootPanel.Visible = false;
+        CloseRootMarkPanel();
         dev.GoToPath(target);
     }
 
     /// <summary>
-    /// Number keys while the panel is open choose its rows (1–9, top row or keypad); Enter runs the row a twirl armed
-    /// (AD-63; without one Enter keeps its usual meaning); true when consumed.
+    /// The panel's own keys while it owns the keyboard (PLANET-115, AD-83; called by <c>Main.KeyboardOwner</c> before the
+    /// shared rule): ↑ ↓, Tab and Shift+Tab move the highlight (round the ends), Home and End go to the first and last row,
+    /// Enter runs the highlighted row, 1–9 (top row or keypad) run their row, E closes. A held key repeats only the
+    /// moves. Everything else is left to the shared rule, which closes the panel on Esc, lets the F keys, Ctrl+L and Ctrl+O
+    /// through, and keeps the rest from the game. True when used.
     /// </summary>
-    private bool RootMarkKey(InputEvent e)
+    public bool RootActionsKey(InputEventKey k)
     {
-        if (!_rootPanel.Visible || e is not InputEventKey { Pressed: true, Echo: false } k) return false;
+        if (!_rootPanel.Visible || !k.Pressed || k.CtrlPressed || k.AltPressed || k.MetaPressed) return false;
         var code = k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode;
-        if (code is Key.Enter or Key.KpEnter && _rootArmed >= 0)
+        var count = _rootActions.Count;
+        var move = code switch
         {
-            ChooseRootAction(_rootArmed);
+            Key.Up => -1,
+            Key.Down => +1,
+            Key.Tab => k.ShiftPressed ? -1 : +1,
+            _ => 0,
+        };
+        if (move != 0 || code is Key.Home or Key.End)
+        {
+            var to = code == Key.Home ? 0 : code == Key.End ? count - 1 : Core.Interaction.PanelOwnership.MoveCursor(_rootArmed, move, count);
+            if (to >= 0 && to != _rootArmed)
+            {
+                _rootArmed = to;
+                _audio.Select();
+                ShowRootQuick();
+            }
+
             return true;
         }
 
-        var n = code is >= Key.Key1 and <= Key.Key9 ? (int)(code - Key.Key1) : code is >= Key.Kp1 and <= Key.Kp9 ? (int)(code - Key.Kp1) : -1;
-        if (n < 0) return false;
-        ChooseRootAction(n);
+        if (k.Echo) return false;
+        if (code is Key.Enter or Key.KpEnter)
+        {
+            if (_rootArmed >= 0) ChooseRootAction(_rootArmed);
+            return true;
+        }
+
+        if (code == Key.E)
+        {
+            CloseRootMarkPanel();
+            return true;
+        }
+
+        var digit = code is >= Key.Key1 and <= Key.Key9 ? (int)(code - Key.Key0) : code is >= Key.Kp1 and <= Key.Kp9 ? (int)(code - Key.Kp0) : 0;
+        var row = Core.Interaction.PanelOwnership.RowForDigit(digit, count);
+        if (row < 0) return false;
+        ChooseRootAction(row);
         return true;
+    }
+
+    /// <summary>Closes the panel (E, Esc, a click on the world, a place chosen, walking away): nothing stays highlighted.</summary>
+    public void CloseRootMarkPanel()
+    {
+        _rootPanel.Visible = false;
+        _rootArmed = -1;
     }
 
     /// <summary>The probe state's root-mark fields (a JSON fragment ending in a comma).</summary>
@@ -389,7 +460,7 @@ public partial class PlanetWorld
     {
         if (RootMark is not { } m) return "\"rootMark\":null,";
         var (deg, metres) = RootMarkBearing();
-        return System.FormattableString.Invariant($"\"rootMark\":{{\"kind\":\"{m.Kind}\",\"bearing\":{deg:0.#},\"face\":{metres:0.##},\"clearance\":{m.ClearanceMetres:0.##},\"focused\":{(_focusRootMark ? "true" : "false")},\"panel\":{(_rootPanel.Visible ? "true" : "false")},\"glow\":{RootMarkGlow:0.##},\"armed\":\"{RootMarkArmed}\",\"quickArms\":{RootQuickArms}}},");
+        return System.FormattableString.Invariant($"\"rootMark\":{{\"kind\":\"{m.Kind}\",\"bearing\":{deg:0.#},\"face\":{metres:0.##},\"clearance\":{m.ClearanceMetres:0.##},\"focused\":{(_focusRootMark ? "true" : "false")},\"panel\":{(_rootPanel.Visible ? "true" : "false")},\"glow\":{RootMarkGlow:0.##},\"armed\":\"{RootMarkArmed}\",\"quickArms\":{RootQuickArms},\"opens\":{RootPanelOpens}}},");
     }
 
     /// <summary>The screen centre of the panel's row <paramref name="index"/> (0-based), or null (probes click it).</summary>

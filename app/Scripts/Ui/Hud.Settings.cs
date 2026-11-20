@@ -67,19 +67,19 @@ public partial class Hud
         }
 
         Section("Mouse look in Places (hold right mouse, or drag with the left button)");
-        _reverseH = new CheckBox { Text = "Reverse left / right — moving the mouse right turns you left", FocusMode = Control.FocusModeEnum.None };
-        _reverseV = new CheckBox { Text = "Reverse up / down — moving the mouse down looks up", FocusMode = Control.FocusModeEnum.None };
+        _reverseH = new CheckBox { Text = "Reverse left / right — moving the mouse right turns you left", FocusMode = Control.FocusModeEnum.All };
+        _reverseV = new CheckBox { Text = "Reverse up / down — moving the mouse down looks up", FocusMode = Control.FocusModeEnum.All };
         _reverseH.TooltipText = "Off: the usual first-person direction (mouse right turns right). On: as if dragging the scene.";
         _reverseV.TooltipText = "Off: the usual direction (mouse down looks down). On: mouse down looks up.";
         _reverseH.Toggled += _ => EmitPreferences();
         _reverseV.Toggled += _ => EmitPreferences();
-        _levelView = new CheckBox { Text = "On foot: level the view when you let go (in flight your view stays where you leave it)", FocusMode = Control.FocusModeEnum.None };
+        _levelView = new CheckBox { Text = "On foot: level the view when you let go (in flight your view stays where you leave it)", FocusMode = Control.FocusModeEnum.All };
         _levelView.TooltipText = "On: releasing the mouse button eases your view back to level in about a third of a second; the direction you turned to is kept. Off: the view stays where you left it.";
         _levelView.Toggled += _ => EmitPreferences();
         v.AddChild(_reverseH);
         v.AddChild(_reverseV);
         v.AddChild(_levelView);
-        _flyGaze = new CheckBox { Text = "Flight: W flies where you look (off: W/S/A/D stay level; E/Space up, Q/C down)", FocusMode = Control.FocusModeEnum.None };
+        _flyGaze = new CheckBox { Text = "Flight: W flies where you look (off: W/S/A/D stay level; E/Space up, Q/C down)", FocusMode = Control.FocusModeEnum.All };
         _flyGaze.TooltipText = "Off (default): looking down from above never makes you dive; height changes only with E/Space and Q/C. On: forward follows your gaze, as before.";
         _flyGaze.Toggled += _ => EmitPreferences();
         v.AddChild(_flyGaze);
@@ -102,7 +102,7 @@ public partial class Hud
                 Step = SpeedStepMetresPerSecond,
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-                FocusMode = Control.FocusModeEnum.None,
+                FocusMode = Control.FocusModeEnum.All,
                 TooltipText = tooltip,
             };
             row.AddChild(slider);
@@ -136,6 +136,7 @@ public partial class Hud
         buttons.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         buttons.AddChild(MakeButton("Close (Esc)", () => _settingsPanel.Visible = false, "Close. Changes are already saved."));
         v.AddChild(buttons);
+        foreach (var b in buttons.GetChildren().OfType<Button>()) b.FocusMode = Control.FocusModeEnum.All; // Tab reaches them (AD-83)
     }
 
     /// <summary>Shows the current preferences without raising <see cref="PreferencesChanged"/>; <paramref name="savedTo"/> null = not saved (automation).</summary>
@@ -183,7 +184,19 @@ public partial class Hud
         sb.ContentMarginTop = sb.ContentMarginBottom = 14;
         _settingsPanel.AddThemeStyleboxOverride("panel", sb);
         DismissHint();
+        FocusSettings();
     }
 
     public void HideSettings() => _settingsPanel.Visible = false;
+
+    /// <summary>
+    /// AD-83 (PLANET-116): the open panel's first setting takes the keyboard, so Tab, Shift+Tab and ↑ ↓ move through the
+    /// settings, Space or Enter toggles a box or presses a button and ← → move a slider; a panel closing over it gives the
+    /// keyboard back here. Its controls take the focus for this (they were mouse-only, so keys reached nothing in it).
+    /// </summary>
+    public void FocusSettings()
+    {
+        if (!_settingsPanel.Visible || GetViewport().GuiGetFocusOwner() is { } f && _settingsPanel.IsAncestorOf(f)) return;
+        _reverseH.GrabFocus();
+    }
 }
