@@ -66,6 +66,10 @@ public partial class PlanetWorld
     /// <summary>The last departure's entry point (<see cref="DepartureEntry"/>), for probes.</summary>
     public string LastDepartureEntry { get; private set; } = "";
 
+    /// <summary>The state file's departure fields (real-input probes): the last departure, whether Esc would stop the one in progress, history's length, F's last action.</summary>
+    private string DepartureStateJson() => System.FormattableString.Invariant(
+        $"\"departure\":{{\"entry\":\"{LastDepartureEntry}\",\"role\":\"{LastDepartureRole}\",\"kind\":\"{LastDepartureKind}\",\"runSeconds\":{LastDepartureRunSeconds:0.###},\"stoppable\":{(DepartureStoppable ? "true" : "false")},\"history\":{_s.Navigator.History.Count}}},\"faceAction\":\"{LastFaceAction}\",");
+
     /// <summary>
     /// Leaves this world for <paramref name="target"/> from where you stand (see the class summary).
     /// <paramref name="change"/> is the navigator's change when it has already been made, else null (the release makes

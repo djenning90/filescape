@@ -61,6 +61,10 @@
   indicator's button resuming it, Enter landing on a world and Backspace returning, and T again keeping what was learned.
 
 
+  -Depart (PLANET-120..123, AD-84, 2026-11-20) with real keys on the Starter Sky: J, "old bridge", Shift+Enter (Straight
+  there) runs to the pad on the way down before warping; Backspace leaves by the way back; the same choice with a real Esc
+  in the run is taken back (still home, history as before); a real click on a world, F faces it, F again turns back.
+
   -StateIntervalMs N (instrument, stream 2, 2026-11-19): how often the app writes the state file (--state-interval-ms).
   -Hazard and -Look default to 0 (every frame): at the app's usual 150 ms a press timed from the state file came up to
   0.17 s late (the walker moves ~1 m between snapshots at walking pace), so the long jump's first press could land past
@@ -91,10 +95,10 @@
   file: input.unhandledKeys, input.commands and input.viewChanges must not change, nor the experience, the folder, the
   overview, the feet or the jumps; the panel stays open until Esc, which closes only it.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -Depart | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [int]$StateIntervalMs = -1)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$Depart, [int]$StateIntervalMs = -1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -155,10 +159,10 @@ function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or $Depart -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
-  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look) { 0 } else { -1 }
+  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart) { 0 } else { -1 }
   if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
@@ -957,6 +961,75 @@ try {
       $s = Wait-Walking-At 'Music Box'
       Check ($s.currentName -eq 'Music Box') "landed on Music Box ($($s.currentName))"
     }
+    Log "OS planets probe: $fails failure(s)"
+    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($Depart) {
+    # AD-84 (PLANET-120..123, 2026-11-20): a dialog-based departure with real keys. On the Starter Sky's top world:
+    # J, "old bridge" (three levels down), Shift+Enter (Straight there) must run to the pad on the way down (Long Way
+    # Down's) before it warps; Backspace from there leaves by the way back; the same choice again with a real Esc during
+    # the run is taken back (still here, history as before, no take-off); then F faces a world in the sky and F again
+    # turns back. Judged from the state file (planets.phase every frame, planets.departure, planets.camYaw).
+    function Type-Text($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ($(if ($ch -eq ' ') { 'Space' } else { [string]$ch })) 30; Start-Sleep -Milliseconds 40 } }
+    # Polls the state until $test passes or $ms pass; returns the phases seen on the way (in order, without repeats).
+    function Watch-Phases([scriptblock]$test, [int]$ms) {
+      $seen = New-Object System.Collections.Generic.List[string]
+      $sw = [Diagnostics.Stopwatch]::StartNew()
+      while ($sw.ElapsedMilliseconds -lt $ms) {
+        $s = State; $ph = [string]$s.planets.phase
+        if ($seen.Count -eq 0 -or $seen[$seen.Count - 1] -ne $ph) { $seen.Add($ph) }
+        if (& $test $s) { break }
+        Start-Sleep -Milliseconds 15
+      }
+      return , $seen
+    }
+    function Choose-Straight-There($name) {
+      Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text $name; Start-Sleep -Milliseconds 400
+      Hold-Key @('Shift', 'Enter') 60
+    }
+    $root = [int](State).planets.folder
+    $h0 = [int](State).planets.departure.history
+
+    Choose-Straight-There 'old bridge'
+    $seen = Watch-Phases { param($s) $s.planets.phase -eq 'Walking' -and [int]$s.planets.folder -ne $root } 12000
+    $s = State; $d = $s.planets.departure
+    Log "  Straight there: phases $($seen -join ' > '); departure $($d | ConvertTo-Json -Compress)"
+    Check ($s.currentName -eq 'Old Bridge' -and $d.entry -eq 'NavigatorChange' -and $d.role -eq 'Toward' -and $d.kind -eq 'run' -and ($seen -join ' ') -match 'Departing WindUp Warping') "J, 'old bridge', Shift+Enter: ran to the pad on the way down, wound up there, warped and landed on $($s.currentName) ($($d.role), $($d.kind), run $($d.runSeconds) s)"
+    Start-Sleep -Milliseconds 900
+
+    Hold-Key 'Backspace' 60
+    $seen = Watch-Phases { param($s) $s.planets.phase -eq 'Walking' -and [int]$s.planets.folder -eq $root } 12000
+    $s = State; $d = $s.planets.departure
+    Log "  Backspace: phases $($seen -join ' > '); departure $($d | ConvertTo-Json -Compress)"
+    Check ([int]$s.planets.folder -eq $root -and $d.role -eq 'WayOut' -and ($seen -join ' ') -match 'Departing WindUp Warping') "Backspace from three levels down left by the way back and landed home ($($d.entry): $($d.role), $($d.kind))"
+    Start-Sleep -Milliseconds 900
+    Hold-Key 'Home' 60; Start-Sleep -Milliseconds 1500 # back to the meadow: the run to the pad is a long one
+
+    $h1 = [int](State).planets.departure.history
+    Choose-Straight-There 'old bridge'
+    $seen = Watch-Phases { param($s) $s.planets.phase -eq 'Departing' } 3000
+    $running = (State).planets.phase -eq 'Departing'
+    Hold-Key 'Escape' 60
+    $after = Watch-Phases { param($s) $false } 1500
+    $s = State
+    Log "  Esc in the run: phases $($seen -join ' > ') | after Esc $($after -join ' > '); here $($s.currentName), history $($s.planets.departure.history) (before $h1)"
+    Check ($running -and [int]$s.planets.folder -eq $root -and [int]$s.current -eq $root -and [int]$s.planets.departure.history -eq $h1 -and -not (($after -join ' ') -match 'Warping|Flying') -and $s.planets.phase -eq 'Walking') "a real Esc during a dialog's run takes it back: still on $($s.currentName), history as before ($h1), no take-off"
+    Start-Sleep -Milliseconds 900
+
+    # F, then F again, on a world in the sky in view (a real click selects it).
+    $wo = (State).planets.worldOnScreen
+    for ($k = 0; $k -lt 8 -and -not $wo; $k++) { Hold-Key 'Left' 250; Start-Sleep -Milliseconds 900; $wo = (State).planets.worldOnScreen }
+    if ($wo) {
+      Client-Click $script:w ([int]$wo[1]) ([int]$wo[2]); Start-Sleep -Milliseconds 400
+      Hold-Key 'Right' 500; Start-Sleep -Milliseconds 600 # look away from it, so facing it is a turn
+      $y0 = Heading
+      Hold-Key 'F' 60; Start-Sleep -Milliseconds 900; $y1 = Heading; $a1 = (State).planets.faceAction
+      Hold-Key 'F' 60; Start-Sleep -Milliseconds 900; $y2 = Heading; $a2 = (State).planets.faceAction
+      Log ("  F: heading {0:0.0} -> {1:0.0} ({2}) -> {3:0.0} ({4})" -f $y0, $y1, $a1, $y2, $a2)
+      Check ($a1 -eq 'face' -and $a2 -eq 'restore' -and (Turned $y0 $y1) -gt 15 -and (Turned $y0 $y2) -lt 3) "a real F faces the clicked world (turned $([int](Turned $y0 $y1)) deg) and F again turns back (ends $('{0:0.0}' -f (Turned $y0 $y2)) deg from the start)"
+    } else { Check $false "a world on screen to click for the F check" }
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
     exit $fails
