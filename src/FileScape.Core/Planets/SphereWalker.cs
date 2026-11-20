@@ -320,6 +320,9 @@ public sealed class SphereWalker
     public bool RecoveryOpen => !_recoverySpent && _jump.AirJumpsLeft > 0 && _belowRimSeconds >= 0 && _belowRimSeconds <= _recoveryWindowSeconds
         && -Height.Value <= _p.Hazard.MaxDepth.Value && _catchInReach;
 
+    /// <summary>Airborne boosts (the twirl) still available in this airtime: 0 after the twirl, the catch or a last effort (probes: the press log).</summary>
+    public int AirJumpsLeft => _jump.AirJumpsLeft;
+
     /// <summary>The recovery's lift and carry are under way (set by the recovery, cleared on landing or a teleport): no air steering, and no fall while it rises.</summary>
     public bool Carrying => _carrying;
 

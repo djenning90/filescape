@@ -57,7 +57,7 @@ public partial class Main : Node3D
     // Refresh intervals of the per-frame bookkeeping (app clock). Labels track the camera closely; the status line,
     // state file and stats overlay need not change every frame.
     private static readonly TimeSpan LabelRefreshInterval = TimeSpan.FromSeconds(0.08), StatusRefreshInterval = TimeSpan.FromSeconds(0.1),
-        StateWriteInterval = TimeSpan.FromSeconds(0.15), StatsRefreshInterval = TimeSpan.FromSeconds(0.25), ProcessMemoryInterval = TimeSpan.FromSeconds(1);
+        DefaultStateWriteInterval = TimeSpan.FromSeconds(0.15), StatsRefreshInterval = TimeSpan.FromSeconds(0.25), ProcessMemoryInterval = TimeSpan.FromSeconds(1);
 
     private readonly Visualization[] _visualizations = [new ClassicVisualization(), new DistrictVisualization()];
     private readonly SelectionState _selection = new();
@@ -182,6 +182,7 @@ public partial class Main : Node3D
         }
 
         _stateFile = args.StateFile;
+        _stateWriteInterval = args.StateIntervalMs is { } sim ? TimeSpan.FromMilliseconds(Math.Max(0, sim)) : DefaultStateWriteInterval;
         if (args.Experiment == "planetoids")
         {
             // An isolated experiment (PLANET-02): its own scene; nothing of FileScape is built or scanned.
@@ -650,7 +651,7 @@ public partial class Main : Node3D
             UpdateStatus();
         }
 
-        if (_stateFile != null && now - _lastStateWrite > StateWriteInterval)
+        if (_stateFile != null && now - _lastStateWrite > _stateWriteInterval)
         {
             _lastStateWrite = now;
             WriteState();
@@ -1016,6 +1017,14 @@ public partial class Main : Node3D
     private long _stateSeq;
     private double _lastHitchMs, _lastHitchAtMs, _lookBeganMs = -1;
     private TimeSpan _lastStateWrite;
+
+    /// <summary>
+    /// How often the state file is written (<see cref="DefaultStateWriteInterval"/>, 150 ms; <c>--state-interval-ms=N</c>,
+    /// 0 = every frame). Instrument (stream 2, 2026-11-19): at 150 ms a probe timing a press from the state file saw the
+    /// walker ≈ 1 m apart at walking pace, so its "press on the board" and "press 0.04 s after the slip" came up to
+    /// 0.17 s late. The Hazard real-input probe asks for every frame.
+    /// </summary>
+    private TimeSpan _stateWriteInterval = DefaultStateWriteInterval;
     private bool _windowFocused = true;
 
     /// <summary>The OS window's real focus. Under --automate input ignores its loss (<see cref="_windowFocused"/> stays true):

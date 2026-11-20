@@ -33,6 +33,9 @@ public sealed record CommandLine
 
     /// <summary>When set, Main writes its navigation state here as JSON every 150 ms (for OS-level input probes).</summary>
     public string? StateFile { get; init; }
+
+    /// <summary>--state-interval-ms=N (instrument): write the state file every N ms instead of 150 (0: every frame), for probes that time presses from it.</summary>
+    public int? StateIntervalMs { get; init; }
     public bool StressDistrictOnly { get; init; }
 
     /// <summary>--prefs=path: the preferences file. Default: %APPDATA%\FileScape\preferences.json, except under --automate, where nothing is read or saved unless --prefs is given (probes never touch DJ's settings).</summary>
@@ -104,6 +107,7 @@ public sealed record CommandLine
             OpenTest = Get("open-test"),
             NoVsync = Get("no-vsync") != null,
             StateFile = Get("state-file"),
+            StateIntervalMs = Get("state-interval-ms") is { } si ? int.Parse(si, CultureInfo.InvariantCulture) : null,
             StressDistrictOnly = Get("district-only") != null,
             PreferencesFile = Get("prefs"),
             Experiment = Get("experiment"),

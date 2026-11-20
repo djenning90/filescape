@@ -61,6 +61,14 @@
   indicator's button resuming it, Enter landing on a world and Backspace returning, and T again keeping what was learned.
 
 
+  -StateIntervalMs N (instrument, stream 2, 2026-11-19): how often the app writes the state file (--state-interval-ms).
+  -Hazard and -Look default to 0 (every frame): at the app's usual 150 ms a press timed from the state file came up to
+  0.17 s late (the walker moves ~1 m between snapshots at walking pace), so the long jump's first press could land past
+  the board and the "early" catch press came at 0.13-0.17 s. -StateIntervalMs 150 reproduces the old timing.
+  -Hazard -Recovery also logs the app's press log (planets.presses: every Space press on a Hazard World with its game
+  time, seconds after leaving the ground, the jump's phase, vertical speed, height, open sky or not, metres to the leap's
+  edge, and what it did) after each case.
+
   -Look (PLANET-67/68, AD-67, 2026-11-19) drags vertically with the real mouse where DJ found up/down look locked out
   (playtest of bcde9b33b338): standing on arrival (the arrival framing on), after a short walk, in the overlook view (B),
   just after a landing (J, "constellations", Enter) and in the overview (T); each drag is judged from the state file's
@@ -82,7 +90,7 @@
   .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [int]$StateIntervalMs = -1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -145,6 +153,9 @@ function Launch {
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
   if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
+  # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
+  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look) { 0 } else { -1 }
+  if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
   if (Test-Path $state) { Remove-Item $state }
@@ -994,6 +1005,13 @@ try {
         Start-Sleep -Seconds 2
         return State
       }
+      # The app's press log (planets.presses, newest last): every press since $since (game seconds), one line each.
+      function Log-Presses($what, [double]$since = -1) {
+        $pr = @((State).planets.presses) | Where-Object { $_ -and [double]$_.t -gt $since }
+        foreach ($q in $pr) { Log ("    press {0}: t {1:0.000} s, {2:0.000} s after leaving the ground, phase {3}, vy {4:+0.00;-0.00} m/s, h {5:+0.00;-0.00} m, open sky {6}, to the leap's edge {7:0.00} m, twirls left {8} -> '{9}'" -f $what, [double]$q.t, [double]$q.air, $q.phase, [double]$q.vy, [double]$q.h, $q.overHole, [double]$q.toEdge, $q.twirlsLeft, $q.was) }
+        if ($pr.Count -gt 0) { return [double]$pr[-1].t } else { return $since }
+      }
+      function Last-Press-T { $pr = @((State).planets.presses); if ($pr.Count -gt 0 -and $pr[-1]) { [double]$pr[-1].t } else { -1 } }
       # Waits (tight loop on the state file, up to $limitMs) until $test holds for the planets state; returns it or $null.
       function Wait-Planets([scriptblock]$test, [int]$limitMs) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -1023,12 +1041,13 @@ try {
       foreach ($case in @(@{ Name = 'early'; At = 0.04; HoldOn = $true }, @{ Name = 'mid-window'; At = 0.2; HoldOn = $false }, @{ Name = 'late'; At = 0.33; HoldOn = $true })) {
         $recovered = $false; $inTime = $false
         for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
-          $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted
+          $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted; $t0 = Last-Press-T
           $s = Slip $case.At -HoldOn:$case.HoldOn
           $pl = $s.planets
           $recovered = [int]$pl.recoveries -gt $rec0 -and [int]$pl.fallsStarted -eq $f
           $inTime = [double]$pl.pressAfterSeconds -ge 0 -and [double]$pl.pressAfterSeconds -le 0.4
           Log ("  {0} try {1}: Space {2:0.000} s after the slip -> '{3}'; recoveries +{4}, falls +{5}, efforts {6}" -f $case.Name, $try, [double]$pl.pressAfterSeconds, $pl.pressWas, ([int]$pl.recoveries - $rec0), ([int]$pl.fallsStarted - $f), $pl.lastEfforts)
+          [void](Log-Presses "$($case.Name) try $try" $t0)
           if (-not $recovered -and [int]$pl.fallsStarted -gt $f) { $s = Back-In }
         }
         Shot "hazard-recovered-$($case.Name)" | Out-Null
@@ -1036,7 +1055,7 @@ try {
       }
       # Too late: Space 0.7 s after the slip (the fall began at ≈ 0.4 s) is a last effort, and so is each press after it
       # in the fall (two more); the fall goes on and returns you to the parent promptly; straight back in.
-      $s = State; $e0 = [int]$s.planets.lastEfforts; $fe0 = [int]$s.planets.fallEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns
+      $s = State; $e0 = [int]$s.planets.lastEfforts; $fe0 = [int]$s.planets.fallEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns; $t0 = Last-Press-T
       $s = Steer 'holeBearing' 'holeDistance' 1.6 80
       Key-Down 'W'
       try {
@@ -1052,6 +1071,7 @@ try {
         Start-Sleep -Milliseconds 500; Hold-Key 'Space' 120
         Start-Sleep -Milliseconds 300; $p3 = (State).planets
         Log ("  presses in the fall: the first '{0}' at {1:0.000} s, the last '{2}' at {3:0.000} s; fall efforts +{4}" -f $p1.pressWas, [double]$p1.pressAfterSeconds, $p3.pressWas, [double]$p3.pressAfterSeconds, ([int]$p3.fallEfforts - $fe0))
+        [void](Log-Presses 'in the fall' $t0)
         Check ([int]$p3.fallEfforts - $fe0 -eq 3 -and $p3.pressWas -eq 'fall-effort') "each Space in the fall is a last effort (3 presses, $([int]$p3.fallEfforts - $fe0) efforts, last '$($p3.pressWas)')"
         $back = Wait-Planets { param($p) $p.folder -eq $sky -and $p.phase -eq 'Walking' -and [int]$p.fallReturns -gt $r0 } 10000
         $returnMs = $swFall.ElapsedMilliseconds
@@ -1079,7 +1099,7 @@ try {
           if ([Math]::Abs($b) -le 3) { break }
           Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(25, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150
         }
-        $s0 = (State).planets; $f = [int]$s0.fallsStarted; $a0 = [int]$s0.apexTwirls
+        $s0 = (State).planets; $f = [int]$s0.fallsStarted; $a0 = [int]$s0.apexTwirls; $t0 = Last-Press-T
         Log ("  at the leap's stand point: {0} m to the edge, facing across within {1}°" -f $s0.leapToEdge, $s0.leapAcrossBearing)
         Key-Down 'W'
         try {
@@ -1097,6 +1117,7 @@ try {
         Start-Sleep -Milliseconds 600
         $s = State; $p = $s.planets
         Log ("  the jump: last press '{0}' at {1:0.000} s; apex twirls +{2}, falls +{3}" -f $p.pressWas, [double]$p.pressAfterSeconds, ([int]$p.apexTwirls - $a0), ([int]$p.fallsStarted - $f))
+        [void](Log-Presses "the $(if ($Twirl) { 'long' } else { 'plain' }) jump" $t0)
         return @{ State = $s; Fell = ([int]$p.fallsStarted -gt $f); Apex = ([int]$p.apexTwirls - $a0) }
       }
       $j = Leap -Twirl

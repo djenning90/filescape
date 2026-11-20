@@ -223,8 +223,10 @@ public partial class PlanetWorld
         var wish = camF * fwd + camR * strafe;
 
         // Space on a launcher pad launches (the pad is the button); elsewhere it jumps, and again in the air it twirls higher.
+        var pressBefore = jump && Shell != null ? ReadPressBefore() : default; // the press log (PlanetWorld.Hazard)
         if (jump && _walker.Grounded && FocusLauncher() is { } pad)
         {
+            if (Shell != null) LogHazardPress(pressBefore, "launch");
             BeginLaunch(pad.TargetId, pad.Direction, fromPad: true);
             return;
         }
@@ -235,7 +237,8 @@ public partial class PlanetWorld
         _walker.Update(new SphereWalkInput(Nv(wish), run, jump, jumpHeld), Core.Units.Durations.FromSeconds(dt));
         var ev = _walker.LastEvent;
         _airSeconds = _walker.Grounded ? 0 : _airSeconds + dt;
-        if (jump && airborneBefore && Shell != null) NoteHazardPress(ev.Kind);
+        if (jump && airborneBefore && Shell != null) NoteHazardPress(ev.Kind, pressBefore);
+        else if (jump && Shell != null) LogHazardPress(pressBefore, ev.Kind == Core.Movement.JumpEventKind.Jump ? "jump" : "ground-none");
         switch (ev.Kind)
         {
             case Core.Movement.JumpEventKind.Jump:
