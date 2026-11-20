@@ -1,6 +1,5 @@
 using FileScape.Core.Planets;
 using FileScape.Core.Places;
-using FileScape.Core.Planets;
 using Godot;
 
 namespace FileScape.App.Planets;
