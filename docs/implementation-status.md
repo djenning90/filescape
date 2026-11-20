@@ -4,6 +4,52 @@ Last updated: 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera l
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fifth playtest follow-up (2026-11-19)
+
+### Walking camera return, the long jump with real keys, a slightly tighter catch (PLANET-84..86, AD-75; stream 2)
+
+Branch `worktree-agent-a2b7fed00055a8890` from `31c9758`. Commits `44fbd64` (instrument), `55a3936` (PLANET-85),
+`580bd4b` (PLANET-84), `b48b935` (press log), `6968d2f` (PLANET-86) and this documentation commit. Not exported,
+staged or installed: every app run was from the worktree project (`fs.sh run`) or, for the base, the staged
+`cfee25d2b709`.
+
+**What was reproduced on the base build:**
+- *Camera:* `planets-look` on the staged `cfee25d`: after the arrival drags left the chosen pitch at −12°, a 1.2 s walk
+  kept it; a drag down while walking stayed at −44° for 2 s of walking. Nothing brought a sharp look back.
+- *The long jump's second press:* the three `cfee25d` real-input runs (`2026-11-19-os-cfee25d*`): "buffered" at
+  0.367 s, fell (twice), and a plain jump whose take-off press was a "catch" at 0.100 s. The Core replay of the
+  probe's inputs at 60 fps on the unmodified walker: a take-off press 0.02–0.12 s after the feet leave the board's edge
+  is the catch; it carries the walker back and spends the twirl, so the second press does nothing, and W still held
+  walks it off again. Space on the board itself always crossed.
+- **Instrument defect:** the probe timed presses from a state file written every 150 ms (≈ 1 m of walking between
+  snapshots): the board press could land past the edge, the "0.04 s" catch press arrived at 0.13–0.17 s, the "0.33 s"
+  at 0.42–0.48 s (outside the window), the fall's start was read late. **Product defect:** a person pressing a frame or
+  two late at the board gets the same catch.
+- Real input on the base this session: **not run** — the probe launched the staged build and stopped before any input
+  (Windows would not bring the window to the front; the foreground was ShellHost and the desktop had been idle 7 min).
+  Nothing was sent anywhere.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Walking eases a sharp look back to the usual pitch (2.5/s after 0.5 s); a held drag owns the camera; standing keeps any look; heading, distance and arrival framing kept; the overlook returns to its 34° (PLANET-84) | **Demonstrated** in-app; feel: DJ | `planets-look` 42/0 (base 35/0): sharp down 70° → 18.3° in 2 s of W, view −70.0° → −15.8° (usual walking −15.4°), largest step 1.42° a frame, heading 0.0°; sharp up −20° → 17.8°; a drag held while walking 48.0° → 48.0° for 1.5 s, then 18.2° after letting go; overlook boom 34.0° |
+| The overview unchanged | **Demonstrated** in-app | the same `planets-look` overview lines as on the base: −31.5° → −60.2° → −60.2°, −60.2° → −2.9° → −2.9° |
+| A take-off press just past a leap's board is the take-off (PLANET-85) | **Demonstrated** in Core and in-app | `The_real_input_long_jump_replayed_press_by_press` (both leap lengths, every coyote-time press crosses), `A_slip_off_the_side_of_a_leap_board_is_still_the_catch`; `planets-hazard`: take-off 0.083 s after the board "coyote-jump", twirl "apex-twirl", across |
+| Catch window 0.40 → 0.35 s, measured one parameter at a time; too-late presses still an effort (PLANET-86) | **Demonstrated** in Core and in-app; feel: DJ | `The_tightening_candidates_measured_one_at_a_time` (table in AD-75); `planets-hazard` on the final build (see below) |
+| Press log and fresh state for probes | **Demonstrated** in-app | `planets.presses` in the state file; each press logged in `planets-hazard` |
+| Real input `-Hazard -Recovery` ×5 and `-Look` | **Unknown**: written and parse-checked, not run (see above) | — |
+| Core (WSL) | 737 passed, 26 skipped, 0 failed; behaviour baseline identical before/after | `tools/fs.sh test-wsl` |
+
+Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-stream2\` (`base-look`, `work-look-1`, `work-hazard-1`
+(fix, window 0.40), `work-hazard-2` (final), `work-nav-1`, `base-hazard-1` (the stopped real-input attempt)).
+
+**How to play them now:** slip off an edge? Space within about a third of a second (0.35 s) walking, about a quarter
+running. Long jump: Space on the amber board — or just as you run off it — and again at the top of the jump.
+
+**Open / for DJ:** how the camera's return feels (rate 2.5/s, wait 0.5 s after a drag; no dead band, so a small
+deliberate tilt also returns while walking); whether 0.35 s is the right "slightly tighter"; a press during the
+catch's own carry still does nothing (now visible in the log as `carry-ignored`). Real-input runs are for the
+integrator: `os-planets-probe.ps1 -Hazard -Recovery` (5 runs), `-Look` (each `-LookPrefs`).
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)

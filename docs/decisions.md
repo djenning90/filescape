@@ -1224,3 +1224,75 @@ Sources checked during the discussion:
 
 Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
 as FileScape while naming remains open.
+
+## AD-75 The walking camera returns to its usual pitch; the long jump's late take-off; the catch window 0.35 s (2026-11-19; amends AD-67, AD-69)
+
+- **Problem:** DJ, after the fourth playtest: "After I look sharply up or down, beginning to walk should smoothly bring
+  the camera back to its usual walking perspective. Let an active mouse drag take control immediately. Preserve my
+  heading and the useful arrival framing … Overview … needs its own camera behavior." And: "First diagnose the known
+  final-build failure where a second Space press wasn't accepted as a twirl. Establish reliable real-input behavior for
+  the long jump and rim recovery. Then make the recovery challenge only slightly tighter. Change one parameter at a
+  time, compare it with the current build, and retain visible effort for presses too late to save the character."
+- **Reproduced first (camera, base build `cfee25d`, in-app `planets-look`):** after the arrival drags left the chosen
+  pitch at −12°, a 1.2 s walk kept it (the next drag started from −12°); "while walking a drag down tilts the view
+  down: −15.6° → −44.2° → −44.3° 2 s later, still walking". AD-67 had made a look stay put everywhere, walking included.
+- **Reproduced first (Hazard):** the three `cfee25d` real-input runs: the long jump fell twice with the second press
+  "buffered" at 0.367 s (and a third run's plain jump showed its take-off press as a "catch" at 0.100 s). The Core
+  replay of the probe's own inputs at 60 fps (`The_real_input_long_jump_replayed_press_by_press`, on the code as it was):
+  Space on the board (0.2–0.55 m before the edge) and again at 0.367 s crossed; Space 0.02–0.12 s after the feet left
+  the board's edge (inside the coyote time) was the **catch**, which carried the walker back and spent the twirl, so the
+  second press did nothing (the app's "buffered", which covered every press that did nothing) and W, still held, walked
+  it off again into a fall — the real-input failure exactly.
+- **Instrument defect (the probe):** the state file it timed presses from was written every 150 ms; at walking pace the
+  walker moves ≈ 1 m between snapshots, so "Space when the edge is ≤ 0.55 m ahead" could arrive past the edge, the
+  "early" catch press aimed at 0.04 s arrived at 0.13–0.17 s, the "late" one aimed at 0.33 s at 0.42–0.48 s (outside
+  the window: two of the earlier runs' failures), and "the fall began at 0.583 s" was read late. In-app probes press on
+  the frame and never saw it. Fixed: `--state-interval-ms=N` (instrument; the probe asks for every frame in `-Hazard`
+  and `-Look`), and a press log in the state file (`planets.presses`: game time, seconds after leaving the ground, the
+  jump's phase, vertical speed, height, open sky, metres to the leap's edge, twirls left, and what it did; "buffered"
+  is split into `carry-ignored` / `spent` / `buffered`).
+- **Product defect (the walker):** a press a frame or two late at the board — which a person also makes — turned the
+  long jump into a catch. AD-69 made a coyote-time press over open sky the catch unless the coyote jump alone would
+  land, and no plain jump lands across a leap.
+- **Decision — the long jump (PLANET-85):** in the coyote time, a press after leaving a leap's take-off board heading
+  across is the take-off (`HazardMoveParams.LeapBoard` 1.0 m before either end of a gap no longer than
+  `LeapBoardMaxGap` 7.6 m — every leap the terrain makes at its jags —, within `LeapBoardMaxDegrees` 45° of across;
+  `BrokenShell.LeapTakeOff`, asked of the ground last stood on). A slip off the board's side, any press after the coyote
+  time and every other edge keep AD-69's catch.
+- **Decision — the catch, slightly tighter (PLANET-86):** `Window` 0.40 → 0.35 s; nothing else changed. Measured with
+  the same scripted slips (Core enumeration, 10 ms steps, 9 m gap) against the current values, each candidate alone:
+
+  | Values | Walking, W held / let go: catch until, uncaught slip falls | Running, W held / let go |
+  |---|---|---|
+  | `cfee25d` (Window 0.40 s, ReturnReach 3.2 m) | 0.40 s / 0.40 s; falls at 0.40 s | 0.27 / 0.29 s |
+  | **Window 0.35 s alone (chosen)** | **0.35 / 0.35 s; falls at 0.35 s** | 0.27 / 0.29 s (unchanged) |
+  | Window 0.30 s alone | 0.29 / 0.29 s | 0.27 / 0.29 s |
+  | ReturnReach 2.9 m alone | 0.40 / 0.40 s (unchanged) | 0.24 / 0.25 s |
+  | ReturnReach 2.6 m alone | 0.40 / 0.40 s | 0.22–0.23 / 0.23 s |
+
+  The window is what a walking player meets (DJ's slips are mostly walking); 0.35 s takes an eighth off it and makes
+  the fall begin 0.05 s sooner; running stays as it was. Every later press is still answered: 0.36–0.80 s the fall's
+  effort (flail, bump, cry), no dead press. The in-game tip reads the window ("within about 0.35 s").
+- **Measured in-app (`planets-hazard`, real Space presses on the frame):** with the long-jump fix and the old window
+  (0.40 s) 87/0: catches at 0.07, 0.23 and 0.38 s, an uncaught slip fell 0.43 s after it, fall to standing 3.8 s;
+  final (0.35 s) 87/0: catches at 0.07, 0.23 and 0.33 s (the late press is now the window − 0.05 s), the slip fell
+  0.38 s after it, fall to standing 3.7 s, every press in the fall an effort; the late take-off (0.083 s after the
+  board) "coyote-jump", then "apex-twirl", across. Real input: not run in this stream (AD-75's probes are written and
+  parse-checked; the desktop would not give the probe the foreground).
+- **Decision — the camera (PLANET-84):** once the traveller moves over 0.8 m/s (the swing-in's threshold), the chosen
+  pitch eases back to the usual 18° at `PitchReturnRatePerSecond` 2.5/s (time constant 0.4 s: ≈ 90 % back after 0.9 s),
+  starting `PitchReturnDelaySeconds` 0.5 s after the last vertical drag. While a drag is held (`_orbiting`) nothing
+  eases. Standing still keeps any look (PLANET-67's checks). Only the chosen pitch moves: the heading (yaw, and its own
+  swing-in), the wheel's distance and the arrival and overlook framings, which are offsets on top (AD-67), are
+  untouched — so each landing is still the designed arrival shot, and walking in the overlook view returns to the
+  overlook's own 34°. Only walking frames run it: the overview (its own orbit, stream 4's), flights, hops and the fall
+  do not.
+- **Alternatives:** releasing the coyote rule at a leap by predicting jump + twirl (it would also turn early presses
+  at a 9 m stretch into jumps into the sky); answering a press during the catch's carry (it is not too late; the carry
+  lands in ≈ 0.4 s); shortening `ReturnReach` (only running changes); a dead band that keeps small looks while walking
+  (the view would settle at the band's edge, not the usual perspective); returning the pitch at once on release (the
+  view springs back under the hand).
+- **Known limits:** a press during the catch's carry still does nothing (now logged as `carry-ignored`); the feel of
+  0.35 s, of the 0.4 s return and its 0.5 s wait: DJ.
+- **Revisit if:** DJ finds the return too brisk or slow (`PitchReturnRatePerSecond`) or wants small looks kept while
+  walking; the catch too hard (Window back towards 0.4 s) or still easy (`ReturnReach` next, one at a time).
