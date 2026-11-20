@@ -864,6 +864,9 @@ public partial class Hud : CanvasLayer
     public bool FlightButtonPressed => _flightButton.ButtonPressed;
     public Rect2 FlightButtonRect => _flightButton.GetGlobalRect();
 
+    /// <summary>The toast shown now, or "" (probes: an accepted travel command that does not complete must say why, PLANET-83).</summary>
+    public string ToastText => _toastPanel.Visible ? _toast.Text : "";
+
     /// <summary>A short message above the bottom edge for <paramref name="seconds"/> (default 4.5 s); a new toast replaces the current one.</summary>
     public void Toast(string text, Color? color = null, double seconds = 4.5)
     {

@@ -30,11 +30,14 @@ public partial class AvatarRig
     public void Drive(float dt, float speed, bool grounded, float verticalSpeed, float windUp01 = 0)
     {
         Animate(dt, new AvatarState(speed, grounded, verticalSpeed, _pendingJump, _pendingTwirl, _pendingLand, windUp01, Flying: false, Twirl: false, Flail: _pendingFlail));
-        _pendingJump = _pendingTwirl = _pendingLand = _pendingLaunch = _pendingFlail = false;
+        // A zero-length frame animates nothing (Animate returns at once), so its events wait for the next frame: a
+        // touchdown posed with dt 0 lost its landing squash before (PLANET-81, the landing trace: 0 squash events).
+        if (dt > 0) _pendingJump = _pendingTwirl = _pendingLand = _pendingLaunch = _pendingFlail = false;
     }
 
-    /// <summary>One frame in flight: streamlined along the direction of travel.</summary>
-    public void SetFlying(Vector3 position, Vector3 up, Vector3 forward, float progress01, float scale = 1f, float dt = 1f / 60)
+    /// <summary>One frame in flight: streamlined along the direction of travel, as far as <paramref name="pose01"/> says
+    /// (1: fully, eased in after the take-off; less: towards standing, followed exactly; PLANET-81).</summary>
+    public void SetFlying(Vector3 position, Vector3 up, Vector3 forward, float progress01, float scale = 1f, float dt = 1f / 60, float pose01 = 1f)
     {
         // In flight the body leans into the direction of travel: up is the local up, facing is the travel direction flattened.
         var f = forward - up * forward.Dot(up);
@@ -42,7 +45,7 @@ public partial class AvatarRig
         SetPose(position, up, f.Normalized());
         Scale = new Vector3(scale, scale, scale); // after SetPose, which sets the whole transform (it used to undo the flight's scale)
         // The speed (9 m/s) only matters to the running amount, which flight zeroes; the dt default assumes 60 Hz.
-        Animate(dt, new AvatarState(9f, false, 0f, false, false, false, 0f, Flying: true, Twirl: _pendingLaunch, Flail: _pendingFlail));
-        _pendingLaunch = _pendingFlail = false;
+        Animate(dt, new AvatarState(9f, false, 0f, false, false, false, 0f, Flying: true, Twirl: _pendingLaunch, Flail: _pendingFlail, FlightPose01: pose01 < 1f ? pose01 : null));
+        if (dt > 0) _pendingLaunch = _pendingFlail = false;
     }
 }

@@ -631,6 +631,19 @@ public partial class PlanetWorld
     private void StartHop(NVector3 up, NVector3 facing, int inspect, float toHeight = 0)
     {
         if (_current == null) return;
+        _hop = NewHop(up, facing, inspect, toHeight, HopBaseSeconds, HopMetresPerSecond, HopMaxSeconds, HopRouteMaxSeconds, HopHeightPerMetre, HopMinHeightMetres, HopMaxHeightMetres);
+        _audio.Jump();
+        _avatar.Jump();
+    }
+
+    /// <summary>
+    /// A hop from where you stand to <paramref name="up"/> (on a Hazard World along its route), its length and height
+    /// grown with the distance along the ground within the limits given (seconds, metres): the walking hops'
+    /// (<see cref="StartHop"/>) and a departure's run to its pad (PlanetWorld.Departure) differ only in these.
+    /// </summary>
+    private Hop NewHop(NVector3 up, NVector3 facing, int inspect, float toHeight, float baseSeconds, float metresPerSecond, float maxSeconds, float routeMaxSeconds,
+        float heightPerMetre, float minHeightMetres, float maxHeightMetres)
+    {
         var path = HopRoute(_walker.Up, up);
         var shares = Array.Empty<float>();
         var angle = PlanetShape.Angle(_walker.Up, up);
@@ -645,20 +658,18 @@ public partial class PlanetWorld
             angle = sum;
         }
 
-        var dist = angle * _current.Comp.Shape.Radius;
-        _hop = new Hop
+        var dist = angle * _current!.Comp.Shape.Radius;
+        return new Hop
         {
             FromUp = _walker.Up, ToUp = up, Facing = facing,
-            Seconds = Mathf.Clamp(HopBaseSeconds + dist / HopMetresPerSecond, HopBaseSeconds, path != null ? HopRouteMaxSeconds : HopMaxSeconds),
-            Height = Mathf.Clamp(dist * HopHeightPerMetre, HopMinHeightMetres, HopMaxHeightMetres),
+            Seconds = Mathf.Clamp(baseSeconds + dist / metresPerSecond, baseSeconds, path != null ? routeMaxSeconds : maxSeconds),
+            Height = Mathf.Clamp(dist * heightPerMetre, minHeightMetres, maxHeightMetres),
             Inspect = inspect,
             FromHeight = toHeight > 0 ? _walker.Height.Value : 0,
             ToHeight = toHeight,
             Path = path,
             PathShares = shares,
         };
-        _audio.Jump();
-        _avatar.Jump();
     }
 
     /// <summary>
@@ -668,6 +679,15 @@ public partial class PlanetWorld
     private void UpdateHop(float dt)
     {
         var h = _hop!;
+        if (!StepHop(h, dt)) return;
+        var inspect = h.Inspect;
+        _hop = null;
+        if (inspect >= 0) InspectNode(inspect);
+    }
+
+    /// <summary>One frame of <paramref name="h"/> (see <see cref="UpdateHop"/>); true in the frame it lands.</summary>
+    private bool StepHop(Hop h, float dt)
+    {
         h.T += dt;
         var u = Mathf.Clamp(h.T / h.Seconds, 0, 1);
         var s = Smooth(u);
@@ -705,15 +725,11 @@ public partial class PlanetWorld
         _avatar.Drive(dt, 6f, false, (1 - 2 * u) * 6f); // animated as a 6 m/s airborne run, rising then falling at up to 6 m/s
         _walker.Teleport(surf, dir, facing);
         UpdateCamera(dt, lookAt: null, moving: true);
-        if (u >= 1)
-        {
-            _walker.Teleport(surf, h.ToUp, h.Facing);
-            _avatar.Land(4f);
-            _audio.Land(4f); // a soft landing: impact as at 4 m/s (a flight lands at 8, a warp at 9)
-            var inspect = h.Inspect;
-            _hop = null;
-            if (inspect >= 0) InspectNode(inspect);
-        }
+        if (u < 1) return false;
+        _walker.Teleport(surf, h.ToUp, h.Facing);
+        _avatar.Land(4f);
+        _audio.Land(4f); // a soft landing: impact as at 4 m/s (a flight lands at 8, a warp at 9)
+        return true;
     }
 
     /// <summary>Spherical interpolation between two unit vectors (constant angular speed along the great circle).</summary>

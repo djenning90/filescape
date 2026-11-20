@@ -26,7 +26,7 @@ namespace FileScape.App.Planets;
 public partial class PlanetWorld
 {
     /// <summary>Where the planetary world is in a place change (Walking when none is in progress; hops are separate).</summary>
-    private enum Phase { Walking, WindUp, AwaitNav, Flying, Warping, Falling }
+    private enum Phase { Walking, Departing, WindUp, AwaitNav, Flying, Warping, Falling }
 
     /// <summary>The wind-up before release (research E2: a visible, physical beginning).</summary>
     public const float WindUpSeconds = 0.4f;
@@ -111,6 +111,15 @@ public partial class PlanetWorld
 
         /// <summary>The fastest the traveller has moved in this flight, world units per second (probes).</summary>
         public float MaxSpeed;
+
+        /// <summary>The departure's run to its pad (PlanetWorld.Departure), while <see cref="Phase.Departing"/>.</summary>
+        public Hop? Run;
+
+        /// <summary>The pad this departure leaves from (null: none leads there; PlanetWorld.Departure).</summary>
+        public PlanetLauncher? Pad;
+
+        /// <summary>What the release asks the session for when no change has been made yet (the navigator moves then).</summary>
+        public ReleaseAction Release;
     }
 
     private Transfer? _transfer;
@@ -136,7 +145,19 @@ public partial class PlanetWorld
     {
         // One transfer at a time; during a trip only the trip launches (its hop is marked InHop just before).
         if (_phase != Phase.Walking || _trip is { InHop: false } || _current == null || _s.Tree == null) return;
+        if (_universe != null)
+        {
+            LandFromOverview(targetId); // PLANET-83: the overview lands; a launch on the surface would never run under it
+            return;
+        }
+
         _hop = null;
+        if (!fromPad)
+        {
+            Depart(targetId, change: null, ReleaseAction.Into); // PLANET-82: to its pad first (PlanetWorld.Departure)
+            return;
+        }
+
         _transfer = new Transfer { LaunchTarget = targetId, FromPad = fromPad, PadDirection = padDirection };
         _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
         _phase = Phase.WindUp;
@@ -179,7 +200,7 @@ public partial class PlanetWorld
             return;
         }
 
-        if (_phase is Phase.WindUp or Phase.AwaitNav && _transfer != null)
+        if (_phase is Phase.Departing or Phase.WindUp or Phase.AwaitNav && _transfer != null)
         {
             _transfer.Change = change;
             if (_transfer.Released) StartFlight();
@@ -191,15 +212,10 @@ public partial class PlanetWorld
             return; // the arrival compares the navigator with where it lands and moves on if they differ
         }
 
-        // Backspace, U, the breadcrumb, Destinations, Go to path: the same launch, from where you stand.
+        // The breadcrumb, Destinations, Locations, Go to path, a link answering: the same departure as any other (its pad
+        // first, PLANET-82), the navigator already there.
         _hop = null;
-        _transfer = new Transfer { LaunchTarget = change.To, Change = change, Released = false };
-        Prepare(change.To); // build it now, at the start of the wind-up (the camera is still), not in the release frame
-        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
-        _phase = Phase.WindUp;
-        _audio.WindUp(_transfer.WindUp);
-        CloseOverlays();
-        Mark("windup");
+        Depart(change.To, change, ReleaseAction.Into);
     }
 
     /// <summary>One frame of a place change (any phase but Walking); the overlook view fades out meanwhile.</summary>
@@ -222,6 +238,9 @@ public partial class PlanetWorld
         _overlook01 = Mathf.MoveToward(_overlook01, 0, dt * OverlookBlendPerSecond);
         switch (_phase)
         {
+            case Phase.Departing:
+                UpdateDeparture(tr, dt); // the run to the pad (PlanetWorld.Departure)
+                break;
             case Phase.WindUp:
             {
                 var k = Mathf.Clamp(tr.T / tr.WindUp, 0, 1);
@@ -240,13 +259,14 @@ public partial class PlanetWorld
                     tr.Released = true;
                     LastWindUpSeconds = tr.T;
                     Mark("release");
+                    if (tr.FromPad == false) LaunchEffect(); // no pad: the take-off shows where you stand (PlanetWorld.Departure)
                     if (tr.Change != null)
                     {
                         StartFlight();
                     }
                     else
                     {
-                        var ok = IsParentTarget(tree, tr.LaunchTarget) ? _s.TravelUp() : _s.TravelInto(tr.LaunchTarget);
+                        var ok = tr.Release == ReleaseAction.Back ? _s.GoBack() : IsParentTarget(tree, tr.LaunchTarget) ? _s.TravelUp() : _s.TravelInto(tr.LaunchTarget);
                         if (_phase == Phase.WindUp)
                         {
                             if (!ok) CancelLaunch("That world can't be reached from here.");
@@ -428,7 +448,21 @@ public partial class PlanetWorld
         // landing; research E5 asks for at least the last 0.3 s).
         var up = tr.FromUp.Slerp(tr.ToUp, Smooth(Mathf.Clamp((u - 0.35f) / 0.65f, 0, 1)));
         var fwd = vel.LengthSquared() > 1e-6f ? vel.Normalized() : tr.ToUp;
-        _avatar.SetFlying(pos, up, fwd, u, s);
+        // PLANET-81 (AD-74): feet first. Over the flight's last LandingUprightSeconds the traveller turns out of the
+        // streamlined pose into standing, and its facing turns to the way it will stand (where the camera looks, as Land
+        // sets it), so it touches down on its feet and nothing is left to snap upright in the landing frame (before: the
+        // full flight pose at touchdown, then up to 31° a frame back to standing).
+        var upright = LandingUpright(tr);
+        var faceFwd = fwd;
+        if (upright > 0)
+        {
+            var look = -_camera.GlobalBasis.Z;
+            look -= up * look.Dot(up);
+            var along = fwd - up * fwd.Dot(up);
+            if (look.LengthSquared() > 1e-4f && along.LengthSquared() > 1e-4f) faceFwd = along.Normalized().Slerp(look.Normalized(), upright);
+        }
+
+        _avatar.SetFlying(pos, up, faceFwd, u, s, dt, pose01: 1 - upright);
         _flightTrail.Add(pos, s);
         _audio.Fly(u);
         FlightCamera(pos, up, fwd, s, u, tr, dt);
@@ -438,6 +472,21 @@ public partial class PlanetWorld
         if (u > 0.02f) MaxFrameCameraStepInFlight = MathF.Max(MaxFrameCameraStepInFlight, step / MathF.Max(s, 0.05f));
         _lastFlightCam = _camera.GlobalPosition;
         if (u >= 1) Land(tree, tr);
+    }
+
+    /// <summary>
+    /// A flight turns feet first over its last this many seconds (PLANET-81): long enough to read as a deliberate turn
+    /// (at 60 Hz about 27 frames, ≈ 2.5° a frame for the 68° streamlined lean), short enough that most of the flight keeps
+    /// its streamlined pose; at most <see cref="LandingUprightMaxShare"/> of a short flight. By eye; DJ to judge.
+    /// </summary>
+    private const float LandingUprightSeconds = 0.45f, LandingUprightMaxShare = 0.4f;
+
+    /// <summary>How far the flight's turn to standing has gone, 0 (streamlined) to 1 (standing, at touchdown): a smoothstep
+    /// of the flight's remaining time, so it is a function of time, never of the frame length.</summary>
+    private static float LandingUpright(Transfer tr)
+    {
+        var window = MathF.Min(LandingUprightSeconds, LandingUprightMaxShare * tr.Flight);
+        return Smooth(Mathf.Clamp(1 - (tr.Flight - tr.T) / window, 0, 1));
     }
 
     /// <summary>Smoothstep: 0 → 1 with zero slope at both ends (an ease in and out).</summary>
@@ -522,7 +571,9 @@ public partial class PlanetWorld
             // Rise into the streak: up and away fast, the screen brightening.
             var k = Mathf.Clamp(tr.T / WarpRiseSeconds, 0, 1);
             var pos = tr.From + tr.FromUp * (k * k * WarpRiseMetres);
-            _avatar.SetFlying(pos, tr.FromUp, tr.FromUp, k * 0.5f);
+            // Straight up, standing and facing as it stood (PLANET-81: the streamlined pose leaned 68° towards an arbitrary
+            // side here, the travel's direction being straight up).
+            _avatar.SetFlying(pos, tr.FromUp, Gd(_walker.Facing), k * 0.5f, 1f, dt, pose01: 0f);
             _flightTrail.Add(pos, 1f);
             _audio.Fly(k * 0.5f);
             _warpFlash = k;
@@ -557,7 +608,9 @@ public partial class PlanetWorld
         var e = 1 - (1 - d) * (1 - d) * (1 - d); // fast in, settling: a decisive landing
         var p = tr.From.Lerp(tr.To, e);
         _warpFlash = 1 - d;
-        _avatar.SetFlying(p, tr.ToUp, -tr.ToUp, 0.5f + d * 0.5f);
+        // Feet first all the way down, already facing the way it will stand (PLANET-81: before, the streamlined pose faced an
+        // arbitrary side and turned 90° in the touchdown frame).
+        _avatar.SetFlying(p, tr.ToUp, Gd(tr.LandFacing), 0.5f + d * 0.5f, 1f, dt, pose01: 0f);
         _flightTrail.Add(p, 1f);
         _audio.Fly(0.5f + d * 0.5f);
         FlightCamera(p, tr.ToUp, -tr.ToUp, 1f, 0.5f + 0.5f * d, tr, dt, warp: true);

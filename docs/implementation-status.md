@@ -135,6 +135,60 @@ without opening it is undone at once by the walkthrough; the probe now opens the
 first "from the arrival" shot did not face the way back (the arrival framing held the camera); the probe now stands the
 traveller facing it first.
 
+### Travel: leave from the pad, land on your feet, the overview's Enter always lands or says why (PLANET-81..83, AD-74)
+
+DJ: landings "on their backside, followed by an immediate snap upright"; take off from the destination's pad whatever
+chose it (trips, parent, history, the overview, pad-less destinations too); and an overview Enter (Ubuntu root →
+Destinations "home" → its world → Enter) that "heard a sound but stayed in Overview". Branch
+`worktree-agent-a03bd450f2dc2296d`. Instruments: `--automate=planets-travel --root=sample` (every entry point timed from
+the command to the take-off; every landing traced frame by frame to `landing-trace.csv`) and
+`--automate=planets-overview-enter --root=<root-like WSL fixture>` (DJ's route in ten variants × 3, and a folder two
+levels down × 3; `--test-list-delay-ms=6000 --test-list-delay-match=home` models a slow `/home`).
+
+**Reproduced first (unmodified code, probe-only commits):**
+
+- *Landing* (15 landings, `…\2026-11-19-travel\base-travel\`): in every touchdown frame the traveller was still in the
+  full flight pose — lean 68°, lowest foot 0.52 m off the ground, head 0.67 m (standing 0.83 m): folded at the hips,
+  seated from the chase camera. It then eased upright with a 1/6 s time constant; the landing frame is long (the new
+  world is built in it), so the first step was 31° and up to 29° a frame on screen, upright 0.2–0.3 s later. Warps
+  came down facing an arbitrary side and turned 90° in the touchdown frame. The landing squash never played (0 events).
+- *Departure:* only Space on a pad started on a pad; G, the list, trips, U and Backspace took off where you stood.
+- *Overview Enter* (`base-overview-rootlike`, `base-overview-delay`, `base-overview-deep`): 21 of 21 variants that
+  choose the world in the overview landed, with and without the listing delay. Two silent failures: **a folder two
+  levels down committed in the list opened in the overview** started a trip whose wind-up played and never ran (the
+  overview ticks only itself): stayed in the overview, phase WindUp, trip active, 3 of 3 — DJ's symptom; and **a row
+  clicked in the list, then the overview's Enter** acted on the overview's own "you are here" and glided back down
+  without travelling, 6 of 6. Which one DJ met is not established (the first matches "a sound, stayed, Esc" best).
+- *Instrument defect fixed:* the probe's double-click was two plain clicks (never a double-click); it now sends the
+  second press flagged DoubleClick, as the other probes do.
+- *Not done, on purpose:* the real Ubuntu root. Landing on `/home` lists the user's folder (the context listing goes
+  two levels down) and the overview's discovery lists drawn worlds below the arrival, so it would scan a private home.
+  The root-like fixture (`tools/make-wsl-fixture.sh --root-like`, the same 21 top-level folders and `home/fixture-user`)
+  with the listing-delay instrument stands in.
+
+**Changed** (`PlanetWorld.Departure.cs`, `PlanetWorld.Travel.cs`, `PlanetWorld.Universe.cs`, `PlanetWorld.Trip.cs`,
+`AvatarRig*.cs`, `Main.Planets.cs`): a flight turns feet first over its last 0.45 s (a function of time) and faces the
+way it will stand; warps rise and descend standing; one departure routine runs to the destination's pad (0.3 s + 1 s
+per 30 m, ≤ 0.8 s; ≤ 1.1 s on a Hazard route), winds up on the pad, or bursts at your feet when no pad leads there; U and
+Backspace move the navigator at the take-off, so Esc stops them; from the overview every commit lands through the
+overview, the selection is shared both ways, refusals say why, and a safety net closes the overview over any travel
+begun under it.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Feet-first landings (PLANET-81) | **Demonstrated** in-app; the look: DJ | `after-travel-2`: 15 of 15 touchdowns tilt 0°, foot 0.00 m, head 0.81–0.83 m, facing ≤ 1.7° in the touchdown frame, one squash event each; largest body turn a frame from touchdown 1.6–3.3° for flights (one 10.0°: the next trip hop's crouch), 17.7–23.9° once after two warps with the body upright on its own up (the camera) |
+| Departures from the pad (PLANET-82), added time from the command to the take-off | **Demonstrated** in-app; the pace: DJ | before → after: pad Space 0.47 → 0.47 s (0); U 0.37–0.45 → 1.04–1.21 s (+0.6–0.8); Backspace 0.45 → 0.77 s (+0.38); G to the far pad 0.48 → 1.28 s (+0.8, the cap); the list's world 0.69 → 1.54 s (+0.8, the cap); trip first hop 0.67 → 1.45 s, later hops 0.87–0.93 → ≈ 1.5 s (+0.6); warps (Straight there, the history's far end) 0.38–0.62 → 0.39–0.63 s (0, with the launch burst); the overview 0.77 → 0.80 s (0) |
+| Esc stops a run to the pad (PLANET-82) | **Demonstrated** in-app | `after-travel-2`: G, Esc in the run: no take-off, still here, standing on the pad (0.0 m from its centre); `planets-travel` 16/0 |
+| The overview's Enter (PLANET-83) | **Demonstrated** in-app on the fixture | `after-overview-delay`: 33 of 33 landed (the two failing cases 9 of 9), the safety net never needed; 35 PASS / 0 FAIL |
+| Real keys through the Guard | **Unknown**: not run (the desktop is shared by six streams; the injected route covers the logic) | — |
+| Core (WSL) | 734 passed, 26 skipped, 0 failed (268 s) | `tools/fs.sh test-wsl` |
+| No regressions (functional tier, from the worktree with `fs.sh run`) | **Demonstrated** in-app | `planets-navigation` 47/0, `planets-journey` 39/0, `planets-arrival` 25/0, `planets-flows` 28/0, `planets-tutorial` 36/0, `planets-hazard` 82/0, `planets-dialog-keys` 148/0, `planets-overview-routes` 9/0 (`…\2026-11-19-travel\reg-*`) |
+
+**Open / for DJ:** the run's pace and arc (`DepartRun*`), the feet-first turn's timing (`LandingUprightSeconds`), whether
+Esc should also undo a breadcrumb/Locations/path move (needs a navigator undo), and whether the overview's departure
+should show the traveller on its pad. After the overview's landing one frame at ≈ 0.33 s turns the body 23.5° in camera
+space with the body upright on its own up: the camera, not the traveller (not investigated; stream 4's area).
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)

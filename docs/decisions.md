@@ -1225,6 +1225,61 @@ Sources checked during the discussion:
 Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
 as FileScape while naming remains open.
 
+## AD-74 Travel: leave from the pad, land on your feet, and an accepted landing from the overview always lands or says why (2026-11-19)
+
+- **Problem (DJ, fourth playtest):** "Some transfers end with the character apparently landing on their backside,
+  followed by an immediate snap upright." "When I choose a destination through a command or list, get the character to
+  the appropriate launch pad before taking off … brisk enough that direct navigation stays useful … consistently
+  [for] trips, parent and history navigation, and travel from Overview … a coherent departure for destinations that
+  have no physical pad." And an intermittent failure: Ubuntu root → Destinations filtered "home" → its world selected
+  in the overview → Enter: "I heard a sound but stayed in Overview."
+- **What was measured first (unmodified code, `planets-travel` and `planets-overview-enter`, PLANET-81..83):**
+  - *Landing.* At every touchdown (11 flights, 4 warps) the traveller was still in the full flight pose: leaning 68°,
+    feet 0.52 m off the ground, head 0.67 m up (standing: 0.83 m) — a figure folded at the hips, which from the chase
+    camera reads as sitting. The pose then eased back with a 1/6 s time constant; the landing frame is long (the new
+    world is built in it, ≈ 0.1 s), so the first step was 31° in one frame and up to 29° a frame on screen, upright
+    0.2–0.3 s later. Warps also faced an arbitrary side on the way down and turned 90° in the touchdown frame (82° a
+    frame on screen). The landing squash never played (0 events): it was posed with a zero frame, which cleared it.
+  - *Departure.* Only Space on a pad started on a pad. G, the list, trips, U, Backspace and every other change took
+    off from wherever you stood (0.37–0.48 s from the command, the wind-up only).
+  - *Overview.* 30 attempts of the route's variants on a root-like WSL fixture (with and without a 6 s listing delay on
+    `home`) found two defects, both silent: (1) a destination two levels down chosen in the Destinations list opened in
+    the overview starts a **trip**, whose wind-up plays its sound but never runs — the overview ticks only itself — so
+    you stay in the overview, phase WindUp, until Esc (3 of 3); (2) a world chosen by a click on its **row** in the
+    list, then the overview's Enter (list closed) acts on the overview's own selection, "you are here", and glides
+    back down without travelling (6 of 6). Every other variant landed (21 of 21). Which of the two DJ met is not
+    established: (1) matches "a sound, stayed in the overview, Esc" best.
+- **Decision — landing (PLANET-81):** rotate feet first in the air rather than add a get-up. Over the flight's last
+  0.45 s (at most 40 % of a short flight) the streamlined pose turns to standing as a smoothstep of the flight's
+  remaining time — a function of time, so a long frame cannot make it jump — and the facing turns to where it will
+  stand (the camera's look, as the landing sets it). A warp rises and descends standing, facing its landing. A
+  zero-length pose no longer drops the frame's events, so the touchdown's squash plays. *Why not a seated landing
+  with a recovery:* it would add ≥ 0.5 s to every arrival, start from the very pose DJ disliked, and the long landing
+  frame would still have to hide nothing; the turn uses flight time that already exists and adds none.
+- **Decision — departure (PLANET-82):** one routine (`PlanetWorld.Depart`) for every launch that does not start on its
+  pad. It finds the destination's pad on this world (the folder's launcher, the way back for the parent, a link's
+  launcher) and: off the pad, a brisk run-hop onto it (0.3 s plus 1 s per 30 m along the ground, at most 0.8 s; 1.1 s
+  along a Hazard World's bridges; a low arc, 0.6–3.5 m), then the existing wind-up and take-off; on the pad (within
+  0.8 of its radius), the wind-up at once; **no pad** (a belt moon, the history's far end, a favourite, a path, Straight
+  there), the wind-up where you stand with a burst of the world's accent at your feet at the release, then the flight
+  or the warp's rise. U and Backspace now leave through their pad like a pad launch: the navigator moves at the release,
+  so Esc during the run or the wind-up stops them (you stay, a run lands on the pad); a change already made elsewhere
+  (the breadcrumb, Locations, Go to path) is not undone by Esc — Backspace after the landing returns. **The overview**
+  keeps its own departure, the dive into the chosen world (≈ 0.75 s): the traveller is not on screen there, and gliding
+  back down to run to a pad first would add ≈ 2 s (the 1.1 s glide, the run, the wind-up) to the quickest route there is.
+- **Decision — the overview's Enter (PLANET-83):** a destination committed while the overview is open (the list's
+  Enter, a trip, G) lands through the overview — its fly-in when the world is drawn, else the navigator goes there and
+  the overview comes down onto it; the selection is shared both ways (a row clicked in the list, or a selection made
+  before opening, is what Enter lands on); an Enter or a landing that cannot go says why in a toast (no world chosen,
+  not reachable, a file, busy); and a safety net closes the overview over any surface travel that has begun under it
+  anyway (logged, counted for probes), so nothing waits invisibly.
+- **Alternatives:** a seated landing with a get-up (above); a run on foot at walking speed (≥ 2 s to a far pad: too
+  slow for direct navigation); a teleport to the pad (a cut); a trip from the overview hop by hop on the surface (the
+  overview would have to close and replay the hops — a long way round for a world you pointed at).
+- **Revisit if:** DJ finds the run too quick, too slow or too bouncy (`DepartRun*`), the feet-first turn too early or
+  late (`LandingUprightSeconds`), wants Esc to undo a breadcrumb or path change too (it would need a navigator undo),
+  or wants the overview's departure to show the traveller on its pad.
+
 ## AD-75 The walking camera returns to its usual pitch; the long jump's late take-off; the catch window 0.35 s (2026-11-19; amends AD-67, AD-69)
 
 - **Problem:** DJ, after the fourth playtest: "After I look sharply up or down, beginning to walk should smoothly bring
