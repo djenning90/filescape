@@ -347,4 +347,19 @@ public partial class PlanetWorld
 
     /// <summary>The overview's worlds drawn in view now (the walkthrough's zoom step counts how many more you see).</summary>
     public int UniverseWorldsInView => _universe == null ? 0 : UniverseOnScreen().Count;
+
+    /// <summary>
+    /// Worlds the overview draws now, folded ones not counted (PLANET-91): what "the worlds around you" can reach, since a
+    /// folded system's worlds never come into view however far you zoom out.
+    /// </summary>
+    public int UniverseDrawnCount
+    {
+        get
+        {
+            if (_universe == null) return 0;
+            var n = 0;
+            for (var i = 0; i < _uniBodies.Count; i++) if (Drawn(i)) n++;
+            return n;
+        }
+    }
 }

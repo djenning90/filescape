@@ -96,7 +96,10 @@ public partial class Main
         var (now, target) = _planets.UniverseZoom;
         // When the overview opened already showing nearly the whole sky (found with real input, 2026-11-17: skipping to the
         // overview step framed all 93 worlds from 1256 m, 84 in view), ten more cannot come into view: then the zoom alone counts.
-        var more = Math.Min(_tutWorlds0 + ZoomMoreWorlds, Math.Max(_tutWorlds0, _planets.UniverseBodyCount - ZoomMoreWorlds));
+        // Only drawn worlds can come into view: the level of detail folds distant systems as you zoom out (PLANET-91; found
+        // with real input on the merged build, 2026-11-19: 30 notches out, 51 -> 53 worlds in view), so the bar is
+        // ten fewer than the overview draws now, never more than ten above where you started.
+        var more = Math.Min(_tutWorlds0 + ZoomMoreWorlds, Math.Max(0, _planets.UniverseDrawnCount - ZoomMoreWorlds));
         return target >= _tutZoom0 * ZoomOutFactor && now >= target * ZoomSettledShare && _planets.UniverseWorldsInView >= more;
     }
 
