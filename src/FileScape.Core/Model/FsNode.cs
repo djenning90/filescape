@@ -64,6 +64,13 @@ public enum NodeFlags : uint
 
     /// <summary>The volume, share or distribution holding this location could not be reached.</summary>
     Unavailable = 1 << 17,
+
+    /// <summary>
+    /// Managed by a cloud sync provider (a Cloud Files reparse tag, as OneDrive puts on every file and folder it syncs),
+    /// whether or not its contents are on this PC. Not a link and not by itself a placeholder: a file is only in the cloud
+    /// when <see cref="CloudPlaceholder"/> is set too (from its recall or offline attributes). PLANET-135, AD-86.
+    /// </summary>
+    CloudSynced = 1 << 18,
 }
 
 /// <summary>What kind of location root a node is (AD-17). Most nodes are <see cref="None"/>.</summary>

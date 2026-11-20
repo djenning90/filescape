@@ -24,6 +24,11 @@ public sealed class Spec
     public Spec Dir(Spec d) { Dirs.Add(d); return this; }
     public Spec File(string name, long size = 100) { Files.Add((name, size)); return this; }
 
+    /// <summary>Per-file node flags (cloud, hidden…), by name; files not listed have none.</summary>
+    public Dictionary<string, NodeFlags> FileFlags { get; } = [];
+
+    public Spec File(string name, long size, NodeFlags flags) { Files.Add((name, size)); FileFlags[name] = flags; return this; }
+
     public static Spec WithDirs(string name, int count, string prefix = "child-")
     {
         var s = new Spec(name);
@@ -77,7 +82,7 @@ public sealed class Spec
 
             foreach (var (name, size) in s.Files.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
-                batch.NewNodes.Add(new NodeRecord(next++, id, name, NodeKind.File, 0, 0, size, null, null, null, depth + 1, DirScanState.NotApplicable));
+                batch.NewNodes.Add(new NodeRecord(next++, id, name, NodeKind.File, s.FileFlags.GetValueOrDefault(name), 0, size, null, null, null, depth + 1, DirScanState.NotApplicable));
             }
         }
 

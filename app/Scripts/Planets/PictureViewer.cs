@@ -13,12 +13,15 @@ namespace FileScape.App.Planets;
 /// pointer while open (full-window, one of the HUD's blocking rectangles) and, through Main's keyboard ownership
 /// (<c>KeyPanel.Viewer</c>), the keyboard.
 /// <para>
-/// Loading is bounded the way the preview is: only a file the folder's rules allow (<see cref="GalleryRules.Verdict"/>:
-/// never a cloud placeholder or a link, never over 24 MiB) is read; the header's pixel count is checked before decoding
-/// (<see cref="Thumbnails.MaxDecodedPixels"/>); the picture is decoded on a worker and shrunk to at most
-/// <see cref="ViewerMaxPixels"/> on its longer side; at most one decode runs at a time (stepping quickly only remembers the
-/// latest request); and at most <see cref="CacheSize"/> decoded pictures are kept. While a picture loads, its frame shows a
-/// placeholder; a picture that cannot be shown says why, in the frame, and the others stay reachable.
+/// Loading is progressive and bounded (PLANET-134, AD-86): a picture appears at once from Windows' thumbnail
+/// (<see cref="QuickPixels"/>, usually the thumbnail cache; or the canvas's own sharp thumbnail), then sharpens when
+/// FileScape's decode arrives. Only a file the rules allow (<see cref="GalleryRules.Verdict"/>) is decoded: never a link,
+/// never over 24 MiB (Windows' thumbnail is then the picture, and says so); a cloud-only picture is fetched for it, which
+/// DJ allowed (2026-11-20), and the caption says it is being fetched; HEIC, GIF and TIFF are shown from Windows'
+/// thumbnail. The header's pixel count is checked before decoding (<see cref="Thumbnails.MaxDecodedPixels"/>); the
+/// picture is decoded on a worker and shrunk to at most <see cref="ViewerMaxPixels"/>; at most one load runs at a time
+/// (stepping quickly only remembers the latest request); at most <see cref="CacheSize"/> decoded and
+/// <see cref="QuickCacheSize"/> quick pictures are kept. A picture that cannot be shown at all says why, in the frame.
 /// </para>
 /// Preserve: nothing is read except on a deliberate open or step (the first picture is the one you asked for); results
 /// arriving after you stepped on are kept in the cache but not shown; worker results reach Godot objects on the main
@@ -32,6 +35,13 @@ public partial class PictureViewer : Control
 
     /// <summary>Decoded pictures kept (the shown one and the two you came from): back and forth is instant, memory ≤ ≈ 50 MB.</summary>
     public const int CacheSize = 3;
+
+    /// <summary>The quick picture's longer side, pixels: Windows' 1024 px thumbnail cache, sharp enough to read at a glance
+    /// in a 1600 × 900 window before the decode arrives (or for good, for a file FileScape does not decode).</summary>
+    public const int QuickPixels = 1024;
+
+    /// <summary>Quick pictures kept (≈ 5.6 MB each with mipmaps: ≤ ≈ 45 MB).</summary>
+    public const int QuickCacheSize = 8;
 
     /// <summary>Zoom range, as a factor of the fitted size, and one wheel notch's (or + −'s) step.</summary>
     private const float MaxZoom = 6f, ZoomStep = 1.25f;
@@ -60,8 +70,10 @@ public partial class PictureViewer : Control
     // Loading: one decode at a time; the latest request waits; a small cache of finished pictures (most recent last).
     private int _loadingId = -1, _wantedId = -1;
     private readonly List<(int Id, ImageTexture Texture, Vector2I Source)> _cache = [];
+    private readonly List<(int Id, ImageTexture Texture, string Source)> _quick = []; // Windows' thumbnails, most recent last
     private readonly Dictionary<int, string> _refused = [];
-    private readonly System.Collections.Concurrent.ConcurrentQueue<(int Id, Thumbnails.Result Result, double Ms)> _done = new();
+    private readonly Dictionary<int, string> _notes = []; // why a picture is shown from Windows' thumbnail only
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int Id, Thumbnails.Result Result, double Ms, bool Final, string Source, bool Quick)> _done = new();
 
     /// <summary>The viewer stepped to another picture (the world selects it).</summary>
     public event Action<int>? Stepped;
@@ -145,8 +157,21 @@ public partial class PictureViewer : Control
     /// <summary>Position in the folder's pictures (1-based) and their count.</summary>
     public (int Index, int Count) Place => (_index + 1, _pictures.Count);
 
-    /// <summary>"loading", "shown" or "refused" for the current picture.</summary>
-    public string State => Current < 0 ? "closed" : _refused.ContainsKey(Current) ? "refused" : _image.Texture != null && _image.Visible ? "shown" : "loading";
+    /// <summary>"loading", "shown" or "refused" for the current picture; "shown" also while a quick picture waits to sharpen
+    /// (see <see cref="Sharp"/>).</summary>
+    public string State => Current < 0 ? "closed" : _image.Texture != null && _image.Visible ? "shown" : _refused.ContainsKey(Current) ? "refused" : "loading";
+
+    /// <summary>The current picture is shown at its final sharpness (decoded, or Windows' thumbnail when that is all there is).</summary>
+    public bool Sharp => Current >= 0 && (_cache.Any(c => c.Id == Current) || (_notes.ContainsKey(Current) && _quick.Any(q => q.Id == Current)));
+
+    /// <summary>Where the shown picture came from: "decoded", "windows-cache", "windows", "canvas" or "" (probes, AD-86).</summary>
+    public string Source => Current < 0 ? "" : _cache.Any(c => c.Id == Current) ? "decoded" : _quick.FirstOrDefault(q => q.Id == Current).Source ?? "";
+
+    /// <summary>Why the current picture is shown from Windows' thumbnail only ("" when it is decoded or not shown).</summary>
+    public string Note => Current >= 0 && _notes.TryGetValue(Current, out var n) ? n : "";
+
+    /// <summary>Each quick picture's time to appear (ms): what AD-86 reports beside <see cref="DecodeMs"/>.</summary>
+    public List<double> QuickMs { get; } = [];
 
     /// <summary>Why the current picture is not shown ("" when it is).</summary>
     public string Refusal => Current >= 0 && _refused.TryGetValue(Current, out var r) ? r : "";
@@ -179,7 +204,9 @@ public partial class PictureViewer : Control
         if (!ReferenceEquals(tree, _tree))
         {
             _cache.Clear();
+            _quick.Clear();
             _refused.Clear();
+            _notes.Clear();
         }
 
         _tree = tree;
@@ -249,16 +276,21 @@ public partial class PictureViewer : Control
         else
         {
             _image.Visible = false;
-            if (_refused.TryGetValue(id, out var why)) ShowStatus($"This picture can't be shown here: {why}.\nEnter opens it with Windows.");
-            else if (GalleryRules.Verdict(n) is var verdict && verdict != GalleryRules.PictureVerdict.Viewable) Refuse(id, verdict switch
+            var quick = _quick.FindIndex(q => q.Id == id);
+            if (quick < 0 && CanvasPicture?.Invoke(id) is { } canvas)
             {
-                GalleryRules.PictureVerdict.CloudPlaceholder => "it is a cloud file that may not be on this PC, and reading it could download it",
-                GalleryRules.PictureVerdict.Link => "it is a link, and FileScape does not read through links",
-                _ => $"it is {SizeFormat.Short(n.Size)}, over the {SizeFormat.Short(GalleryRules.MaxPictureBytes)} a preview reads",
-            });
+                // The canvas's own sharp thumbnail, if it has one: something to look at in the very first frame.
+                _quick.Add((id, ImageTexture.CreateFromImage(canvas), "canvas"));
+                quick = _quick.Count - 1;
+            }
+
+            if (quick >= 0) ShowTexture(_quick[quick].Texture);
+            if (_refused.TryGetValue(id, out var why)) ShowStatus($"This picture can't be shown here: {why}.\nEnter opens it with Windows.");
+            else if (GalleryRules.Verdict(n) == GalleryRules.PictureVerdict.Link) Refuse(id, "it is a link, and FileScape does not read through links");
+            else if (_notes.ContainsKey(id) && quick >= 0) { } // Windows' thumbnail is all there is: already shown
             else
             {
-                ShowStatus("◌  loading the picture…");
+                if (quick < 0) ShowStatus(GalleryRules.Verdict(n) == GalleryRules.PictureVerdict.Download ? "◌  fetching the picture from your cloud storage…" : "◌  loading the picture…");
                 Request(id);
             }
         }
@@ -279,6 +311,8 @@ public partial class PictureViewer : Control
             parts.Add($"{c.Source.X:N0} × {c.Source.Y:N0} px");
             if (c.Texture.GetWidth() < c.Source.X) parts.Add($"shown at {c.Texture.GetWidth():N0} × {c.Texture.GetHeight():N0}");
         }
+        else if (_image.Visible && Note.Length > 0) parts.Add($"Windows' thumbnail: {Note}");
+        else if (_image.Visible && _loadingId == Current) parts.Add(GalleryRules.Verdict(n) == GalleryRules.PictureVerdict.Download ? "fetching the full picture from your cloud storage…" : "sharpening…");
 
         if (_zoom > 1.001f) parts.Add($"zoom ×{_zoom:0.0}");
         _meta.Text = string.Join("  ·  ", parts);
@@ -326,10 +360,42 @@ public partial class PictureViewer : Control
         _loadingId = id;
         DecodesStarted++;
         MaxConcurrentDecodes = Math.Max(MaxConcurrentDecodes, 1);
-        var path = _tree!.FullPath(id);
+        var tree = _tree!;
+        var n = tree[id];
+        var path = tree.FullPath(id);
+        var verdict = GalleryRules.Verdict(n);
+        var decode = verdict is GalleryRules.PictureVerdict.Viewable or GalleryRules.PictureVerdict.Download;
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        _ = Thumbnails.LoadWithReasonAsync(path, ViewerMaxPixels, GalleryRules.MaxPictureBytes).ContinueWith(t => _done.Enqueue((id, t.Result, sw.Elapsed.TotalMilliseconds)));
+        // Windows' thumbnail first when nothing is shown yet (asked here, on the main thread, which reads the tree).
+        var quick = _quick.Any(q => q.Id == id && q.Source != "canvas") ? null : GalleryThumbnails.RequestAsync(tree, n, QuickPixels, decode: false);
+        var why = verdict switch
+        {
+            GalleryRules.PictureVerdict.TooLarge => $"the file is {SizeFormat.Short(n.Size)}, over the {SizeFormat.Short(GalleryRules.MaxPictureBytes)} FileScape reads",
+            GalleryRules.PictureVerdict.WindowsOnly => "FileScape does not decode this kind of picture itself",
+            _ => "",
+        };
+        _ = Task.Run(async () =>
+        {
+            if (quick != null)
+            {
+                var a = await quick.ConfigureAwait(false);
+                _done.Enqueue((id, new Thumbnails.Result(a.Image, 0, 0, why.Length > 0 ? why : a.Refusal), sw.Elapsed.TotalMilliseconds, !decode, a.Source, true));
+            }
+
+            if (decode)
+            {
+                var r = await Thumbnails.LoadWithReasonAsync(path, ViewerMaxPixels, GalleryRules.MaxPictureBytes).ConfigureAwait(false);
+                _done.Enqueue((id, r, sw.Elapsed.TotalMilliseconds, true, "decoded", false));
+            }
+            else if (quick == null)
+            {
+                _done.Enqueue((id, new Thumbnails.Result(null, 0, 0, why), 0, true, "none", true));
+            }
+        });
     }
+
+    /// <summary>The canvas's own picture of a node, if the world has one (set by the world: its sharp thumbnail).</summary>
+    public Func<int, Image?>? CanvasPicture { get; set; }
 
     /// <summary>Per frame (main thread): takes finished decodes, caches them (evicting the oldest past <see cref="CacheSize"/>),
     /// shows the one still wanted, and starts the next request.</summary>
@@ -337,9 +403,44 @@ public partial class PictureViewer : Control
     {
         while (_done.TryDequeue(out var d))
         {
+            if (d.Quick)
+            {
+                // Windows' thumbnail: shown at once if nothing better is; final when FileScape will not decode the file.
+                if (d.Result.Image is { } qi)
+                {
+                    QuickMs.Add(d.Ms);
+                    var qt = ImageTexture.CreateFromImage(qi);
+                    _quick.RemoveAll(q => q.Id == d.Id);
+                    _quick.Add((d.Id, qt, d.Source));
+                    while (_quick.Count > QuickCacheSize) _quick.RemoveAt(0);
+                    if (d.Final) _notes[d.Id] = d.Result.Refusal is { Length: > 0 } note ? note : "the only picture Windows has";
+                    if (d.Id == Current && !_cache.Any(c => c.Id == d.Id))
+                    {
+                        ShowTexture(qt);
+                        Layout();
+                    }
+                }
+                else if (d.Final)
+                {
+                    Refuse(d.Id, d.Result.Refusal is { Length: > 0 } r ? r : "Windows has no thumbnail of it");
+                }
+
+                if (d.Final) _loadingId = -1;
+                UpdateMeta();
+                continue;
+            }
+
             DecodesFinished++;
             DecodeMs.Add(d.Ms);
             _loadingId = -1;
+            if (d.Result.Image == null && _quick.Any(q => q.Id == d.Id))
+            {
+                // The decode was refused (a 63-megapixel scan, damaged data Windows could still read): Windows' thumbnail stays.
+                _notes[d.Id] = d.Result.Refusal ?? "it could not be decoded";
+                UpdateMeta();
+                continue;
+            }
+
             if (d.Result.Image is { } img)
             {
                 var tex = ImageTexture.CreateFromImage(img);
@@ -364,7 +465,7 @@ public partial class PictureViewer : Control
 
         if (_loadingId < 0 && _wantedId >= 0)
         {
-            if (_cache.Any(c => c.Id == _wantedId) || _refused.ContainsKey(_wantedId)) _wantedId = -1;
+            if (_cache.Any(c => c.Id == _wantedId) || _refused.ContainsKey(_wantedId) || _notes.ContainsKey(_wantedId)) _wantedId = -1;
             else StartDecode(_wantedId);
         }
     }

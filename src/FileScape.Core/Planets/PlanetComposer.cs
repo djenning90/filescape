@@ -124,6 +124,9 @@ public sealed record PlanetParams
 
     /// <summary>What the platform and the user say about places, for ranking launchers (PROM-01).</summary>
     public ProminenceContext Prominence { get; init; } = ProminenceContext.Empty;
+
+    /// <summary>This PC's picture folders, for a gallery's character (<see cref="MediaWorld"/>, PLANET-130); none by default.</summary>
+    public PictureLibraries Libraries { get; init; } = PictureLibraries.Empty;
 }
 
 /// <summary>
@@ -151,6 +154,17 @@ public static class PlanetComposer
 
     /// <summary>A grove's pile has this item scale: larger than a typical file (scale 1), so it stands out in its grove.</summary>
     private const float PileScale = 1.3f;
+
+    /// <summary>
+    /// In a gallery (PLANET-132) every picture stands at this scale, whatever its file size (a photo's bytes say nothing
+    /// about it as a picture): its canvas is 1.24 m square with its middle at ≈ 1.3 m, a picture you read from a few
+    /// steps away rather than an icon you walk past (an ordinary easel is 0.6–1.6, mostly ≈ 1).
+    /// </summary>
+    public const float GalleryPictureScale = 2.0f;
+
+    /// <summary>A gallery picture counts this many times in the planet's size (its footprint is ≈ 4× an ordinary item's,
+    /// but pictures stand in a loose crowd): enough room that 64 never run out of slots (PlanetComposerTests).</summary>
+    private const float GalleryAreaWeight = 2.5f;
 
     /// <summary>The flattened radius round each grove's centre, metres (its sign stands there; scenery keeps off it).</summary>
     private const float GroveFlatRadius = 1.5f;
@@ -522,12 +536,15 @@ public static class PlanetComposer
             .ToList();
         var budget = ShareBudget(groups.Select(g => g.Ids.Count).ToList(), p.MaxItems, p.MinItemsPerGrove);
         var itemCount = budget.Sum() + groups.Where((g, i) => budget[i] < g.Ids.Count).Count();
+        // A gallery's character (PLANET-130): its pictures stand large and face the arrival (never on a Hazard World).
+        var media = hazard == null ? MediaWorld.Classify(tree, folderId, p.Libraries, visible) : MediaVerdict.Nothing;
+        var galleryPictures = media.IsGallery ? groups.Where(g => g.Category == FileCategory.Image).Select(g => budget[groups.IndexOf(g)]).Sum() : 0;
 
         // ---- radius and shape parameters
         var nothingShown = itemCount == 0 && launched.Count == 0;
         var radius = theme == PlanetTheme.Quiet ? QuietPlanetRadius
             : theme == PlanetTheme.Veiled && nothingShown ? VeiledEmptyPlanetRadius
-            : Math.Clamp(PlanetRadiusBase + PlanetRadiusPerSqrtShown * MathF.Sqrt(itemCount + LauncherWeight * launched.Count), MinPlanetRadius, MaxPlanetRadius);
+            : Math.Clamp(PlanetRadiusBase + PlanetRadiusPerSqrtShown * MathF.Sqrt(itemCount + (GalleryAreaWeight - 1) * galleryPictures + LauncherWeight * launched.Count), MinPlanetRadius, MaxPlanetRadius);
         // A Hazard World (PLANET-34) is never small: its islands, bridges and open sky need room.
         if (hazard != null) radius = MathF.Max(radius, HazardMinPlanetRadius);
         var seed = NameSeed(name);
@@ -797,7 +814,7 @@ public static class PlanetComposer
         var groves = new List<PlanetGrove>();
         if (groups.Count > 0)
         {
-            PlaceGroves(tree, groups, budget, radius, p, Free, solids, items, groves, plateaus);
+            PlaceGroves(tree, groups, budget, radius, p, Free, solids, items, groves, plateaus, gallery: media.IsGallery);
         }
 
         foreach (var g in groves)
@@ -858,6 +875,7 @@ public static class PlanetComposer
             Counts = counts,
             TreeVersion = tree.Version,
             Signature = Signature(tree, folderId),
+            Media = media,
         };
     }
 
@@ -1189,7 +1207,7 @@ public static class PlanetComposer
     /// no grove crowds out another, and fills each with its files in name order from its centre outwards, then its pile.
     /// </summary>
     private static void PlaceGroves(FsTree tree, List<(FileCategory Category, List<int> Ids)> groups, int[] budget, float radius,
-        PlanetParams p, FreeCheck free, List<Solid> solids, List<PlanetItem> items, List<PlanetGrove> groves, IReadOnlyList<Vector3>? seedHints = null)
+        PlanetParams p, FreeCheck free, List<Solid> solids, List<PlanetItem> items, List<PlanetGrove> groves, IReadOnlyList<Vector3>? seedHints = null, bool gallery = false)
     {
         // As many slots as hexagonal cells of the grove spacing cover the sphere (a hexagonal cell of pitch s has area
         // (√3/2)·s² ≈ 0.866·s²), so neighbouring slots are about GroveSpacing apart.
@@ -1300,7 +1318,7 @@ public static class PlanetComposer
                 if (round >= budget[g] || exhausted[g]) continue;
                 var id = groups[g].Ids[round];
                 var n = tree[id];
-                var scale = ScaleFor(n.Size);
+                var scale = gallery && groups[g].Category == FileCategory.Image ? GalleryPictureScale : ScaleFor(n.Size);
                 var slot = Next(growth[g], ItemRadius(scale));
                 if (slot < 0) { exhausted[g] = true; continue; }
                 solids.Add(new Solid(slots[slot], ItemRadius(scale)));
@@ -1341,7 +1359,8 @@ public static class PlanetComposer
 
         foreach (var x in pending)
         {
-            var centre = groves[x.Grove].CentreDirection;
+            // A gallery's pictures turn to the arrival (PLANET-132): walking out from where you land you meet their fronts.
+            var centre = gallery && groups[x.Grove].Category == FileCategory.Image && x.Kind != PlanetItemKind.Pile ? Vector3.UnitY : groves[x.Grove].CentreDirection;
             var toward = centre - x.Dir;
             var tangent = toward - x.Dir * Vector3.Dot(toward, x.Dir);
             var heading = PlanetShape.Angle(centre, x.Dir) * radius < 0.5f || tangent.LengthSquared() < 1e-10f ? 0f : PlanetFrame.HeadingOf(x.Dir, Vector3.Normalize(tangent));

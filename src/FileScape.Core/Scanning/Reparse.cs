@@ -61,8 +61,14 @@ public static class Reparse
 
         if (IsCloudTag(t))
         {
-            // A cloud placeholder is an ordinary file or folder managed by a sync provider, not a link.
-            return new(isDirectory ? NodeKind.Directory : NodeKind.File, NodeFlags.CloudPlaceholder, null);
+            // A file or folder managed by a sync provider is ordinary, not a link. The tag says only "synced": OneDrive keeps
+            // it on files that are on this PC too, so a file is a placeholder only by its recall/offline attributes
+            // (DirectoryScanner.FlagsFor). Before PLANET-135 every synced file was called a placeholder, so every photo in
+            // a OneDrive Pictures folder carried a "may download" warning. Folders keep the placeholder caution unchanged
+            // (Overview discovery leaves cloud folders alone).
+            return isDirectory
+                ? new(NodeKind.Directory, NodeFlags.CloudPlaceholder | NodeFlags.CloudSynced, null)
+                : new(NodeKind.File, NodeFlags.CloudSynced, null);
         }
 
         // Other tags (deduplication, compression providers, containers…): files behave as files; directories are

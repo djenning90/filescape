@@ -140,6 +140,12 @@ public partial class Main : Node3D
 
     /// <summary>The last shell action's result (the reader's status line says whether it worked).</summary>
     public ShellResult? LastShellResult { get; private set; }
+
+    /// <summary>The legacy views' selection or hover box is drawn (probes, PLANET-136: never in Planets).</summary>
+    public bool LegacyHighlightVisible => _selectionBox.Visible || _hoverBox.Visible;
+
+    /// <summary>Where the legacy selection box stands in the world (probes: whether a Planets camera could see it).</summary>
+    public GVector3 LegacyHighlightPosition => _selectionBox.GlobalPosition;
     public int LabelsShown => _labels.LastShown;
     public IReadOnlyList<Rect2> LabelRects => _labels.ShownRects;
 
@@ -1668,8 +1674,10 @@ public partial class Main : Node3D
         {
             reason = $"“{node.Name}” is a link. FileScape did not follow it; Windows will open its target, which may be elsewhere.";
         }
-        else if ((node.Flags & NodeFlags.CloudPlaceholder) != 0)
+        else if ((node.Flags & NodeFlags.CloudPlaceholder) != 0 && !FileScape.Core.Planets.GalleryRules.OpensWithoutAsking(node))
         {
+            // A cloud-only picture opens without the question (PLANET-135: DJ allowed pictures to be fetched; the question
+            // on every photo obstructed). Documents and other cloud files still ask.
             reason = $"“{node.Name}” is a cloud placeholder. Opening it may download it from the provider.";
         }
 

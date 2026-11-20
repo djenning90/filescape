@@ -22,8 +22,11 @@ public static class GallerySample
     /// <summary>The gallery folder's name under the parent directory.</summary>
     public const string RootName = "Picture Gallery";
 
-    /// <summary>The content version in the marker; bump it when the generated content changes.</summary>
-    public const int Version = 1;
+    /// <summary>The content version in the marker; bump it when the generated content changes (2: the Desk folder, PLANET-130).</summary>
+    public const int Version = 2;
+
+    /// <summary>A subfolder that is an ordinary mixed folder (one sketch among four notes: not a gallery, even inside one).</summary>
+    public const string DeskName = "Desk";
 
     private const string MarkerMagic = "FileScape picture gallery";
 
@@ -67,6 +70,36 @@ public static class GallerySample
         return root;
     }
 
+    /// <summary>
+    /// A crowd of <paramref name="count"/> pictures with two notes beside them, unmarked (a gallery by its contents,
+    /// PLANET-130), under <c>parentDirectory/Crowd of N</c>: the gallery at small and large counts (PLANET-132). The
+    /// pictures cycle through the Starter Sky's painters at 320 × 240, each third with its colours turned (red → green →
+    /// blue) so neighbours differ. For fixtures: it writes into a folder it creates and refuses one that exists.
+    /// </summary>
+    public static string CreateCrowd(string parentDirectory, int count)
+    {
+        var root = Path.Combine(Path.GetFullPath(parentDirectory), $"Crowd of {count}");
+        if (Directory.Exists(root)) throw new InvalidOperationException($"Refusing to write into {root}: it exists.");
+        Directory.CreateDirectory(root);
+        var painters = Pictures.Garden.Concat(Pictures.Pressed).ToArray();
+        for (var i = 0; i < count; i++)
+        {
+            var p = painters[i % painters.Length];
+            var r = Paint(p);
+            var turn = i / painters.Length % 3;
+            if (turn > 0)
+            {
+                for (var k = 0; k < r.Rgb.Length; k += 3) (r.Rgb[k], r.Rgb[k + 1], r.Rgb[k + 2]) = turn == 1 ? (r.Rgb[k + 1], r.Rgb[k + 2], r.Rgb[k]) : (r.Rgb[k + 2], r.Rgb[k], r.Rgb[k + 1]);
+            }
+
+            Bytes(root, $"crowd-{i + 1:D3}-{Path.GetFileNameWithoutExtension(p.FileName)}.png", Png.Encode(r.W, r.H, r.Rgb));
+        }
+
+        Text(root, "about.txt", $"{count} pictures painted by FileScape for its gallery fixtures.\n");
+        Text(root, "list.csv", "kind,count\npicture," + count + "\n");
+        return root;
+    }
+
     private static int? ReadVersion(string root)
     {
         var marker = Path.Combine(root, GalleryRules.MarkerName);
@@ -105,6 +138,13 @@ public static class GallerySample
         Bytes(root, "old-prints.zip", [0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // an empty zip archive
         Painting(Path.Combine(root, "Sketches"), "pressed-cosmos.png", 1, Find(Pictures.Pressed, "pressed-cosmos.png"));
         Painting(Path.Combine(root, "Sketches"), "pressed-buttercups.png", 1, Find(Pictures.Pressed, "pressed-buttercups.png"));
+        // Desk: pictures among other files (1 of 5), an ordinary world even inside the gallery (MediaWorld.InsideShare).
+        var desk = Path.Combine(root, DeskName);
+        Painting(desk, "desk-sketch.png", 1, Find(Pictures.Pressed, "pressed-violets.png"));
+        Text(desk, "todo.txt", "frame the large print\nsort the sketches\n");
+        Text(desk, "letter.md", "# A letter\n\nThe prints arrived safely.\n");
+        Text(desk, "budget.csv", "item,cost\nframes,40\nglass,25\n");
+        Text(desk, "notes.txt", "The gallery's own notes.\n");
 
         if (stress)
         {

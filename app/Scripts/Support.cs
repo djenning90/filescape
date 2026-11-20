@@ -338,6 +338,7 @@ public static class Inspector
         Add(NodeFlags.AppAlias, "app alias", "#ffaa44");
         Add(NodeFlags.LinuxSpecial, "Linux special file", "#c8d4ea");
         Add(NodeFlags.CloudPlaceholder, "cloud placeholder (contents may not be local)", "#cfe3ff");
+        Add(NodeFlags.CloudSynced, "kept in sync by a cloud provider", "#cfe3ff");
         Add(NodeFlags.Sparse, "sparse");
         Add(NodeFlags.Compressed, "compressed");
         Add(NodeFlags.Encrypted, "encrypted");

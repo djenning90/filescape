@@ -1837,6 +1837,74 @@ as FileScape while naming remains open.
   **Revisit if:** DJ wants the telescope to frame siblings or farther places (the overview's job today), or wants the
   reserved arrangements wired.
 
+## AD-86 The picture world as a gallery: Windows' thumbnails, media worlds by contents and library, readable canvases, and the stray highlight (2026-11-20; extends AD-78)
+
+- **Problem (DJ, sixth pass, PLANET-130..136):** the easels felt like placeholders (a 0.62 m square canvas, the picture
+  stretched to it, filled only in marked folders, two at a time, 32 at most, 192 px); only a marker file made a gallery,
+  so `OneDrive\Pictures\Saved Pictures` and Screenshots were ordinary worlds; every photo in OneDrive carried "a cloud
+  file … FileScape does not read it" and Open asked about downloading; and a translucent pale-gold cube pulsed in Saved
+  Pictures that nothing answered to.
+- **Thumbnails — Windows first (PLANET-131).** Investigated before building anything: `IShellItemImageFactory::GetImage`
+  (Explorer's own path) reads the system thumbnail cache (`thumbcache_*.db`, the 256/1024 px entries Explorer fills) with
+  `SIIGBF_INCACHEONLY` without opening the file, and otherwise runs the type's thumbnail handler (which also stores the
+  result there) — every format Windows has a handler for (HEIC, GIF, TIFF, RAW with codecs). **Cloud placeholders,
+  measured on DJ's OneDrive Pictures:** a cloud-only photo Explorer had already shown comes straight from the cache
+  (no download); for an uncached one the extraction returned no thumbnail (`0 extracted`), so FileScape fetches the
+  picture and decodes it — which DJ allowed — bounded to 8 MiB for a canvas filled by itself (the viewer and the
+  preview fetch on request). Whether OneDrive serves cloud thumbnails through another path (Explorer shows them) was not
+  established: **unknown**. `IThumbnailCache` gives the same cache with more ceremony (an `ISharedBitmap`
+  per call) and nothing we need beyond it, so the factory it is. Chosen over our own decoder for the canvases because the
+  common case is a cache read (measured: median 8 ms, against 37–64 ms to extract and 15–120 ms to decode ourselves)
+  and because it reaches cloud-only photos and formats Godot cannot decode. FileScape's bounded decoder (AD-78's limits)
+  remains the fallback and the viewer's full-resolution path. `ShellThumbnails` (Core, Windows only) runs requests on
+  two STA threads (handlers are COM objects that expect one), first cache-only, then extracting, never an icon
+  (`SIIGBF_THUMBNAILONLY`), and frees every HBITMAP. Read-only: nothing changes a file, its attributes or its pin state.
+- **Bounds (named in `ThumbBudget`, `GalleryThumbnails`, `PictureViewer`):** ≤ 2 requests in flight; ≤ 64 textured
+  canvases on a world (the planet's own item budget, ≈ 22 MB at 256 px with mipmaps) and ≤ 8 sharp (768 px, ≈ 25 MB),
+  sharpened within 8 m of the traveller in view and let go beyond 12 m; a far texture is given up for a waiting nearer
+  picture only when that one is ≥ 6 m nearer; a 64 MiB session cache of decoded thumbnails (LRU by bytes), so a world
+  you come back to fills from memory; the viewer keeps ≤ 3 decoded (2,048 px) and ≤ 8 quick (1,024 px) pictures and runs
+  one load at a time. The plan is pure Core (`ThumbnailPlan`: visible small first, nearest first, then sharp near, then
+  behind you; failures never retried), tested without the engine, including a 300-picture walk within every bound.
+- **Media worlds (PLANET-130).** `MediaWorld.Classify` from the folder's listing, its parent's and the picture
+  libraries, never a file's contents: the marker; or ≥ 3 pictures making ≥ 60 % of visible files (videos count while
+  pictures lead); or inside a picture library one picture and ≥ 25 %; or directly inside a gallery ≥ 40 %. The libraries
+  are the Pictures known folder as Windows resolves it (on DJ's PC redirected to `OneDrive\Pictures`), Camera Roll,
+  Screenshots, Saved Pictures (`SHGetKnownFolderPath`, `KF_FLAG_DONT_VERIFY`) and `%OneDrive%\Pictures`, matched as whole
+  folders. A mixed folder outside a library stays an ordinary world that reads nothing by itself (FILE-02 as before); an
+  empty one has nothing to hang. Thresholds are a clear majority by contents and a low bar where the person has already
+  said "pictures live here" (rationale: DJ's folders — 45 of 49 files at the top of Pictures, a Screenshots of 31,
+  a Camera Roll of one, an empty Saved Pictures).
+- **Readable canvases (PLANET-132, PLANET-133).** In a gallery every picture stands at scale 2 (a 1.24 m canvas,
+  its middle at ≈ 1.3 m), whatever its file size, turned to face the arrival, and counts 2.5× in the planet's size.
+  `picture_face.gdshader` fits the picture inside a mat with its shape kept (no more stretching), and shows the
+  canvas's state when there is no picture: plain mat waiting, a slow sheen loading, dimmed with a thin slash failed.
+  Alternatives: a separate picture quad per easel (more nodes, and the stretch problem moves rather than goes); bigger
+  piles of small easels (unreadable at 300).
+- **Cloud files (PLANET-135).** OneDrive tags every file it manages, on this PC or not, so the old rule "a Cloud Files
+  tag makes a placeholder" called every synced photo a placeholder. Now the tag sets `CloudSynced` and only the recall
+  / offline attributes set `CloudPlaceholder` (folders unchanged: Overview discovery keeps leaving cloud folders alone).
+  DJ allowed ordinary picture loading from their cloud folders, including downloads: pictures are previewed through
+  Windows' thumbnail (no download for a cloud-only photo when the provider serves one), the viewer fetches a cloud-only
+  picture with "fetching … from your cloud storage", and Open hands a picture to Windows without the download question
+  (`GalleryRules.OpensWithoutAsking`). Documents and other cloud-only files keep their caution; links are never read.
+- **Unusually large files (PLANET-134).** Over 24 MiB, over 60 Mpx, or a format FileScape does not decode: never read
+  whole by FileScape; Windows' thumbnail (1,024 px in the viewer) is the picture, and the caption says why.
+- **The yellow cube (PLANET-136).** It is the legacy views' **selection highlight** (`highlight.gdshader` on a unit
+  box: additive glowing edges, 7 % face tint, Places' pale gold `(1, 0.92, 0.55)`, brightness pulsing at 5 rad/s ≈
+  0.8 Hz): Places and the maps place it round the selected item every frame; switching to Planets hid the beam, spot
+  and "you are here" ring but not this box, so it stayed drawn at its last legacy-world position, which in Planets is
+  inside or beside the current planet (planets sit at the origin; a large folder's box from a map pokes through a small
+  world such as an empty Saved Pictures moon). It stood for an item selected in another view and belonged to nothing in
+  the planet world, hence no interaction. Reproduced in-app on the base code (drawn after the switch) and fixed by
+  hiding both boxes on every change of view; its look is unchanged where it belongs. No label or cue: in Planets the
+  selection is shown by the gold ring. If DJ wants its look in Planets, it could become a treatment for a selected
+  picture's frame — a design question, not done.
+- **Revisit if:** the 64-canvas budget shows blank easels in large galleries on slower GPUs (lower `MaxShown` or the
+  small size); OneDrive stops serving cloud thumbnails without hydration (then cloud-only canvases would download —
+  allowed for pictures, but slower); DJ wants galleries to place pictures in walks or rooms rather than groves; the
+  thresholds misjudge real folders (they are named constants in `MediaWorld`).
+
 ## AD-87 Open opens the thing, Show in folder selects it where it lives; what Windows cannot do is off with its reason; the planetoid prototype is retired (2026-11-20; amends AD-76)
 
 - **Problem (DJ, sixth pass):** "Open on a folder and Show in Explorer appeared to do the same thing. Make their

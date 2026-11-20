@@ -182,8 +182,8 @@ public partial class PlanetWorld
         if (!tree.Contains(folderId) || _current == null) return;
         _title.Text = tree.DisplayName(folderId);
         var c = _current.Comp;
-        // PLANET-96: a gallery says so, and how to look (its easels fill with pictures as you walk).
-        var world = _s.IsLive && GalleryRules.IsGallery(tree, folderId) ? "a picture gallery: E on a picture, then R to view it large" : PlanetText.WorldName(c.Theme);
+        // PLANET-96/130: a gallery says so, why, and how to look (its canvases fill with pictures as you walk).
+        var world = _s.IsLive && c.Media.IsGallery ? $"a picture gallery{GalleryWhy(c.Media)}: E on a picture, then R to view it large" : PlanetText.WorldName(c.Theme);
         var parts = new List<string> { world, _s.Summary(folderId) };
         var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
         if (piled > 0) parts.Add($"{c.Items.Count(i => i.Kind != PlanetItemKind.Pile):N0} stand here, {piled:N0} more in piles (J lists them all)");
@@ -272,7 +272,36 @@ public partial class PlanetWorld
         _previewPlayer.Stop();
         _previewPanel.Visible = true;
         if (!_s.IsLive || n.Kind != NodeKind.File) return; // sample data has no contents; links and folders are not previewed
-        if ((n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0)
+        var path = tree.FullPath(n.Id);
+        var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
+        var id = n.Id;
+        if (GalleryRules.IsPicture(n.Name) && !GalleryRules.IsLinkLike(n))
+        {
+            // A picture (PLANET-131, PLANET-135): Windows' thumbnail first (for a cloud-only photo the provider's, without
+            // fetching the file), FileScape's own bounded decoder after; a cloud photo is no longer a warning.
+            _previewImage.Visible = true;
+            _previewText.Visible = true;
+            PreviewPlain("◌ loading the picture…");
+            if (_current?.Visual is { } visual && GalleryThumbnails.Cached(tree, n, PreviewImagePixels) is { } hit)
+            {
+                ApplyPreviewImage(hit, id);
+                return;
+            }
+
+            _ = GalleryThumbnails.RequestAsync(tree, n, PreviewImagePixels).ContinueWith(t => Deliver(() =>
+            {
+                var a = t.IsCompletedSuccessfully ? t.Result : default;
+                if (a.Image is { } img)
+                {
+                    if (_s.Tree is { } live && live.Contains(id)) GalleryThumbnails.Keep(live, live[id], PreviewImagePixels, img);
+                    ApplyPreviewImage(img, id);
+                }
+                else PreviewSays(id, $"This picture can't be shown here: {a.Refusal ?? "it could not be read"}. Enter opens it with Windows.");
+            }));
+            return;
+        }
+
+        if ((n.Flags & NodeFlags.CloudPlaceholder) != 0 || GalleryRules.IsLinkLike(n))
         {
             // Reading a cloud placeholder can make its provider download it: never for a preview (Open asks first).
             _previewText.Visible = true;
@@ -282,19 +311,7 @@ public partial class PlanetWorld
             return;
         }
 
-        var path = tree.FullPath(n.Id);
-        var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
-        var id = n.Id;
-        if (ext is ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" && n.Size <= MaxImageBytes)
-        {
-            _previewImage.Visible = true;
-            _ = Thumbnails.LoadAsync(path, PreviewImagePixels).ContinueWith(t => Deliver(() =>
-            {
-                if (t.Result is { } img) ApplyPreviewImage(img, id);
-                else PreviewSays(id, "This picture could not be shown here (Enter opens it with Windows).");
-            }));
-        }
-        else if (ext is ".wav" or ".ogg" or ".mp3" && n.Size <= MaxAudioBytes)
+        if (ext is ".wav" or ".ogg" or ".mp3" && n.Size <= MaxAudioBytes)
         {
             _previewText.Visible = true;
             PreviewPlain("♪ loading a preview…");
@@ -345,6 +362,8 @@ public partial class PlanetWorld
         _current?.Visual?.ShowThumbnail(id, img); // the easel shows the picture you looked at
         if (!_previewPanel.Visible || _s.Selection.Selected != id) return;
         _previewImage.Texture = ImageTexture.CreateFromImage(img);
+        PreviewPlain("");
+        _previewText.Visible = false;
         _expandButton.Visible = _s.IsLive; // PLANET-96: ⤢ (or R) views the picture large
     }
 
@@ -570,12 +589,13 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ thumbnails on the picture easels
 
-    /// <summary>Lets the planet's easels load pictures, at most two loading at once; by themselves only in the Starter Sky (FILE-02/DEV-02).</summary>
-    private void UpdateThumbnails()
+    /// <summary>Lets the planet's canvases fill (PlanetVisual.Pictures): by themselves on a gallery world or in the Starter
+    /// Sky; elsewhere only with the pictures you look at (FILE-02/DEV-02).</summary>
+    private void UpdateThumbnails(float dt)
     {
         _viewer.Tick(); // PLANET-96: the picture viewer's finished decodes (main thread)
         if (_current?.Visual is not { } v || !_s.IsLive || _s.Tree is not { } tree) return;
-        v.PumpThumbnails(tree, maxConcurrent: 2, automatic: _current.AutoThumbnails, near: Nv(_camera.GlobalPosition));
+        v.PumpPictures(tree, dt, automatic: _current.AutoThumbnails, _camera, Gd(_walker.Feet));
     }
 
     // ------------------------------------------------------------------ travel effects

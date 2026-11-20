@@ -354,7 +354,7 @@ public partial class PlanetWorld : Node3D
         UpdateDestinationsPanel(); // PlanetWorld.Destinations
         UpdateHazardScreen(dt);
         UpdateSigns(tree);
-        UpdateThumbnails();
+        UpdateThumbnails(dt);
         AnimateBeacon(dt);
         AnimateScene(dt);
     }
@@ -468,8 +468,14 @@ public partial class PlanetWorld : Node3D
 
     // ------------------------------------------------------------------ building planets
 
+    /// <summary>The composer's parameters: the defaults, with this PC's picture folders for a gallery's character
+    /// (PLANET-130; asked of Windows once, paths only; none for synthetic data).</summary>
+    private PlanetParams ComposeParams => _composeParams ??= PlanetParams.Default with { Libraries = _s.IsLive ? PictureLibraries.FromSystem() : PictureLibraries.Empty };
+
+    private PlanetParams? _composeParams;
+
     private PlanetComposition Compose(FsTree tree, int folderId) =>
-        PlanetComposer.Compose(tree, folderId, PlanetParams.Default, _s.IsVisible,
+        PlanetComposer.Compose(tree, folderId, ComposeParams, _s.IsVisible,
             // A probe's root look on the current folder stands that root's landmark too (PLANET-45).
             rootMarkKind: ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind
             : ProbeRootLook is { } look && folderId == _s.Navigator.Root ? look : null);
@@ -619,8 +625,9 @@ public partial class PlanetWorld : Node3D
         body.Visual = TakeOrBuild(tree, body, full: true);
         body.Node.AddChild(body.Visual);
         body.Full = true;
-        // The app's own sample, or a folder marked as a gallery (PLANET-96: the marker is the folder's "yes" to pictures read as you walk).
-        body.AutoThumbnails = InStarterSky(tree, body.FolderId) || (_s.IsLive && GalleryRules.IsGallery(tree, body.FolderId));
+        // The app's own sample, or a gallery world (PLANET-130: by its marker, its contents, a picture library such as a
+        // redirected Pictures folder, or standing inside a gallery; DJ allowed pictures to be read as you walk there).
+        body.AutoThumbnails = InStarterSky(tree, body.FolderId) || (_s.IsLive && body.Comp.Media.IsGallery);
     }
 
     /// <summary>Gives a body its preview visual (how a world looks hanging in the sky).</summary>

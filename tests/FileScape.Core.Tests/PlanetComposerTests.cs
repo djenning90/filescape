@@ -515,7 +515,8 @@ public class PlanetComposerTests
                 c.Surface.SurfaceDistance(it.Direction, l.Direction).Should().BeGreaterThan(l.PadRadius + it.Radius, "no item in a launcher pad");
             }
 
-            it.Scale.Should().BeInRange(0.6f, 1.6f);
+            if (c.Media.IsGallery && it.Category == FileCategory.Image && it.Kind != PlanetItemKind.Pile) it.Scale.Should().Be(PlanetComposer.GalleryPictureScale);
+            else it.Scale.Should().BeInRange(0.6f, 1.6f);
             obs.Should().Contain(o => o.Direction == it.Direction && MathF.Abs(o.Radius - it.Radius) < 1e-5f, "every item is solid");
         }
 
@@ -617,6 +618,53 @@ public class PlanetComposerTests
 
         Any((i, h) => MathF.Abs(h - c.Overlook.Top) < 1e-4f && s.SurfaceDistance(pts[i], c.Overlook.Direction) < c.Overlook.Radius)
             .Should().BeTrue($"the overlook top is reachable by its steps on {c.Name}");
+    }
+
+    // ------------------------------------------------------------------ a gallery's pictures (PLANET-132, AD-86)
+
+    /// <summary>A folder of <paramref name="pictures"/> photos with a few notes beside them.</summary>
+    private static (FsTree Tree, int Folder) Photos(int pictures)
+    {
+        var s = new Spec("Photos");
+        for (var i = 0; i < pictures; i++) s.File($"photo-{i:D3}.jpg", 1_500_000 + i);
+        s.File("captions.txt", 400).File("list.csv", 300);
+        var tree = new Spec("top").Dir(s).Dir(new Spec("Elsewhere")).Build();
+        return (tree, tree.Find("Photos").Id);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(30)]
+    [InlineData(300)]
+    public void A_gallery_stands_its_pictures_large_facing_the_arrival_at_any_count(int count)
+    {
+        var (tree, folder) = Photos(count);
+        var c = PlanetComposer.Compose(tree, folder);
+        c.Media.IsGallery.Should().BeTrue();
+        var pics = c.Items.Where(i => i.Category == FileCategory.Image && i.Kind != PlanetItemKind.Pile).ToList();
+        pics.Should().OnlyContain(i => i.Scale == PlanetComposer.GalleryPictureScale);
+        foreach (var it in pics)
+        {
+            // The front faces back along the surface towards the arrival pole (within 5 degrees).
+            var toPole = Vector3.UnitY - it.Direction * Vector3.Dot(Vector3.UnitY, it.Direction);
+            Vector3.Dot(it.Facing, Vector3.Normalize(toPole)).Should().BeGreaterThan(MathF.Cos(5 * MathF.PI / 180), $"{tree[it.NodeId].Name} faces the arrival");
+        }
+
+        // Every picture is shown or counted in the pile; a big gallery still shows most of the planet's budget.
+        var pile = c.Items.Where(i => i.Category == FileCategory.Image && i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
+        (pics.Count + pile).Should().Be(count);
+        pics.Count.Should().BeGreaterThanOrEqualTo(Math.Min(count, 56), "no gallery runs out of room for its pictures");
+        ShouldBeSane(c);
+        ShouldBeReachable(c);
+    }
+
+    [Fact]
+    public void Pictures_among_other_files_keep_their_ordinary_easels()
+    {
+        var tree = Mixed();
+        var c = PlanetComposer.Compose(tree, tree.Find("mixed").Id);
+        c.Media.IsGallery.Should().BeFalse();
+        c.Items.Where(i => i.Category == FileCategory.Image && i.Kind != PlanetItemKind.Pile).Should().OnlyContain(i => i.Scale <= 1.6f);
     }
 
     // ------------------------------------------------------------------ the bell tower (PLANET-56)

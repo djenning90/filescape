@@ -134,7 +134,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
         else if (Mode == "planets-music") await MusicRun(); // PlanetsProbe.Music.cs (AD-79, PLANET-97/98)
         else if (Mode == "planets-looks") await LooksRun(); // PlanetsProbe.Looks.cs (PLANET-94/95)
-        else if (Mode == "planets-gallery") await GalleryRun(); // PlanetsProbe.Gallery.cs (PLANET-96)
+        else if (Mode == "planets-gallery") await GalleryRun(); // PlanetsProbe.Gallery.cs (PLANET-96, PLANET-130..136)
+        else if (Mode == "planets-gallery-real") await GalleryRealRun(); // PlanetsProbe.Gallery.cs: counts only, a real picture folder
         else if (Mode == "planets-travel") await TravelRun(); // PlanetsProbe.Travel.cs (PLANET-81/82)
         else if (Mode == "planets-overview-enter") await OverviewEnterRun(); // PlanetsProbe.Travel.cs (PLANET-83)
         else if (Mode == "planets-selection-actions") await SelectionActionsRun(); // PlanetsProbe.SelectionActions.cs (PLANET-87)

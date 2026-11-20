@@ -31,9 +31,6 @@ public partial class PlanetVisual : Node3D
     private readonly Dictionary<int, Node3D> _launchers = []; // by target node id
     private readonly Dictionary<int, (MeshInstance3D Mesh, PlanetItem Item, FileArt Art)> _items = []; // by node id (see BuildItems)
     private readonly Dictionary<int, float> _rings = []; // bell flowers ringing: seconds since each was walked past
-    private readonly HashSet<int> _thumbRequested = [];
-    private readonly List<(int Id, Image Image)> _thumbReady = []; // decoded on workers, applied on the main thread (locked)
-    private int _thumbLoading; // thumbnails being read now (Interlocked)
     private MeshInstance3D? _selectRing, _focusRing;
     private (int Target, float Seconds, float T)? _charge; // the launcher winding up: its target, wind-up length, elapsed (seconds)
     private float _time; // seconds since the planet was built (drives the idle animations)
@@ -114,30 +111,8 @@ public partial class PlanetVisual : Node3D
     /// <summary>Around a file object: 0.6 × its scale in metres, never smaller than 0.55 m, lifted 6 cm.</summary>
     private const float ItemRingPerScale = 0.6f, MinItemRingMetres = 0.55f, ItemRingLiftMetres = 0.06f;
 
-    /// <summary>
-    /// Automatic thumbnails (FILE-02): pictures up to 24 MiB on disk are tried, but each read is capped at 8 MiB (a larger
-    /// file is skipped by <see cref="Thumbnails.ReadBounded"/>), so in effect pictures up to 8 MiB show; shrunk to 192 px
-    /// on the longer side. Rationale for the two different limits not recorded.
-    /// </summary>
-    private const long ThumbnailMaxFileBytes = 24L * 1024 * 1024, ThumbnailReadMaxBytes = 8L * 1024 * 1024;
-
-    private const int ThumbnailMaxPixels = 192;
-
-    /// <summary>Pictures read by themselves on one planet, at most (PLANET-96): above the sample's largest picture world
-    /// (Garden Photos, 16) and a gallery's usual size, well under the 64 objects a planet shows; ≈ 6 MB of 192 px
-    /// thumbnails with mipmaps. A picture you look at (E) is always shown.</summary>
-    public const int MaxAutoThumbnails = 32;
-
-    private int _autoThumbnails;
-
-    /// <summary>Pictures read by themselves on this planet so far (probes: never above <see cref="MaxAutoThumbnails"/>).</summary>
-    public int AutoThumbnailsRequested => _autoThumbnails;
-
     /// <summary>The way back's pad has its marker treatment (PLANET-95).</summary>
     public bool WayBackMarked { get; private set; }
-
-    /// <summary>Easel pictures shown since the planet was built (diagnostics).</summary>
-    public int ThumbnailsShown { get; private set; }
 
     /// <summary>The cache key it was built under (what it shows), kept so a release never files it under another key.</summary>
     public string CacheKey { get; init; } = "";
@@ -366,6 +341,8 @@ public partial class PlanetVisual : Node3D
             // Keyed by node id; an item without a node gets a unique negative key (−10 000 and below, clear of the −1 "none").
             var key = it.NodeId >= 0 ? it.NodeId : -10_000 - _items.Count;
             _items[key] = (mi, it, art);
+            // A picture's canvas wears the picture face from the start (PlanetVisual.Pictures): the plain mat until it fills.
+            if (it.NodeId >= 0 && tree.Contains(it.NodeId) && ShowsPicture(tree[it.NodeId], art)) CanvasFor(key);
         }
     }
 
@@ -551,60 +528,4 @@ public partial class PlanetVisual : Node3D
 
     /// <summary>Smoothstep on 0–1 (eases in and out).</summary>
     private static float Smooth(float x) => x * x * (3 - 2 * x);
-
-    // ------------------------------------------------------------------ real pictures on the easels
-
-    /// <summary>A picture read deliberately (E) is shown on its easel too.</summary>
-    public void ShowThumbnail(int id, Image img)
-    {
-        lock (_thumbReady) _thumbReady.Add((id, img));
-        _thumbRequested.Add(id);
-    }
-
-    /// <summary>
-    /// Shows pictures on the easels: those read deliberately (<see cref="ShowThumbnail"/>), and, when
-    /// <paramref name="automatic"/> (only the app's own Starter Sky, FILE-02/DEV-02: your files' contents are read only
-    /// when you ask), loads the rest two at a time off the main thread. Cloud placeholders and links are never read.
-    /// </summary>
-    public void PumpThumbnails(FsTree tree, int maxConcurrent, bool automatic = true, NVector3? near = null)
-    {
-        lock (_thumbReady)
-        {
-            foreach (var (id, img) in _thumbReady)
-            {
-                if (!_items.TryGetValue(id, out var e) || e.Art.FaceSurface < 0) continue;
-                var mat = new StandardMaterial3D { AlbedoTexture = ImageTexture.CreateFromImage(img), ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, TextureFilter = BaseMaterial3D.TextureFilterEnum.LinearWithMipmapsAnisotropic };
-                e.Mesh.SetSurfaceOverrideMaterial(e.Art.FaceSurface, mat);
-                ThumbnailsShown++;
-            }
-
-            _thumbReady.Clear();
-        }
-
-        if (!automatic || Volatile.Read(ref _thumbLoading) >= maxConcurrent || _autoThumbnails >= MaxAutoThumbnails) return;
-        // Nearest first (PLANET-96): the pictures you walk towards fill in before the far ones.
-        var order = near is { } at ? _items.OrderBy(kv => NVector3.DistanceSquared(kv.Value.Item.Direction * _comp.Shape.Radius, at)) : _items.AsEnumerable();
-        foreach (var (id, e) in order)
-        {
-            if (_autoThumbnails >= MaxAutoThumbnails) break;
-            if (Volatile.Read(ref _thumbLoading) >= maxConcurrent) break;
-            if (id < 0 || e.Art.FaceSurface < 0 || _thumbRequested.Contains(id) || !tree.Contains(id)) continue;
-            var n = tree[id];
-            var ext = System.IO.Path.GetExtension(n.Name).ToLowerInvariant();
-            if (n.Kind != NodeKind.File || (n.Flags & (NodeFlags.CloudPlaceholder | NodeFlags.ReparsePoint)) != 0 || ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp") || n.Size > ThumbnailMaxFileBytes) { _thumbRequested.Add(id); continue; }
-            _thumbRequested.Add(id);
-            _autoThumbnails++;
-            Interlocked.Increment(ref _thumbLoading);
-            var path = tree.FullPath(id);
-            _ = Thumbnails.LoadAsync(path, ThumbnailMaxPixels, maxBytes: ThumbnailReadMaxBytes).ContinueWith(t =>
-            {
-                lock (_thumbReady)
-                {
-                    if (t.Result is { } img) _thumbReady.Add((id, img));
-                }
-
-                Interlocked.Decrement(ref _thumbLoading);
-            });
-        }
-    }
 }
