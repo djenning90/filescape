@@ -46,6 +46,16 @@ public partial class PlanetWorld
     /// <summary>A framed world's diameter fills this share of the view's height (it reads as the subject, with sky round it).</summary>
     private const float ScopeFrameShare = 0.32f;
 
+    /// <summary>
+    /// At the eyepiece the near clip moves out to this many metres, so the telescope's own brass tube and the platform's
+    /// rail, which stand round the eye, are not drawn across the view (seen 2026-11-20: the tube filled the field with a
+    /// blurred gold disc). Restored to the walking camera's when you step back.
+    /// </summary>
+    private const float ScopeNearMetres = 1.6f;
+
+    /// <summary>The planet counts as this share of its ground radius for hiding worlds behind it (a little under 1, so one just over the horizon still counts as seen).</summary>
+    private const float ScopeHorizonShare = 0.97f;
+
     /// <summary>A world's framed size counts its glowing atmosphere: this many times its ground radius (by eye on the Starter Sky).</summary>
     private const float ScopeAtmosphereFactor = 1.25f;
 
@@ -201,7 +211,8 @@ public partial class PlanetWorld
         _jumpQueued = false;
         var tree = _s.Tree!;
         var pointing = PlanetFrame.North(ov.Direction); // the telescope points over the mesh's −Z edge: the overlook's north (PlanetVisual.BuildOverlook)
-        _scope = TelescopeSurvey.Plan(SurveyCandidates(), Nv(ToLocal(eye)), _walker.Up, pointing, _s.Selection.Selected);
+        // The ground's radius under the overlook stands in for the planet's (it is the horizon the eye looks over).
+        _scope = TelescopeSurvey.Plan(SurveyCandidates(), Nv(ToLocal(eye)), _walker.Up, pointing, _s.Selection.Selected, _current.Comp.Shape.GroundRadius(ov.Direction) * ScopeHorizonShare);
         _scopeT = 0;
         _scopeFrom = _camera.GlobalTransform;
         _scopeLook = _camera.GlobalPosition - _camera.GlobalBasis.Z * 10f; // the view turns from where it was looking
@@ -234,6 +245,8 @@ public partial class PlanetWorld
         _scopeField.Visible = false;
         _scopePress = null;
         _avatar.Visible = true;
+        _camera.Near = SurfaceNearMetres;
+        ShowLandmark(true);
         if (glide)
         {
             _camBlendFrom = _camera.GlobalTransform;
@@ -241,6 +254,16 @@ public partial class PlanetWorld
         }
 
         GD.Print("[planets] telescope: step back");
+    }
+
+    /// <summary>
+    /// The world's landmark (the book tower on the Starter Sky, a bell tower, a lighthouse) stands a few metres from the
+    /// overlook and hid the worlds behind it from the eyepiece (seen 2026-11-20: the book tower's pages filled the field);
+    /// it is hidden while the eye is at the eyepiece and shown again as you step back.
+    /// </summary>
+    private void ShowLandmark(bool visible)
+    {
+        if (_current?.Visual?.GetNodeOrNull<Node3D>("Landmark") is { } lm && lm.Visible != visible) lm.Visible = visible;
     }
 
     /// <summary>Selects the framed world (the shared selection: the card shows it) and writes its caption.</summary>
@@ -262,6 +285,7 @@ public partial class PlanetWorld
         _scopeName.Text = t.World.Name;
         _scopeRelation.Text = TelescopeSurvey.RelationText(t, here);
         var moons = _scope.OmittedMoons > 0 ? $"   ·   {_scope.OmittedMoons} more moons in the ring (J lists them)" : "";
+        if (_scope.BelowHorizon > 0) moons += $"   ·   {_scope.BelowHorizon} below the horizon (T shows them)";
         _scopeDetail.Text = $"{TelescopeSurvey.DetailText(t.World)}   ·   {_scope.Counter}{moons}";
     }
 
@@ -301,6 +325,8 @@ public partial class PlanetWorld
         _camera.LookAtFromPosition(pos, pos + forward, camUp);
         _camera.Fov = _scopeFov;
         _avatar.Visible = k < 0.6f; // your eye is at the eyepiece: the traveller would fill the view behind it
+        _camera.Near = k < 0.6f ? SurfaceNearMetres : ScopeNearMetres;
+        ShowLandmark(k < 0.6f);
         _scopeFieldMaterial.SetShaderParameter("open01", k);
         _scopeFieldMaterial.SetShaderParameter("size", GetViewport().GetVisibleRect().Size);
         _scopePanel.Modulate = new Color(1, 1, 1, k);

@@ -78,6 +78,18 @@ public class TelescopeSurveyTests
     }
 
     [Fact]
+    public void A_world_hidden_behind_the_planet_is_left_out_and_counted()
+    {
+        // The eye stands 10 m from the centre of a planet of radius 9.5; a world straight below the far side is behind it.
+        var hidden = new SurveyCandidate(7, "Far side", SurveyRelation.Child, new Vector3(0, -30, -2), 2f);
+        var s = TelescopeSurvey.Plan([At(1, "Music", 20), hidden], Eye, Up, Pointing, preferredId: 7, planetRadius: 9.5f);
+        s.Targets.Select(t => t.World.NodeId).Should().Equal([1], "the planet stands between the eyepiece and it");
+        s.BelowHorizon.Should().Be(1);
+        s.Current!.World.NodeId.Should().Be(1, "even when it is the selection");
+        TelescopeSurvey.Plan([At(1, "Music", 20), hidden], Eye, Up, Pointing).Targets.Should().HaveCount(2, "without a planet radius nothing is hidden");
+    }
+
+    [Fact]
     public void Each_world_says_how_it_relates_to_where_you_stand()
     {
         TelescopeSurvey.RelationText(At(1, "Music", 0), "Starter Sky").Should().Be("a world inside Starter Sky");

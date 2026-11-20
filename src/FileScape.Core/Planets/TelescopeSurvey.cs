@@ -74,12 +74,16 @@ public sealed class TelescopeSurvey
 
     private readonly List<SurveyTarget> _targets;
 
-    private TelescopeSurvey(List<SurveyTarget> targets, int index, int omittedMoons)
+    private TelescopeSurvey(List<SurveyTarget> targets, int index, int omittedMoons, int belowHorizon)
     {
         _targets = targets;
         Index = index;
         OmittedMoons = omittedMoons;
+        BelowHorizon = belowHorizon;
     }
+
+    /// <summary>Worlds left out because the planet stands between the eyepiece and them (they hang over the far side).</summary>
+    public int BelowHorizon { get; }
 
     /// <summary>The framed worlds, left to right.</summary>
     public IReadOnlyList<SurveyTarget> Targets => _targets;
@@ -101,10 +105,14 @@ public sealed class TelescopeSurvey
 
     /// <summary>
     /// Plans the survey from <paramref name="eye"/> (the eyepiece), the local <paramref name="up"/> and the direction the
-    /// telescope <paramref name="pointing"/> (any vector; only its part along the ground counts).
+    /// telescope <paramref name="pointing"/> (any vector; only its part along the ground counts). With
+    /// <paramref name="planetRadius"/> (metres; the planet's centre is the frame's origin) a world whose line of sight
+    /// passes through the planet is left out and counted in <see cref="BelowHorizon"/> (seen 2026-11-20: the view framed
+    /// the Starter Sky's own ground haze where Music Box hung over the far side).
     /// </summary>
-    public static TelescopeSurvey Plan(IEnumerable<SurveyCandidate> candidates, Vector3 eye, Vector3 up, Vector3 pointing, int preferredId = -1)
+    public static TelescopeSurvey Plan(IEnumerable<SurveyCandidate> candidates, Vector3 eye, Vector3 up, Vector3 pointing, int preferredId = -1, float planetRadius = 0f)
     {
+        var hidden = 0;
         up = Vector3.Normalize(up);
         var ahead = pointing - up * Vector3.Dot(pointing, up);
         ahead = ahead.LengthSquared() > 1e-10f ? Vector3.Normalize(ahead) : Perpendicular(up);
@@ -115,6 +123,12 @@ public sealed class TelescopeSurvey
             var to = c.Position - eye;
             var dist = to.Length();
             if (dist < 1e-4f) continue;
+            if (planetRadius > 0 && Blocked(eye, c.Position, planetRadius))
+            {
+                hidden++;
+                continue;
+            }
+
             var dir = to / dist;
             var bearing = MathF.Atan2(Vector3.Dot(dir, right), Vector3.Dot(dir, ahead)) * 180 / MathF.PI;
             var elevation = MathF.Asin(Math.Clamp(Vector3.Dot(dir, up), -1, 1)) * 180 / MathF.PI;
@@ -128,7 +142,15 @@ public sealed class TelescopeSurvey
         if (index < 0) index = Nearest(kept, SurveyRelation.Child, SurveyRelation.Link);
         if (index < 0) index = Nearest(kept, SurveyRelation.Moon);
         if (index < 0) index = Nearest(kept, SurveyRelation.Parent);
-        return new TelescopeSurvey(kept, index, Math.Max(0, moons.Count - MaxRingMoons));
+        return new TelescopeSurvey(kept, index, Math.Max(0, moons.Count - MaxRingMoons), hidden);
+    }
+
+    /// <summary>The segment from <paramref name="a"/> to <paramref name="b"/> passes within <paramref name="radius"/> of the origin.</summary>
+    private static bool Blocked(Vector3 a, Vector3 b, float radius)
+    {
+        var d = b - a;
+        var t = Math.Clamp(-Vector3.Dot(a, d) / MathF.Max(1e-9f, d.LengthSquared()), 0f, 1f);
+        return (a + d * t).LengthSquared() < radius * radius;
     }
 
     /// <summary>The index of the target of one of <paramref name="kinds"/> nearest the telescope's view, or −1.</summary>
