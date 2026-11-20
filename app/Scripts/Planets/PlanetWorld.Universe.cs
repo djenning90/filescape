@@ -678,7 +678,7 @@ public partial class PlanetWorld
                 _ => FolderSummary.Gate(n, Listing.Of(n)),
             };
             var folded = FoldedAt(bi);
-            if (folded > b.HiddenChildren) detail += $" · {folded:N0} worlds folded in (come closer)";
+            if (folded > b.HiddenChildren) detail += $" · +{folded:N0} worlds inside";
             else if (b.HiddenChildren > 0) detail += $" · +{b.HiddenChildren} more folders";
             if (_s.Visited(id) && !here) detail += " · visited";
             var color = here ? new Color(1f, 0.85f, 0.45f) : b.Discovery == Discovery.Unknown ? new Color(0.75f, 0.78f, 0.95f) : new Color(1f, 0.95f, 0.8f);
