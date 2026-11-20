@@ -50,6 +50,7 @@ function Log($s) { $line = ('{0,7:0.000} {1}' -f $sw.Elapsed.TotalSeconds, $s); 
 $fails = 0
 function Check($ok, $what) { if ($ok) { Log "PASS ACTIONS $what" } else { $script:fails++; Log "FAIL ACTIONS $what" } }
 $ThisPc = '::{20D04FE0-3AEA-1069-A2D8-08002B30309D}'
+$Linux = '::{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}' # File Explorer's Linux (\\wsl.localhost)
 
 # ---- fixtures
 $dir = Join-Path $env:TEMP ("FileScape-fixtures\actions-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ($(if ($Wrapper) { '-w' } else { '' })))
@@ -85,7 +86,7 @@ function Explorer-Views {
   }
   return $r
 }
-function Ours($path) { $path -like "$dir*" -or $path -eq $ThisPc -or $path -like '\\wsl.localhost*' -or $path -like '\\wsl$*' }
+function Ours($path) { $path -like "$dir*" -or $path -eq $ThisPc -or $path -eq $Linux -or $path -like '\\wsl.localhost*' -or $path -like '\\wsl$*' }
 $beforeAll = @(Explorer-Views)
 $knownHwnds = @($beforeAll | ForEach-Object { $_.Hwnd })
 Log "Explorer views open before the run: $($beforeAll.Count) (not listed; none is closed)"
@@ -160,7 +161,15 @@ try {
   Reveal $lnk $dir 'a shortcut (.lnk)'
   Reveal $brokenJunction $dir 'a junction whose target was removed'
   Reveal 'C:\' $ThisPc 'a drive root (C:\)'
-  if ($Wsl) { Reveal "\\wsl.localhost\$Wsl" '\\wsl.localhost' "a WSL distribution ($Wsl)" }
+  if ($Wsl) {
+    # Windows' own behaviour, recorded (not judged): on 2026-11-20 File Explorer opened Linux after ≈ 18 s and selected
+    # nothing there, so the card's Show is off for a distribution (AD-87). This step watches whether that changes.
+    $r = Step 'reveal' "\\wsl.localhost\$Wsl"
+    $v = Await-View { param($x) $x.Path -eq $Linux -or (Same $x.Path '\\wsl.localhost') } 25
+    if ($v) { Start-Sleep -Milliseconds 1500; $v = @(Explorer-Views) | Where-Object { $_.Hwnd -eq $v.Hwnd } | Select-Object -First 1 }
+    Log ("OBSERVED a WSL distribution ({0}): {1} → {2}" -f $Wsl, $r, $(if ($v) { "File Explorer shows Linux, selected: [$($v.Selected -join ', ')]" } else { 'no Linux view within 25 s' }))
+    Close-View $v "a WSL distribution ($Wsl)"
+  }
 
   $r = Step 'reveal' $missing
   Log "reveal a missing item → $r"

@@ -253,8 +253,8 @@ public static class SelectionActions
     /// <summary>
     /// Show in folder (PLANET-138): File Explorer opens the folder that contains the item, with the item selected — for
     /// a folder that is its parent, not the folder itself (Open does that); for a link or a shortcut, the link itself,
-    /// not its target. A drive is shown in This PC, a WSL distribution in Linux (\\wsl.localhost), a share on its
-    /// server; a volume without a drive letter has nowhere to be shown. Never for the hub or synthetic data.
+    /// not its target. A drive is shown in This PC, a share on its server; a WSL distribution (File Explorer's Linux
+    /// selects nothing) and a volume without a drive letter are off with the reason. Never for the hub or synthetic data.
     /// </summary>
     private static CardAction RevealAction(CardTargetInfo t)
     {
@@ -266,11 +266,14 @@ public static class SelectionActions
             var (label, container) = t.Location switch
             {
                 LocationKind.Drive => ("Show in This PC", "This PC"),
-                LocationKind.Wsl => ("Show in Linux", @"Linux (\\wsl.localhost)"),
+                // Measured 2026-11-20 (tools/os-file-actions-probe.ps1, both shell routes): File Explorer opens Linux
+                // (\\wsl.localhost) after ≈ 18 s and selects nothing there, so this is off with the reason.
+                LocationKind.Wsl => ("Show in folder", null),
                 LocationKind.Network => ("Show on server", "its server"),
                 LocationKind.Volume => ("Show in folder", null),
                 _ => (InFolder, "the folder that contains it"),
             };
+            if (container == null && t.Location == LocationKind.Wsl) return Off(label, $"File Explorer lists WSL distributions under Linux but does not select one there. Open folder shows what is inside {t.Name}.");
             if (container == null) return Off(label, $"{t.Name} is a volume with no drive letter, so File Explorer has no folder that lists it. Open shows what is inside it.");
             if (Unreachable(t) is { } off) return Off(label, off);
             return new CardAction(true, label, $"Open {container} in File Explorer, with {t.Name} selected.");

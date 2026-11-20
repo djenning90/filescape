@@ -110,7 +110,8 @@ public class SelectionActionsKindsTests
         drive.Reveal.Should().Be(new CardAction(true, "Show in This PC", @"Open This PC in File Explorer, with C:\ selected."));
         var wsl = On("wsl");
         wsl.Open.Label.Should().Be("Open folder (Enter)");
-        wsl.Reveal.Should().Be(new CardAction(true, "Show in Linux", @"Open Linux (\\wsl.localhost) in File Explorer, with Ubuntu selected."));
+        wsl.Reveal.Enabled.Should().BeFalse("File Explorer opens Linux but does not select a distribution there (measured 2026-11-20)");
+        wsl.Reveal.Tooltip.Should().Contain("does not select").And.Contain("Open folder");
         var volume = On("volume");
         volume.Open.Enabled.Should().BeTrue();
         volume.Reveal.Enabled.Should().BeFalse();
