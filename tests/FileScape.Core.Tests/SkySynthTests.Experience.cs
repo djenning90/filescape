@@ -565,7 +565,8 @@ public partial class SkySynthTests
         foreach (var (name, x) in files)
         {
             WriteWav(Path.Combine(dir, name + ".wav"), [.. x], Rate);
-            var scan = Scan(x, x.Length / 2.0 / Rate - 2.5);
+            // A sketch rendered on its own (the reserved arrangements) ends in its ring and then silence: its last 5 s are not scanned.
+            var scan = Scan(x, x.Length / 2.0 / Rate - (name.StartsWith("reserved-", StringComparison.Ordinal) ? 5 : 2.5));
             output.WriteLine($"{name}.wav: {x.Length / 2.0 / Rate:0.0} s, peak {scan.Peak:0.000}, true peak {TruePeak(x, 2):0.000}, {Lufs(x):0.0} LUFS, " +
                              $"silent runs: {(scan.Runs.Count == 0 ? "none" : string.Join(", ", scan.Runs.Select(r => $"{r.At:0.00}+{r.Length:0.00} s")))}");
             scan.Peak.Should().BeLessThan(SoftClipFrom, name);

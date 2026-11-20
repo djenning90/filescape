@@ -1593,3 +1593,64 @@ as FileScape while naming remains open.
   - SkySynthTests was not split into classes, which would conflict with streams editing it.
 - **Revisit when:** the Core tests exceed ≈ 2 min on a quiet machine, or a timing-bound test fails beside the other
   host's tests.
+
+## AD-85 The telescope surveys the sky; Star Chart Dorian is the overview's music; the little light is a design tenet (2026-11-20; extends AD-70, AD-79)
+
+- **Problem:** DJ (sixth pass, items 5 and 8). The telescope "is difficult to discover and feels underwhelming. E opens a
+  list, but the object suggests something more" — a survey of the surrounding worlds that frames useful destinations and
+  their relation to the current world, with clear controls, a return to where you stood, E and any twirl consistent and
+  discoverable, the Lydian music kept, and a judgement whether it earns the climb. The music: "Star Chart Dorian …
+  the primary musical identity for Overview. The Ionian and second variation have a more nursery-rhyme quality …
+  Preserve those arrangements for other suitable uses … Keep the Lydian telescope music"; recordings from the running
+  game. And: "Treat the character's little light as a design tenet."
+- **Seen on the base:** on the platform E opened this world's Destinations list (the same panel J opens anywhere) with a
+  caption; the telescope itself did nothing but flare. The overview played the Ionian star chart from 84 of 132 places
+  (Dorian only where the place was Dorian already); the choice of activity was app code (`PlanetWorld.Music.cs`) that only
+  the 164 s in-app journey exercised.
+- **Decision — the telescope (`PlanetWorld.Telescope.cs`, Core `TelescopeSurvey`):**
+  - E on the platform, or a jump and twirl beside the telescope (the lighthouse's "E or twirl"), puts your eye to it:
+    the camera rises to the eyepiece (0.9 s), a round field closes in, the traveller leaves the frame, and the lens narrows
+    onto one world of this sky at a time so its diameter fills about a third of the view (5–50°).
+  - What it frames: the worlds that hang in this sky, links, up to eight moons of the ring (those nearest where it points;
+    the rest counted, J lists them) and the world above. Ordered left to right by bearing from where the telescope points,
+    so ← → (A D) sweep the sky the way the view turns; it starts on the shared selection if it is here, else the hung world
+    it points at. Worlds whose line of sight passes through the planet (hung over the far side) are left out and counted
+    ("below the horizon (T shows them)"). At the eyepiece the near clip moves out to 1.6 m and the world's landmark is
+    hidden, so the telescope's own tube, the rail and the book tower beside the overlook do not fill the field. Each says its name, its relation to where you stand ("a world inside Starter Sky", "the world Starter Sky
+    is inside · U flies up to it", "a moon in Starter Sky's ring …", a link), what is known ("3 folders · 12 files", "not
+    listed yet", "you have been there") and "2 of 5". The framed world is the shared selection, so the card shows it.
+  - Controls on screen: ← → the next world, W S or the wheel zoom, a drag looks round it (≤ 25°), a click aims, Enter or G
+    flies there through the same departure as G (its pad first, `PlanetWorld.Depart`), T opens the whole
+    overview with it chosen (through the overview's public entry point only), J the list, Esc or E steps back. Stepping back is the
+    landing blend from the eyepiece to the walking camera, which never moved: exactly where you stood.
+  - It reuses the sky's own bodies rather than a constrained Overview: they are already drawn at their real placements
+    round you, so the relation is spatial (the world above is behind you, children overhead), and the overview's
+    internals are untouched. The overview remains one key away (T) for the whole hierarchy.
+- **Decision — the music (`ExperiencePieces`, `MusicActivity`, `ModeSketches.StarChart`):**
+  - The overview plays Star Chart Dorian from every place, transposed to the place's root (`ExperienceModeFor` is Dorian
+    for the overview; `ExperiencePieces.Overview`). Its first cycle is the Dorian sample DJ chose, note for note; its later
+    cycles and a forgotten revisit play "the deep sky" (`StarChart(Dorian, 2)`): the same notes with the aurora voices added
+    (the aurora pad under the short theme and the cadence, an aurora bass held under the round bass, a slow aurora
+    counter-line of chord thirds under the constellation). AD-79's second variation is not used for the overview.
+  - Reserved arrangements (`ExperiencePieces.Reserved`, pinned by fingerprint in `MusicActivityTests`): the Ionian star
+    chart, for the tutorial's welcome (the first-run card on the Starter Sky, before the first lesson); the second
+    variation (Ionian as DJ heard it, and Dorian), for the Music Box and toy-like playthings and the tutorial's closing card.
+    Not wired yet: both are brief, light moments DJ should confirm by ear first.
+  - The Lydian overlook stays on the overlook and plays through the telescope (`MusicActivity`: the telescope is the
+    overlook's piece at once; a departure ends it at once, the flight's music being the world's build and drop).
+  - The activity choice moved to Core (`MusicActivity.Update`: the overlook's 0.4 s / 1.2 s hysteresis, the overview and
+    telescope at once, travel, visits per place and activity), written test first; the app describes each frame to it.
+    The in-app music journey now checks only the wiring and the playback (its quick hops and second climb are Core's).
+- **Decision — the design tenet:** the traveller's little light is recorded in `docs/architecture.md` (Design tenets):
+  what it is (the amber lantern on a sprung antenna, its glow, halo and soft light that brighten with a wind-up and in
+  flight; `AvatarRig.cs`), why it matters, and what future work must preserve (warm, small, soft, alive, always with the
+  traveller except while the camera is its own eye) and the same care elsewhere.
+- **Alternatives:** a constrained Overview framed from the platform (it would draw the folders as star systems, not the
+  sky you stand under, and it would change the overview's camera, which was being reworked at the same time); keeping E as the list
+  with a nicer caption (DJ: "the object suggests something more"); a free-look telescope with no framing (nothing tells you
+  what you are looking at); keeping Ionian for major places (DJ chose Dorian); the second variation as the overview's later
+  cycle (DJ named it as nursery-like); deleting the Ionian pieces (DJ: preserve them).
+- **Unknown / DJ by ear and feel:** whether the deep sky sounds like the chart DJ chose; whether the survey earns the
+  climb (the judgement is in the implementation status); the rise and swing timings; whether the reserved uses suit.
+  **Revisit if:** DJ wants the telescope to frame siblings or farther places (the overview's job today), or wants the
+  reserved arrangements wired.

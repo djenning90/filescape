@@ -4,6 +4,64 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Sixth pass (2026-11-20)
+
+### Stream 5: the telescope's survey, Star Chart Dorian for the overview, the little light (PLANET-125..129, AD-85)
+
+Branch `worktree-agent-af9cc87872401dfec` from `7680d22`. Not exported or installed; journeys ran on staged builds of the
+worktree (`fs.sh check journeys`). Evidence: the journeys' folders under `%LOCALAPPDATA%\FileScape\evidence\checks\`
+(`journeys-20261120-183053`, `-184303`, `-185821`, `-191155`, and the last lookouts run below) and the recordings in
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-20-music\` (README there).
+
+**Seen on the base first:** E on the platform opened this world's Destinations list (the panel J opens anywhere) with
+a caption; the telescope itself only flared. The overview played the Ionian star chart from 84 of 132 places, the
+Starter Sky among them. `MusicActivityTests` (written before the change) failed 3 of 6 on the base: the overview's piece
+from a major place, its mode in the synth, the telescope's piece by activity. The hysteresis and visits cases passed (they
+pin behaviour that was moved, not changed).
+
+| Area | Status | Evidence |
+|---|---|---|
+| The telescope on approach: sign and prompt in the landmarks' words; E and a twirl beside it do the same; Help line (PLANET-125) | **Demonstrated** in-app | `planets-lookouts` 65/0 (four runs): "E or twirl (Space, Space) · look through the telescope"; E opens the view (entry E), a jump and twirl opens it (entry twirl); on the Starter Sky it frames 8 worlds, 3 more counted below the horizon |
+| The view: rise to the eyepiece, round field, one world framed at a time with its relation to where you stand, ← → round the sky, zoom, drag, click (PLANET-126) | **Demonstrated** in-app and Core; look: DJ | Core `TelescopeSurveyTests` 6/6 (written first: five failed to compile on the base; the horizon case was added failing after the runs showed it); in-app: the view on the framed world 0.0° off its centre through a ≈ 25° lens, each caption naming the world and its relation to the Starter Sky (e.g. "samples / the world Starter Sky is inside · U flies up to it / 1 folder · 0 files · 7 of 11"), → frames the next, the framed world is the selection |
+| The way back and on: Esc to exactly where you stood, Enter departs through G's departure, T the overview with it chosen (PLANET-127) | **Demonstrated** in-app | Esc: 0.0 cm, the traveller back in view, the lens back to 61.8°; T: the overview opens with the framed world selected, Esc there lands back on the platform (0.0 cm); Enter: departure "run" (to its pad), lands on the framed world |
+| Star Chart Dorian from every place; the deep sky later; the Ionian chart and the second variation reserved; the Lydian overlook through the telescope; activity → piece in Core (PLANET-128) | **Demonstrated** (Core and in-app); by ear: DJ | `MusicActivityTests` 6/6 (3 failed first); `SkySynthTests.Experience` updated (all 132 places Dorian; the pieces' grid, loudness and voices incl. the deep sky and the reserved ones); the reserved arrangements' fingerprints unchanged; in-app `planets-music` 11/0: overlook Lydian on B-flat from its intro, the telescope keeps it, the departure ends it at once, Constellations' own music on landing, the overview Dorian on B-flat (the Starter Sky is major), back to the hub, 0 underruns |
+| Recordings from the running game (PLANET-129) | **Demonstrated** (recorded); by ear: DJ | `2026-11-20-music\`: telescope approach 8.9 s, use 21.6 s, departure 13.2 s, overview enter 18.0 s, leave 16.0 s, and the whole 92 s capture; peaks 0.33–0.61 |
+| The little light as a design tenet | Done (docs) | `docs/architecture.md` Design tenets; AD-85 |
+
+**Instrument and product defects found on the way.** *Product:* the first view framed through the telescope's
+surroundings — a blurred gold disc filled the field (the near geometry and the Starter Sky's book tower, which stands
+beside the overlook); fixed by moving the near clip out to 1.6 m at the eyepiece and hiding the landmark while the eye is
+there. Then Music Box, which hangs over the far side of the Starter Sky, was framed through the planet's own ground haze:
+worlds whose line of sight passes through the planet are now left out of the sweep and counted ("2 below the horizon (T
+shows them)"; Core test first). The overlook's hint sat under the caption (hidden while looking); the caption overlapped
+the HUD's key line (moved up). *Instrument / process:* one stage failed because I built the app while the stage exported the same tree
+(`FileScape.App.dll` missing); rerun, nothing else changed.
+
+**Does the telescope earn the climb? (judged from the runs, screenshots and the capture; DJ to confirm by eye and ear).**
+Before, no: the climb ended in the same list J opens anywhere. Now mostly yes, with reservations. The climb ends in
+something only the platform gives: you look out from where you stand at the worlds actually hanging round you, each named
+and placed in relation to this one, and you can go to any of them or open the overview on it. The Lydian piece starts as
+you arrive on the platform and carries the whole look-out (25 s in the recording) without a change, which is the
+"moment" the music was written for. Reservations: (1) on a world with few folders it frames two or three bodies and the
+survey is thin — the overview (T) is still where the whole neighbourhood is; (2) the departure cuts the Lydian piece at
+once (the flight's build takes over) — correct by the scheme, but it may feel abrupt after a contemplative view; (3) the
+view shows the same bodies the walking camera can see by looking up, only closer, so its value is the framing and the
+words more than new information.
+
+Core (WSL): the focused sets pass (`MusicActivityTests`, `TelescopeSurveyTests`, `SkySynthTests.Experience`); the full
+SkySynth run under load average ≈ 13 failed 8 render-cost bounds (60 ms, measured 60–106 ms), the known shared-machine
+instrument issue (AD-80); they do not touch this change's code — rerun alone below.
+
+**Journey time:** `planets-music` 164 s → 21.9 s (a non-recording run; 92.6 s when recording for listening): the second
+climb's resume at a section and the quick hops' dwell are Core tests (`SkySynthTests.Revisits_…`,
+`The_minimum_dwell_lets_the_first_phrase_finish_through_quick_hops`, `MusicActivityTests`); the long listening waits
+run only with FILESCAPE_AUDIO_RECORD. `planets-lookouts` grew from ≈ 60 s to ≈ 72–77 s (the telescope's view, its twirl,
+T and a departure and return).
+
+**Open / for DJ:** whether the deep sky sounds like the chart you chose; the rise (0.9 s) and swing timings, the lens's
+framing (a third of the view); whether the reserved uses suit the Ionian chart and the second variation; whether the
+telescope should also frame siblings or farther places (today the overview's job).
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
