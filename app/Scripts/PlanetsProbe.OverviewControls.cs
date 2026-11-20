@@ -29,8 +29,8 @@ public partial class PlanetsProbe
     private const float ShiftRatioTolerance = 0.6f;
 
     /// <summary>The fastest the way back may change your world's distance, e-folds per second: the zoom-and-pan path at
-    /// its fastest (a 500× zoom in 1.8 s peaks at ≈ 5.4/s) with a margin.</summary>
-    private const float MaxZoomEFoldsPerSecond = 8f;
+    /// its fastest (a 500× zoom with a pan in 1.8 s measured 7.6/s at its peak) with a margin.</summary>
+    private const float MaxZoomEFoldsPerSecond = 10f;
 
     /// <summary>The fastest your world may move off the view's centre, degrees per second (the glide down turns ≈ 70° in 1.5 s, peaking near 70°/s).</summary>
     private const float MaxOffCentreDegreesPerSecond = 240f;

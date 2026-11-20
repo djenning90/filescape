@@ -1593,3 +1593,49 @@ as FileScape while naming remains open.
   - SkySynthTests was not split into classes, which would conflict with streams editing it.
 - **Revisit when:** the Core tests exceed ≈ 2 min on a quiet machine, or a timing-bound test fails beside the other
   host's tests.
+
+## AD-82 The overview's controls and transitions: per-control Shift, a zoom-and-pan way back with a hand-over, resuming after legacy views (2026-11-20, PLANET-110..114)
+
+- **Problem:** DJ (sixth pass): Shift should accelerate the overview as it does walking, with a suitable gain per
+  control; Esc "slides across space and then cuts to the surface"; switching to a legacy view and back lost where you
+  stood; Destinations while the overview is open must complete or say why. **Diagnosed** (from the code, then traced
+  in-app): Esc removed the overview at once and blended the camera's pose for 1.1 s straight from the overview, 40 km
+  above the planet, to the walking camera. With the surface's 4 km far clip the planet was outside the view for
+  ≈ 0.9 s (the remaining blend fraction is under 0.1 only after ≈ 80 % of the time) and then appeared whole: the
+  "cut". Activation always rebuilt the world at the arrival meadow with the establishing shot.
+- **Decision:**
+  - *Shift* (`OverviewControls`, Core): pan (keys and middle-drag) × 3, the Places flight's gain, because panning is how
+    you cross a large universe; ← → orbit × 1.6, the walking camera's Shift turn, so the same keys feel the same; a wheel
+    notch with Shift counts as two notches (distance 0.85² / 1.18², and the slide toward the pointer 1 − 0.7²); a drag
+    orbit stays 1:1, as direct manipulation (it already turns ≈ 103° per 360 px). Shift-free values are unchanged.
+  - *The way back* (`ZoomPanPath`, `OverviewReturn`, Core): the overview stays drawn while the camera follows van Wijk
+    and Nuij's optimal zoom-and-pan path (ρ = √2) from wherever it is to 3 radii from your world (the opening's own
+    starting distance), smoothstep-eased, 2 path units/s, clamped to 0.9–1.8 s. Discovery does not relayout meanwhile.
+    At the end, the camera is re-expressed on the real planet at the same distance in radii, looking at its centre,
+    25° back from above the traveller with the screen's up toward its facing. Your world keeps its size and place on
+    screen at the hand-over (traced: 3.003 → 3.002 radii, 0.0° → 0.0°). The walking camera's blend then glides down
+    over 1.5 s. Both parts start and end at rest. A light rises over the last 40 % of the overview part to ≈ 26 %
+    opacity, covering the overview's look turning into the real world, and fades on the planet. A second Esc or T
+    keeps the progress and finishes the remainder in 0.35 s. During the way back the overview's own keys wait. Shared
+    commands (Backspace, the list) still act, and a commit takes over from the way back.
+  - *Resuming* (`SurfaceResume`, Core): `Deactivate` keeps the folder, tree, selection, the traveller's up and facing,
+    the camera's heading, pitch and distance, and the arrival framing. `Activate` puts them back (rebuilt with
+    arriveFrom −2: not an arrival, so no arrival count, chord or caution) when the tree, folder and selection are
+    unchanged. A selection of something else made in the legacy view is honoured as before (arrive beside it).
+    Mid-air, mid-travel and Hazard Worlds are not kept.
+  - *Enter in the overview* (`OverviewEnter`, Core): the target and the action (fly, back down, travel out of the
+    light, say "click a world first", wait) are decided in Core and unit-tested with the fifth pass's two silent
+    failures as cases. `planets-overview-enter` therefore plays each variant once (it played each three times, 256 s;
+    `--repeats=N` restores the hunt).
+  - *Discoverable:* the hint (three lines, now below the "You are in" bar, which covered half of it) names Shift and
+    Esc. The bottom line ends "Shift: faster · X: pause discovery · Esc or T: back down · F1: every control" (the old
+    list of controls was clipped at 1600 px). Help gains the overview's controls.
+- **Alternatives:** a reverse of the opening (cut to a close pose, then pull in): it starts with a jump. Keeping the
+  exponential follow and only adding a fade: the follow from 3 km takes ≈ 1.3 s to come within 3 radii, never quite
+  arrives, and the planet still has to appear somewhere. Mapping the overview's world onto the planet by matching their
+  surfaces: the overview's world is a sphere with a look, not the planet's terrain, so a rotation-free hand-over buys
+  nothing a light cannot cover. Shift × 2 everywhere: too little for crossing systems kilometres apart, and too much for
+  a drag orbit.
+- **Unknown / for DJ:** whether 1.8 s is the right cap for a long way back (a 500 × zoom peaks at ≈ 5.4 e-folds/s), the
+  light's strength, and whether pan × 3 is right. **Revisit if:** the overview gains a telescope reuse (stream 5) that
+  needs a different return target, or DJ wants Esc to keep the overview's selection framed on the way down.

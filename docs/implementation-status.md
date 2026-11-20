@@ -4,6 +4,42 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Sixth pass (2026-11-20)
+
+### Stream 2: Overview controls and transitions (PLANET-110..114, AD-82)
+
+This is stream 2's branch `worktree-agent-aaf6043d34866abad`, from `7680d22`. It was staged for journeys only, not
+exported or installed. DJ: Shift should accelerate the overview; Esc "slides across space and then cuts"; legacy views
+should keep where you stood; Destinations while the overview is open should complete or say why.
+
+**Diagnosed:** Esc removed the overview at once and blended the camera for 1.1 s straight from 40 km up to the
+walking camera. The planet stayed beyond the 4 km far clip for ≈ 0.9 s, then appeared. Activation always rebuilt the
+world at the arrival meadow with the establishing shot.
+
+**Changed:** the Core files `OverviewCamera.cs` (`OverviewControls`, `ZoomPanPath`, `OverviewReturn`),
+`SurfaceResume.cs` and `OverviewEnter.cs`. The app files `PlanetWorld.Universe.cs`, `PlanetWorld.UniverseNav.cs`,
+`PlanetWorld.cs` (Activate/Deactivate), `PlanetWorld.Trip.cs` (one line) and `Hud.cs` (Help). The instruments are the
+`planets-overview-controls` journey (`PlanetsProbe.OverviewControls.cs`) and the `-OverviewEnter` mode of
+`os-planets-probe.ps1`. `planets-overview-enter` now plays each variant once (`--repeats=N`).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Shift: pan ×3, ← → orbit ×1.6, a wheel notch counts twice, drag orbit 1:1; no Shift unchanged (PLANET-110) | **Demonstrated**, Core, in-app and real input; feel: DJ | `OverviewCameraTests`; in-app key pan ×3.01, wheel ×1.180 / ×1.392; real keys Shift+Left ×1.66, real wheel ×1.180 / ×1.392 |
+| Esc flies back down: zoom-and-pan path, hand-over at the same size and place, glide behind the traveller, soft light, second Esc hurries (PLANET-111) | **Demonstrated** in Core and in-app; look: DJ | hand-over 3.002 → 3.002 radii, 0.0° → 0.0°; overview part 1.80 s, at most 7.6 e-folds/s and 118°/s off centre; light ≤ 26 %; glide 1.51 s; hurried 0.57 s; feet 0.000 m; screenshots `return-*.png`. Real Esc: closed after 1.96 s (with the poll), 0.000 m |
+| Back where you stood after V (Places) or M (a map) and V back (PLANET-112) | **Demonstrated** in Core and in-app | 0.000 m, facing 0.0°, heading 0.0°, pitch kept, no establishing shot, both trips |
+| The hint and Help teach the controls; the hint sits clear of the "You are in" bar; the bottom line is no longer clipped (PLANET-113) | **Demonstrated** (built, checked in-app, screenshots); readability: DJ | `planets-overview-controls` hint check |
+| Destinations in the overview: every commit lands or says why; a commit during the way back takes over (PLANET-114) | **Demonstrated** in Core, in-app and real input | `OverviewEnter` tests; `planets-overview-enter` 13/0 (11 of 11 landed); real keys: T, J, type, Enter / ↓ Enter / Esc Enter, each landed in 1.8–1.9 s |
+| No regressions in the journeys that use Esc | **Demonstrated** | `planets-tutorial-cues` 55/0, `planets-overview-sample` 9/0 |
+
+**Journey trimmed:** `planets-overview-enter` took 256 s (fifth pass) and now takes **88.1 s**: 33 attempts became 11.
+The equivalent coverage is the Core `OverviewEnter` cases (the two fifth-pass failures). The new
+`planets-overview-controls` takes 32.6 s.
+
+**Open / for DJ:** the 1.8 s cap on a long way back, the light's strength, and pan ×3. During the way back the
+overview's own keys (Enter, F, [ ], Z, Home) wait; shared commands interrupt it. A Hazard World is not resumed after a
+legacy view (you arrive as before). The overview itself is not reopened after a legacy view. A plain Esc during the
+fly-in to another world is ignored, as before.
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
