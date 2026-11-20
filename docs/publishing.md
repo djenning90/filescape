@@ -4,6 +4,16 @@ A review of what a fresh clone and a release package would expose (2026-11-15, P
 build after the second playtest), what has been fixed, how the history is backed up and prepared for publication, the
 decisions that are DJ's to make, and the exact remaining steps. Nothing has been pushed or published.
 
+## 2026-11-20 refresh at a glance
+
+| Item | State |
+|---|---|
+| Off-machine backup (GitHub, private) | **still waiting for DJ's account** (checked 2026-11-20: no remote, no `gh`, no credential helper). Steps unchanged: [Backup](#backup-private-off-machine) |
+| Local safety copy | **refreshed** after the fifth follow-up: the newest `%LOCALAPPDATA%\FileScape\backup\filescape-*.bundle` (verified, test-cloned) |
+| Windows ZIP | **`70b6ffc7ebb6`**, 74.7 MB, 199 entries, checked from a clean extraction; a fresh clone staged and packaged it by itself |
+| Name | FileScape for now (AD-73); the naming note is preserved there |
+| Decisions | unchanged: [Decisions for DJ](#decisions-for-dj-before-publishing) |
+
 ## 2026-11-19 refresh at a glance
 
 | Item | State |
