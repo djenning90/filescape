@@ -76,9 +76,21 @@ public partial class PlanetsProbe
         return s;
     }
 
+    /// <summary>Ctrl+V strokes not sent because a text field held the focus (it would paste the real clipboard).</summary>
+    private int PasteSkips;
+
     /// <summary>Presses and releases one stroke as a keyboard sends it (modifier keys down first, up last).</summary>
     private async Task Strike(Stroke s)
     {
+        // Privacy (2026-11-20): Ctrl+V into a text field pastes DJ's real clipboard (into the filter and so into the log).
+        // A text field always takes Ctrl+V itself (Godot's own paste, not FileScape's ownership rule), so the stroke is
+        // skipped there; elsewhere it is still sent and must not reach the game.
+        if (s.Ctrl && s.Key == Godot.Key.V && App.GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit)
+        {
+            PasteSkips++;
+            return;
+        }
+
         if (s.Ctrl) Inject(new InputEventKey { Keycode = Godot.Key.Ctrl, PhysicalKeycode = Godot.Key.Ctrl, Pressed = true, CtrlPressed = true });
         if (s.Shift) Inject(new InputEventKey { Keycode = Godot.Key.Shift, PhysicalKeycode = Godot.Key.Shift, Pressed = true, ShiftPressed = true, CtrlPressed = s.Ctrl });
         Inject(new InputEventKey { Keycode = s.Key, PhysicalKeycode = s.Key, Pressed = true, ShiftPressed = s.Shift, CtrlPressed = s.Ctrl, Unicode = s.Ch });
@@ -122,7 +134,7 @@ public partial class PlanetsProbe
     {
         if (c.Panel == "Destinations")
         {
-            // Up to 300: Ctrl+V in the typed set pastes whatever is on the clipboard into the filter (it can be long).
+            // Up to 300 (from before Ctrl+V was skipped in text fields; kept as a bound): a paste could be long.
             // The paste can land mid-text (wherever ← → left the caret): Backspace once (from the results it puts the keyboard in
             // the filter), End (the caret to the end), then Backspace until empty. Found 2026-11-20 with text on the clipboard.
             await Strike(new Stroke("Backspace", Godot.Key.Backspace));
