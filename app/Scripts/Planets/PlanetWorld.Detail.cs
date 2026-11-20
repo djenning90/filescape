@@ -56,8 +56,9 @@ public partial class PlanetWorld
 
     /// <summary>The bodies that may wear a haze (a system in the layout, or a world with folders the budget left out), by body index.</summary>
     private readonly List<int> _uniHazeBodies = [];
-    private MultiMesh? _uniHazeMesh;
-    private float[] _uniHazeBuf = [];
+    /// <summary>The haze, only over systems folded and shown now (PLANET-108); each entry's light seed by folder.</summary>
+    private LiveMultiMesh? _uniHazeMesh;
+    private float[] _uniHazeSeeds = [];
 
     /// <summary>The detail decision's cost, milliseconds (probes).</summary>
     public double DetailMsMax { get; private set; }
@@ -211,33 +212,35 @@ public partial class PlanetWorld
         }
 
         if (_uniHazeBodies.Count == 0) return;
-        _uniHazeMesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = true, Mesh = new QuadMesh { Size = new Vector2(2, 2) }, InstanceCount = _uniHazeBodies.Count };
-        // Each haze's cluster of lights is seeded by its folder (PLANET-108), so it keeps its stars across relayouts. The
-        // buffer (12 floats of transform, 4 of colour, 4 of custom data each) is filled every frame by PlaceHaze.
-        _uniHazeBuf = new float[_uniHazeBodies.Count * 20];
-        for (var k = 0; k < _uniHazeBodies.Count; k++) _uniHazeBuf[k * 20 + 16] = (uint)(bodies[_uniHazeBodies[k]].NodeId * 2654435761u) / (float)uint.MaxValue;
+        _uniHazeMesh = new LiveMultiMesh(new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = true, Mesh = new QuadMesh { Size = new Vector2(2, 2) } });
+        // Each haze's cluster of lights is seeded by its folder (PLANET-108), so it keeps its stars across relayouts.
+        _uniHazeSeeds = new float[_uniHazeBodies.Count];
+        for (var k = 0; k < _uniHazeBodies.Count; k++) _uniHazeSeeds[k] = (uint)(bodies[_uniHazeBodies[k]].NodeId * 2654435761u) / (float)uint.MaxValue;
         var mat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/overview_haze.gdshader") };
-        _universe!.AddChild(new MultiMeshInstance3D { Multimesh = _uniHazeMesh, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        _universe!.AddChild(new MultiMeshInstance3D { Multimesh = _uniHazeMesh.Mesh, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
 
     /// <summary>Every frame: each foldable system's haze, at its ring's size, as strong as it is folded and shown.</summary>
     private void PlaceHaze()
     {
         if (_uniHazeMesh == null) return;
+        _uniHazeMesh.Begin();
         for (var k = 0; k < _uniHazeBodies.Count; k++)
         {
             var i = _uniHazeBodies[k];
             var b = _uniBodies[i].Body;
             var folded = FoldedAt(i);
             var alpha = folded <= 0 || !OverviewDetailEnabled ? 0f : ShowScale(i) * (1 - OpenScale(i)) * MathF.Min(HazeMaxAlpha, HazeBaseAlpha + HazeAlphaPerDecade * MathF.Log10(1 + folded));
-            // A haze that is not seen (open, or not shown) needs no size: skip the drawn-radius work.
-            var r = alpha <= 0f ? 0f : MathF.Max(b.OrbitRadius * 1.1f, DrawnRadius(b, _uniBodies[i].At) * HazeMinRadii) * AppearScale(i);
-            var o = k * 20;
-            WriteTransform(_uniHazeBuf, o, new Vector3(r, 0, 0), new Vector3(0, r, 0), new Vector3(0, 0, r), _uniLocal[i]);
-            _uniHazeBuf[o + 12] = 0.75f; _uniHazeBuf[o + 13] = 0.82f; _uniHazeBuf[o + 14] = 1f; _uniHazeBuf[o + 15] = alpha;
+            if (alpha < LiveFadeMin) continue; // open or not shown: no haze drawn
+            var r = MathF.Max(b.OrbitRadius * 1.1f, DrawnRadius(b, _uniBodies[i].At) * HazeMinRadii) * AppearScale(i);
+            var o = _uniHazeMesh.Next();
+            var buf = _uniHazeMesh.Buffer;
+            LiveMultiMesh.WriteTransform(buf, o, new Vector3(r, 0, 0), new Vector3(0, r, 0), new Vector3(0, 0, r), _uniLocal[i]);
+            LiveMultiMesh.WriteColor(buf, o + 12, new Color(0.75f, 0.82f, 1f, alpha));
+            LiveMultiMesh.WriteColor(buf, o + 16, new Color(_uniHazeSeeds[k], 0, 0, 0));
         }
 
-        _uniHazeMesh.Buffer = _uniHazeBuf;
+        _uniHazeMesh.End();
     }
 
     /// <summary>

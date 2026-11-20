@@ -99,10 +99,13 @@ public partial class PlanetWorld
 
     /// <summary>The drawn bodies' batches and the indices (into <see cref="_uniBodies"/>) in each, in instance order
     /// (re-placed and re-scaled every frame, see DrawnRadius and <see cref="PlaceUniverse"/>).</summary>
-    /// <para>Each batch keeps its MultiMesh's whole instance buffer (12 floats of transform, 4 of colour and, for solid
-    /// worlds, 4 of custom data per instance): the transforms are written into it each frame and handed over in one call
-    /// (PLANET-108: one engine call per instance was the larger part of a frame at tens of thousands of worlds).</para>
-    private readonly List<(MultiMesh Mesh, List<int> Bodies, float[] Buffer, int Stride)> _uniBatches = [];
+    /// <para>PLANET-108 (AD-81): each batch draws only the worlds shown now (<see cref="LiveMultiMesh"/>), with each world's
+    /// colour and custom data kept here per batch entry; one engine call per laid-out world, every frame, was most of a
+    /// frame at tens of thousands of worlds while a few hundred were drawn.</para>
+    private readonly List<(LiveMultiMesh Mesh, List<int> Bodies, Color[] Base, Color[] Custom)> _uniBatches = [];
+
+    /// <summary>A world, ring or haze whose fade is below this is not drawn at all (it would be under a pixel).</summary>
+    private const float LiveFadeMin = 0.002f;
 
     /// <summary>
     /// The smallest a world is drawn in the overview, pixels of radius (FOLLOW-1, 2026-11-17): a world is 1.2–4 m across
@@ -157,22 +160,10 @@ public partial class PlanetWorld
     private readonly List<int> _uniRingBodies = [];
     private readonly List<(int Parent, int Child)> _uniChains = [];
     private readonly List<int> _uniVisited = [];
-    private MultiMesh? _uniRingMesh, _uniChainMesh, _uniVisitedMesh;
+    private MultiMesh? _uniChainMesh, _uniVisitedMesh;
 
-    /// <summary>The rings' instance buffer (12 floats of transform and 4 of colour each), filled every frame and handed
-    /// over in one call (PLANET-108).</summary>
-    private float[] _uniRingBuf = [];
-
-    /// <summary>
-    /// Writes a transform into a MultiMesh buffer at <paramref name="o"/>: Godot's layout is the 3×4 matrix row by row,
-    /// so each row holds the basis columns' components then the origin's.
-    /// </summary>
-    private static void WriteTransform(float[] buf, int o, Vector3 x, Vector3 y, Vector3 z, Vector3 origin)
-    {
-        buf[o] = x.X; buf[o + 1] = y.X; buf[o + 2] = z.X; buf[o + 3] = origin.X;
-        buf[o + 4] = x.Y; buf[o + 5] = y.Y; buf[o + 6] = z.Y; buf[o + 7] = origin.Y;
-        buf[o + 8] = x.Z; buf[o + 9] = y.Z; buf[o + 10] = z.Z; buf[o + 11] = origin.Z;
-    }
+    /// <summary>The rings, only those of shown open systems drawn (PLANET-108).</summary>
+    private LiveMultiMesh? _uniRingMesh;
     private MeshInstance3D? _uniHalo;
     private int _uniHere = -1;
 
@@ -379,23 +370,11 @@ public partial class PlanetWorld
         _uniBatches.Clear();
         MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, (Color Base, Color Custom)> look, bool custom)
         {
-            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere, InstanceCount = list.Count };
-            var stride = 12 + 4 + (custom ? 4 : 0);
-            var buffer = new float[list.Count * stride];
-            for (var i = 0; i < list.Count; i++)
-            {
-                var (c, d) = look(bodies[list[i]]);
-                var o = i * stride;
-                buffer[o] = 1; buffer[o + 5] = 1; buffer[o + 10] = 1; // identity until placed
-                buffer[o + 12] = c.R; buffer[o + 13] = c.G; buffer[o + 14] = c.B; buffer[o + 15] = c.A;
-                if (custom)
-                {
-                    buffer[o + 16] = d.R; buffer[o + 17] = d.G; buffer[o + 18] = d.B; buffer[o + 19] = d.A;
-                }
-            }
-
-            mm.Buffer = buffer;
-            _uniBatches.Add((mm, list, buffer, stride));
+            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere };
+            var baseColors = new Color[list.Count];
+            var customs = new Color[list.Count];
+            for (var i = 0; i < list.Count; i++) (baseColors[i], customs[i]) = look(bodies[list[i]]);
+            _uniBatches.Add((new LiveMultiMesh(mm), list, baseColors, customs));
 
             return new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         }
@@ -429,10 +408,9 @@ public partial class PlanetWorld
 
         // Per-instance colours (white, alpha = the level of detail's fade) multiply the line colour: a folded system's ring fades out.
         var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f), VertexColorUseAsAlbedo = true };
-        _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
-        _uniRingBuf = new float[_uniRingBodies.Count * 16];
+        _uniRingMesh = _uniRingBodies.Count > 0 ? new LiveMultiMesh(new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines() }) : null;
         _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
-        foreach (var mm in new[] { _uniRingMesh, _uniChainMesh })
+        foreach (var mm in new[] { _uniRingMesh?.Mesh, _uniChainMesh })
         {
             if (mm != null) _universe.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = lineMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
@@ -525,43 +503,47 @@ public partial class PlanetWorld
         UpdateUniverseDetail(dt); // PlanetWorld.Detail.cs (PLANET-91): which systems are open at this distance
         var cam = _camera.GlobalPosition;
         var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
-        foreach (var (mm, list, buf, stride) in _uniBatches)
+        foreach (var (live, list, baseColors, customs) in _uniBatches)
         {
+            live.Begin();
             for (var k = 0; k < list.Count; k++)
             {
                 var i = list[k];
+                var show = ShowScale(i) * AppearScale(i);
+                if (show < LiveFadeMin) continue; // folded away: not drawn at all
                 var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
                 // DrawnRadius, with the view's scale worked out once a frame.
-                var r = MathF.Max(radius, cam.DistanceTo(_uniBodies[i].At) * MinPixelsAt(i) / pixelsPerRadian) * AppearScale(i) * ShowScale(i);
-                // The buffer's transform is the 3x4 matrix row by row: a uniform scale and the place.
-                var o = k * stride;
-                var p = _uniLocal[i];
-                buf[o] = r; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = p.X;
-                buf[o + 4] = 0; buf[o + 5] = r; buf[o + 6] = 0; buf[o + 7] = p.Y;
-                buf[o + 8] = 0; buf[o + 9] = 0; buf[o + 10] = r; buf[o + 11] = p.Z;
+                var r = MathF.Max(radius, cam.DistanceTo(_uniBodies[i].At) * MinPixelsAt(i) / pixelsPerRadian) * show;
+                var o = live.Next();
+                var buf = live.Buffer;
+                LiveMultiMesh.WriteTransform(buf, o, new Vector3(r, 0, 0), new Vector3(0, r, 0), new Vector3(0, 0, r), _uniLocal[i]);
+                LiveMultiMesh.WriteColor(buf, o + 12, baseColors[k]);
+                if (live.Stride > 16) LiveMultiMesh.WriteColor(buf, o + 16, customs[k]);
             }
 
-            mm.Buffer = buf;
+            live.End();
         }
 
         if (_uniRingMesh != null)
         {
+            _uniRingMesh.Begin();
             for (var k = 0; k < _uniRingBodies.Count; k++)
             {
                 // The ring's plane axes as the layout builds them: a = n × X (or Z when n is nearly along X), c = n × a.
                 var i = _uniRingBodies[k];
+                var fade = ShowScale(i) * OpenScale(i);
+                if (fade < LiveFadeMin) continue; // a folded or hidden system's ring is not drawn
                 var b = _uniBodies[i].Body;
                 var n = Gd(b.OrbitNormal);
                 var a = n.Cross(MathF.Abs(n.X) < 0.9f ? Vector3.Right : Vector3.Back).Normalized();
                 var c = n.Cross(a);
                 var r = Mathf.Lerp(_uniMotion[i].OrbitFrom, b.OrbitRadius, e);
-                var o = k * 16;
-                WriteTransform(_uniRingBuf, o, a * r, n * r, c * r, _uniLocal[i]);
-                _uniRingBuf[o + 12] = 1; _uniRingBuf[o + 13] = 1; _uniRingBuf[o + 14] = 1;
-                _uniRingBuf[o + 15] = ShowScale(i) * OpenScale(i);
+                var o = _uniRingMesh.Next();
+                LiveMultiMesh.WriteTransform(_uniRingMesh.Buffer, o, a * r, n * r, c * r, _uniLocal[i]);
+                LiveMultiMesh.WriteColor(_uniRingMesh.Buffer, o + 12, new Color(1, 1, 1, fade));
             }
 
-            _uniRingMesh.Buffer = _uniRingBuf;
+            _uniRingMesh.End();
         }
 
         if (_uniChainMesh != null)
@@ -613,7 +595,8 @@ public partial class PlanetWorld
         _uniRingBodies.Clear();
         _uniChains.Clear();
         _uniVisited.Clear();
-        _uniRingMesh = _uniChainMesh = _uniVisitedMesh = null;
+        _uniRingMesh = null;
+        _uniChainMesh = _uniVisitedMesh = null;
         _uniHalo = null;
         _uniHere = -1;
         _uniLanding = null;

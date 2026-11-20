@@ -400,10 +400,18 @@ public static class UniverseLayout
             var isPinned = id == root || pinned.Contains(id);
             if (!isPinned && order.Count + pinnedPending >= attention.Budget)
             {
-                // Out of budget: it stays folded inside its parent (pinned folders still come through the queue).
+                // Out of budget: it and everything still waiting stay folded inside their parents. Pinned folders cost −∞,
+                // and each one's parent is pinned or the root, so none is left waiting by now (PLANET-108: the rest is counted
+                // in one pass rather than popped one by one).
                 var p = tree[id].ParentId;
                 hidden[p] = hidden.GetValueOrDefault(p) + 1;
-                continue;
+                foreach (var (rest, _) in frontier.UnorderedItems)
+                {
+                    var rp = tree[rest].ParentId;
+                    hidden[rp] = hidden.GetValueOrDefault(rp) + 1;
+                }
+
+                break;
             }
 
             if (isPinned && id != root) pinnedPending--;
