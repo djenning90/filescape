@@ -21,8 +21,9 @@ namespace FileScape.App.Planets;
 /// </summary>
 public partial class PlanetWorld
 {
-    /// <summary>False with --test-overview-detail=off (instrument): every laid-out world is drawn, as before PLANET-91.</summary>
-    public bool OverviewDetailEnabled { get; init; } = true;
+    /// <summary>False with --test-overview-detail=off (instrument): every laid-out world is drawn, as before PLANET-91.
+    /// Settable for the bodies-against-frame-time measurement (PLANET-108), which compares both in one run.</summary>
+    public bool OverviewDetailEnabled { get; set; } = true;
 
     /// <summary>False with --test-overview-look=plain (instrument): the old palette colour and material, as before PLANET-92.</summary>
     public bool OverviewLooksVaried { get; init; } = true;
@@ -201,7 +202,9 @@ public partial class PlanetWorld
         }
 
         if (_uniHazeBodies.Count == 0) return;
-        _uniHazeMesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = new QuadMesh { Size = new Vector2(2, 2) }, InstanceCount = _uniHazeBodies.Count };
+        _uniHazeMesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = true, Mesh = new QuadMesh { Size = new Vector2(2, 2) }, InstanceCount = _uniHazeBodies.Count };
+        // Each haze's cluster of lights is seeded by its folder (PLANET-108), so it keeps its stars across relayouts.
+        for (var k = 0; k < _uniHazeBodies.Count; k++) _uniHazeMesh.SetInstanceCustomData(k, new Color((uint)(bodies[_uniHazeBodies[k]].NodeId * 2654435761u) / (float)uint.MaxValue, 0, 0, 0));
         var mat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/overview_haze.gdshader") };
         _universe!.AddChild(new MultiMeshInstance3D { Multimesh = _uniHazeMesh, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }

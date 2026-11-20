@@ -99,7 +99,10 @@ public partial class PlanetWorld
 
     /// <summary>The drawn bodies' batches and the indices (into <see cref="_uniBodies"/>) in each, in instance order
     /// (re-placed and re-scaled every frame, see DrawnRadius and <see cref="PlaceUniverse"/>).</summary>
-    private readonly List<(MultiMesh Mesh, List<int> Bodies)> _uniBatches = [];
+    /// <para>Each batch keeps its MultiMesh's whole instance buffer (12 floats of transform, 4 of colour and, for solid
+    /// worlds, 4 of custom data per instance): the transforms are written into it each frame and handed over in one call
+    /// (PLANET-108: one engine call per instance was the larger part of a frame at tens of thousands of worlds).</para>
+    private readonly List<(MultiMesh Mesh, List<int> Bodies, float[] Buffer, int Stride)> _uniBatches = [];
 
     /// <summary>
     /// The smallest a world is drawn in the overview, pixels of radius (FOLLOW-1, 2026-11-17): a world is 1.2–4 m across
@@ -200,6 +203,13 @@ public partial class PlanetWorld
         EndOrbit();
         CloseOverlays();
         _jumpQueued = false;
+        // Attention (PlanetWorld.Attention.cs, PLANET-101): where you stand and the world selected before opening (in the
+        // list or the sky) are what the budget unfolds first, however deep they are.
+        NoteCurrentForAttention();
+        var sharedBefore = _s.Selection.Selected;
+        NoteSelectionForAttention(sharedBefore >= 0 && tree.Contains(sharedBefore) && tree[sharedBefore].IsDirectory ? sharedBefore : _current.FolderId);
+        _uniApproached = -1;
+        Attention.Approached = -1;
         var bodies = ComputeUniverse(tree, keepDrawn: false);
         if (bodies.Count == 0) return;
         _universe = new Node3D { Name = "Universe", Position = UniverseOrigin };
@@ -231,25 +241,21 @@ public partial class PlanetWorld
     }
 
     /// <summary>
-    /// The overview's layout of the tree as it is now. The way to where you stand is always shown, even through a hidden
-    /// folder (AppData is hidden on Windows); with <paramref name="keepDrawn"/> every world drawn now is kept too (pinned),
-    /// so a relayout only ever adds worlds (PLANET-77): when the budget is full, newly listed folders count as "+N more"
-    /// instead of pushing out worlds you were looking at.
+    /// The overview's layout of the tree as it is now, spent on attention (PLANET-101, AD-81: <see cref="OverviewAttention"/>).
+    /// The way to where you stand is always shown, even through a hidden folder (AppData is hidden on Windows). With
+    /// <paramref name="keepDrawn"/> (a relayout while open) what is drawn is retained against small moves of attention and
+    /// every system keeps its room, so a relayout adds worlds and folds distant ones in place without moving their
+    /// neighbours (PLANET-105); before AD-81 every drawn world was pinned, so once the budget was full nothing near a new
+    /// selection could be added.
     /// </summary>
     private IReadOnlyList<UniverseBody> ComputeUniverse(FsTree tree, bool keepDrawn)
     {
         var onTheWay = new HashSet<int>();
         for (var a = _current!.FolderId; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
-        var pinned = new HashSet<int>(onTheWay);
-        if (keepDrawn)
-        {
-            foreach (var (b, _) in _uniBodies)
-            {
-                if (tree.Contains(b.NodeId) && _s.IsVisible(tree[b.NodeId])) pinned.Add(b.NodeId);
-            }
-        }
-
-        return UniverseLayout.Compute(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, pinned);
+        NoteCurrentForAttention();
+        var bodies = Attention.Layout(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay, keepDrawn);
+        _uniAttentionSignature = Attention.Signature();
+        return bodies;
     }
 
     /// <summary>
@@ -359,13 +365,22 @@ public partial class PlanetWorld
         MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, (Color Base, Color Custom)> look, bool custom)
         {
             var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere, InstanceCount = list.Count };
-            _uniBatches.Add((mm, list));
+            var stride = 12 + 4 + (custom ? 4 : 0);
+            var buffer = new float[list.Count * stride];
             for (var i = 0; i < list.Count; i++)
             {
                 var (c, d) = look(bodies[list[i]]);
-                mm.SetInstanceColor(i, c);
-                if (custom) mm.SetInstanceCustomData(i, d);
+                var o = i * stride;
+                buffer[o] = 1; buffer[o + 5] = 1; buffer[o + 10] = 1; // identity until placed
+                buffer[o + 12] = c.R; buffer[o + 13] = c.G; buffer[o + 14] = c.B; buffer[o + 15] = c.A;
+                if (custom)
+                {
+                    buffer[o + 16] = d.R; buffer[o + 17] = d.G; buffer[o + 18] = d.B; buffer[o + 19] = d.A;
+                }
             }
+
+            mm.Buffer = buffer;
+            _uniBatches.Add((mm, list, buffer, stride));
 
             return new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         }
@@ -492,15 +507,25 @@ public partial class PlanetWorld
         }
 
         UpdateUniverseDetail(dt); // PlanetWorld.Detail.cs (PLANET-91): which systems are open at this distance
-        foreach (var (mm, list) in _uniBatches)
+        var cam = _camera.GlobalPosition;
+        var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
+        foreach (var (mm, list, buf, stride) in _uniBatches)
         {
             for (var k = 0; k < list.Count; k++)
             {
                 var i = list[k];
                 var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
-                var r = DrawnRadius(radius, _uniBodies[i].At, MinPixelsAt(i)) * AppearScale(i) * ShowScale(i);
-                mm.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
+                // DrawnRadius, with the view's scale worked out once a frame.
+                var r = MathF.Max(radius, cam.DistanceTo(_uniBodies[i].At) * MinPixelsAt(i) / pixelsPerRadian) * AppearScale(i) * ShowScale(i);
+                // The buffer's transform is the 3x4 matrix row by row: a uniform scale and the place.
+                var o = k * stride;
+                var p = _uniLocal[i];
+                buf[o] = r; buf[o + 1] = 0; buf[o + 2] = 0; buf[o + 3] = p.X;
+                buf[o + 4] = 0; buf[o + 5] = r; buf[o + 6] = 0; buf[o + 7] = p.Y;
+                buf[o + 8] = 0; buf[o + 9] = 0; buf[o + 10] = r; buf[o + 11] = p.Z;
             }
+
+            mm.Buffer = buf;
         }
 
         if (_uniRingMesh != null)
@@ -636,8 +661,9 @@ public partial class PlanetWorld
         _uniFocus = _uniFocus.Lerp(_uniFocusTarget, ease);
         _uniDistance = Mathf.Lerp(_uniDistance, _uniDistanceTarget, 1 - Mathf.Exp(-dt * ZoomFollowRatePerSecond));
         var offset = new Vector3(Mathf.Sin(_uniYaw) * Mathf.Cos(_uniPitch), Mathf.Sin(_uniPitch), Mathf.Cos(_uniYaw) * Mathf.Cos(_uniPitch));
-        _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
-        _camera.LookAt(_uniFocus, Vector3.Up);
+        // Looking along −offset rather than LookAt(focus): far out in a vast overview (hundreds of km from the origin)
+        // Godot's LookAt judges a few metres "the same position" (relative tolerance) and fails (AD-81, the vast fixture).
+        _camera.GlobalTransform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), _uniFocus + offset * _uniDistance);
         _camera.Fov = OverviewFovDegrees;
         StepDiscovery(tree); // PlanetWorld.Discovery.cs: ask for more listings, relayout when the tree has grown
         PlaceUniverse(dt);
@@ -797,6 +823,7 @@ public partial class PlanetWorld
     {
         if (!_uniIndex.TryGetValue(id, out var i)) return;
         _uniSelected = id;
+        NoteSelectionForAttention(id); // PlanetWorld.Attention.cs: its neighbourhood unfolds at the next relayout
         _s.Select(id);
         _audio.Select();
         _uniFocusTarget = UniverseOrigin + _uniMotion[i].To; // where it is headed if a relayout is gliding it

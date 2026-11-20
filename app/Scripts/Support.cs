@@ -77,6 +77,10 @@ public sealed record CommandLine
 
     public bool TestOverviewLookPlain { get; init; }
 
+    /// <summary>--test-overview-budget=N (measurement instrument, PLANET-108): the overview lays out at most N worlds
+    /// instead of <see cref="FileScape.Core.Planets.OverviewAttention.DefaultBudget"/> (bodies against frame time).</summary>
+    public int? TestOverviewBudget { get; init; }
+
     /// <summary>--test-relief=classic (comparison instrument, PLANET-59): ordinary worlds keep the hills they had before 2026-11-17, for before/after screenshots in one build.</summary>
     public bool TestClassicRelief { get; init; }
 
@@ -135,6 +139,7 @@ public sealed record CommandLine
             TestPlayDiscoveryOff = Get("test-play-discovery") == "off",
             TestOverviewDetailOff = Get("test-overview-detail") == "off",
             TestOverviewLookPlain = Get("test-overview-look") == "plain",
+            TestOverviewBudget = Get("test-overview-budget") is { } ob ? int.Parse(ob, CultureInfo.InvariantCulture) : null,
         };
     }
 }

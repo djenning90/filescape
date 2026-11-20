@@ -247,6 +247,15 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   else
     skip_step planets-overview-discovery "no deep fixture under $FIX (FileScape.Fixtures create-deep)"
   fi
+  # PLANET-101..107 (AD-81): the overview follows attention at any depth on the vast fixture (16 regions, ≈ 46,000
+  # folders, routes 18 deep): distant branches, a route 14 levels down, land and reopen, return; every neighbourhood
+  # complete and drawn; the indicator fits at UI 1.0 and 1.25. FileScape.Fixtures create-vast makes it.
+  VAST="$(ls -1d "$FIX"/vast-*/"Vast Reach" 2>/dev/null | sort | tail -1)"
+  if [[ -n "$VAST" ]]; then
+    journey planets-overview-attention planets-overview-attention.log 400 --automate=planets-overview-attention "--root=$(wslpath -w "$VAST")" --test-broad --test-play-discovery=off --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  else
+    skip_step planets-overview-attention "no vast fixture under $FIX (FileScape.Fixtures create-vast)"
+  fi
   # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home;
   # --test-play-discovery=off: a real root, so nothing is listed in the background while the probe stands there).
   journey planets-discover-wsl-root planets-discover.log 200 --automate=planets-discover "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}\\" --find=home --test-play-discovery=off --vis=planets --test-shell=record --ui-scale=1 --tier=functional

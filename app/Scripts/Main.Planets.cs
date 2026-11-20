@@ -5,6 +5,7 @@ using FileScape.App.Visual;
 using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
+using FileScape.Core.Planets;
 using FileScape.Core.Scanning;
 using Godot;
 
@@ -32,6 +33,7 @@ public partial class Main : IWorldSession
             PlayDiscoveryEnabled = !_testInstruments.PlayDiscoveryOff,
             OverviewDetailEnabled = !_testInstruments.DetailOff,
             OverviewLooksVaried = !_testInstruments.LookPlain,
+            OverviewBudget = _testInstruments.OverviewBudget ?? OverviewAttention.DefaultBudget,
         };
         AddChild(_planets);
         SetupSound(); // Main.Sound.cs (PLANET-47)

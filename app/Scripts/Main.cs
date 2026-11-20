@@ -197,7 +197,7 @@ public partial class Main : Node3D
         _testListDelayMs = args.TestListDelayMs ?? 0;
         _testListDelayMatch = args.TestListDelayMatch;
         _testBroad = args.TestBroad;
-        _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain);
+        _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain, args.TestOverviewBudget);
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
@@ -281,7 +281,7 @@ public partial class Main : Node3D
     private bool _testBroad; // --test-broad (PLANET-76 instrument): no background listing of the arrival folder
 
     /// <summary>--test-play-discovery=off, --test-overview-detail=off, --test-overview-look=plain (AppArgs; PLANET-90..92 before/after instruments).</summary>
-    private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain) _testInstruments;
+    private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain, int? OverviewBudget) _testInstruments;
     private bool _recordShell;
 
     /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>
