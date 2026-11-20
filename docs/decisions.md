@@ -1224,3 +1224,51 @@ Sources checked during the discussion:
 
 Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
 as FileScape while naming remains open.
+
+## AD-76 The selection card says what each action does here; Command Prompt stays usable after X; apps FileScape opens are not its children (2026-11-19; amends AD-28)
+
+- **Problem (DJ):** "Audit the right-side panel's Open, Parent, Copy Path, Show in Explorer, and Fly to actions … Some
+  appeared to do nothing or behaved unexpectedly." "After I close the game with X, the command remains busy until I
+  press Ctrl+C."
+- **Selection card, found on the base build** (`--automate=planets-selection-actions`, 13 failures): the labels were
+  the legacy maps'. On the planets *Fly to* called the maps' camera and did nothing (every cell); F did something else
+  (turned to face the target, or silently nothing when it was not on this world); *Parent (Esc)*: Esc clears the
+  selection on a planet and closes the overview; *Open (Enter)* in the overview: Enter lands; the hub's path is the
+  empty string, so Open and Show in Explorer handed `""` to Windows and Copy path copied nothing; Parent on the hub was
+  disabled without a reason; after Parent in the overview, F and Enter acted on the world selected before.
+- **Decision (card):** one rules table in Core (`SelectionActions.For(view, target)`): per view (map, Places, planet
+  surface, overview) the labels, what is enabled and, for what is not, a tooltip starting "Unavailable:" with the reason
+  and what to do instead. One handler per action serves the button and its key; a key pressed for an unavailable action
+  says why. On a planet *Face it (F)* (enabled for what is on this world or in its sky); in the overview *Zoom to (F)*,
+  *Open* without Enter; *Parent* without Esc outside the maps. The hub's Open shows This PC (`shell:MyComputerFolder`),
+  its Show in Explorer, Copy path and Parent are disabled. The overview's F and Enter act on the card's selection.
+  Copy path is recorded, not copied, under the test shell (it used to overwrite the real clipboard in probes).
+- **Shutdown, found on the base build** (`tools/os-shutdown-probe.ps1`: an interactive cmd in its own conhost, the
+  command typed through WriteConsoleInput, X as WM_SYSCOMMAND SC_CLOSE):
+  1. `FileScape.exe` typed at the prompt: cmd never waits (it ran a typed `echo` while FileScape ran and 1.7 s after the
+     close), but Godot's Windows build attaches to the parent console in native start-up (AttachConsole, before any C#)
+     and printed ≈ 12 lines under cmd's prompt; after X the last lines were `[exit] … press Enter for a fresh prompt.`
+     and no prompt: it looks busy until Enter or Ctrl+C. This is DJ's handoff command. (AD-28's notice did not prevent it.)
+  2. `FileScape.console.exe` (Godot's console wrapper): it runs FileScape in a job object with kill-on-close and waits
+     until **every** process in the job has ended. Anything FileScape started (an app opened with Enter, the Explorer
+     from Show in Explorer, a terminal) joined the job: after X the prompt stayed busy as long as that app was open, and
+     Ctrl+C killed the person's app. Demonstrated: with FileScape opening an `.xml` fixture in Microsoft Edge, Edge's
+     browser process was FileScape.exe's child; after X no typed command ran for 12 s, and cmd returned 4.9 s after the
+     probe closed Edge.
+  3. `cmd /c` (both exes) returned 1.5 s after the close; a .bat waited while FileScape ran and returned after X; the
+     wrapper with nothing opened returned 1.7 s after the close. The staged and ZIP-extracted layouts are the same files.
+- **Decision (shutdown):** (a) when stdout is an interactive console that did not wait, FileScape lets go of it at once
+  (FreeConsole) and the engine header is off (`application/run/print_header=false`), so nothing is written under the
+  prompt; the log stays in Godot's log file and in full through FileScape.console.exe. (b) Under a job, what FileScape
+  starts for the person is started by the desktop's Explorer (`DesktopShell`: IShellWindows → the desktop view →
+  IShellDispatch2.ShellExecute), outside the job; Show in Explorer uses SHOpenFolderAndSelectItems (no child with
+  FileScape's handles; before, `Process.Start explorer.exe` with inherited handles).
+- **Alternatives:** make FileScape.exe a console program (a console window would open on every double-click); our own
+  console launcher waiting only for FileScape.exe (a native build step this project does not have); breaking away from
+  the job (the wrapper's job does not allow it); injecting Enter into the console at exit (it would run whatever the
+  person had typed).
+- **Trade-offs:** typed `FileScape.exe` shows no log in the terminal (use FileScape.console.exe); under the wrapper,
+  Windows' refusal to open a type with no app is shown by Windows itself (Explorer reports nothing back), only "it is no
+  longer there" is checked first.
+- **Revisit when:** Godot lets an exported GUI build skip AttachConsole, or DJ's terminal is Windows Terminal and it
+  behaves differently (not tested: a new tab could land in DJ's open Windows Terminal).
