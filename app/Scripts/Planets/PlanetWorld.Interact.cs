@@ -100,6 +100,7 @@ public partial class PlanetWorld
     /// </summary>
     public bool Input(InputEvent e)
     {
+        if (_scope != null && TelescopeMouse(e)) return true; // AD-85: looking through the telescope (PlanetWorld.Telescope.cs)
         // Releases first, whatever else is going on: a drag always ends with its button.
         if (e is InputEventMouseButton { Pressed: false } up && (up.ButtonIndex == MouseButton.Left || up.ButtonIndex == MouseButton.Right))
         {
@@ -275,6 +276,7 @@ public partial class PlanetWorld
     public bool UnhandledInput(InputEvent e)
     {
         if (_universe != null) return UniverseCommand(e);
+        if (_scope != null && TelescopeKey(e)) return true; // AD-85: the telescope's keys (PlanetWorld.Telescope.cs)
         if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
         if (RootMarkKey(e)) return true; // PLANET-45: number keys choose the landmark panel's rows while it is open
         switch (e)
@@ -468,7 +470,7 @@ public partial class PlanetWorld
         }
         else if (_focusTelescope)
         {
-            SetPrompt("E · Telescope: this world's files and destinations", "the overlook");
+            SetPrompt(TelescopeTopPrompt, "the overlook · the telescope frames the worlds around this one"); // AD-85
         }
         else if (UpdateRootMarkFocus())
         {
@@ -488,8 +490,8 @@ public partial class PlanetWorld
         }
     }
 
-    /// <summary>E: act on the focus (look closer at an object, list a pile, read the README at the bench, open the
-    /// telescope's list, select a pad's world); E again on the open preview closes it.</summary>
+    /// <summary>E: act on the focus (look closer at an object, list a pile, read the README at the bench, look through the
+    /// telescope, select a pad's world); E again on the open preview closes it.</summary>
     private void InspectFocus()
     {
         var tree = _s.Tree;

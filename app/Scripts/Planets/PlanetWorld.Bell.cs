@@ -16,8 +16,9 @@ namespace FileScape.App.Planets;
 /// ("I tried the telescope … and nothing happened"): the sign said "E" from about 7 m, but E only acted on the platform,
 /// which few players reached (the stones wind round it). Now, wherever the sign shows, E acts: off the platform it lifts
 /// you up beside the telescope (a hop, as Destinations' approach does), where the overlook names every destination; on
-/// the platform E opens this world's list, the telescope flares and a caption says what the list is. The stones still
-/// climb, and a jump and twirl still reaches the top. Both only set prompts when nothing nearer is in focus: a file or a
+/// the platform E — or a jump and twirl beside it — looks through it (AD-85: the survey of the worlds around this one,
+/// PlanetWorld.Telescope.cs; before, E opened this world's list, which J still does). The stones still climb, and a jump
+/// and twirl still reaches the top. Both only set prompts when nothing nearer is in focus: a file or a
 /// pad in reach keeps E (what a change must preserve), and at the bell tower the bell's prompt is the one cue.
 /// </summary>
 public partial class PlanetWorld
@@ -39,10 +40,7 @@ public partial class PlanetWorld
     /// <summary>E off the platform lands you this far from its centre towards the telescope, metres (beside it, facing where it points).</summary>
     private const float TelescopeStandFromCentreMetres = 0.2f;
 
-    /// <summary>The caption shown when E at the telescope opens the list (PLANET-73: what the list is, in one line).</summary>
-    private const string TelescopeListCaption = "Through the telescope: every world and file here. Choose one and press Enter to go there.";
-
-    /// <summary>Times E lifted you up to the telescope, and times it opened the list from the platform (probes).</summary>
+    /// <summary>Times E lifted you up to the telescope, and times it opened the list from the platform (probes; since AD-85 E opens the view, <see cref="TelescopeViews"/>).</summary>
     public int TelescopeClimbs { get; private set; }
 
     /// <inheritdoc cref="TelescopeClimbs"/>
@@ -74,8 +72,8 @@ public partial class PlanetWorld
     public const int TelescopeSignId = -400_000;
 
     /// <summary>The telescope's sign: its name and detail line on the platform and off it (probes check the words).</summary>
-    public const string TelescopeSignName = "E · Telescope", TelescopeSignDetail = "this world's files and destinations",
-        TelescopeSignDetailBelow = "E lifts you up · it lists this world's files and destinations";
+    public const string TelescopeSignName = "E · Telescope", TelescopeSignDetail = "look out at the worlds around this one · or twirl",
+        TelescopeSignDetailBelow = "E lifts you up · then look out at the worlds around this one";
 
     /// <summary>It floats this high over the telescope, metres (over a standing traveller's head on the platform).</summary>
     private const float TelescopeSignAboveMetres = 0.9f;
@@ -96,6 +94,7 @@ public partial class PlanetWorld
         // PLANET-73: shown exactly where E acts (on the platform, or within the approach reach), never farther out.
         if (!OnOverlook && (OverlookEdgeMetres() is not { } edge || edge > TelescopeApproachPromptMetres)) return;
         if (AtBellTower() || AtLighthouse()) return; // beside the overlook: at the bell or the lighthouse, its prompt is the one cue
+        if (_scope != null) return; // looking through it: the sign would float over the eyepiece
         _telescopeSignOffered = true;
         // On the platform it floats over the telescope. Walking up, the chase camera puts the platform's top near the top of
         // the view, with no room above it for a pinned sign (the HUD is there: the sign was dropped, 2026-11-17), so the
@@ -161,7 +160,7 @@ public partial class PlanetWorld
         if (OverlookEdgeMetres() is { } edge && edge <= TelescopeApproachPromptMetres && !OnOverlook)
         {
             _focusTelescopeFoot = true;
-            SetPrompt(TelescopeFootPrompt, "the overlook · from the top every destination is named, and E there lists them all");
+            SetPrompt(TelescopeFootPrompt, "the overlook · from the top every destination is named, and the telescope surveys them");
             return true;
         }
 
@@ -170,6 +169,9 @@ public partial class PlanetWorld
 
     /// <summary>The prompt within the telescope's reach, off the platform (probes check it).</summary>
     public const string TelescopeFootPrompt = "E · up to the telescope   ·   or climb the stones";
+
+    /// <summary>The prompt on the platform (AD-85: E and the twirl do the same, as at the lighthouse; probes check it).</summary>
+    public const string TelescopeTopPrompt = "E or twirl (Space, Space) · look through the telescope";
 
     /// <summary>
     /// E within the telescope's reach, off the platform (PLANET-73): a hop up onto the platform beside the telescope,
@@ -185,15 +187,8 @@ public partial class PlanetWorld
         GD.Print($"[planets] E: up to the telescope ({TelescopeClimbs})");
     }
 
-    /// <summary>E at the telescope on the platform: this world's list, the telescope's flare and a caption saying what the list is.</summary>
-    private void LookThroughTelescope()
-    {
-        OpenContents(null);
-        _audio.Inspect();
-        _current?.Visual?.FlareTelescope();
-        ShowHint(TelescopeListCaption);
-        TelescopeLists++;
-    }
+    /// <summary>E at the telescope on the platform: look through it (AD-85, PlanetWorld.Telescope.cs).</summary>
+    private void LookThroughTelescope() => OpenTelescopeView("E");
 
     /// <summary>On or beside the bell tower's base (within <see cref="BellPromptMetres"/> of its axis).</summary>
     private bool AtBellTower() =>
@@ -213,7 +208,7 @@ public partial class PlanetWorld
         var stones = c?.Comp.Overlook is { } ov2 && !OnBenchWorld
             ? string.Join(",", ov2.Steps.Select(st => System.FormattableString.Invariant($"[{CameraTurnTo(st.Direction):0.#},{PlanetShape.Angle(_walker.Up, st.Direction) * c.Comp.Shape.Radius:0.##}]")))
             : "";
-        return System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},\"uniDrawn\":{UniverseDrawnCount},");
+        return TelescopeViewStateJson() + System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},\"uniDrawn\":{UniverseDrawnCount},");
     }
 
     /// <summary>Where the bell tower's axis is and a point <paramref name="metres"/> out from it towards the arrival (probes walk in from there), or null without a bell.</summary>

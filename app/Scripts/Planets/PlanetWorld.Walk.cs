@@ -313,7 +313,9 @@ public partial class PlanetWorld
         // PLANET-43: a twirl by a file previews it; PLANET-56: under the bell it rings the bell instead (nothing else);
         // AD-63: at a root landmark it arms the quick route (Enter runs it; the twirl starts nothing).
         // PLANET-74/75 (AD-70): away from files, the lighthouse lights and a piece of scenery answers (TwirlNearby).
-        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder() && !TwirlAtRootMark()) TwirlNearby();
+        // AD-85: on the overlook beside the telescope, a twirl looks through it once you land (PlanetWorld.Telescope.cs).
+        if (!UpdateBench(dt, ev.Kind) && ev.Kind == Core.Movement.JumpEventKind.AirJump && !RingBellIfUnder() && !TwirlAtRootMark() && !TwirlAtTelescope()) TwirlNearby();
+        if (OpenTelescopeAfterTwirl()) return;
         if (_walker.Footsteps != _lastFootsteps)
         {
             _lastFootsteps = _walker.Footsteps;
@@ -330,7 +332,7 @@ public partial class PlanetWorld
         {
             _overlookNoted = true;
             _audio.Inspect();
-            ShowHint("From the overlook every destination is named. The telescope (E) lists everything here.");
+            ShowHint("From the overlook every destination is named. Look through the telescope (E) to survey the worlds around this one.");
         }
 
         _overlook01 = Mathf.MoveToward(_overlook01, wantOverlook ? 1 : 0, dt * OverlookBlendPerSecond);

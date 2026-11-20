@@ -104,6 +104,7 @@ public partial class PlanetWorld
         BuildDiscoveryPanel(root); // PLANET-76 (PlanetWorld.Discovery.cs)
         BuildPictureViewer(); // PLANET-96 (PlanetWorld.Gallery.cs)
         BuildUniverseHint(root); // PLANET-93 (PlanetWorld.UniverseNav.cs)
+        BuildTelescopeView(root); // AD-85 (PlanetWorld.Telescope.cs)
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
     }

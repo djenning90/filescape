@@ -494,6 +494,9 @@ public partial class SkyAudio : Node
     /// </summary>
     public void SetExperience(MusicExperience experience, int visits) { lock (_gate) _synth.SetExperience(experience, visits); }
 
+    /// <summary>The synth's minimum dwell, seconds (AD-79: the game's 3.5 s), for probes.</summary>
+    public double MinimumDwellSeconds { get { lock (_gate) return _synth.MinimumDwell.TotalSeconds; } }
+
     /// <summary>
     /// The music's state for the state file and the music journey (AD-79): the activity, the identity chosen for the place
     /// (and its key: root, mode) and the one sounding (playing, playingRoot), whether a change waits for the dwell, how long the sounding music has played, its bar, the

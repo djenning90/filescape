@@ -467,6 +467,7 @@ public partial class Hud : CanvasLayer
                 "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
                 "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
+                "  [b]The telescope[/b] on the overlook: E (or a twirl) looks through it · ← → world to world · Enter flies there · T the overview · Esc steps back\n" +
                 "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
                 "    jump the gaps; step off and you fall back up to the folder above. J, U, Backspace and every file action work as anywhere.\n\n" +
                 "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +

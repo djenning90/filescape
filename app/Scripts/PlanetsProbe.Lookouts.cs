@@ -10,8 +10,11 @@ namespace FileScape.App;
 /// Starter Sky's telescope, a lantern that answers, the Music Box's bell tower and a Hearth world's lighthouse with real
 /// keys. <b>Telescope:</b> far from the overlook its sign is hidden; walking up (W) it appears with the prompt
 /// "E · up to the telescope"; E there lifts you onto the platform (PLANET-73: DJ pressed E where the sign showed and
-/// nothing happened); on the platform E opens the world's list with its caption; then, from the foot again, walking up
-/// the stones still reaches the top, and a file in reach keeps E. <b>Scenery</b> (PLANET-75): the nearest answering
+/// nothing happened); on the platform E looks through it (AD-85, PLANET-125..127): the view rises to the eyepiece and
+/// frames a world of this sky with its relation to the Starter Sky, → frames the next, Esc steps back to exactly where you
+/// stood; a twirl beside it opens the same view; T from it opens the overview with the framed world chosen, Esc comes back
+/// down to the platform; Enter from it departs (its pad first) and lands on the framed world. Then, from the foot again,
+/// walking up the stones still reaches the top, and a file in reach keeps E. <b>Scenery</b> (PLANET-75): the nearest answering
 /// piece shimmers; beside it the prompt says to twirl; a twirl makes it answer (it moves, nothing opens), and after two
 /// replies its prompt steps aside. <b>Bell:</b> an ordinary jump and a twirl beside the tower ring nothing; W walks onto
 /// the base and under the bell (it stands on the base, as drawn); an ordinary jump there rings nothing; a jump and twirl
@@ -85,16 +88,9 @@ public partial class PlanetsProbe
         Check(P.TelescopeClimbs == climbs0 + 1 && P.OnOverlook && MathF.Abs(P.Walker.Support.Value - ov.Top) < 0.05f && !P.ListOpen,
             F($"E at the foot lifts you onto the platform: support {P.Walker.Support.Value:0.00} m (top {ov.Top:0.00} m), the overlook view, nothing opened"));
         Check(App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && top.Cue > 0.9f, F($"on the platform the sign is shown and the telescope lit: cue {top.Cue:0.00}"));
-        Check(P.PromptText.StartsWith("E · Telescope", StringComparison.Ordinal), $"the prompt: \"{P.PromptText}\"");
+        Check(P.PromptText == PlanetWorld.TelescopeTopPrompt, $"the prompt says E and the twirl look through it: \"{P.PromptText}\"");
         await Shot("lookouts-telescope-top");
-        await Key(Godot.Key.E);
-        await Until(() => P.ListOpen, 3);
-        Check(P.ListOpen && P.TelescopeLists == 1, "E at the telescope opens this world's list (files and destinations)");
-        Check(P.HintText.StartsWith("Through the telescope", StringComparison.Ordinal), $"  with a caption saying what it is: \"{P.HintText}\"");
-        await Seconds(0.4);
-        await Shot("lookouts-telescope-list");
-        await Key(Godot.Key.Escape);
-        await Frames(4);
+        await TelescopeViewVisit(root: App.Navigator.Current);
 
         // The stones still climb (the walking route is unchanged): from the foot, W up each stone in turn.
         var outward = ov.StepFoot - ov.Direction * NVector3.Dot(ov.StepFoot, ov.Direction);
@@ -128,6 +124,85 @@ public partial class PlanetsProbe
             await Frames(4);
         }
         else Log("(no file stands within the telescope's reach on this world: the file-keeps-E check is covered where one does)");
+    }
+
+    /// <summary>
+    /// AD-85 (PLANET-125..127) on the platform: E looks through the telescope; the view frames worlds and says how each
+    /// relates to this one; → steps; Esc steps back to exactly where you stood; a twirl opens it too; T from it opens the
+    /// overview on the framed world; Enter departs to it. Ends back on <paramref name="root"/>'s platform.
+    /// </summary>
+    private async Task TelescopeViewVisit(int root)
+    {
+        var here = Tree.DisplayName(root);
+        var feet = P.Walker.Feet;
+        var views0 = P.TelescopeViews;
+        await Key(Godot.Key.E);
+        await Until(() => P.TelescopeViewOpen, 2);
+        await Seconds(1.6); // the rise (0.9 s) and the swing to the first world
+        Check(P.TelescopeViewOpen && P.TelescopeViews == views0 + 1 && P.LastTelescopeEntry == "E" && !P.ListOpen,
+            $"E at the telescope looks through it: {P.TelescopeTargetCount} worlds framed, no list");
+        var first = P.TelescopeTargetId;
+        var caption = P.TelescopeCaption;
+        Check(first >= 0 && caption.Contains(here, StringComparison.Ordinal) && caption.StartsWith(Tree.DisplayName(first), StringComparison.Ordinal),
+            $"it frames {(first >= 0 ? Tree.DisplayName(first) : "nothing")} and says how it relates to {here}: \"{caption.Replace("\n", " / ")}\"");
+        Check(P.TelescopeAimErrorDegrees is >= 0 and < 4f, F($"the view has swung onto it ({P.TelescopeAimErrorDegrees:0.0}° off its centre) through a narrower lens ({P.Camera.Fov:0.#}°)"));
+        Check(P.Camera.Fov < 50f && !P.Avatar.Visible, F($"the eye at the eyepiece: lens {P.Camera.Fov:0.#}° (walking 62°), the traveller out of the view"));
+        Check(App.Selection.Selected == first, "the framed world is the selection (its card shows it)");
+        Check(P.MusicExperience == Core.Audio.MusicExperience.Overlook, "the Lydian overlook plays on through the telescope");
+        await Shot("lookouts-telescope-view");
+        if (P.TelescopeTargetCount > 1)
+        {
+            await Key(Godot.Key.Right);
+            await Seconds(1.2);
+            Check(P.TelescopeTargetId != first && P.TelescopeTargetId >= 0 && P.TelescopeAimErrorDegrees < 4f,
+                F($"→ frames the next world round the sky: {Tree.DisplayName(P.TelescopeTargetId)} ({P.TelescopeAimErrorDegrees:0.0}° off)"));
+            await Shot("lookouts-telescope-next");
+        }
+
+        await Key(Godot.Key.W); // a held key zooms in, a tap barely; it must not walk
+        await Key(Godot.Key.Escape);
+        await Until(() => !P.TelescopeViewOpen, 1);
+        await Until(() => P.CameraSettled, 3);
+        await Frames(10);
+        Check(!P.TelescopeViewOpen && NVector3.Distance(P.Walker.Feet, feet) < 0.01f && P.OnOverlook && P.Avatar.Visible,
+            F($"Esc steps back to exactly where you stood ({NVector3.Distance(P.Walker.Feet, feet) * 100:0.0} cm), the traveller in view"));
+        Check(P.Camera.Fov > 55f, F($"  and the lens widens back ({P.Camera.Fov:0.#}°)"));
+        await Shot("lookouts-telescope-back");
+
+        // The jump and twirl beside it does the same (as at the lighthouse).
+        await JumpAndTwirl();
+        await Until(() => P.TelescopeViewOpen, 2);
+        Check(P.TelescopeViewOpen && P.LastTelescopeEntry == "twirl", $"a jump and twirl beside the telescope looks through it too ({P.LastTelescopeEntry})");
+        await Seconds(1.2);
+        feet = P.Walker.Feet; // the twirl may land a few centimetres from where it took off
+
+        // T from the view: the overview with the framed world chosen; Esc comes back down to the platform.
+        var framed = P.TelescopeTargetId;
+        await Key(Godot.Key.T);
+        await Until(() => P.UniverseOpen, 2);
+        await Seconds(1.0);
+        Check(P.UniverseOpen && !P.TelescopeViewOpen && App.Selection.Selected == framed, $"T from the telescope opens the overview with {Tree.DisplayName(framed)} chosen");
+        await Key(Godot.Key.Escape);
+        await Until(() => !P.UniverseOpen, 2);
+        await Until(() => P.CameraSettled, 3);
+        await Seconds(0.5);
+        Check(NVector3.Distance(P.Walker.Feet, feet) < 0.05f && P.OnOverlook, F($"and Esc there comes back down to the platform ({NVector3.Distance(P.Walker.Feet, feet) * 100:0.0} cm)"));
+
+        // Enter from the view: the departure every trip uses (its pad first), then the landing on the framed world.
+        await Key(Godot.Key.E);
+        await Until(() => P.TelescopeViewOpen, 2);
+        await Seconds(1.2);
+        var go = P.TelescopeTargetId;
+        var transfers = P.Transfers;
+        await Key(Godot.Key.Enter);
+        await Until(() => P.Busy, 2);
+        Check(!P.TelescopeViewOpen && P.Busy, $"Enter in the telescope departs for {Tree.DisplayName(go)} ({P.LastDepartureKind})");
+        await Until(() => !P.Busy && App.Navigator.Current == go, 12);
+        Check(App.Navigator.Current == go && P.Transfers == transfers + 1 && P.Walker.Grounded, $"  and lands there on foot: {Tree.DisplayName(App.Navigator.Current)}");
+        await Seconds(1.0);
+        await Key(Godot.Key.Backspace);
+        await Until(() => !P.Busy && App.Navigator.Current == root, 12);
+        await Seconds(1.0);
     }
 
     /// <summary>

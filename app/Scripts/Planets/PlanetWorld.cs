@@ -44,7 +44,7 @@ namespace FileScape.App.Planets;
 /// <b>.Discovery</b>: what the open overview lists by itself, its indicator and pause (PLANET-76..78).</item>
 /// <item><b>.Bench</b>: the repository workbench (PLANET-29). <b>.Routes</b>: remembered routes. <b>.Probe</b>: what
 /// probes read.</item>
-/// <item><b>.Bell</b>: the bell tower and the telescope (PLANET-55/56/73). <b>.Whimsy</b>: the lighthouse and the
+/// <item><b>.Bell</b>: the bell tower and the telescope (PLANET-55/56/73); <b>.Telescope</b>: looking through it (AD-85). <b>.Whimsy</b>: the lighthouse and the
 /// scenery that answers a twirl (PLANET-74/75, AD-70).</item>
 /// </list>
 /// Assumptions to keep: only one place change at a time (<see cref="Busy"/>); everything shown is in the current
@@ -257,6 +257,8 @@ public partial class PlanetWorld : Node3D
 
         if (blockedKeys || _universe != null || _phase != Phase.Walking || _hop != null) _keyLook = 0; // no turning on after the keys stop being read
         UpdateMusicExperience(dt); // AD-79: the overlook's and the overview's own music (PlanetWorld.Music.cs)
+        // AD-85: the telescope's view never outlives a departure, a hop or the overview (each started elsewhere closes it here).
+        if (_scope != null && (_phase != Phase.Walking || _hop != null || _universe != null)) CloseTelescopeView(glide: false);
         if (_universe != null && (_phase != Phase.Walking || _hop != null))
         {
             // PLANET-83 safety net: travel on the surface never runs under the overview (nothing ticks it), so one that has
@@ -279,6 +281,9 @@ public partial class PlanetWorld : Node3D
         ApplyPendingRecompose(tree);
         switch (_phase)
         {
+            case Phase.Walking when _scope != null:
+                UpdateTelescopeView(dt, blockedKeys); // AD-85 (PlanetWorld.Telescope.cs): the traveller stands still
+                break;
             case Phase.Walking:
                 UpdateWalking(dt, blockedKeys);
                 break;
