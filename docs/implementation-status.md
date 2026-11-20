@@ -79,6 +79,48 @@ ended (ending them was refused by the session's permission check). Every Explore
 
 **Next migration candidates:** the journey's label/enabled matrix per kind is now fully in Core (`SelectionActions.For` × `Describe`); its remaining in-app value is that a button and its key reach the same handler and the recorded shell request — a later pass could drop the label assertions and keep one cell per action.
 
+### Stream 8: verification that is efficient and accountable; the first unit-test migration (TEST-06..09, AD-88)
+
+DJ: testing has taken hours. Report active test time, desktop waits and reruns separately. Move deterministic
+assertions from slow journeys into unit tests where they catch the regression as well. Document how to pick the
+smallest test set. The guide is in `docs/windows-workflow.md`, "Choosing the smallest test set", together with a
+ranked list of the next migrations.
+
+| Area | Status | Evidence |
+|---|---|---|
+| Three totals at the end of every check (`active`, `lock-wait`, `reruns`); a session timing log (one session per branch) fed by every step and by `fs.sh timed NAME [--lock] [--why=…] -- CMD`; nested lock waits kept out of active time; `fs.sh timing` (TEST-06) | **Demonstrated** | `check harness` (new cases: accounting, timed, timed --lock); real runs below (e.g. a stage: 78.3 s active, 281.0 s lock wait) |
+| UI 1.25 repeats of explore, places and planets out of `check full`, into `check release` (TEST-08) | **Demonstrated** (listing); saves ≈ 136 s per full run (44.4 + 51.4 + 39.7 s on 2026-11-20). Their PASS lines were identical to the 1.0 runs | `check journeys --list`; `full-20261120-062206` |
+| Fixed waits reviewed (TEST-07) | **Demonstrated** (review): the shared helpers already wait on conditions. ≈ 470 s of per-journey settle waits are listed in the guide. None was changed | — |
+| planets-hazard's mid-window and late catches and its late-twirl and late take-off leaps moved to Core `HazardSampleReplayTests` (TEST-09) | **Demonstrated** for the late take-off (both caught one injected regression), **provisional** for the late catch (the journey failed too, but by a cascade from its first slip) | see below |
+| planets-hazard trimmed | **Demonstrated**: 78.6 s, 78/0/3 after, against 88.1 s and 86.1 s (84/0/3) for the base `70b6ffc` build on the same afternoon (83.8 s in the last full run), so ≈ 8–10 s (≈ 10 %) per run. The plain jump's new walk gives back ≈ 5 s of the ≈ 15 s removed. Core replay: 7 cases in ≈ 2 s | evidence `checks\journeys-20261120-181122` and `-184248` (before), `-190541` (after, `staging-20261120-185901-2295310`); the regressed runs `-181940` (ApexSpeed) and `-183137` (PLANET-85 + MaxDepth); the failed trims `-183819`, `-184956`; `tools/fs.sh test-wsl --filter FullyQualifiedName~HazardSampleReplayTests` |
+
+**Equivalence (one injected regression, then removed):**
+- The regression: PLANET-85's late take-off disabled in `SphereWalker.RecoveryPress`, plus `HazardMoveParams.MaxDepth`
+  1.8 → 0.8 m.
+- The unchanged journey on that build (`staging-20261120-182811-2178787`) went 71/11/4:
+  - "the take-off press 0.05 s after leaving the board…" failed with "catch", then "carry-ignored", short, 1 fall;
+  - the late catch failed, after the early slip had already fallen, and the rest cascaded.
+- Core with the same regression: `LateTakeOff` failed ("take-off Recovery … fell") and `late` failed ("0 recovery,
+  fell"). Apex, Late, Plain, early and mid-window passed. The existing HazardRecoveryTimingTests failed as well.
+- A first regression (`ApexSpeed` 4.0 → 2.5 m/s) was caught only by Core. On that loaded run the journey's presses
+  arrived up to 3 frames late, so its "late" twirl still came near the top. This is an instrument limitation of the
+  in-app timing steps, and a reason they belong in Core.
+- The replay's two-frame input lag was measured from the journey's press log: the apex twirl comes at 0.30 s in
+  both. The replay walks the same leap (7.17 m on a 19.1 m bridge).
+
+**Instrument defect found and fixed:** after the trim, the plain jump came straight after the flight back from a
+moon. Stood on the bridge [direct], it read the gap ahead as "chasm", twice. The cause is that the gap is read along
+the camera, which the fresh arrival still frames. Waiting for `CameraSettled` did not help, so the plain jump now
+walks to the near side first, as the late twirl's run used to.
+
+**Time log (this stream; `tools/fs.sh timing`):** active 1,244 s (13 logged rows: 7 planets-hazard runs 631 s, 5 stages 560 s, 1 build 53 s), lock-wait 1,999 s, reruns 869 s in 9 rows. The reruns, with their reasons: 2 regressed builds (an ApexSpeed regression the journey missed under load, then the PLANET-85 + MaxDepth one), the base again beside the after run (same load), and 2 instrument fixes to the trimmed plain jump (camera settle, then the walk). The first two stages were logged before the nested-wait fix: the second one hid a 45.2 s smoke-launch lock wait in its 188.5 s. Not in the log: ≈ 6 focused Core runs on WSL (≈ 40 s each, no lock) and ≈ 6 harness runs (≈ 5 s each).
+
+**Files other streams may also touch:**
+- `tools/verify.sh`: the full tier lost the three 1.25 lines; the finish line changed.
+- `tools/verify-lib.sh`, `tools/fs.sh`, `tools/verify-selftest.sh`, `docs/windows-workflow.md` (the tier table
+  and a new section).
+- `app/Scripts/PlanetsProbe.Hazard.cs`.
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)

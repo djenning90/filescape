@@ -14,6 +14,9 @@
 #   tools/fs.sh promote NAME     promote a verified staging dir (staging-<stamp>) to build, with export's safety checks
 #   tools/fs.sh check TIER       verification tiers: fast | smoke | full | release, or journeys NAME... (tools/verify.sh;
 #                                every run ends with a timing table: each step's result and seconds, and the total)
+#   tools/fs.sh timed NAME [--lock] [--why=TEXT] -- CMD...   run CMD and log its seconds (and lock wait) in the
+#                                session timing log beside check's steps (TEST-06); --why says why a rerun was needed
+#   tools/fs.sh timing [--all|--session=S] [--rows]   the session's active, lock-wait and rerun totals
 #   tools/fs.sh builds           list build, staging and previous directories, and any FileScape that is running
 #   tools/fs.sh prune-builds     delete staging/previous dirs that are not running (keeps the newest previous build)
 #   tools/fs.sh which            print the discovered tools
@@ -134,6 +137,7 @@ launch() {
   local t c=0 lfd; t=$(date +%s.%N)
   exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"
   LAUNCH_WAIT="$(printf '%.1f' "$(echo "$(date +%s.%N) - $t" | bc)")"
+  [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$LAUNCH_WAIT" >> "$FS_LOCK_WAIT_FILE"   # fs.sh timed sums nested waits (TEST-06)
   "$@" {lfd}>&- || c=$?
   exec {lfd}>&-
   return $c
@@ -331,6 +335,47 @@ case "$cmd" in
   check)
     if [[ "${1:-}" == harness ]]; then exec "$REPO/tools/verify-selftest.sh"; fi
     exec "$REPO/tools/verify.sh" "$@" ;;
+  timed)
+    # TEST-06 (AD-88): an ad-hoc launch or probe in the session's accounting. `fs.sh timed NAME [--lock] [--why=TEXT] --
+    # CMD...` runs CMD (holding FS_LAUNCH_LOCK with --lock), prints its seconds and appends a row to the session timing
+    # log (tools/verify-lib.sh timing_log_append), the same log check's steps go to. Exits with CMD's exit code.
+    source "$REPO/tools/verify-lib.sh"
+    name="${1:?usage: fs.sh timed NAME [--lock] [--why=TEXT] -- CMD...}"; shift
+    lock=0
+    while [[ $# -gt 0 && "$1" != -- ]]; do
+      case "$1" in --lock) lock=1 ;; --why=*) export FS_RERUN_WHY="${1#--why=}" ;; *) echo "fs.sh timed: unknown option $1" >&2; exit 2 ;; esac
+      shift
+    done
+    [[ "${1:-}" == -- ]] && shift
+    [[ $# -gt 0 ]] || { echo "usage: fs.sh timed NAME [--lock] [--why=TEXT] -- CMD..." >&2; exit 2; }
+    # Every lock wait inside CMD (its own with --lock, and nested ones: fs.sh stage's smoke launch, fs.sh run) is written to
+    # FS_LOCK_WAIT_FILE and taken out of the active seconds. Not for `fs.sh check`, which logs its own steps.
+    c=0; export FS_LOCK_WAIT_FILE; FS_LOCK_WAIT_FILE="$(mktemp)"
+    t0=$(date +%s.%N)
+    if [[ $lock == 1 ]]; then launch "$@" || c=$?; else "$@" || c=$?; fi
+    all="$(secs_since "$t0")"
+    waited="$(printf '%.1f' "$(awk '{ s += $1 } END { print s + 0 }' "$FS_LOCK_WAIT_FILE")")"; rm -f "$FS_LOCK_WAIT_FILE"
+    secs="$(printf '%.1f' "$(echo "$all - $waited" | bc)")"
+    result=pass; [[ $c -eq 124 ]] && result=timeout; [[ $c -ne 0 && $c -ne 124 ]] && result=fail
+    rerun="$(timing_log_append timed "$name" "$result" "$secs" "$waited")"
+    echo "fs.sh timed: $name $result ${secs} s active, lock wait ${waited} s$([[ $rerun == 1 ]] && echo ", rerun (${FS_RERUN_WHY:-no reason given})") -> $(timing_log_path)" >&2
+    exit $c ;;
+  timing)
+    # TEST-06: the session's totals from the timing log: active seconds, lock-wait seconds and reruns, kept apart.
+    #   fs.sh timing [--session=NAME | --all] [--rows]
+    source "$REPO/tools/verify-lib.sh"
+    log="$(timing_log_path)"; sess="$(timing_session)"; rows=0
+    for a in "$@"; do case "$a" in --all) sess="" ;; --session=*) sess="${a#--session=}" ;; --rows) rows=1 ;; *) echo "fs.sh timing: unknown option $a" >&2; exit 2 ;; esac; done
+    [[ -f "$log" ]] || { echo "fs.sh timing: no log yet ($log)"; exit 0; }
+    awk -F'\t' -v s="$sess" -v rows=$rows '
+      s != "" && $2 != s { next }
+      { n++; a += $6; w += $7; if ($8 == 1) { r++; rs += $6; why[$4] = why[$4] (why[$4] ? "; " : "") $9 }; if ($3 == "timed") { tn++; ts += $6 }
+        if (rows) printf "%s  %-6s %-28s %-8s %8.1f s  wait %6.1f s%s\n", $1, $3, $4, $5, $6, $7, ($8 == 1 ? "  rerun: " $9 : "") }
+      END {
+        printf "session %s: %d rows (%d ad-hoc, %.1f s)\n", (s == "" ? "(all)" : s), n, tn, ts
+        printf "  active    %9.1f s\n  lock-wait %9.1f s\n  reruns    %9.1f s in %d row(s)\n", a, w, rs, r
+        for (k in why) printf "    rerun %s: %s\n", k, why[k]
+      }' "$log" ;;
   builds)
     BASE_W="$(fs_base_w)"; BASE="$(wslpath "$BASE_W")"; check_base "$BASE"
     for d in "$BASE"/build "$BASE"/staging-* "$BASE"/previous-*; do
@@ -351,5 +396,5 @@ case "$cmd" in
       rm -rf -- "$d"; echo "deleted: $dw"
     done ;;
   *)
-    sed -n '2,25p' "$0"; exit 2 ;;
+    sed -n '2,28p' "$0"; exit 2 ;;
 esac

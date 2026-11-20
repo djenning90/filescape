@@ -1679,3 +1679,45 @@ as FileScape while naming remains open.
   uses one route either way.
 - **Revisit when:** a Windows update lets File Explorer select a distribution in Linux (the probe's OBSERVED line), or
   the location-actions panel's "Show in Explorer" row (which opens the folder itself) is reworded to match.
+
+## AD-88 Verification is accounted in three totals, duplicate journeys leave the full tier, and journey assertions move into Core when one injected regression is caught by both (2026-11-20, TEST-06..09)
+
+- **Problem:** DJ: testing has made development take hours. The last full check (`full-20261120-062206`, on
+  `70b6ffc`) took 2,633 s of steps, ≈ 1,700 s of them journeys. Several agents share one desktop. Nobody could say
+  how much of a session was testing, how much was waiting for the screen, and how much was running something again.
+- **Measured:** the slowest journeys were planets-overview-enter (256 s), dialog-keys (172 s), music (164 s),
+  look (135 s), tutorial-cues (100 s), walk-ui1.0 (86 s), navigation (84 s) and hazard (84 s). The UI 1.25 repeats of
+  explore, places and planets had PASS lines identical to their 1.0 runs (136 s together). Launch overhead is
+  ≈ 1–4 s per journey. The shared probe helpers already wait on conditions, so the fixed waits are per-journey
+  settle times.
+- **Decision:**
+  - **Accounting (TEST-06).** The timing table ends with `active`, `lock-wait` and `reruns`. Every step is appended
+    to a session timing log (one session per git branch). A step the session has already logged is a rerun, with
+    the reason from `FS_RERUN_WHY`. `fs.sh timed NAME [--lock] -- CMD` puts ad-hoc launches into the same log and
+    takes nested lock waits out of the active seconds. `fs.sh timing` prints the totals. The log is a plain TSV
+    beside the evidence. There is no service and no database.
+  - **Duplicates (TEST-08).** The UI 1.25 repeats move from `check full` to `check release`. planets-sound still runs
+    at 1.25 from the smoke tier up, so the full tier keeps one HUD-at-scale run. places-tree stays, because it has
+    assertions of its own. The legacy views' place in the full tier is left to DJ.
+  - **Migration rule (TEST-09).** A journey step may leave the journey when (1) a Core test drives the entry point
+    the app uses, with the journey's own fixture, positions, timing and measured input lag, and (2) one injected
+    regression makes both the unchanged journey step and the Core test fail. The journey keeps one representative
+    path per feature through the running app, so the boundary between input, PlanetWorld and the model is still
+    exercised.
+  - **First migration:** planets-hazard's mid-window and late rim catches and its late-twirl and late take-off
+    leaps, in `HazardSampleReplayTests`. The test writes and scans the Starter Sky and composes Event Horizon and
+    Debris Field (the same leap the journey crosses: 7.17 m on a 19.1 m bridge). It steps the default walker at
+    60 fps with the press decided one frame and read two frames later. The two-frame lag was measured from the
+    journey's press log: a twirl decided at 0.45 s was logged at 0.483 s. With that lag the replay's apex twirl
+    comes at 0.30 s, as in the app.
+- **Equivalence shown:**
+  - Injected regression: PLANET-85's late take-off disabled, plus `MaxDepth` 1.8 → 0.8 m. The unchanged journey
+    on that build failed "the take-off press 0.05 s after leaving the board…" ("catch", then "carry-ignored", short,
+    one fall) and the late catch. The new Core cases LateTakeOff and late failed in the same way ("take-off
+    Recovery", "0 recovery, fell").
+  - A first attempt (`ApexSpeed` 4.0 → 2.5 m/s) was caught only by Core. Under load the journey's presses arrived
+    up to ≈ 3 frames late, so the late twirl still came near the top and crossed. This is an instrument limitation:
+    the in-app late-timing steps depend on the machine's load, and the Core replay does not.
+- **Before and after:** planets-hazard 88.1 s and 86.1 s → 78.6 s (84 → 78 checks). The full tier is ≈ 136 s shorter without the 1.25 repeats. See the stream 8 section of docs/implementation-status.md.
+- **Revisit when:** a journey failure appears that its Core replay did not predict. Then the replay's inputs or lag
+  differ from the app's. Fix the replay first, and put the step back in the journey until they agree.

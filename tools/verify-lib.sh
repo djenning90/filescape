@@ -15,6 +15,11 @@
 # reported separately in the note, so a step's duration does not depend on what other people run on the desktop.
 # What a change must preserve: one row per step that ran or was skipped, in run order, and a table that the callers can
 # print from an EXIT trap (it uses only shell state, never the step's files).
+#
+# Accounting (TEST-06, AD-88): the table ends with three separate totals: active time (the steps' own seconds), lock-wait
+# time (waiting for the shared desktop) and reruns. Every row that ran is also appended to the session timing log
+# (timing_log_append), which `tools/fs.sh timed NAME -- CMD` (ad-hoc launches) and `tools/fs.sh timing` (the session's
+# totals) share. A rerun is a step whose name the same session has already logged; FS_RERUN_WHY says why.
 
 # counts FILE: sets P, X, K (PASS, FAIL, SKIP lines) and WHY (why the file itself is unusable, or empty).
 counts() {
@@ -41,22 +46,61 @@ result_word() {
 
 # ---- timing (TEST-05)
 TIMING_ROWS=()
-# timing_record NAME RESULT SECONDS [NOTE]
-timing_record() { TIMING_ROWS+=("$1|$2|$3|${4:-}"); }
+# timing_record NAME RESULT SECONDS [NOTE]: a table row; a step that ran (not skipped) is also logged for the session, and
+# marked a rerun when the session has logged that name before.
+timing_record() {
+  local note="${4:-}" rerun=0 w
+  if [[ "$2" != skipped ]]; then
+    w="$(grep -oE 'lock wait [0-9.]+' <<<"$note" | grep -oE '[0-9.]+$' || true)"
+    rerun="$(timing_log_append check "$1" "$2" "$3" "${w:-0}")"
+    [[ "$rerun" == 1 ]] && note+="${note:+; }rerun${FS_RERUN_WHY:+ ($FS_RERUN_WHY)}"
+  fi
+  TIMING_ROWS+=("$1|$2|$3|$note|${rerun:-0}")
+}
+
+# ---- the session timing log (TEST-06, AD-88)
+# One tab-separated line per step or timed command: UTC time, session, kind (check|timed), name, result, active seconds,
+# lock-wait seconds, rerun (0|1), why (FS_RERUN_WHY), commit. FS_TIMING_LOG chooses the file (default
+# ~/.local/state/filescape/timing.tsv; "off" logs nothing); FS_TIMING_SESSION names the session (default: the git
+# branch, so each worktree's agent has its own totals). Each append is one short line (O_APPEND), safe beside other
+# writers. What a change must preserve: the column order (tools/fs.sh timing reads it) and the rerun rule.
+timing_log_path() { echo "${FS_TIMING_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/filescape/timing.tsv}"; }
+timing_session() {
+  if [[ -n "${FS_TIMING_SESSION:-}" ]]; then echo "$FS_TIMING_SESSION"; return; fi
+  git -C "${REPO:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo default
+}
+# timing_log_append KIND NAME RESULT SECONDS LOCK_WAIT_SECONDS: appends the line; prints 1 if it is a rerun, else 0.
+timing_log_append() {
+  local log session rerun=0 why=""
+  log="$(timing_log_path)"
+  if [[ "$log" == off ]]; then echo 0; return; fi
+  session="$(timing_session)"
+  mkdir -p "$(dirname "$log")" 2>/dev/null
+  if [[ -f "$log" ]] && awk -F'\t' -v s="$session" -v n="$2" '$2 == s && $4 == n { f = 1 } END { exit !f }' "$log"; then rerun=1; fi
+  [[ $rerun == 1 ]] && why="${FS_RERUN_WHY:-(no reason given)}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$session" "$1" "$2" "$3" "$4" "$5" "$rerun" "${why//$'\t'/ }" \
+    "$(git -C "${REPO:-.}" rev-parse --short=12 HEAD 2>/dev/null)" >> "$log" 2>/dev/null
+  echo "$rerun"
+}
 
 # secs_since START: seconds since START (a `date +%s.%N` value), one decimal.
 secs_since() { printf '%.1f' "$(echo "$(date +%s.%N) - $1" | bc)"; }
 
 # timing_table TITLE TOTAL_SECONDS: the end-of-run table: one line per step, then the counts and the total.
+# Its last three lines are the accounting (TEST-06): active (the sum of the steps' own seconds; the WSL tests run beside
+# other steps, so this can exceed the wall time), lock-wait (seconds waiting for the shared desktop) and reruns (steps
+# this session had already logged, and their seconds).
 timing_table() {
-  local title="$1" total="$2" row n r s note waited=0 w
+  local title="$1" total="$2" row n r s note rr waited=0 w active=0 rerun_s=0 reruns=()
   local -A count=()
   echo "== timing: $title =="
   printf '%-28s %-11s %8s  %s\n' step result seconds note
   for row in "${TIMING_ROWS[@]}"; do
-    IFS='|' read -r n r s note <<<"$row"
+    IFS='|' read -r n r s note rr <<<"$row"
     printf '%-28s %-11s %8s  %s\n' "$n" "$r" "$s" "$note"
     count[$r]=$(( ${count[$r]:-0} + 1 ))
+    active="$(echo "$active + $s" | bc)"
+    if [[ "$rr" == 1 ]]; then reruns+=("$n"); rerun_s="$(echo "$rerun_s + $s" | bc)"; fi
     w="$(grep -oE 'lock wait [0-9.]+' <<<"$note" | grep -oE '[0-9.]+$' || true)"
     [[ -n "$w" ]] && waited="$(echo "$waited + $w" | bc)"
   done
@@ -65,6 +109,9 @@ timing_table() {
   local tail="${summary:-no steps}"
   [[ "$waited" != 0 ]] && tail+="; launch lock waits $waited s (not in the steps' seconds)"
   printf '%-28s %-11s %8s  %s\n' TOTAL "" "$total" "$tail"
+  printf '%-28s %-11s %8s  %s\n' active "" "$(printf '%.1f' "$active")" "the steps' own seconds"
+  printf '%-28s %-11s %8s  %s\n' lock-wait "" "$(printf '%.1f' "$waited")" "waiting for the shared desktop (FS_LAUNCH_LOCK)"
+  printf '%-28s %-11s %8s  %s\n' reruns "" "$(printf '%.1f' "$rerun_s")" "${#reruns[@]} step(s) already run in session $(timing_session)${reruns[*]:+: ${reruns[*]}}"
 }
 
 # ---- running a command (TEST-05): timed, under a timeout, interruptible, optionally holding the launch lock.
@@ -81,7 +128,10 @@ run_cmd() {
     w0=$(date +%s.%N)
     exec {lfd}>>"$FS_LAUNCH_LOCK"
     flock "$lfd"
-    LOCK_NOTE="lock wait $(secs_since "$w0") s"
+    local waited; waited="$(secs_since "$w0")"
+    LOCK_NOTE="lock wait $waited s"
+    # FS_LOCK_WAIT_FILE (set by fs.sh timed): each wait is appended, so a timed command's nested waits are summed (TEST-06).
+    [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
   fi
   CUR_NAME="$name"; CUR_START=$(date +%s.%N)
   # In the background and waited for, so Ctrl+C reaches the caller's trap at once (a foreground child would be waited

@@ -9,6 +9,8 @@ OUT="$(mktemp -d "${TMPDIR:-/tmp}/filescape-verify-selftest.XXXXXX")"
 SUM="$OUT/summary.txt"; : > "$SUM"
 FAILS=0
 BAD=0
+# The session timing log (TEST-06) goes to this run's own file and session, never the real one.
+export FS_TIMING_LOG="$OUT/timing.tsv" FS_TIMING_SESSION=selftest
 
 # A test double: write CONTENT (printf format, may be empty, or "-" for no file) to FILE, optionally sleep, exit CODE.
 double() {
@@ -95,6 +97,31 @@ if grep -qE '^long +interrupted' "$INT_OUT/table.txt" && grep -q '^TOTAL .*1 int
   echo "ok    interrupted                stopped in $took s, row and table printed"
 else echo "WRONG interrupted (took $took s):"; sed 's/^/      /' "$INT_OUT/table.txt"; BAD=$((BAD + 1)); fi
 pgrep -f 'sleep 20' > /dev/null && pgrep -af 'sleep 20' | grep -q "$INT_OUT" && { echo "WRONG interrupted: its command still runs"; BAD=$((BAD + 1)); }
+
+# Accounting (TEST-06): a second run of a step in the same session is a rerun with its reason; the table's last three
+# lines keep active, lock-wait and rerun seconds apart; the log has one line per step that ran (skips are not logged; the interrupted run above adds one).
+FS_RERUN_WHY="second try" probe_step clean 5 "$R/clean.txt" probe bash -c "double '$R/clean.txt' '$P2' 0" > /dev/null
+table="$(timing_table selftest 1.0)"
+last="$(printf '%s\n' "${TIMING_ROWS[@]}" | tail -1)"
+if [[ "$last" == clean\|pass\|*"rerun (second try)"*\|1 ]] && grep -qE '^reruns +[0-9.]+ +1 step\(s\) already run in session selftest: clean$' <<<"$table" \
+   && grep -qE '^lock-wait +1\.[0-9]' <<<"$table" && grep -qE '^active +[0-9.]+ ' <<<"$table" \
+   && [[ "$(wc -l < "$FS_TIMING_LOG")" -eq ${#TIMING_ROWS[@]} ]] && [[ "$(awk -F'\t' '$8 == 1' "$FS_TIMING_LOG" | cut -f4,9)" == $'clean\tsecond try' ]]; then
+  echo "ok    accounting                 active, lock-wait and reruns apart; the rerun logged with its reason"
+else echo "WRONG accounting: last row '$last', log $(wc -l < "$FS_TIMING_LOG") lines:"; sed 's/^/      /' <<<"$table" | tail -4; BAD=$((BAD + 1)); fi
+# fs.sh timed: an ad-hoc command's row (kind timed), its exit code kept; fs.sh timing sums the session.
+"$REPO/tools/fs.sh" timed ad-hoc -- bash -c 'sleep 0.2; exit 3' 2> /dev/null; tc=$?
+summary="$("$REPO/tools/fs.sh" timing)"
+if [[ $tc -eq 3 ]] && awk -F'\t' '$3 == "timed" && $4 == "ad-hoc" && $5 == "fail"' "$FS_TIMING_LOG" | grep -q . && grep -q '1 ad-hoc' <<<"$summary" && grep -qE 'reruns +[0-9.]+ s in 1 row' <<<"$summary"; then
+  echo "ok    timed                      exit 3 kept, row logged, fs.sh timing sums the session"
+else echo "WRONG timed (exit $tc):"; sed 's/^/      /' <<<"$summary"; BAD=$((BAD + 1)); fi
+# fs.sh timed --lock: the wait for the desktop is logged apart from the active seconds.
+flock "$LOCK" sleep 1.2 & holder=$!
+sleep 0.2
+FS_LAUNCH_LOCK="$LOCK" "$REPO/tools/fs.sh" timed waited --lock -- true 2> /dev/null
+wait "$holder"
+IFS=$'\t' read -r _ _ _ _ _ tsecs twait _ < <(awk -F'\t' '$4 == "waited"' "$FS_TIMING_LOG")
+if (( $(echo "${twait:-0} >= 0.8 && ${tsecs:-9} < 0.5" | bc) )); then echo "ok    timed --lock               waited $twait s, active $tsecs s"
+else echo "WRONG timed --lock: wait '$twait', active '$tsecs'"; BAD=$((BAD + 1)); fi
 
 echo "timing table:"; timing_table selftest 1.0 | sed 's/^/  /'
 rm -rf "$OUT"
