@@ -57,6 +57,7 @@ public partial class PlanetWorld
     /// <summary>The bodies that may wear a haze (a system in the layout, or a world with folders the budget left out), by body index.</summary>
     private readonly List<int> _uniHazeBodies = [];
     private MultiMesh? _uniHazeMesh;
+    private float[] _uniHazeBuf = [];
 
     /// <summary>The detail decision's cost, milliseconds (probes).</summary>
     public double DetailMsMax { get; private set; }
@@ -80,7 +81,10 @@ public partial class PlanetWorld
         _uniPpm = new float[n];
         _uniMinPx = new float[n];
         Array.Fill(_uniMinPx, MinDrawnRadiusPixels);
-        _uniChords = OverviewDetail.ClosestChildChords(bodies); // per layout: the places only glide between layouts
+        // Per layout: the places only glide between layouts (PLANET-108: made once, not every decision).
+        _uniDetailLayout = OverviewDetail.Prepare(bodies);
+        _uniChords = _uniDetailLayout.MinChord;
+        _uniBodyList = bodies;
         for (var i = 0; i < n; i++)
         {
             if (first || !oldIndex.TryGetValue(bodies[i].NodeId, out var oi) || oi >= oldShow.Length) continue;
@@ -134,7 +138,7 @@ public partial class PlanetWorld
                 int[] here = _current != null ? [_current.FolderId] : [];
                 var was = (bool[])_uniExpanded.Clone();
                 for (var i = 0; i < n; i++) was[i] |= _uniWasExpanded[i];
-                OverviewDetail.Compute(_uniBodies.Select(b => b.Body).ToList(), _uniPpm, focus, was, _uniShown, _uniExpanded, _uniFolded, pathOnly: here);
+                OverviewDetail.Compute(_uniBodyList, _uniPpm, focus, was, _uniShown, _uniExpanded, _uniFolded, pathOnly: here, layout: _uniDetailLayout);
                 Array.Clear(_uniWasExpanded);
                 // Worlds on a ring that is open although crowded (the way to the selected world or where you stand: a
                 // drive root's own ring) are drawn smaller than the usual 6 px, down to CrowdedMinPixels, so neighbours
@@ -142,7 +146,8 @@ public partial class PlanetWorld
                 for (var i = 0; i < n; i++)
                 {
                     var p = _uniBodies[i].Body.ParentId;
-                    if (p < 0 || !_uniIndex.TryGetValue(p, out var pi) || _uniChords[pi] <= 0)
+                    var pi = _uniDetailLayout!.Parent[i];
+                    if (p < 0 || pi < 0 || _uniChords[pi] <= 0)
                     {
                         _uniMinPx[i] = MinDrawnRadiusPixels;
                         continue;
@@ -177,6 +182,10 @@ public partial class PlanetWorld
     /// closest-children distance in the current layout, metres.</summary>
     private float[] _uniMinPx = [], _uniChords = [];
 
+    /// <summary>The current layout's bodies and what the level of detail needs from it (made in <see cref="RemapDetail"/>).</summary>
+    private IReadOnlyList<UniverseBody> _uniBodyList = [];
+    private OverviewDetail.Prepared? _uniDetailLayout;
+
     private float MinPixelsAt(int i) => i < _uniMinPx.Length ? _uniMinPx[i] : MinDrawnRadiusPixels;
 
     /// <summary>How much a body is drawn now, 0…1 (its level-of-detail fade).</summary>
@@ -203,8 +212,10 @@ public partial class PlanetWorld
 
         if (_uniHazeBodies.Count == 0) return;
         _uniHazeMesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = true, Mesh = new QuadMesh { Size = new Vector2(2, 2) }, InstanceCount = _uniHazeBodies.Count };
-        // Each haze's cluster of lights is seeded by its folder (PLANET-108), so it keeps its stars across relayouts.
-        for (var k = 0; k < _uniHazeBodies.Count; k++) _uniHazeMesh.SetInstanceCustomData(k, new Color((uint)(bodies[_uniHazeBodies[k]].NodeId * 2654435761u) / (float)uint.MaxValue, 0, 0, 0));
+        // Each haze's cluster of lights is seeded by its folder (PLANET-108), so it keeps its stars across relayouts. The
+        // buffer (12 floats of transform, 4 of colour, 4 of custom data each) is filled every frame by PlaceHaze.
+        _uniHazeBuf = new float[_uniHazeBodies.Count * 20];
+        for (var k = 0; k < _uniHazeBodies.Count; k++) _uniHazeBuf[k * 20 + 16] = (uint)(bodies[_uniHazeBodies[k]].NodeId * 2654435761u) / (float)uint.MaxValue;
         var mat = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/overview_haze.gdshader") };
         _universe!.AddChild(new MultiMeshInstance3D { Multimesh = _uniHazeMesh, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
@@ -219,10 +230,14 @@ public partial class PlanetWorld
             var b = _uniBodies[i].Body;
             var folded = FoldedAt(i);
             var alpha = folded <= 0 || !OverviewDetailEnabled ? 0f : ShowScale(i) * (1 - OpenScale(i)) * MathF.Min(HazeMaxAlpha, HazeBaseAlpha + HazeAlphaPerDecade * MathF.Log10(1 + folded));
-            var r = MathF.Max(b.OrbitRadius * 1.1f, DrawnRadius(b, _uniBodies[i].At) * HazeMinRadii) * AppearScale(i);
-            _uniHazeMesh.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
-            _uniHazeMesh.SetInstanceColor(k, new Color(0.75f, 0.82f, 1f, alpha));
+            // A haze that is not seen (open, or not shown) needs no size: skip the drawn-radius work.
+            var r = alpha <= 0f ? 0f : MathF.Max(b.OrbitRadius * 1.1f, DrawnRadius(b, _uniBodies[i].At) * HazeMinRadii) * AppearScale(i);
+            var o = k * 20;
+            WriteTransform(_uniHazeBuf, o, new Vector3(r, 0, 0), new Vector3(0, r, 0), new Vector3(0, 0, r), _uniLocal[i]);
+            _uniHazeBuf[o + 12] = 0.75f; _uniHazeBuf[o + 13] = 0.82f; _uniHazeBuf[o + 14] = 1f; _uniHazeBuf[o + 15] = alpha;
         }
+
+        _uniHazeMesh.Buffer = _uniHazeBuf;
     }
 
     /// <summary>

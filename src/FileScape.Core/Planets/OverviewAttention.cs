@@ -63,6 +63,11 @@ public sealed class OverviewAttention
         /// </summary>
         public float DiscoveryReach { get; init; } = 4f;
 
+        /// <summary>Where you stand, while another world is selected: a level behind the selection, so its neighbourhood
+        /// stays but discovery round it reaches a level less (on a drive or distribution root, where you stand is above
+        /// everything, and at offset 0 discovery went four levels deep everywhere while you looked elsewhere).</summary>
+        public float CurrentOffsetWhileSelecting { get; init; } = 1f;
+
         /// <summary>The approached world's offset: a little behind the selected world and where you stand.</summary>
         public float ApproachedOffset { get; init; } = 1f;
 
@@ -138,7 +143,7 @@ public sealed class OverviewAttention
         }
 
         Add(Selected, 0f);
-        Add(Current, 0f);
+        Add(Current, Selected >= 0 && Selected != Current ? _rules.CurrentOffsetWhileSelecting : 0f);
         Add(Approached, _rules.ApproachedOffset);
         for (var i = 0; i < _recent.Count; i++) Add(_recent[i], _rules.RecentOffset + _rules.RecentOffsetPerAge * i);
         return foci;

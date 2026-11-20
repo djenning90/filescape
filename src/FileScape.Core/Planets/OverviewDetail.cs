@@ -59,23 +59,16 @@ public static class OverviewDetail
     /// <paramref name="wasExpanded"/> last decision (same order and length, or null). Results are written into
     /// <paramref name="shown"/>, <paramref name="expanded"/> and <paramref name="folded"/> (each the bodies' length).
     /// </summary>
+    /// <para><paramref name="layout"/>: what depends only on the layout (<see cref="Prepare"/>), made once per layout
+    /// rather than every decision (PLANET-108: at tens of thousands of worlds this was most of the decision's cost).</para>
     public static void Compute(IReadOnlyList<UniverseBody> bodies, ReadOnlySpan<float> pixelsPerMetre, IReadOnlyCollection<int> focus,
-        bool[]? wasExpanded, bool[] shown, bool[] expanded, int[] folded, Rules? rules = null, IReadOnlyCollection<int>? pathOnly = null)
+        bool[]? wasExpanded, bool[] shown, bool[] expanded, int[] folded, Rules? rules = null, IReadOnlyCollection<int>? pathOnly = null, Prepared? layout = null)
     {
         rules ??= new Rules();
         var n = bodies.Count;
         if (n == 0) return;
-        var index = new Dictionary<int, int>(n);
-        for (var i = 0; i < n; i++) index[bodies[i].NodeId] = i;
-        var parent = new int[n];
-        var childCount = new int[n];
-        for (var i = 0; i < n; i++)
-        {
-            parent[i] = bodies[i].ParentId >= 0 && index.TryGetValue(bodies[i].ParentId, out var p) ? p : -1;
-            if (parent[i] >= 0) childCount[parent[i]]++;
-        }
-
-        var minChord = ClosestChildChords(bodies, parent); // what decides whether a ring's children fit apart
+        layout ??= Prepare(bodies);
+        var (index, parent, childCount, minChord) = (layout.Index, layout.Parent, layout.ChildCount, layout.MinChord);
 
         // The focus path (a focus and its ancestors) and the focus subtrees.
         var onPath = new bool[n];
@@ -139,6 +132,27 @@ public static class OverviewDetail
         }
 
         for (var i = 0; i < n; i++) folded[i] = !shown[i] ? 0 : expanded[i] ? bodies[i].HiddenChildren : below[i];
+    }
+
+    /// <summary>What the rule needs from a layout that does not change until the next layout: each body's index by node id,
+    /// its parent's index (−1 for none), its children's count and its closest children's distance (metres).</summary>
+    public sealed record Prepared(Dictionary<int, int> Index, int[] Parent, int[] ChildCount, float[] MinChord);
+
+    /// <summary>Works out <see cref="Prepared"/> for a layout (O(n + Σ k²)).</summary>
+    public static Prepared Prepare(IReadOnlyList<UniverseBody> bodies)
+    {
+        var n = bodies.Count;
+        var index = new Dictionary<int, int>(n);
+        for (var i = 0; i < n; i++) index[bodies[i].NodeId] = i;
+        var parent = new int[n];
+        var childCount = new int[n];
+        for (var i = 0; i < n; i++)
+        {
+            parent[i] = bodies[i].ParentId >= 0 && index.TryGetValue(bodies[i].ParentId, out var p) ? p : -1;
+            if (parent[i] >= 0) childCount[parent[i]]++;
+        }
+
+        return new Prepared(index, parent, childCount, ClosestChildChords(bodies, parent)); // the chords decide whether a ring's children fit apart
     }
 
     /// <summary>

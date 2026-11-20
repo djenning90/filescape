@@ -158,6 +158,21 @@ public partial class PlanetWorld
     private readonly List<(int Parent, int Child)> _uniChains = [];
     private readonly List<int> _uniVisited = [];
     private MultiMesh? _uniRingMesh, _uniChainMesh, _uniVisitedMesh;
+
+    /// <summary>The rings' instance buffer (12 floats of transform and 4 of colour each), filled every frame and handed
+    /// over in one call (PLANET-108).</summary>
+    private float[] _uniRingBuf = [];
+
+    /// <summary>
+    /// Writes a transform into a MultiMesh buffer at <paramref name="o"/>: Godot's layout is the 3×4 matrix row by row,
+    /// so each row holds the basis columns' components then the origin's.
+    /// </summary>
+    private static void WriteTransform(float[] buf, int o, Vector3 x, Vector3 y, Vector3 z, Vector3 origin)
+    {
+        buf[o] = x.X; buf[o + 1] = y.X; buf[o + 2] = z.X; buf[o + 3] = origin.X;
+        buf[o + 4] = x.Y; buf[o + 5] = y.Y; buf[o + 6] = z.Y; buf[o + 7] = origin.Y;
+        buf[o + 8] = x.Z; buf[o + 9] = y.Z; buf[o + 10] = z.Z; buf[o + 11] = origin.Z;
+    }
     private MeshInstance3D? _uniHalo;
     private int _uniHere = -1;
 
@@ -415,6 +430,7 @@ public partial class PlanetWorld
         // Per-instance colours (white, alpha = the level of detail's fade) multiply the line colour: a folded system's ring fades out.
         var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f), VertexColorUseAsAlbedo = true };
         _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
+        _uniRingBuf = new float[_uniRingBodies.Count * 16];
         _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
         foreach (var mm in new[] { _uniRingMesh, _uniChainMesh })
         {
@@ -539,9 +555,13 @@ public partial class PlanetWorld
                 var a = n.Cross(MathF.Abs(n.X) < 0.9f ? Vector3.Right : Vector3.Back).Normalized();
                 var c = n.Cross(a);
                 var r = Mathf.Lerp(_uniMotion[i].OrbitFrom, b.OrbitRadius, e);
-                _uniRingMesh.SetInstanceTransform(k, new Transform3D(new Basis(a * r, n * r, c * r), _uniLocal[i]));
-                _uniRingMesh.SetInstanceColor(k, new Color(1, 1, 1, ShowScale(i) * OpenScale(i)));
+                var o = k * 16;
+                WriteTransform(_uniRingBuf, o, a * r, n * r, c * r, _uniLocal[i]);
+                _uniRingBuf[o + 12] = 1; _uniRingBuf[o + 13] = 1; _uniRingBuf[o + 14] = 1;
+                _uniRingBuf[o + 15] = ShowScale(i) * OpenScale(i);
             }
+
+            _uniRingMesh.Buffer = _uniRingBuf;
         }
 
         if (_uniChainMesh != null)
@@ -688,17 +708,22 @@ public partial class PlanetWorld
         var camPos = _camera.GlobalPosition;
         var camFwd = -_camera.GlobalBasis.Z;
         var screenUp = _camera.GlobalBasis.Y;
+        // Only drawn worlds are measured (PLANET-108: at tens of thousands laid out, most are folded away).
         var nearby = _uniBodies
-            .Select((b, i) => (b, i, d: b.At.DistanceTo(camPos), look: camFwd.Dot((b.At - camPos).Normalized())))
-            .Where(x => Drawn(x.i) && x.look > 0.94f && x.d < _uniDistance * 1.6f)
+            .Select((b, i) => (b, i))
+            .Where(x => Drawn(x.i))
+            .Select(x => (x.b, x.i, d: x.b.At.DistanceTo(camPos), look: camFwd.Dot((x.b.At - camPos).Normalized())))
+            .Where(x => x.look > 0.94f && x.d < _uniDistance * 1.6f)
             .OrderBy(x => x.d)
             .Take(10)
             .Select(x => x.b.Body.NodeId)
             .ToHashSet();
         // The biggest folded systems in view are named too, with what they hold (PLANET-91: a clear indication).
         foreach (var id in _uniBodies
-                     .Select((b, i) => (b, i, look: camFwd.Dot((b.At - camPos).Normalized())))
-                     .Where(x => Drawn(x.i) && FoldedAt(x.i) >= FoldedLabelMin && x.look > 0.85f)
+                     .Select((b, i) => (b, i))
+                     .Where(x => Drawn(x.i) && FoldedAt(x.i) >= FoldedLabelMin)
+                     .Select(x => (x.b, x.i, look: camFwd.Dot((x.b.At - camPos).Normalized())))
+                     .Where(x => x.look > 0.85f)
                      .OrderByDescending(x => FoldedAt(x.i))
                      .Take(FoldedLabels)
                      .Select(x => x.b.Body.NodeId)) nearby.Add(id);
