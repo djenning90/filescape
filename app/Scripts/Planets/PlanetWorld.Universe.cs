@@ -218,6 +218,7 @@ public partial class PlanetWorld
         _audio.Launch();
         _s.Signs.Clear();
         OpenDiscovery(); // PlanetWorld.Discovery.cs (PLANET-76)
+        ShowUniverseHint(); // PlanetWorld.UniverseNav.cs (PLANET-93): the controls, briefly
         UpdateUniverse(tree, 0f, true);
     }
 
@@ -315,6 +316,7 @@ public partial class PlanetWorld
             _uniFocusTarget = UniverseOrigin + _uniMotion[fi].To;
         }
 
+        RemapDetail(oldIndex, bodies, first: !animate); // PlanetWorld.Detail.cs (PLANET-91): fades carried by node id
         _uniGrowT = animate ? 0f : float.MaxValue;
         _uniLayoutVersion = tree.Version;
         _uniLayoutAt = _s.Now;
@@ -346,29 +348,29 @@ public partial class PlanetWorld
         var ghosts = new List<int>();
         for (var i = 0; i < bodies.Count; i++) (bodies[i].Discovery == Discovery.Unknown ? ghosts : solid).Add(i);
         _uniBatches.Clear();
-        MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, Color> color)
+        MultiMeshInstance3D Batch(List<int> list, Material mat, Func<UniverseBody, (Color Base, Color Custom)> look, bool custom)
         {
-            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = sphere, InstanceCount = list.Count };
+            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, UseCustomData = custom, Mesh = sphere, InstanceCount = list.Count };
             _uniBatches.Add((mm, list));
-            for (var i = 0; i < list.Count; i++) mm.SetInstanceColor(i, color(bodies[list[i]]));
+            for (var i = 0; i < list.Count; i++)
+            {
+                var (c, d) = look(bodies[list[i]]);
+                mm.SetInstanceColor(i, c);
+                if (custom) mm.SetInstanceCustomData(i, d);
+            }
+
             return new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = mat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         }
 
-        var solidMat = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.8f, RimEnabled = true, Rim = 0.45f, RimTint = 0.6f };
+        // Solid worlds: one shared material, each world's look per instance (PlanetWorld.Detail.cs, PLANET-92).
+        var solidMat = SolidWorldMaterial();
         var ghostMat = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, CullMode = BaseMaterial3D.CullModeEnum.Back };
         if (solid.Count > 0)
         {
-            _universe.AddChild(Batch(solid, solidMat, b =>
-            {
-                var pal = PlanetArt.Palette(PlanetComposer.ThemeOf(tree, b.NodeId, _s.IsVisible));
-                var h = (uint)(b.NodeId * 2654435761u);
-                var c = pal.Accent.Lerp(pal.GroundHigh, 0.35f);
-                c = Color.FromHsv(Mathf.PosMod(c.H + (h % 100 / 100f - 0.5f) * 0.08f, 1f), Mathf.Clamp(c.S * 1.1f, 0, 1), c.V * 0.95f);
-                return b.Discovery == Discovery.Partial ? c.Darkened(0.35f) : c;
-            }));
+            _universe.AddChild(Batch(solid, solidMat, b => WorldLookOf(tree, b), custom: OverviewLooksVaried));
         }
 
-        if (ghosts.Count > 0) _universe.AddChild(Batch(ghosts, ghostMat, _ => new Color(0.7f, 0.72f, 0.95f, 0.22f)));
+        if (ghosts.Count > 0) _universe.AddChild(Batch(ghosts, ghostMat, _ => (new Color(0.7f, 0.72f, 0.95f, 0.22f), default), custom: false));
 
         // Orbits: one faint ring per system with two or more children, in its tilted plane; a folder with a single subfolder
         // is a chain, not a system: a short straight link, not a ring across the sky.
@@ -387,13 +389,16 @@ public partial class PlanetWorld
             if (b.ParentId >= 0 && _uniIndex.TryGetValue(b.ParentId, out var pi) && childCount.GetValueOrDefault(b.ParentId) == 1) _uniChains.Add((pi, i));
         }
 
-        var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f) };
-        _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
-        _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
+        // Per-instance colours (white, alpha = the level of detail's fade) multiply the line colour: a folded system's ring fades out.
+        var lineMat = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, AlbedoColor = new Color(0.55f, 0.65f, 1f, 0.22f), VertexColorUseAsAlbedo = true };
+        _uniRingMesh = _uniRingBodies.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitCircleLines(), InstanceCount = _uniRingBodies.Count } : null;
+        _uniChainMesh = _uniChains.Count > 0 ? new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = true, Mesh = UnitSegmentLine(), InstanceCount = _uniChains.Count } : null;
         foreach (var mm in new[] { _uniRingMesh, _uniChainMesh })
         {
             if (mm != null) _universe.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = lineMat, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
+
+        BuildHaze(bodies, childCount); // PlanetWorld.Detail.cs (PLANET-91): folded systems' haze
 
         // Visited this session: a ring round the world. Where you stand: a gold beacon.
         _uniVisited.Clear();
@@ -478,13 +483,14 @@ public partial class PlanetWorld
             _uniBodies[i] = (_uniBodies[i].Body, UniverseOrigin + p);
         }
 
+        UpdateUniverseDetail(dt); // PlanetWorld.Detail.cs (PLANET-91): which systems are open at this distance
         foreach (var (mm, list) in _uniBatches)
         {
             for (var k = 0; k < list.Count; k++)
             {
                 var i = list[k];
                 var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
-                var r = DrawnRadius(radius, _uniBodies[i].At) * AppearScale(i);
+                var r = DrawnRadius(radius, _uniBodies[i].At) * AppearScale(i) * ShowScale(i);
                 mm.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
             }
         }
@@ -501,6 +507,7 @@ public partial class PlanetWorld
                 var c = n.Cross(a);
                 var r = Mathf.Lerp(_uniMotion[i].OrbitFrom, b.OrbitRadius, e);
                 _uniRingMesh.SetInstanceTransform(k, new Transform3D(new Basis(a * r, n * r, c * r), _uniLocal[i]));
+                _uniRingMesh.SetInstanceColor(k, new Color(1, 1, 1, ShowScale(i) * OpenScale(i)));
             }
         }
 
@@ -515,6 +522,7 @@ public partial class PlanetWorld
                 var v = dir.Cross(u);
                 // Z carries the segment; X and Y only keep the basis invertible (the segment has no width).
                 _uniChainMesh.SetInstanceTransform(k, new Transform3D(new Basis(u, v, d.LengthSquared() > 1e-8f ? d : dir * 1e-4f), _uniLocal[pi]));
+                _uniChainMesh.SetInstanceColor(k, new Color(1, 1, 1, ShowScale(ci)));
             }
         }
 
@@ -523,12 +531,13 @@ public partial class PlanetWorld
             for (var k = 0; k < _uniVisited.Count; k++)
             {
                 var i = _uniVisited[k];
-                var r = _uniBodies[i].Body.Radius * AppearScale(i);
+                var r = _uniBodies[i].Body.Radius * AppearScale(i) * ShowScale(i);
                 _uniVisitedMesh.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
             }
         }
 
         if (_uniHalo != null && _uniHere >= 0) _uniHalo.Position = _uniLocal[_uniHere];
+        PlaceHaze(); // PlanetWorld.Detail.cs
     }
 
     /// <summary>Leaves the overview; <paramref name="returnToSurface"/> glides the camera back down to where you stood.
@@ -557,6 +566,7 @@ public partial class PlanetWorld
         _uniLanding = null;
         _uniFrame = null;
         CloseDiscovery(); // PlanetWorld.Discovery.cs
+        HideUniverseHint(); // PlanetWorld.UniverseNav.cs
         _camera.Far = SurfaceFarMetres;
         _s.Signs.Clear();
         _s.Hud.SetPlanetsOverview(open: false);
@@ -636,14 +646,23 @@ public partial class PlanetWorld
         var camFwd = -_camera.GlobalBasis.Z;
         var screenUp = _camera.GlobalBasis.Y;
         var nearby = _uniBodies
-            .Select(b => (b, d: b.At.DistanceTo(camPos), look: camFwd.Dot((b.At - camPos).Normalized())))
-            .Where(x => x.look > 0.94f && x.d < _uniDistance * 1.6f)
+            .Select((b, i) => (b, i, d: b.At.DistanceTo(camPos), look: camFwd.Dot((b.At - camPos).Normalized())))
+            .Where(x => Drawn(x.i) && x.look > 0.94f && x.d < _uniDistance * 1.6f)
             .OrderBy(x => x.d)
             .Take(10)
             .Select(x => x.b.Body.NodeId)
             .ToHashSet();
-        foreach (var (b, at) in _uniBodies)
+        // The biggest folded systems in view are named too, with what they hold (PLANET-91: a clear indication).
+        foreach (var id in _uniBodies
+                     .Select((b, i) => (b, i, look: camFwd.Dot((b.At - camPos).Normalized())))
+                     .Where(x => Drawn(x.i) && FoldedAt(x.i) >= FoldedLabelMin && x.look > 0.85f)
+                     .OrderByDescending(x => FoldedAt(x.i))
+                     .Take(FoldedLabels)
+                     .Select(x => x.b.Body.NodeId)) nearby.Add(id);
+        for (var bi = 0; bi < _uniBodies.Count; bi++)
         {
+            var (b, at) = _uniBodies[bi];
+            if (!Drawn(bi)) continue;
             var id = b.NodeId;
             var here = id == _current?.FolderId;
             var focus = id == _uniSelected || id == _uniHovered || here;
@@ -656,7 +675,9 @@ public partial class PlanetWorld
                 Discovery.Partial => "partly listed",
                 _ => FolderSummary.Gate(n, Listing.Of(n)),
             };
-            if (b.HiddenChildren > 0) detail += $" · +{b.HiddenChildren} more folders";
+            var folded = FoldedAt(bi);
+            if (folded > b.HiddenChildren) detail += $" · {folded:N0} worlds folded in (come closer)";
+            else if (b.HiddenChildren > 0) detail += $" · +{b.HiddenChildren} more folders";
             if (_s.Visited(id) && !here) detail += " · visited";
             var color = here ? new Color(1f, 0.85f, 0.45f) : b.Discovery == Discovery.Unknown ? new Color(0.75f, 0.78f, 0.95f) : new Color(1f, 0.95f, 0.8f);
             _signs.Add(new SignCandidate(id, at + screenUp * (DrawnRadius(b, at) * 1.15f), name, detail, color, FileIcons.For(n), focus, here ? 30f : 0f, FixedAnchor: true));
@@ -666,7 +687,8 @@ public partial class PlanetWorld
         var selName = _uniSelected >= 0 && tree.Contains(_uniSelected) ? tree.DisplayName(_uniSelected) : "";
         var (listed, partial, unknown, visitedCount) = UniverseCounts;
         SetPrompt(_uniSelected == _current?.FolderId ? $"★ {selName}: you are here · click a world, then Enter to land there" : $"{selName} · Enter (or double-click) to land there",
-            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zoom · X: pause discovery · Esc or T: back");
+            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zooms toward the pointer · [ ] round the ring · Z up a level · X: pause discovery · Esc or T: back");
+        UpdateUniverseHint(dt); // PlanetWorld.UniverseNav.cs
     }
 
     /// <summary>
@@ -679,9 +701,10 @@ public partial class PlanetWorld
         var best = float.PositiveInfinity;
         var id = -1;
         var right = _camera.GlobalBasis.X;
-        foreach (var (b, at) in _uniBodies)
+        for (var i = 0; i < _uniBodies.Count; i++)
         {
-            if (_camera.IsPositionBehind(at)) continue;
+            var (b, at) = _uniBodies[i];
+            if (!Drawn(i) || _camera.IsPositionBehind(at)) continue; // a folded world is not there to click (PLANET-91)
             var c = _camera.UnprojectPosition(at);
             var px = c.DistanceTo(_camera.UnprojectPosition(at + right * DrawnRadius(b, at)));
             var d = c.DistanceTo(screen);
@@ -721,6 +744,12 @@ public partial class PlanetWorld
             case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.N, CtrlPressed: false }:
                 RequestSoundToggle(); // PlanetWorld.Sound.cs: the same control as the toolbar's sound button
                 return true;
+            case InputEventKey { Pressed: true, PhysicalKeycode: Key.Bracketleft or Key.Bracketright, CtrlPressed: false } ring:
+                StepRoundRing(ring.PhysicalKeycode == Key.Bracketright ? 1 : -1); // PlanetWorld.UniverseNav.cs (PLANET-93)
+                return true;
+            case InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.Z, CtrlPressed: false }:
+                StepUpLevel(); // PlanetWorld.UniverseNav.cs (PLANET-93)
+                return true;
         }
 
         return false; // Backspace, J, L, Ctrl+L…: the shared commands (a navigation change lands from the overview)
@@ -736,6 +765,7 @@ public partial class PlanetWorld
         _uniFocusTarget = UniverseOrigin + _uniMotion[i].To; // where it is headed if a relayout is gliding it
         _uniDistanceTarget = Mathf.Clamp(SystemSize(_uniBodies[i].Body) * SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
         _uniFrame = (id, SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
+        NoteUniverseControl(UniverseControl.Select);
     }
 
     /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it.</summary>
@@ -799,7 +829,9 @@ public partial class PlanetWorld
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
                 _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? WheelZoomIn : WheelZoomOut), MinZoomMetres, MaxZoomMetres);
+                if (wheel.ButtonIndex == MouseButton.WheelUp) ZoomTowardPointer(wheel.Position); // PlanetWorld.UniverseNav.cs (PLANET-93)
                 _uniFrame = null;
+                NoteUniverseControl(UniverseControl.Wheel);
                 return true;
         }
 

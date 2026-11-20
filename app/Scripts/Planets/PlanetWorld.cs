@@ -260,6 +260,7 @@ public partial class PlanetWorld : Node3D
             return;
         }
 
+        StepPlayDiscovery(tree); // PlanetWorld.Discovery.cs (PLANET-90): background discovery at the play pace
         MaybeRecompose(tree);
         ApplyPendingRecompose(tree);
         switch (_phase)

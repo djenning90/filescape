@@ -11,7 +11,7 @@ namespace FileScape.App.Planets;
 /// and the overview grows as the listings arrive (<see cref="ApplyUniverseLayout"/> glides it, so nothing jumps). A
 /// small indicator above the prompt says it is going on and has a Pause button; X does the same. What is learned is the
 /// session's tree, so it stays after the overview closes and is what a visit would have listed (a later visit of a
-/// discovered folder lists nothing again). Nothing is listed while the overview is closed, and nothing at all without a
+/// discovered folder lists nothing again). While the overview is closed it goes on more quietly at the play pace (PLANET-90, below), and nothing at all is listed without a
 /// live explorer (synthetic data).
 /// <para>
 /// Main thread only (it reads the tree and the scene). The scheduler's bounds are in <see cref="OverviewDiscovery.Limits"/>;
@@ -148,6 +148,75 @@ public partial class PlanetWorld
         }
 
         UpdateDiscoveryIndicator();
+    }
+
+    // ---- background discovery during ordinary play (PLANET-90, AD-77)
+    // DJ (fifth playtest follow-up): "Allow background folder discovery during ordinary play as well as Overview. Reuse
+    // the listing scheduler, prioritize what I'm visiting, and keep the game responsive." The same scheduler, bounds and
+    // explorer request as the overview's, at its quieter play pace (OverviewDiscovery.Limits.PlayListingsPerSecond, two
+    // in flight), and the same candidates: the worlds the overview would draw (UniverseLayout.Selection, without laying
+    // them out). The current world's subtree goes first, then its parent's (its neighbours), then its grandparent's, then
+    // the rest breadth-first. Only while walking (never during a flight or a landing, whose frames matter most), never
+    // while paused (X in the overview pauses both), and never without a live explorer.
+
+    /// <summary>False with --test-play-discovery=off (the before/after instrument): nothing is listed while you play.</summary>
+    public bool PlayDiscoveryEnabled { get; init; } = true;
+
+    /// <summary>How often play discovery asks the scheduler, seconds: its pace is 2 a second, so four steps a second
+    /// keep it on pace at a quarter of the overview's checks.</summary>
+    private static readonly TimeSpan PlayDiscoveryStepInterval = TimeSpan.FromSeconds(0.25);
+
+    /// <summary>
+    /// The least time between two rebuilds of play discovery's candidates, seconds. A rebuild is the overview's selection
+    /// pass over the tree (sorting each system's names), ≈ 1–3 ms at 1,500 worlds on the main thread, so it waits for
+    /// the tree to have changed and for this long since the last one.
+    /// </summary>
+    private static readonly TimeSpan PlayCandidateInterval = TimeSpan.FromSeconds(2);
+
+    private List<OverviewDiscovery.Candidate> _playCandidates = [];
+    private int _playCandidatesVersion = -1;
+    private TimeSpan _playCandidatesAt;
+    private int _playCandidatesFolder = -1;
+
+    /// <summary>The longest candidate rebuild while playing, milliseconds, and how many (probes).</summary>
+    public double PlayDiscoveryRebuildMsMax { get; private set; }
+    public int PlayDiscoveryRebuilds { get; private set; }
+
+    /// <summary>Listings play discovery has asked for this session (probes).</summary>
+    public int PlayDiscoveryRequested { get; private set; }
+
+    /// <summary>Once a frame while the overview is closed: background discovery at the play pace (see above).</summary>
+    private void StepPlayDiscovery(FsTree tree)
+    {
+        if (!PlayDiscoveryEnabled || _s.Explorer is not { } explorer || _current == null || Busy || _hop != null || _phase != Phase.Walking) return;
+        var now = _s.Now;
+        if (now - _lastDiscoveryStep < PlayDiscoveryStepInterval) return;
+        _lastDiscoveryStep = now;
+        var folder = _current.FolderId;
+        if (_playCandidatesFolder != folder || tree.Version != _playCandidatesVersion && now - _playCandidatesAt >= PlayCandidateInterval)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            // The overview's own selection (ComputeUniverse with nothing drawn yet): the way to where you stand pinned.
+            var onTheWay = new HashSet<int>();
+            for (var a = folder; a >= 0 && tree.Contains(a); a = tree[a].ParentId) onTheWay.Add(a);
+            var selection = UniverseLayout.Selection(tree, n => _s.IsVisible(n) || onTheWay.Contains(n.Id), tree.Root.Id, onTheWay);
+            _playCandidates = new List<OverviewDiscovery.Candidate>(selection.Count);
+            for (var i = 0; i < selection.Count; i++) _playCandidates.Add(new OverviewDiscovery.Candidate(selection[i].Id, selection[i].Depth, i));
+            _playCandidatesVersion = tree.Version;
+            _playCandidatesAt = now;
+            _playCandidatesFolder = folder;
+            PlayDiscoveryRebuilds++;
+            PlayDiscoveryRebuildMsMax = Math.Max(PlayDiscoveryRebuildMsMax, sw.Elapsed.TotalMilliseconds);
+        }
+
+        // What you are visiting first: this world's subtree, then its parent's, then its grandparent's (the focus order).
+        var focus = new List<int>(3);
+        for (var a = folder; a >= 0 && focus.Count < 3 && tree.Contains(a); a = tree[a].ParentId) focus.Add(a);
+        foreach (var id in _discovery.Step(tree, _playCandidates, focus, now, _s.MayListAhead, OverviewDiscovery.Pace.Play, focusInOrder: true))
+        {
+            explorer.Discover(id);
+            PlayDiscoveryRequested++;
+        }
     }
 
     /// <summary>The layout has not changed what is drawn (same worlds, places, sizes and states): nothing to rebuild.</summary>
