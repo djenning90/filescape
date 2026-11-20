@@ -695,7 +695,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
     public void The_identities_sound_measurably_different_and_the_hub_is_the_calm_one()
     {
         var features = new Dictionary<MusicIdentity, (float Bpm, double Onsets, double High, double Rms)>();
-        foreach (var id in Enum.GetValues<MusicIdentity>())
+        // The worlds' identities: the experiences' pieces (AD-79, the overlook and the overview) are calm on purpose and
+        // are not places to explore; their own tests are in SkySynthTests.Experience.cs.
+        foreach (var id in SkySynth.WorldIdentities)
         {
             var s = SynthFor(2026, PlanetTheme.Hearth, id);
             var buf = RenderSeconds(s, 16);

@@ -38,7 +38,7 @@ public sealed partial class SkySynth
             var n = (int)Math.Min(SketchChunkFrames, total - done);
             while (next < notes.Count && notes[next].Start.TotalSeconds * sampleRateHz < done + n + SketchLookaheadFrames)
             {
-                s.PlaySketchNote(notes[next]);
+                s.PlaySketchNote(notes[next], (long)Math.Round(notes[next].Start.TotalSeconds * s._rate), GroupSfx, transposeSemitones: 0);
                 next++;
             }
 
@@ -49,16 +49,18 @@ public sealed partial class SkySynth
         return output;
     }
 
-    /// <summary>Queues one sketch note on its instrument (all in the effects group: gain 1, the reverb as each voice's send sets).</summary>
-    private void PlaySketchNote(in SketchNote n)
+    /// <summary>
+    /// Queues one sketch note on its instrument at frame <paramref name="at"/> into voice group <paramref name="g"/>: offline,
+    /// the effects group (gain 1, the reverb as each voice's send sets); in the game, the deck playing an experience's piece
+    /// (AD-79, SkySynth.Experience.cs), <paramref name="transposeSemitones"/> into the world's key.
+    /// </summary>
+    private void PlaySketchNote(in SketchNote n, long at, int g, int transposeSemitones)
     {
-        var at = (long)Math.Round(n.Start.TotalSeconds * _rate);
-        var hz = MidiHz(n.MidiNote);
+        var hz = MidiHz(n.MidiNote + transposeSemitones);
         // A held note ends 20 ms before its written end, so repeated notes re-articulate (rationale as the theme's legato gap).
         var hold = MathF.Max(0.04f, n.Length.ToSecondsF() - 0.02f);
         var v = n.Velocity;
         var pan = n.Pan;
-        const int g = GroupSfx;
         switch (n.Instrument)
         {
             case SketchInstrument.Bell: Lead1(Lead.Bell, 0.075f); break;
@@ -123,6 +125,9 @@ public sealed partial class SkySynth
                 break;
             }
 
+            case SketchInstrument.AuroraPad: Aurora(AuroraRole.Pad, 0.02f); break;
+            case SketchInstrument.AuroraLead: Aurora(AuroraRole.Lead, 0.034f); break;
+            case SketchInstrument.AuroraBass: Aurora(AuroraRole.Bass, 0.05f); break;
             case SketchInstrument.Timpani:
                 Enqueue(at, NoteSpec.Tone(Wave.Sine, hz * 1.01f) with { GlideToHz = hz, Glide = 0.08f, Attack = 0.002f, Decay = 1.1f, Gain = 0.12f * v, Pan = 0.05f, Send = 0.35f, Group = g });
                 Enqueue(at, NoteSpec.Tone(Wave.Triangle, hz * 1.5f) with { Attack = 0.002f, Decay = 0.35f, Gain = 0.03f * v, ToneHz = 900, Send = 0.35f, Group = g });
@@ -132,5 +137,9 @@ public sealed partial class SkySynth
 
         // One lead voice at a base gain (linear, before velocity; levels set by ear against the bed, rationale not recorded).
         void Lead1(Lead lead, float baseGain) => Enqueue(at, LeadSpec(lead, hz, hold) with { Gain = baseGain * v, Pan = pan, Group = g });
+
+        // An aurora note (AD-79) at a base gain (linear, before velocity; set by measurement so it is about as loud as the
+        // instrument it stands in for in the before/after comparison); velocity also opens its filter (AuroraSpec).
+        void Aurora(AuroraRole role, float baseGain) => Enqueue(at, AuroraSpec(role, hz, hold, v) with { Gain = baseGain * v, Pan = pan, Group = g });
     }
 }

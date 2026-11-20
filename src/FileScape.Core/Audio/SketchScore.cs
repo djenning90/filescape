@@ -81,6 +81,15 @@ public enum SketchInstrument
 
     /// <summary>A timpani stroke on the note's pitch.</summary>
     Timpani,
+
+    /// <summary>The aurora pad (AD-79): three detuned saws into a resonant filter that opens over ≈ 2 s, like a sky.</summary>
+    AuroraPad,
+
+    /// <summary>The aurora lead (AD-79): a soft, brassy analog lead whose filter blooms with each note; louder is brighter.</summary>
+    AuroraLead,
+
+    /// <summary>The aurora bass (AD-79): one saw with a short resonant pluck.</summary>
+    AuroraBass,
 }
 
 /// <summary>What a sketch note is for: the melody (the tune whose mode is being heard), the bed under it, or the kit.</summary>

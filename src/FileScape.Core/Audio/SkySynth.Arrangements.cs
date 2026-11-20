@@ -29,6 +29,9 @@ public sealed partial class SkySynth
 
         /// <summary>AD-60's hazard score: frenetic, "get out of here" (SkySynth.Escape.cs).</summary>
         Escape,
+
+        /// <summary>AD-79: a written piece for an experience (<see cref="ExperiencePiece"/>), played note for note (SkySynth.Experience.cs).</summary>
+        Score,
     }
 
     // ---- the sidechain pump

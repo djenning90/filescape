@@ -319,58 +319,83 @@ public static class ModeSketches
     // ---------------------------------------------------------------- the arrangements (PLANET-80)
 
     /// <summary>
-    /// "The overlook" (Lydian, 84 BPM): the whole written theme on the flute over a tonic pedal while the strings and the harp
+    /// "The overlook" (Lydian, 84 BPM, 16 bars): the whole written theme on the flute over a tonic pedal while the strings and the harp
     /// move between I and II (the major chord on the second degree that holds the raised fourth: Lydian's float), a glass
     /// bell ringing the raised fourth at the ends of phrases, the second half again an octave up on the glass, and a II–I
     /// close. For the overview, the telescope's view, an establishing shot of a new system. ≈ 48 s.
+    /// <para>
+    /// AD-79 takes it into the game as the overlook's own music (<see cref="ExperiencePieces.Overlook"/>):
+    /// <paramref name="variation"/> 0 is the sketch exactly as DJ heard it (2026-11-19: "beautiful"); 1, the second light
+    /// (a revisit, and every other time round), keeps the form, the harmony and the harp and lets the glass carry the theme
+    /// an octave up with the flute a third below it, the answer return to the flute alone, and the strings give way to the
+    /// aurora pad, whose filter opens with each chord.
+    /// </para>
     /// </summary>
-    public static SketchScore LydianOverlook()
+    public static SketchScore LydianOverlook(int variation = 0)
     {
+        var second = variation % 2 == 1;
         var w = new SketchWriter(OverlookBpm, DiatonicMode.Lydian, TonicMidi);
         int[] upper = [0, 1, 0, 2, 5, 1, 1, 0];
         w.Mark("intro: I and II over the pedal");
         for (var bar = 0; bar < 2; bar++)
         {
-            OverlookBar(w, 16 * bar, bar == 0 ? 0 : 1);
+            OverlookBar(w, 16 * bar, bar == 0 ? 0 : 1, second);
         }
 
         w.Degree(SketchPart.Colour, SketchInstrument.Glass, 24, 8, 3, 1, 0.5f, 0.35f);
         w.AdvanceBars(2);
-        w.Mark("the theme (flute)");
+        w.Mark(second ? "the theme (glass, the flute a third below)" : "the theme (flute)");
         for (var bar = 0; bar < 8; bar++)
         {
-            OverlookBar(w, 16 * bar, upper[bar]);
+            OverlookBar(w, 16 * bar, upper[bar], second);
             if (upper[bar] == 1 && bar % 2 == 1) w.Degree(SketchPart.Colour, SketchInstrument.Glass, 16 * bar + 12, 4, 3, 1, 0.45f, 0.35f);
         }
 
-        foreach (var n in SkySynth.ThemeMelody) w.Degree(M, SketchInstrument.Flute, n.StartSixteenths, n.LengthSixteenths, n.Degree, 0, 0.9f, -0.1f);
+        foreach (var n in SkySynth.ThemeMelody)
+        {
+            if (!second)
+            {
+                w.Degree(M, SketchInstrument.Flute, n.StartSixteenths, n.LengthSixteenths, n.Degree, 0, 0.9f, -0.1f);
+                continue;
+            }
+
+            w.Degree(M, SketchInstrument.Glass, n.StartSixteenths, n.LengthSixteenths, n.Degree, 1, 0.6f, 0.15f);
+            w.Degree(SketchPart.Counter, SketchInstrument.Flute, n.StartSixteenths, n.LengthSixteenths, n.Degree - 2, 0, 0.55f, -0.25f); // a third below
+        }
+
         w.AdvanceBars(8);
-        w.Mark("the answer an octave up (glass), the flute below");
-        for (var bar = 0; bar < 4; bar++) OverlookBar(w, 16 * bar, upper[4 + bar]);
+        w.Mark(second ? "the answer (the flute alone)" : "the answer an octave up (glass), the flute below");
+        for (var bar = 0; bar < 4; bar++) OverlookBar(w, 16 * bar, upper[4 + bar], second);
         foreach (var n in SkySynth.ThemeMelody.Where(n => n.StartSixteenths >= 64))
         {
+            if (second)
+            {
+                w.Degree(M, SketchInstrument.Flute, n.StartSixteenths - 64, n.LengthSixteenths, n.Degree, 0, 0.85f, -0.1f);
+                continue;
+            }
+
             w.Degree(M, SketchInstrument.Glass, n.StartSixteenths - 64, n.LengthSixteenths, n.Degree, 1, 0.6f, 0.15f);
             w.Degree(SketchPart.Counter, SketchInstrument.Flute, n.StartSixteenths - 64, n.LengthSixteenths, n.Degree - 2, 0, 0.45f, -0.25f); // a third below
         }
 
         w.AdvanceBars(4);
         w.Mark("close: II - I");
-        OverlookBar(w, 0, 1);
-        OverlookBar(w, 16, 0);
+        OverlookBar(w, 0, 1, second);
+        OverlookBar(w, 16, 0, second);
         w.Degree(M, SketchInstrument.Flute, 0, 8, 1, 1, 0.7f);
         w.Degree(M, SketchInstrument.Flute, 8, 8, 3, 0, 0.7f);
         w.Degree(M, SketchInstrument.Flute, 16, 16, 2, 0, 0.7f);
         w.Degree(SketchPart.Colour, SketchInstrument.Glass, 20, 12, 3, 1, 0.45f, 0.35f);
         w.Degree(SketchPart.Bass, SketchInstrument.Timpani, 16, 4, 0, -2, 0.5f);
         w.AdvanceBars(2);
-        return w.Build("arrangement-lydian-overlook", RingSeconds + 1);
+        return w.Build(second ? "overlook-second-light" : "arrangement-lydian-overlook", RingSeconds + 1);
     }
 
-    /// <summary>A bar of the overlook: the tonic pedal low, the strings on <paramref name="upper"/>'s triad, the harp rising through it in eighths.</summary>
-    private static void OverlookBar(SketchWriter w, double at, int upper)
+    /// <summary>A bar of the overlook: the tonic pedal low, the strings (the aurora pad in the second light) on <paramref name="upper"/>'s triad, the harp rising through it in eighths.</summary>
+    private static void OverlookBar(SketchWriter w, double at, int upper, bool aurora = false)
     {
         w.Degree(SketchPart.Bass, SketchInstrument.Bass, at, 16, 0, -2, 0.7f);
-        Triad(w, SketchInstrument.StringPad, at, 16, upper, -1, 1f);
+        Triad(w, aurora ? SketchInstrument.AuroraPad : SketchInstrument.StringPad, at, 16, upper, -1, aurora ? 0.8f : 1f);
         for (var e = 0; e < 8; e++) w.Degree(SketchPart.Arpeggio, SketchInstrument.Harp, at + 2 * e, 2, Ladder(Low(upper), e < 5 ? e + 1 : 9 - e), -1, 0.55f, 0.35f);
     }
 
@@ -552,6 +577,152 @@ public static class ModeSketches
             w.Degree(M, lead, n.StartSixteenths, n.LengthSixteenths, n.Degree, octaves, 0.9f, -0.05f);
             if (doubling is { } d && n.StartSixteenths >= 32) w.Degree(SketchPart.Counter, d, n.StartSixteenths, n.LengthSixteenths, n.Degree, octaves + (d == SketchInstrument.Clarinet ? 1 : 0), 0.45f, 0.2f);
         }
+    }
+
+    // ---------------------------------------------------------------- the overview's star chart (AD-79)
+
+    /// <summary>The star chart's tempo, beats per minute: between the overlook's float (84) and the reel's walk (112); 16 bars last 40 s.</summary>
+    public const double StarChartBpm = 96;
+
+    /// <summary>
+    /// The star chart's chords under the theme's answer and raised motif (its bars 6–9), as scale degrees: Ionian vi V IV I
+    /// (a falling bass from the relative minor home); Dorian i v ♭VII i (the written theme's own Dorian harmony).
+    /// </summary>
+    private static int[] StarChartMiddleChords(DiatonicMode mode) => mode == DiatonicMode.Dorian ? [0, 4, 6, 0] : [5, 4, 3, 0];
+
+    /// <summary>The star chart's chords under its constellation (bars 10–13): Ionian IV V iii vi; Dorian IV v ♭III i.</summary>
+    private static int[] StarChartConstellationChords(DiatonicMode mode) => mode == DiatonicMode.Dorian ? [3, 4, 2, 0] : [3, 4, 2, 5];
+
+    /// <summary>
+    /// The constellation (bars 10–13 of the star chart, original): a slow line joining chord tones, a held note and a step
+    /// per bar, rising to the octave's ninth and settling on the octave, then a step up into the cadence. (start, degree, length) per bar.
+    /// </summary>
+    private static readonly (int Start, int Degree, int Length)[][] Constellation =
+    [
+        [(0, 7, 12), (12, 8, 4)],
+        [(0, 6, 8), (8, 4, 8)],
+        [(0, 4, 4), (4, 6, 4), (8, 9, 8)],
+        [(0, 7, 12), (12, 8, 4)],
+    ];
+
+    /// <summary>
+    /// "The star chart" (AD-79, original, built from the FileScape theme): the overview's own music, 16 bars at
+    /// <see cref="StarChartBpm"/> in <paramref name="mode"/> (Ionian, or Dorian when you look out from a minor place). The
+    /// intro states the mode as the reel does (the harp climbing its scale) under the aurora pad opening like a sky; the
+    /// short theme follows on the bell over the reel's chords (bars 2–5: the reel's Ionian version, the one DJ liked best);
+    /// then the theme's answer and raised motif on the aurora lead with the bell an octave above (6–9); the constellation,
+    /// glass stars over the pad (10–13); and the cadence, the characteristic degree ringing on the glass (14–15).
+    /// <paramref name="variation"/> 1 (a revisit, every other time round) gives the short theme to the aurora lead and the
+    /// answer to the bell. Soft offbeat hats and a kick every second bar from bar 6 give it a slow pulse.
+    /// </summary>
+    public static SketchScore StarChart(DiatonicMode mode, int variation = 0)
+    {
+        var swap = variation % 2 == 1;
+        var w = new SketchWriter(StarChartBpm, mode, TonicMidi);
+        var shortChords = ShortThemeChords(mode);
+        w.Mark("intro: the mode, the sky opening");
+        Triad(w, SketchInstrument.AuroraPad, 0, 16, 0, -1, 0.75f);
+        Triad(w, SketchInstrument.AuroraPad, 16, 16, 3, -1, 0.8f);
+        w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, 0, 16, 0, -2, 0.7f);
+        w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, 16, 16, Low(3), -2, 0.7f);
+        for (var i = 0; i < 8; i++) w.Degree(SketchPart.Arpeggio, SketchInstrument.Harp, i * 2, 2, i, -1, 0.75f, 0.35f);
+        w.Degree(SketchPart.Colour, SketchInstrument.Glass, 20, 6, 4, 1, 0.4f, -0.3f);
+        w.Degree(SketchPart.Colour, SketchInstrument.Glass, 26, 6, 7, 1, 0.4f, 0.3f);
+        w.AdvanceBars(2);
+
+        w.Mark(swap ? "the short theme (aurora lead)" : "the short theme (bell)");
+        for (var bar = 0; bar < 4; bar++)
+        {
+            var at = 16 * bar;
+            Triad(w, SketchInstrument.Pad, at, 16, shortChords[bar], -1, 0.9f);
+            BassBar(w, at, shortChords[bar]);
+            Arpeggio(w, at, shortChords[bar], -1, 0.55f);
+            Hats(w, at, 0.25f);
+        }
+
+        foreach (var n in ShortTheme) w.Degree(M, swap ? SketchInstrument.AuroraLead : SketchInstrument.Bell, n.StartSixteenths, n.LengthSixteenths, n.Degree, 0, 0.9f, -0.05f);
+        w.AdvanceBars(4);
+
+        w.Mark(swap ? "the answer and the raised motif (bell, glass above)" : "the answer and the raised motif (aurora lead, the bell above)");
+        var middle = StarChartMiddleChords(mode);
+        for (var bar = 0; bar < 4; bar++)
+        {
+            var at = 16 * bar;
+            Triad(w, SketchInstrument.AuroraPad, at, 16, middle[bar], -1, 0.85f);
+            BassBar(w, at, middle[bar]);
+            Hats(w, at, 0.3f);
+            if (bar % 2 == 0) w.Hit(SketchInstrument.Kick, at, 0.45f);
+        }
+
+        foreach (var n in SkySynth.ThemeMelody.Where(n => n.StartSixteenths is >= 32 and < 96))
+        {
+            var at = n.StartSixteenths - 32;
+            w.Degree(M, swap ? SketchInstrument.Bell : SketchInstrument.AuroraLead, at, n.LengthSixteenths, n.Degree, 0, 0.85f, -0.05f);
+            w.Degree(SketchPart.Counter, swap ? SketchInstrument.Glass : SketchInstrument.Bell, at, n.LengthSixteenths, n.Degree, 1, 0.35f, 0.25f);
+        }
+
+        w.AdvanceBars(4);
+
+        w.Mark("the constellation (glass stars over the pad)");
+        var stars = StarChartConstellationChords(mode);
+        for (var bar = 0; bar < 4; bar++)
+        {
+            var at = 16 * bar;
+            Triad(w, SketchInstrument.AuroraPad, at, 16, stars[bar], -1, 0.9f);
+            w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, at, 8, Low(stars[bar]), -2, 0.75f);
+            w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, at + 8, 8, Low(stars[bar]) + 4, -2, 0.6f);
+            for (var e = 0; e < 4; e++) w.Degree(SketchPart.Arpeggio, SketchInstrument.Glass, at + 4 * e + 2, 2, Ladder(stars[bar], 3 + e), -1, 0.3f + 0.05f * e, e % 2 == 0 ? -0.45f : 0.45f);
+            Hats(w, at, 0.22f);
+            if (bar % 2 == 0) w.Hit(SketchInstrument.Kick, at, 0.4f);
+            foreach (var (start, degree, length) in Constellation[bar]) w.Degree(M, swap ? SketchInstrument.Glass : SketchInstrument.Bell, at + start, length, degree, 0, 0.75f, -0.1f);
+        }
+
+        w.AdvanceBars(4);
+
+        w.Mark("the cadence, the mode's colour on the glass");
+        for (var bar = 0; bar < 2; bar++)
+        {
+            var at = 16 * bar;
+            var root = shortChords[2 + bar];
+            Triad(w, SketchInstrument.Pad, at, 16, root, -1, 0.9f);
+            Triad(w, SketchInstrument.AuroraPad, at, 16, root, -1, 0.6f);
+            BassBar(w, at, root);
+            if (bar == 0) Arpeggio(w, at, root, -1, 0.5f);
+            Hats(w, at, 0.2f);
+        }
+
+        foreach (var n in ShortTheme.Where(n => n.StartSixteenths >= 32)) w.Degree(M, SketchInstrument.Bell, n.StartSixteenths - 32, n.LengthSixteenths, n.Degree, 0, 0.85f, -0.05f);
+        w.Degree(SketchPart.Colour, SketchInstrument.Glass, 16 + 8, 8, Modes.CharacteristicDegree(mode), 1, 0.5f, 0.3f);
+        w.AdvanceBars(2);
+        return w.Build("star-chart-" + Modes.Name(mode).ToLowerInvariant() + (swap ? "-second" : ""), RingSeconds + 1);
+    }
+
+    /// <summary>
+    /// The DSP extension's before and after (AD-79, PLANET-99): one phrase, the star chart's middle (the theme's answer and
+    /// raised motif over vi V IV I, then the cadence), with the same notes, velocities and pans either way. Before: the engine's
+    /// existing analog-flavoured voices, the horns (paired saws, a fixed filter swell) for the line, the string pad for the
+    /// chords and the saw bass. After: the aurora voices (lead, pad, bass), whose resonant filters follow their own
+    /// envelopes and the velocity. Ionian on D, <see cref="StarChartBpm"/>; 6 bars, ≈ 15 s plus the ring.
+    /// </summary>
+    public static SketchScore AuroraComparison(bool aurora)
+    {
+        var w = new SketchWriter(StarChartBpm, DiatonicMode.Ionian, TonicMidi);
+        var lead = aurora ? SketchInstrument.AuroraLead : SketchInstrument.Horn;
+        var pad = aurora ? SketchInstrument.AuroraPad : SketchInstrument.StringPad;
+        var bass = aurora ? SketchInstrument.AuroraBass : SketchInstrument.SawBass;
+        w.Mark(aurora ? "after: the aurora voices" : "before: horns, string pad, saw bass");
+        int[] chords = [5, 4, 3, 0, 4, 0];
+        for (var bar = 0; bar < chords.Length; bar++)
+        {
+            var at = 16 * bar;
+            Triad(w, pad, at, 16, chords[bar], -1, 0.85f);
+            for (var e = 0; e < 4; e++) w.Degree(SketchPart.Bass, bass, at + 4 * e, 4, Low(chords[bar]) + (e == 2 ? 4 : 0), -2, e % 2 == 0 ? 0.85f : 0.6f);
+        }
+
+        foreach (var n in SkySynth.ThemeMelody.Where(n => n.StartSixteenths is >= 32 and < 96)) w.Degree(M, lead, n.StartSixteenths - 32, n.LengthSixteenths, n.Degree, 0, n.StartSixteenths % 16 == 0 ? 0.95f : 0.75f, -0.05f);
+        foreach (var n in ShortTheme.Where(n => n.StartSixteenths >= 32)) w.Degree(M, lead, 64 + n.StartSixteenths - 32, n.LengthSixteenths, n.Degree, 0, 0.8f, -0.05f);
+        w.AdvanceBars(chords.Length);
+        return w.Build(aurora ? "dsp-after-aurora" : "dsp-before-saws", RingSeconds);
     }
 
     // ---------------------------------------------------------------- the bed

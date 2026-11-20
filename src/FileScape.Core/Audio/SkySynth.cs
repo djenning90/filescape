@@ -121,6 +121,16 @@ public enum MusicIdentity
     /// identities keep their numbers (and the behaviour baseline its audio).
     /// </summary>
     Abyss,
+
+    /// <summary>
+    /// AD-79: the overlook's own music, not a world's: the Lydian overlook of the mode sketches (AD-72) as DJ heard it, then
+    /// its second light, in the world's key (<see cref="ExperiencePieces.Overlook"/>). Played while you stand on the overlook
+    /// (<see cref="SkySynth.SetExperience"/>). Appended after the world identities, so they keep their numbers.
+    /// </summary>
+    Overlook,
+
+    /// <summary>AD-79: the overview's own music, the star chart, Ionian or Dorian by the place you look out from (<see cref="ExperiencePieces.StarChart"/>).</summary>
+    Overview,
 }
 
 /// <summary>
@@ -360,6 +370,7 @@ public sealed partial class SkySynth
         var start = character ?? HubCharacter;
         _decks[0] = new Deck(0) { Fade = 1, FadeTarget = 1 };
         _decks[1] = new Deck(1);
+        _place = (theme, start, 1, IdentityOf(start));
         Configure(_decks[0], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
         Configure(_decks[1], theme, start, IdentityOf(start), visits: 1, origin: 0, quickHop: false);
         _decks[1].Live = false;
@@ -887,7 +898,10 @@ public sealed partial class SkySynth
             _duckReleaseSeconds = DropDuckReleaseSeconds;
         }
 
-        var arriving = _decks[_current].Profile;
+        // In the arriving world's key, unless the minimum dwell holds its music back (AD-79): then in the key still playing.
+        var target = _decks[_current];
+        var arriving = target.Deferred && target.Origin > at ? ClockAt(at).Profile : target.Profile;
+        LastArrival = (at, arriving.Root);
         int[] chord = [0, 2, 4];
         for (var i = 0; i < chord.Length; i++)
         {
@@ -1397,6 +1411,13 @@ public sealed partial class SkySynth
                     break;
                 }
 
+                case Wave.Analog:
+                    // AD-79: the saw stack, driven, into a resonant low-pass whose cutoff follows the filter envelope (SkySynth.Analog.cs).
+                    i = RenderAnalog(v, i, end, inc, amp, dAmp, stage == Stage.Release, mono);
+                    ic1 = v.Ic1; // the filter's state lives in the voice; keep the write-back below from restoring the old one
+                    ic2 = v.Ic2;
+                    break;
+
                 default:
                     // White noise (xorshift) through a topology-preserving state-variable filter.
                     for (; i < end; i++)
@@ -1677,6 +1698,8 @@ public sealed partial class SkySynth
     /// A voice's oscillator: the pitched waveforms and filtered noise (drums, wind, whooshes). <see cref="Saw"/> (AD-52) is a
     /// band-limited (polyBLEP) sawtooth stack of up to three detuned copies (<see cref="NoteSpec.Unison"/>) through a
     /// two-pole low-pass at <see cref="NoteSpec.ToneHz"/>: the supersaw, the string ensemble, the horns and the reese bass.
+    /// <see cref="Analog"/> (AD-79) is the same saw stack driven into a resonant state-variable low-pass whose cutoff
+    /// follows its own envelope: the "aurora" voice (SkySynth.Analog.cs).
     /// </summary>
     private enum Wave
     {
@@ -1686,6 +1709,7 @@ public sealed partial class SkySynth
         Bell,
         Noise,
         Saw,
+        Analog,
     }
 
     /// <summary>
@@ -1744,6 +1768,18 @@ public sealed partial class SkySynth
         public int Unison { get; init; }
         public float DetuneCents { get; init; }
 
+        // AD-79, the analog voice (Wave.Analog only; see SkySynth.Analog.cs): the resonant filter's resonance 0..0.95, how
+        // far its envelope lifts the cutoff above ToneHz (octaves at the envelope's peak), the envelope's attack (seconds),
+        // decay (T60 seconds) and sustain (0..1), the drive into the filter (1 = clean), and the most a note's pitch may
+        // drift from true (cents, a fixed random offset per note).
+        public float Resonance { get; init; }
+        public float FilterEnvOctaves { get; init; }
+        public float FilterAttack { get; init; }
+        public float FilterDecay { get; init; }
+        public float FilterSustain { get; init; }
+        public float Drive { get; init; }
+        public float DriftCents { get; init; }
+
         public static NoteSpec Tone(Wave wave, float hz) => new() { Wave = wave, FreqHz = hz, Attack = 0.003f, Decay = 0.5f, Release = 0.3f, Gain = 0.1f, Group = -1 };
 
         public static NoteSpec Bell(float hz, float ratio, float index, float indexDecay) =>
@@ -1790,6 +1826,10 @@ public sealed partial class SkySynth
         public float VibPhase, VibInc, VibDepth;
         public float U0, U1, U2, D0, D1, D2, W2, UnisonNorm;
         public float FreqTarget, FreqK, FreqKControl;
+
+        // AD-79: the analog voice's filter envelope (level 0..1, rising until FenvRising is cleared), its cutoff and drive.
+        public float Fenv, FenvInc, FenvDecayCoefControl, FenvSustain, FenvBaseHz, FenvOctaves, FilterDamping, Drive, DriveNorm;
+        public bool FenvRising;
 
         // Noise filter (topology-preserving state-variable filter).
         private float _cutoffHz, _cutoffRatio, _cutoffTargetHz, _cutoffK;
@@ -1876,6 +1916,35 @@ public sealed partial class SkySynth
             _cutoffTargetHz = 0;
             _cutoffK = 0;
             if (Wave == Wave.Noise) SetCoefficients();
+            StartAnalog(n, rate, noiseSeed);
+        }
+
+        /// <summary>
+        /// The analog voice's own state (AD-79; reset for every note, whatever its wave, so a reused voice carries nothing
+        /// over): the filter envelope, the resonant filter's damping, the drive and its make-up, and the note's drift.
+        /// </summary>
+        private void StartAnalog(in NoteSpec n, int rate, uint noiseSeed)
+        {
+            Fenv = 0;
+            FenvRising = Wave == Wave.Analog;
+            if (!FenvRising) return;
+            FenvInc = ControlFrames / MathF.Max(1f, n.FilterAttack * rate);
+            FenvDecayCoefControl = MathF.Pow(T60(MathF.Max(0.01f, n.FilterDecay), rate), ControlFrames);
+            FenvSustain = Math.Clamp(n.FilterSustain, 0f, 1f);
+            FenvBaseHz = Math.Clamp(n.ToneHz > 0 ? n.ToneHz : 1000f, 20f, 0.45f * rate);
+            FenvOctaves = MathF.Max(0f, n.FilterEnvOctaves);
+            FilterDamping = 2f - 2f * Math.Clamp(n.Resonance, 0f, AnalogMaxResonance); // k = 1/Q: 2 (no peak) … 0.1 (Q 10)
+            Drive = MathF.Max(1f, n.Drive);
+            DriveNorm = 1f / SoftSaturate(Drive); // a full-scale saw comes out of the drive near full scale, whatever the drive
+            if (n.DriftCents > 0)
+            {
+                // A fixed drift per note from its noise seed (xorshift once, then −1…1): old oscillators never sat exactly in tune.
+                var h = noiseSeed ^ (noiseSeed << 13);
+                h ^= h >> 17;
+                h ^= h << 5;
+                var drift = ((h & 0xFFFF) / 32767.5f - 1f) * n.DriftCents;
+                FreqHz *= MathF.Pow(2f, drift / 1200f);
+            }
         }
 
         /// <summary>Moves the voice to its release now (it then fades out by its own release time).</summary>

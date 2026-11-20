@@ -80,8 +80,26 @@ public sealed partial class SkySynth
     /// <see cref="SetWorld(PlanetTheme, WorldCharacter, int)"/> with an explicit <paramref name="score"/> in place of the
     /// character's own identity: how a score with no world kind of its own is heard (the kept AD-52 hazard score,
     /// <see cref="MusicIdentity.Abyss"/>, AD-60) in samples and tests, and how a future world type would choose it.
+    /// <para>
+    /// AD-79: the call names the <i>place</i>. While an experience other than <see cref="MusicExperience.World"/> plays (the
+    /// overlook, the overview: <see cref="SetExperience"/>), the place is only remembered, and its music comes back when the
+    /// experience ends. With <see cref="MinimumDwell"/> set, a world whose music began less than that long ago keeps playing
+    /// to its next two-bar phrase boundary after it before the change (SkySynth.Experience.cs).
+    /// </para>
     /// </summary>
     public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits, MusicIdentity score)
+    {
+        _place = (theme, character, Math.Max(1, visits), score);
+        if (_experience != MusicExperience.World) return;
+        ChangeMusic(theme, character, visits, score, experienceChange: false);
+    }
+
+    /// <summary>
+    /// Moves the music to <paramref name="score"/> for a place (the body of <see cref="SetWorld(PlanetTheme, WorldCharacter, int, MusicIdentity)"/>
+    /// and of <see cref="SetExperience"/>). <paramref name="experienceChange"/> (the activity changed: AD-79) is never held
+    /// back by <see cref="MinimumDwell"/>.
+    /// </summary>
+    private void ChangeMusic(PlanetTheme theme, WorldCharacter character, int visits, MusicIdentity score, bool experienceChange)
     {
         visits = Math.Max(1, visits);
         var cur = _decks[_current];
@@ -89,6 +107,7 @@ public sealed partial class SkySynth
         var id = score;
         var key = WorldKeyOf(id, theme, character);
         var other = _decks[1 - _current];
+        var prompt = experienceChange || BypassesDwell(cur.Identity, id);
         if (cur.Live && cur.NextStep == 0)
         {
             // The current world has not reached its first downbeat: retarget it, or, back to the world still playing, stay.
@@ -106,7 +125,10 @@ public sealed partial class SkySynth
                 return;
             }
 
+            var deferred = cur.Deferred;
             Configure(cur, theme, character, id, visits, cur.Origin, cur.QuickHop);
+            cur.Deferred = deferred;
+            if (deferred && (prompt || BypassesDwell(other.Identity, id)) && other.Live) PullIn(cur, other);
             return;
         }
 
@@ -124,17 +146,22 @@ public sealed partial class SkySynth
             return;
         }
 
-        // A new world: the old one plays to its next beat, which becomes the new one's first downbeat.
+        // A new world: the old one plays to its next beat, which becomes the new one's first downbeat; or, held by the
+        // minimum dwell (AD-79), to the end of the phrase it is in.
         ClearDeck(other);
         var k = cur.NextStep;
         while (Mod(k, cur.StepsPerBeat) != 0) k++; // the next beat of its pulse (every fourth sixteenth; every second in half time)
+        var held = !prompt && _switches > 0 ? DwellEndStep(cur) : -1;
+        var deferredStart = held > k;
+        if (deferredStart) k = held;
         var origin = StepFrame(cur, k);
         cur.StopFrame = origin;
-        var quick = origin - _lastSwitchFrame < Frames(QuickHopSeconds);
+        var quick = deferredStart || origin - _lastSwitchFrame < Frames(QuickHopSeconds); // a held change is a hop: no fanfare seconds after the arrival
         _lastSwitchFrame = origin;
         _switches++;
         other.From = cur.Identity;
         Configure(other, theme, character, id, visits, origin, quick);
+        other.Deferred = deferredStart;
         other.FadeTarget = 1;
         _current = 1 - _current;
     }
@@ -153,6 +180,10 @@ public sealed partial class SkySynth
         d.Visits = Math.Max(1, visits);
         d.Development = Math.Clamp(visits, 1, FullDevelopment);
         d.Profile = KeyProfiles[(int)id][(int)theme];
+        d.Piece = PieceFor(id, theme, character);
+        if (d.Piece is { Mode: DiatonicMode.Dorian }) d.Profile = OverviewDorianProfiles[(int)theme]; // AD-79: the star chart from a minor place
+        d.ScoreTranspose = TransposeTo(d.Profile.Root);
+        d.Deferred = false;
         d.Echo = character.InsideRepository && IsBand(id);
         d.WorldKey = WorldKeyOf(id, theme, character);
         d.Origin = origin;
@@ -176,6 +207,7 @@ public sealed partial class SkySynth
         d.Resumed = saved >= 0;
         // A return resumes on the next half-cycle; a later visit (forgotten) starts a later, varied cycle.
         d.StepOffset = d.Resumed ? (saved + HalfCycleSixteenths - 1) / HalfCycleSixteenths * HalfCycleSixteenths : (long)(d.Development - 1) * CycleSixteenths;
+        if (d.Piece != null && d.Resumed) d.StepOffset = d.Piece.NextSectionStart(saved); // a piece resumes at its next section (AD-79)
         d.IntroSteps = id == MusicIdentity.Repository && !d.Resumed ? 16 : 0; // one bar for the repository's arrival flourish
         // The deck's random stream: the seed, the world and the switch count hashed together (golden-ratio and xxHash
         // multipliers, then Mix), so each arrival varies yet the same session replays sample for sample.
@@ -197,6 +229,8 @@ public sealed partial class SkySynth
     /// </summary>
     private static long WorldKeyOf(MusicIdentity id, PlanetTheme theme, WorldCharacter c)
     {
+        // An experience's piece (AD-79) belongs to the theme (its key) and the mode it is played in, not to a repository.
+        if (IsExperience(id)) return ((long)id << 56) | ((long)theme << 48) | ((long)ExperienceModeFor(id, theme, c) << 40);
         var repo = c.RepositoryId >= 0 && (id == MusicIdentity.Repository || c.InsideRepository) ? c.RepositoryId + 1L : 0L;
         return ((long)id << 56) | ((long)theme << 48) | ((c.Worktree ? 1L : 0L) << 47) | (repo & 0x7FFF_FFFF_FFFFL);
     }
@@ -300,6 +334,12 @@ public sealed partial class SkySynth
     /// </summary>
     private void OnStep(Deck d, long step, long frame)
     {
+        if (d.Piece != null)
+        {
+            ScoreStep(d, step, frame); // an experience's written piece (AD-79): its own notes, nothing generated
+            return;
+        }
+
         if (step == d.DropAtStep) AlignDrop(d, step);
         var p = d.Profile;
         var st = d.Style;
@@ -1670,7 +1710,27 @@ public sealed partial class SkySynth
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), true,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
             0.6f, 1f, 1.5f, 2, Arrangement.Abyss, HalfTime: true, Level: 1f),
+        // AD-79: the overlook's piece (the Lydian overlook, ExperiencePieces) at 84 BPM, run as half time over a 168 pulse
+        // so the effects' 32nd-note grid stays within QuantisedLatencyBound (an 84 BPM 32nd is 89 ms; 168's is 45 ms). Its
+        // notes are written, so only the tempo, the key (Lydian on the theme's root, for the effects pitched while it plays)
+        // and the level are used here.
+        new(MusicIdentity.Overlook, (float)(ModeSketches.OverlookBpm * 2), 0f, Lydian, [0, 1, 0, 1], "lydian (the overlook)", Lead.Flute, 1f,
+            Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), false,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
+            0.6f, 1f, 0.3f, 2, Arrangement.Score, HalfTime: true, Level: OverlookLevel),
+        // AD-79: the overview's star chart, 96 BPM, Ionian (Dorian from a minor place: OverviewDorianProfiles).
+        new(MusicIdentity.Overview, (float)ModeSketches.StarChartBpm, 0f, Major, [0, 3, 4, 0], "ionian (the overview)", Lead.Bell, 1f,
+            Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), false,
+            PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
+            0.6f, 1f, 0.3f, 2, Arrangement.Score, Level: OverviewLevel),
     ];
+
+    /// <summary>The overlook piece's deck gain (linear): its sketch measured −26 to −28 LUFS offline, as loud as the worlds (AD-72), so unity.</summary>
+    private const float OverlookLevel = 1f;
+
+    /// <summary>The star chart's deck gain (linear, +1 dB): at unity it measured −28.3 LUFS, a dB under the worlds' −27 (2026-11-19).</summary>
+    private const float OverviewLevel = 1.12f;
+
 
     // ---------------------------------------------------------------- keys
 
@@ -1709,6 +1769,10 @@ public sealed partial class SkySynth
 
     /// <summary>[identity][theme]: the theme's key with the identity's own mode where it has one (built once).</summary>
     private static readonly Profile[][] KeyProfiles = BuildKeyProfiles();
+
+    /// <summary>[theme]: the overview's key when it is Dorian (AD-79): the theme's root, Dorian (built once; after Profiles, which it reads).</summary>
+    private static readonly Profile[] OverviewDorianProfiles =
+        [.. Profiles.Select(p => p with { Scale = Dorian, Progression = [0, 3, 6, 0], Mode = "dorian (the overview)" })];
 
     private static Profile[][] BuildKeyProfiles()
     {
@@ -1834,6 +1898,16 @@ public sealed partial class SkySynth
         public int NextNote;
         public int LastLeadMidi;
         public long LastLeadEnd = long.MinValue;
+
+        /// <summary>
+        /// AD-79: the experience's piece this deck plays (null for a world's music), its transposition from the piece's D
+        /// into the deck's key (semitones), the variation of the cycle playing, and whether the minimum dwell held this
+        /// deck's first downbeat back (the arrival cue then sounds in the key still playing).
+        /// </summary>
+        public ExperiencePiece? Piece;
+        public int ScoreTranspose;
+        public int ScoreVariation;
+        public bool Deferred;
 
         /// <summary>Starts the melody over for a new world.</summary>
         public void ResetMelody()
