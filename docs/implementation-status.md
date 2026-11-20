@@ -50,7 +50,7 @@ words more than new information.
 
 Core (WSL): the focused sets pass (`MusicActivityTests`, `TelescopeSurveyTests`, `SkySynthTests.Experience`); the full
 SkySynth run under load average ≈ 13 failed 8 render-cost bounds (60 ms, measured 60–106 ms), the known shared-machine
-instrument issue (AD-80); they do not touch this change's code — rerun alone below.
+instrument issue (AD-80); they do not touch this change's code — rerun alone (load ≈ 1): 9 of 10 passed, the Hazard bound once at 60+ ms and then 55 ms on its own rerun (a flaky bound, not this change). Core renders of the deep sky and the reserved arrangements: `2026-11-20-music\renders\` (peaks ≤ 0.23, −26.3…−27.9 LUFS).
 
 **Journey time:** `planets-music` 164 s → 21.9 s (a non-recording run; 92.6 s when recording for listening): the second
 climb's resume at a section and the quick hops' dwell are Core tests (`SkySynthTests.Revisits_…`,
