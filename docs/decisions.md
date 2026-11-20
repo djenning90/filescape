@@ -1193,3 +1193,34 @@ Each entry: problem → decision → rationale → alternatives → revisit when
 - **Revisit if:** DJ picks pieces for the game (add them as new options as above), wants a different tonal centre or
   tempo for the reel (`ModeSketches.TonicMidi`, `ReelBpm`), or wants the plain written theme (without the two
   ornaments) in the reel.
+
+## AD-73 Keep the name FileScape for now; the naming discussion is parked (2026-11-19)
+
+- **Decision:** DJ chose to keep **FileScape** for now and revisit naming later. Continue GitHub preparation under that name.
+
+The naming note, as DJ recorded it:
+
+The desired public name should sound inviting and game-like to people who may not think in terms of desktops or
+filesystems. It should suggest escape, discovery, and inhabiting another place, with room for forests, libraries,
+and a possible full desktop as well as planets. DJ liked the escape concept. Folder-based names did not resonate.
+
+- **Otherwhere** was the strongest recent favorite. The intended spelling is Otherwhere; Otherware was a dictation
+  error. The appeal was the feeling of another place and freedom to grow beyond a space theme.
+- **Elsewhere** was a favorite for the same breadth, but several games and studios already use it.
+- **Starward** and **Pocket Cosmos** were early favorites. DJ later noted that Pocket Cosmos strongly suggests a
+  planetary game and Starward also carries a space theme.
+- **Outwander**, **Farther In**, and **World Within** were secondary possibilities. Orbitory appealed but already has
+  an existing app use. Orbitale was hard to understand and pronounce. Foldernaut did not appeal.
+
+The initial Otherwhere search found a close overlap with an interactive-fiction world app and an exploration game.
+These findings led to parking the rename, rather than choosing a replacement. This was a search for existing uses;
+trademark availability was not established. Recheck current uses before selecting any public name.
+
+Sources checked during the discussion:
+- Otherwhere interactive-fiction app: https://otherwhere.ai/
+- Otherwhere exploration game: https://befuddlebug.itch.io/otherwhere
+- Elsewhere crafting game: https://store.steampowered.com/app/1271150/Elsewhere/
+- Orbitory app documentation: https://gist.github.com/Ali-Li26
+
+Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
+as FileScape while naming remains open.
