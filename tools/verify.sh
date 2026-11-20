@@ -299,6 +299,13 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   # 2026-11-19 (PLANET-69/70, AD-68): every keyboard panel (Destinations, Locations, Open location, Settings, the reader),
   # opened by shortcut and toolbar, typed into key by key at once and from its results, after travel and in the overview.
   journey planets-dialog-keys planets-dialog-keys.log 420 --automate=planets-dialog-keys --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # 2026-11-19 (fifth follow-up): departures from the pad and feet-first landings (PLANET-81/82); the overview's Enter lands
+  # or says why, on the root-like fixture with the home listing held back (PLANET-83); the selection card's actions in every
+  # view (PLANET-87); the picture gallery and its bounded viewer (PLANET-96).
+  journey planets-travel planets-travel.log 300 --automate=planets-travel --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  journey planets-overview-enter planets-overview-enter.log 420 --automate=planets-overview-enter "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}${ROOTLIKE//\//\\}" --test-list-delay-ms=6000 --test-list-delay-match=home --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  journey planets-selection-actions planets-selection-actions.log 300 --automate=planets-selection-actions --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  journey planets-gallery planets-gallery.log 300 --automate=planets-gallery --root=gallery --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reader planets-reader.log 200 --automate=planets-reader "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   else skip_step planets-reader "FILESCAPE_WSL_README not set (tools/make-wsl-fixture.sh --readme)"; fi
 fi
