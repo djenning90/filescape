@@ -260,6 +260,9 @@ public partial class PlanetsProbe
         if (leap)
         {
             await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Late);
+            // PLANET-85 (AD-75): the take-off press a little late, just past the board's edge (real keys on cfee25d), is
+            // still the long jump's take-off and its twirl at the top still crosses.
+            if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.LateTakeOff);
             if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Plain);
             else Log("SKIP the plain jump: not on Debris Field after the late twirl");
         }
@@ -348,8 +351,18 @@ public partial class PlanetsProbe
         if (P.Falling) await Until(() => !P.Busy && P.FallReturns > 0, 12); // a failed catch: let the return finish
     }
 
-    /// <summary>The long jump's second press in <see cref="LeapCrossing"/>: at the top of the jump, late in its window, or none.</summary>
-    private enum LeapTwirl { Apex, Late, Plain }
+    /// <summary>
+    /// The long jump's presses in <see cref="LeapCrossing"/>: the twirl at the top of the jump, late in its window, or none;
+    /// <see cref="LateTakeOff"/> (PLANET-85): the take-off press <see cref="LeapLateTakeOffSeconds"/> after the feet have
+    /// left the board (in the coyote time), the twirl <see cref="LeapLateTakeOffTwirlSeconds"/> after that.
+    /// </summary>
+    private enum LeapTwirl { Apex, Late, Plain, LateTakeOff }
+
+    /// <summary>The late take-off press comes this long after the feet leave the board, seconds (inside the 0.12 s coyote time: what real keys timed from a stale state did on cfee25d).</summary>
+    private const float LeapLateTakeOffSeconds = 0.05f;
+
+    /// <summary>...and the twirl this long after leaving the board, seconds (cfee25d's real-input second press came at 0.367 s).</summary>
+    private const float LeapLateTakeOffTwirlSeconds = 0.37f;
 
     /// <summary>
     /// The long jump's twirl comes this long after take-off in <see cref="LeapTwirl.Late"/>, seconds (game time): late in the
@@ -373,9 +386,9 @@ public partial class PlanetsProbe
         var s = shell.Spans[link.Span];
         var (g0, g1) = s.Gaps[0];
         Log(F($"the leap: {g1 - g0:0.00} m, on a bridge of {s.LengthMetres:0.0} m"));
-        // The plain jump comes straight after a crossing, from the far side: it is stood back on the near side [direct]
-        // (the walk round from there is not what it tests).
-        if (mode != LeapTwirl.Plain)
+        // The plain jump and the late take-off come straight after a crossing, from the far side: they are stood back on
+        // the near side [direct] (the walk round from there is not what they test).
+        if (mode is not (LeapTwirl.Plain or LeapTwirl.LateTakeOff))
         {
             var near = await WalkRoute(shell.Waypoints[link.From], 0.8f, "the leap's near side");
             if (!near.Reached) return false;
@@ -391,6 +404,7 @@ public partial class PlanetsProbe
         var apex = P.Walker.ApexTwirls;
         HoldKey(Godot.Key.W, true);
         bool jumped = false, twirled = false;
+        var pressesSince = P.HazardPresses.Count > 0 ? P.HazardPresses[^1].AtSeconds : -1; // the press log (PlanetWorld.Hazard)
         var holdFrames = 0;
         var twirlAt = -1f;
         for (var frame = 0; frame < 360; frame++)
@@ -401,9 +415,13 @@ public partial class PlanetsProbe
             {
                 LeapTwirl.Apex => holdFrames == 0 && MathF.Abs(P.Walker.VerticalVelocity.Value) < 1.5f,
                 LeapTwirl.Late => P.AirSeconds >= LeapLateTwirlSeconds - 0.008f, // half a frame early: read on the next frame
+                LeapTwirl.LateTakeOff => P.AirSeconds >= LeapLateTakeOffTwirlSeconds - 0.008f,
                 _ => false,
             };
-            if (!jumped && P.Walker.Grounded && along >= g0 - 0.35f) { jumped = true; HoldKey(Godot.Key.Space, true); holdFrames = 18; }
+            var takeOffNow = mode == LeapTwirl.LateTakeOff
+                ? !P.Walker.Grounded && P.AirSeconds >= LeapLateTakeOffSeconds - 0.008f
+                : P.Walker.Grounded && along >= g0 - 0.35f;
+            if (!jumped && takeOffNow) { jumped = true; HoldKey(Godot.Key.Space, true); holdFrames = mode == LeapTwirl.LateTakeOff ? 8 : 18; }
             else if (airborne && !twirled && twirlNow)
             {
                 twirled = true;
@@ -422,6 +440,9 @@ public partial class PlanetsProbe
         await Frames(15);
         var beyond = !P.Falling && P.Shell == shell && s.Measure(P.Walker.Up).AlongMetres > g1;
         var fell = P.FallsStarted - falls;
+        var presses = P.HazardPresses.Where(p => p.AtSeconds > pressesSince).ToList();
+        foreach (var p in presses) Log(F($"  press: {p.AirSeconds:0.000} s after leaving the ground, {p.Phase}, vy {p.VerticalSpeed:+0.00;-0.00} m/s, h {p.Height:+0.00;-0.00} m, open sky {p.OverHole}, to the edge {p.ToEdge:0.00} m → \"{p.Was}\""));
+        var takeOffWas = presses.Count > 0 ? presses[0].Was : "none";
         switch (mode)
         {
             case LeapTwirl.Apex:
@@ -430,6 +451,10 @@ public partial class PlanetsProbe
                 break;
             case LeapTwirl.Late:
                 Check(beyond && fell == 0, F($"across the leap with the twirl late in its window ({twirlAt:0.00} s after take-off, \"{P.LastHazardPress.Was}\"; {(beyond ? "landed beyond" : "short")}, {fell} falls)"));
+                break;
+            case LeapTwirl.LateTakeOff:
+                Check(beyond && fell == 0 && takeOffWas == "coyote-jump" && P.LastHazardPress.Was == "apex-twirl",
+                    F($"the take-off press {LeapLateTakeOffSeconds:0.00} s after leaving the board is the long jump's take-off (\"{takeOffWas}\"), the twirl at {twirlAt:0.00} s \"{P.LastHazardPress.Was}\": {(beyond ? "landed beyond" : "short")}, {fell} falls"));
                 break;
             default:
                 Check(!beyond && fell == 1, F($"the same jump without the twirl falls short of the leap ({fell} fall{(fell == 1 ? "" : "s")})"));

@@ -162,6 +162,22 @@ public sealed record HazardMoveParams
     /// </summary>
     public Meters ReturnReach { get; init; } = Meters.Of(3.2f);
 
+    /// <summary>
+    /// The leap's take-off board, metres before each end of its gap (PLANET-85, AD-75): leaving the ground from there
+    /// heading across, a press in the coyote time is the long jump's take-off, not the catch. 1.0 m, the amber board the
+    /// art draws (PlanetArt.Hazard's own LeapBoardMetres).
+    /// </summary>
+    public Meters LeapBoard { get; init; } = Meters.Of(1.0f);
+
+    /// <summary>
+    /// <see cref="LeapBoard"/> counts only at a gap no longer than this, metres: every leap the terrain makes (≤ 7.2 m,
+    /// HazardTerrain.LeapMaxMetres) at its jagged ends (+0.2 m), never a stretch the long jump cannot clear.
+    /// </summary>
+    public Meters LeapBoardMaxGap { get; init; } = Meters.Of(HazardTerrain.LeapMaxMetres + 2 * ShellSpan.GapJagMetres);
+
+    /// <summary>...and only heading within this of straight across the gap, degrees (a slip off the board's side is still the catch).</summary>
+    public float LeapBoardMaxDegrees { get; init; } = 45f;
+
     /// <summary>The lift takes the feet this far above the rim's level at its top, metres (just enough to step back on).</summary>
     public Meters Clearance { get; init; } = Meters.Of(0.35f);
 
@@ -203,6 +219,9 @@ public sealed record HazardMoveParams
         NonNegative(ApexNudge.Value, nameof(ApexNudge));
         NonNegative(LateSpeed.Value, nameof(LateSpeed));
         NonNegative(MinLift.Value, nameof(MinLift));
+        NonNegative(LeapBoard.Value, nameof(LeapBoard));
+        NonNegative(LeapBoardMaxGap.Value, nameof(LeapBoardMaxGap));
+        NonNegative(LeapBoardMaxDegrees, nameof(LeapBoardMaxDegrees));
         return this;
     }
 }
@@ -624,6 +643,10 @@ public sealed class SphereWalker
         if (_jump.CanTakeOff(dtSeconds))
         {
             if (CoyoteJumpLands(shell, up, velocity, heightMeters)) return JumpEvent.None; // a late jump that makes it: the coyote jump
+            // A late press off a leap's take-off board, heading across: the long jump's take-off (PLANET-85, AD-75). With
+            // real keys a press a frame or two after the board's edge was the catch, which carried the walker back and
+            // spent the twirl, so the second press did nothing (cfee25d's "buffered" at 0.367 s).
+            if (shell.LeapTakeOff(_lastGroundUp, velocity, rp.LeapBoard.Value, rp.LeapBoardMaxGap.Value, rp.LeapBoardMaxDegrees)) return JumpEvent.None;
         }
         else
         {

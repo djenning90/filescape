@@ -508,6 +508,36 @@ public sealed class BrokenShell
     public float Radius { get; }
 
     /// <summary>True when <paramref name="up"/> is over open space: there is no ground there.</summary>
+    /// <summary>
+    /// Is <paramref name="up"/> on a leap's take-off board, heading across its gap (PLANET-85, AD-75)? True on an
+    /// advanced span within <paramref name="boardMetres"/> before either end of a gap no longer than
+    /// <paramref name="maxGapMetres"/> (a gap the long jump clears, not an unjumpable stretch), on the bridge or its ledge,
+    /// with <paramref name="heading"/> (a tangent; any length) within <paramref name="maxDegrees"/> of straight across
+    /// the gap. The walker asks it of the ground it last stood on, so a press just after running off the board is the
+    /// long jump's take-off, not the catch.
+    /// </summary>
+    public bool LeapTakeOff(Vector3 up, Vector3 heading, float boardMetres, float maxGapMetres, float maxDegrees)
+    {
+        if (heading.LengthSquared() < 1e-8f) return false;
+        var h = Vector3.Normalize(heading);
+        var cos = MathF.Cos(maxDegrees * MathF.PI / 180f);
+        foreach (var s in Spans)
+        {
+            if (s.GapClass != ShellGapClass.Advanced || s.Gaps.Count == 0 || Vector3.Dot(up, s.Mid) < s.CosBound) continue;
+            var (along, side) = s.Measure(up);
+            if (MathF.Abs(side) > s.HalfWidthMetres + ShellSpan.AdvancedLedgeMetres + ShellSpan.RagMetres) continue;
+            var across = Vector3.Dot(h, s.DirectionAt(up)); // + towards B
+            foreach (var (g0, g1) in s.Gaps)
+            {
+                if (g1 - g0 > maxGapMetres) continue;
+                if (along >= g0 - boardMetres && along <= g0 && across >= cos) return true;
+                if (along <= g1 + boardMetres && along >= g1 && across <= -cos) return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool OverHole(Vector3 up)
     {
         foreach (var l in Lands)
