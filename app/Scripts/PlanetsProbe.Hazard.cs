@@ -12,11 +12,11 @@ namespace FileScape.App;
 /// ridge (a narrow bridge with drops on both sides) and over its gap with a real jump; on to the easiest child launcher; a
 /// hop from the list keeps to the route; then deliberately off an edge: the warning and crumbling rock, the fall (it spirals
 /// round the black hole), the return to the Starter Sky beside Event Horizon's launcher by ordinary navigation, and straight
-/// back in. AD-65, AD-69: the ridge's step is a "step" ahead; slips off the rim caught by Space early (in the coyote
-/// time), mid-window and late (the recovery); an uncaught slip falls within 0.55 s; Space in the fall, early and late, is a
+/// back in. AD-65, AD-69: the ridge's step is a "step" ahead; a slip off the rim caught by Space early (in the coyote
+/// time; the mid-window and late catches are in Core, TEST-09); an uncaught slip falls within 0.55 s; Space in the fall, early and late, is a
 /// last effort every time and the fall goes on; the fall-to-parent time is measured. Then Debris Field, the crowded one: no
 /// more pads than its ground holds, the rest as moons reached by G, the frame time while walking there, its leap crossed
-/// with a twirl at the top of the jump and again with the twirl late in its window, and the same jump without the twirl
+/// with a twirl at the top of the jump (the late twirl and late take-off are in Core, TEST-09), and the same jump without the twirl
 /// falling short — its fall back onto Event Horizon's solid ground. Walking and jumping are real
 /// input (W and Space); the camera's heading is set [direct] towards the next waypoint, as a player steers with the mouse,
 /// and stand-points for the edge are set [direct]. Screenshots: in the sky, arrival, ridge and gap, launcher, edge,
@@ -136,7 +136,7 @@ public partial class PlanetsProbe
         var stand = PlanetFrame.Move(edge, inward, 1.3f, r);
         var toward = -NVector3.Normalize(inward - stand * NVector3.Dot(inward, stand));
 
-        // AD-65, AD-69: slips off that rim, caught by Space early, mid-window and late; then a slip not caught at all.
+        // AD-65, AD-69: slips off that rim, caught by Space early (mid-window and late: Core, TEST-09); then a slip not caught at all.
         await RecoverySlips(comp, stand, toward);
 
         P.Walker.Teleport(comp.Surface, stand, toward); // [direct] stand 1.3 m from the edge, facing it
@@ -257,14 +257,13 @@ public partial class PlanetsProbe
         // leap, off the nearest edge instead.
         var returns = P.FallReturns;
         var leap = shell.Links.Any(l => l.Advanced) && P.Composition?.FolderId == debris;
+        // TEST-09 (AD-88): the late twirl (0.45 s) and the late take-off (PLANET-85: 0.05 s past the board, the twirl at
+        // 0.37 s) are replayed on this same leap in Core (HazardSampleReplayTests), which caught the same injected
+        // regression as these steps did; the journey keeps the apex twirl above and the plain jump with its fall.
         if (leap)
         {
-            await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Late);
-            // PLANET-85 (AD-75): the take-off press a little late, just past the board's edge (real keys on cfee25d), is
-            // still the long jump's take-off and its twirl at the top still crosses.
-            if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.LateTakeOff);
             if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Plain);
-            else Log("SKIP the plain jump: not on Debris Field after the late twirl");
+            else Log("SKIP the plain jump: not on Debris Field after the moon");
         }
 
         var open = leap ? null : P.NearestOpenSky();
@@ -299,13 +298,13 @@ public partial class PlanetsProbe
     /// W held) — each lifts the traveller back onto the rim.
     /// The state file says the same (recoveries, pressAfterSeconds, pressWas).
     /// </summary>
+    /// <remarks>
+    /// TEST-09 (AD-88): only the early catch runs here, through the keys and PlanetWorld; the mid-window and late catches
+    /// from the same stand point are replayed in Core (HazardSampleReplayTests.The_hazard_journey_s_rim_catches_on_event_horizon).
+    /// </remarks>
     private async Task RecoverySlips(PlanetComposition comp, NVector3 stand, NVector3 toward)
     {
-        var late = (float)P.Walker.Params.Hazard.Window.TotalSeconds - 0.05f;
-        foreach (var (after, holdOn, what) in new[] { (0.03f, true, "early"), (0.2f, false, "mid-window"), (late, true, "late") })
-        {
-            await RecoverySlip(comp, stand, toward, after, holdOn, what);
-        }
+        await RecoverySlip(comp, stand, toward, 0.03f, true, "early");
     }
 
     /// <summary>One slip of <see cref="RecoverySlips"/>: Space <paramref name="pressAfter"/> s (game time) after the feet leave the rim, W held on or let go as they do.</summary>
@@ -336,7 +335,7 @@ public partial class PlanetsProbe
                 HoldKey(Godot.Key.Space, true);
             }
 
-            if (pressed && ++pressFrames == 5 && what == "mid-window") await Shot("hazard-recovery");
+            if (pressed && ++pressFrames == 5 && what == "early") await Shot("hazard-recovery");
             if (pressed && pressFrames > 12) HoldKey(Godot.Key.Space, false);
             lowest = MathF.Min(lowest, P.Walker.Height.Value);
             if (P.Falling || (pressed && P.Walker.Grounded && pressFrames > 3)) break;
@@ -349,14 +348,16 @@ public partial class PlanetsProbe
         var (at, was) = P.LastHazardPress;
         Check(P.Walker.Recoveries == recoveries + 1 && P.FallsStarted == falls && P.Walker.Grounded && !shell.OverHole(P.Walker.Up),
             F($"a slip off the rim caught by Space {what} ({at:0.00} s after the slip, W {(holdOn ? "held on" : "let go")}: \"{was}\"): back on the ground ({P.Walker.Recoveries - recoveries} recovery, {P.FallsStarted - falls} falls, {lowest:0.00} m below the rim at the lowest)"));
-        if (what == "mid-window") await Shot("hazard-recovered");
+        if (what == "early") await Shot("hazard-recovered");
         if (P.Falling) await Until(() => !P.Busy && P.FallReturns > 0, 12); // a failed catch: let the return finish
     }
 
     /// <summary>
     /// The long jump's presses in <see cref="LeapCrossing"/>: the twirl at the top of the jump, late in its window, or none;
     /// <see cref="LateTakeOff"/> (PLANET-85): the take-off press <see cref="LeapLateTakeOffSeconds"/> after the feet have
-    /// left the board (in the coyote time), the twirl <see cref="LeapLateTakeOffTwirlSeconds"/> after that.
+    /// left the board (in the coyote time), the twirl <see cref="LeapLateTakeOffTwirlSeconds"/> after that. Since TEST-09
+    /// (AD-88) the journey runs only Apex and Plain; Late and LateTakeOff are replayed in Core (HazardSampleReplayTests)
+    /// and kept here so a regression found there can be watched in the app by adding the call back.
     /// </summary>
     private enum LeapTwirl { Apex, Late, Plain, LateTakeOff }
 
