@@ -4,8 +4,8 @@
 #   tools/fs.sh check fast      ~3.5 min app build + Core tests (Windows and WSL side by side). Every commit.
 #   tools/fs.sh check smoke     ~5 min   fast + a staged export (reused for the same source state) + the short end-to-end
 #                                        journeys (walk-explore, hub → project → README/editor, the planets basics).
-#   tools/fs.sh check full      ~32 min  smoke + every functional journey (assertions only; measurement segments
-#                                        are logged as SKIP) at UI 1.0, and the HUD-sensitive journeys at UI 1.25.
+#   tools/fs.sh check full      ~30 min  smoke + every functional journey (assertions only; measurement segments
+#                                        are logged as SKIP) at UI 1.0 (planets-sound at 1.25; the 1.25 repeats are in release).
 #   tools/fs.sh check release   ~40 min  full, with measurements, plus walk at 1.25, walk-perf, real OS input at 1.0
 #                                        and 1.25 (moves the real mouse and takes focus), and the recording.
 #   tools/fs.sh check journeys [--measure] NAME...   only the named steps (shell patterns, e.g. 'planets-nav*'), with a
@@ -86,7 +86,7 @@ finish() {
     echo
     timing_table "check $TIER, exit $code, failing steps $FAILS${EXIT_NOTE:+; $EXIT_NOTE}" "$(secs_since "$T0")"
   } | tee "$OUT/timing.txt" | tee -a "$SUM"
-  echo "timing: $OUTW\\timing.txt   summary: $OUTW\\summary.txt"
+  echo "timing: $OUTW\\timing.txt   summary: $OUTW\\summary.txt   session totals: tools/fs.sh timing ($(timing_log_path))"
   exit "$code"
 }
 trap finish EXIT
@@ -230,9 +230,8 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   # AERIAL-07: a deliberately small aerial budget, the current place outside breadth-first (kept), then beyond it (recovery).
   journey aerial-limit-24 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=24 --ui-scale=1
   journey aerial-limit-8 walk-aerial-limit.log 200 --automate=walk-aerial-limit "--root=$W" --test-max-islands=8 --ui-scale=1
-  # UI scaling changes the HUD, signs, drawer and picking geometry: those journeys repeat at 1.25.
-  journey explore-ui1.25 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1.25 --tier=functional
-  journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
+  # UI scale 1.25 in this tier: planets-sound (above) runs at 1.25; the full repeats of explore, places and planets at
+  # 1.25 are in the release tier (AD-88).
   # The same planetary system on the bounded real fixture: links, an empty room, and a WSL folder.
   journey planets-fixture planets-fixture.log 300 --automate=planets-fixture "--root=$W" --vis=planets --test-shell=record --ui-scale=1 "--wsl-root=${FILESCAPE_WSL_FIXTURE:-}" --tier=functional
   # PLANET-76..78: the overview discovers by itself (deep fixture, treated as a broad place so only discovery lists it):
@@ -265,7 +264,6 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   # PLANET-67/68: vertical look (drags up and down) on arrival, after and while walking, the overlook view, after a
   # landing, a Hazard World and the overview; every step of a sweep tilts the view; the wheel zooms during the arrival.
   journey planets-look planets-look.log 250 --automate=planets-look --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
-  journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   # This computer -> the WSL root -> the WSL fixture's real repository (workbench) -> a child folder -> home (never C:\).
   # PLANET-42..44: file actions on the workbench, world icons and pads (double-click opens through the deliberate Open,
   # recorded; a faked refusal is reported); the arrival framing in motion; reading a long real README (needs
@@ -311,6 +309,12 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
 fi
 
 if [[ "$LEVEL" == release ]]; then
+  # UI scaling changes the HUD, signs, drawer and picking geometry: these journeys repeat at 1.25. AD-88 (TEST-08): their
+  # assertions are the same as at 1.0 (the 2026-11-20 full run: identical PASS lines), so they moved here from full
+  # (≈ 136 s of every full run); planets-sound keeps a 1.25 run in the smoke tier and up.
+  journey explore-ui1.25 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1.25 --tier=functional
+  journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
+  journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   journey walk-ui1.25 walk.log 420 --automate=walk "--root=$W" --ui-scale=1.25 --tier=functional
   journey walk-perf walk-perf.log 200 --automate=walk-perf "--root=$W" --ui-scale=1
   grep -h 'perf ' "$OUT/walk-perf/walk-perf.log" 2>/dev/null | sed 's/^/    /' | tee -a "$SUM"
