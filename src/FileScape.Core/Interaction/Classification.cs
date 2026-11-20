@@ -59,6 +59,9 @@ public static class FileCategories
         [".jpg"] = FileCategory.Image, [".jpeg"] = FileCategory.Image, [".png"] = FileCategory.Image,
         [".gif"] = FileCategory.Image, [".bmp"] = FileCategory.Image, [".svg"] = FileCategory.Image,
         [".webp"] = FileCategory.Image, [".psd"] = FileCategory.Image, [".ico"] = FileCategory.Image,
+        // Pictures Windows' thumbnails show (PLANET-131): a phone's HEIC, scans' TIFF, AVIF, JFIF.
+        [".heic"] = FileCategory.Image, [".heif"] = FileCategory.Image, [".tif"] = FileCategory.Image, [".tiff"] = FileCategory.Image,
+        [".avif"] = FileCategory.Image, [".jfif"] = FileCategory.Image,
         [".mp3"] = FileCategory.Audio, [".flac"] = FileCategory.Audio, [".wav"] = FileCategory.Audio,
         [".ogg"] = FileCategory.Audio, [".m4a"] = FileCategory.Audio,
         [".mp4"] = FileCategory.Video, [".mkv"] = FileCategory.Video, [".mov"] = FileCategory.Video,

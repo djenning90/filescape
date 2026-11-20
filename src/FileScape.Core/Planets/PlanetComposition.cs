@@ -200,6 +200,9 @@ public sealed class PlanetComposition
 
     public required PlanetTheme Theme { get; init; }
 
+    /// <summary>What its pictures make of it (PLANET-130): a gallery's pictures stand large and fill in as you walk.</summary>
+    public MediaVerdict Media { get; init; } = MediaVerdict.Nothing;
+
     /// <summary>The ground: radius, hills and flat spots (the same as <see cref="Surface"/>'s).</summary>
     public required PlanetShape Shape { get; init; }
 
