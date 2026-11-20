@@ -113,6 +113,12 @@ $work = Join-Path $Out "work-$Tag"; New-Item -ItemType Directory -Force -Path $w
 Log "probe: shell $Shell, close $Close, command: $cmdline"
 # -OpenedApp: FileScape opens a file with this app during the run (--test-hold=open:<path> in -AppArgs). It must not be
 # running before (it could be DJ's); the run closes only the instances that started during it.
+# A file type without a per-user default (UserChoice) raises Windows' own "Open with" dialog instead of an app
+# (2026-11-19: a .csv did, in front of another probe): refuse such an open before launching anything.
+if ($AppArgs -match '--test-hold=open:(\S+)') {
+  $ext = [IO.Path]::GetExtension($Matches[1])
+  if (-not (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$ext\UserChoice" -ErrorAction SilentlyContinue).ProgId) { throw "$ext has no per-user default app (UserChoice): Windows would ask how to open it; stopping before anything is opened" }
+}
 if ($OpenedApp -and @(Get-Process -Name $OpenedApp -ErrorAction SilentlyContinue).Count) { throw "$OpenedApp is already running (it may be DJ's): stopping before anything is opened" }
 switch ($Shell) {
   'cmdk' { $conArgs = 'cmd.exe /k'; $typed = $cmdline }

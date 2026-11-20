@@ -43,6 +43,11 @@ function Check($ok, $what) { if ($ok) { Log "PASS OPEN $what" } else { $script:f
 function Handler-Pids { @(Get-Process -Name $Handler -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) }
 function Window-With($text) { foreach ($w in [FsWin]::Windows()) { $p = $w.Split('|', 3); if ($p[2] -like "*$text*" -and (Handler-Pids) -contains [int]$p[0]) { return [pscustomobject]@{ Pid = [int]$p[0]; Hwnd = [long]$p[1]; Title = $p[2] } } }; return $null }
 
+# A type without a per-user default (UserChoice) makes Windows 11 show its own "Open with" dialog instead of an app
+# (2026-11-19: .csv did, on DJ's desktop, in front of another probe). AssocQueryString still names a handler for such a
+# type, so it is not the check: refuse unless the user has chosen one.
+$choice = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Ext\UserChoice" -ErrorAction SilentlyContinue).ProgId
+if (-not $choice) { Log "STOP: $Ext has no per-user default app (UserChoice): Windows would ask how to open it; nothing was opened"; $log | Set-Content -Encoding utf8 (Join-Path $Out 'open-probe.log'); exit 2 }
 if ((Handler-Pids).Count) { Log "STOP: $Handler is already running (it may be DJ's): nothing was opened"; $log | Set-Content -Encoding utf8 (Join-Path $Out 'open-probe.log'); exit 2 }
 $dir = Join-Path $env:TEMP ("FileScape-fixtures\open-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
