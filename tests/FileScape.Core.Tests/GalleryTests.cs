@@ -92,6 +92,7 @@ public sealed class GalleryTests(GallerySampleFixture gallery) : IClassFixture<G
         var files = Directory.GetFiles(gallery.Root).Select(Path.GetFileName).ToHashSet();
         files.Should().Contain(GalleryRules.MarkerName).And.Contain("README.md").And.Contain("captions.txt").And.Contain("palette.csv").And.Contain("gallery-chime.wav").And.Contain("old-prints.zip");
         Directory.GetFiles(P("Sketches")).Should().HaveCount(2);
+        Directory.GetFiles(P(GallerySample.DeskName)).Should().HaveCount(5);
         new FileInfo(P(GallerySample.OversizeName)).Length.Should().BeGreaterThan(GalleryRules.MaxPictureBytes);
         new FileInfo(P(GallerySample.HugeDimensionsName)).Length.Should().BeLessThan(2 * 1024 * 1024, "small on disk, huge decoded");
         // The playable part (no stress files) stays small: it is written into the app's own data folder.
@@ -126,13 +127,30 @@ public sealed class GalleryTests(GallerySampleFixture gallery) : IClassFixture<G
         var (tree, _) = ScanRunner.Run(new DirectoryScanner(gallery.Root));
         var root = tree.Nodes.First(n => n.ParentId < 0).Id;
         GalleryRules.IsGallery(tree, root).Should().BeTrue();
-        GalleryRules.IsGallery(tree, tree.Find("Sketches").Id).Should().BeFalse("a gallery's subfolders are ordinary unless marked");
+        GalleryRules.IsGallery(tree, tree.Find("Sketches").Id).Should().BeFalse("only the gallery itself carries the marker");
+        // Since PLANET-130 its Sketches (two pictures) is a gallery inside a gallery; the Desk (1 of 5) stays ordinary.
+        MediaWorld.Classify(tree, tree.Find("Sketches").Id, PictureLibraries.Empty).Reason.Should().Be(MediaReason.InsideGallery);
+        MediaWorld.Classify(tree, tree.Find(GallerySample.DeskName).Id, PictureLibraries.Empty).Character.Should().Be(MediaCharacter.SomePictures);
         var pictures = GalleryRules.Pictures(tree, root, includeHidden: false).Select(id => tree[id].Name).ToList();
         pictures.Should().Equal(new[] { "aurora-print-large.png", GallerySample.DamagedName, "dawn-over-the-low-hills.png", GallerySample.HugeDimensionsName, "harbour-of-lanterns-wide.png", "lantern-tower-tall.png", "midnight-sunflowers.png", "mist-in-the-blue-valley.png", "postage-stamp.bmp", GallerySample.OversizeName, "two-moons-over-the-orchard.png" });
         GalleryRules.Verdict(tree.Find(GallerySample.OversizeName)).Should().Be(GalleryRules.PictureVerdict.TooLarge);
         GalleryRules.Verdict(tree.Find("dawn-over-the-low-hills.png")).Should().Be(GalleryRules.PictureVerdict.Viewable);
         GalleryRules.IsPicture("A.JPEG").Should().BeTrue();
         GalleryRules.IsPicture("notes.txt").Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_crowd_of_pictures_is_a_gallery_by_its_contents()
+    {
+        var crowd = GallerySample.CreateCrowd(gallery.Parent, 30);
+        var (tree, _) = ScanRunner.Run(new DirectoryScanner(crowd));
+        var root = tree.Nodes.First(n => n.ParentId < 0).Id;
+        var m = MediaWorld.Classify(tree, root, PictureLibraries.Empty);
+        m.Reason.Should().Be(MediaReason.MostlyPictures);
+        m.Pictures.Should().Be(30);
+        m.Files.Should().Be(32);
+        var act = () => GallerySample.CreateCrowd(gallery.Parent, 30);
+        act.Should().Throw<InvalidOperationException>("it never writes into a folder that exists");
     }
 }
 

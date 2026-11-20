@@ -19,7 +19,7 @@ public readonly record struct ThumbSlot(int Id, float DistanceMetres, bool InVie
 /// The bounds on a gallery world's pictures (PLANET-131, AD-86). Defaults: 2 requests in flight (the shell's two worker
 /// threads); at most 64 pictures with a texture on one world (the planet's own item budget, so every shown easel can fill;
 /// ≈ 22 MB of 256 px textures with mipmaps); at most 8 sharp (768 px, ≈ 3 MB each with mipmaps: ≈ 25 MB); a picture is
-/// sharpened within 8 m while in view and goes back to small beyond 12 m (the gap keeps it from flickering between the
+/// sharpened within 8 m of the traveller while in view and goes back to small beyond 12 m (the gap keeps it from flickering between the
 /// two as you walk to and fro); a far texture is given back only for a picture at least 6 m nearer.
 /// </summary>
 public sealed record ThumbBudget

@@ -165,12 +165,14 @@ public static class ShellThumbnails
     /// <summary>SIIGBF_INCACHEONLY: only what the thumbnail cache already holds; no handler runs, no file is opened.</summary>
     private const int InCacheOnly = 0x10;
 
+    /// <summary>SIZE (windef.h): the thumbnail size asked for, pixels.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct Size
     {
         public int Cx, Cy;
     }
 
+    /// <summary>BITMAP (wingdi.h): an HBITMAP's size and format, from GetObject.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct Bitmap
     {
@@ -179,6 +181,8 @@ public static class ShellThumbnails
         public IntPtr Bits;
     }
 
+    /// <summary>BITMAP (wingdi.h): an HBITMAP's size and format, from GetObject.</summary>
+    /// <summary>BITMAPINFOHEADER (wingdi.h): asks GetDIBits for 32-bit top-down rows.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct BitmapInfoHeader
     {
@@ -187,6 +191,7 @@ public static class ShellThumbnails
         public int Compression, SizeImage, XPelsPerMeter, YPelsPerMeter, ClrUsed, ClrImportant;
     }
 
+    /// <summary>IShellItemImageFactory (ShObjIdl_core.h): a shell item's thumbnail or icon as an HBITMAP.</summary>
     [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellItemImageFactory
     {

@@ -306,6 +306,12 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   journey planets-overview-enter planets-overview-enter.log 420 --automate=planets-overview-enter "--root=\\\\wsl.localhost\\${WSL_DISTRO_NAME:-Ubuntu-24.04}${ROOTLIKE//\//\\}" --test-list-delay-ms=6000 --test-list-delay-match=home --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-selection-actions planets-selection-actions.log 300 --automate=planets-selection-actions --root=sample --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   journey planets-gallery planets-gallery.log 300 --automate=planets-gallery --root=gallery --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  # 2026-11-20 (sixth pass, stream 6): the same journey on the stress fixture with its crowds of 3, 30 and 300 pictures
+  # (PLANET-130..136: Windows' thumbnails, the bounds at every count, inheritance, the stray highlight).
+  GALLERYFIX="$(ls -1d "$FIX"/gallery-*/"Picture Gallery" 2>/dev/null | sort | tail -1)"
+  if [[ -n "$GALLERYFIX" && -d "$(dirname "$GALLERYFIX")/Crowd of 300" ]]; then
+    journey planets-gallery-fixture planets-gallery.log 420 --automate=planets-gallery "--root=$(wslpath -w "$GALLERYFIX")" --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+  else skip_step planets-gallery-fixture "no gallery fixture with crowds (FileScape.Fixtures.dll create-gallery)"; fi
   if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reader planets-reader.log 200 --automate=planets-reader "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   else skip_step planets-reader "FILESCAPE_WSL_README not set (tools/make-wsl-fixture.sh --readme)"; fi
 fi
