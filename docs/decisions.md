@@ -1640,6 +1640,60 @@ as FileScape while naming remains open.
   light's strength, and whether pan × 3 is right. **Revisit if:** the overview gains a telescope reuse (stream 5) that
   needs a different return target, or DJ wants Esc to keep the overview's selection framed on the way down.
 
+## AD-83 Every panel's keyboard and mouse ownership is one Core table; a world click closes the transient panels and does nothing else (extends AD-68) (2026-11-20, PLANET-115..119)
+
+- **Problem:** DJ (sixth pass): at the Ubuntu root landmark a jump and twirl opened the location actions, and the arrows
+  went on walking; the panel's displayed numbers should work; audit every panel; decide which panels a world click
+  closes, consume that click, keep the confirmations that need a choice, and give the keyboard back to play cleanly.
+- **What was reproduced (Core, before the fix):** `PanelOwnershipTests` run against a table that mirrored the old rule
+  (the AD-68 panel list; Settings and Locations blocking world presses without closing; the others letting a world click
+  act): 5 of 10 tests failed. The location actions were not a keyboard panel at all: AD-68 had listed them with the
+  overlays that "do not take the keyboard", so the movement keys were read every frame (`blockedKeys`) and only the
+  number keys, reaching `PlanetWorld.UnhandledInput` after every other key had had its chance, chose rows. The welcome
+  (three buttons, no focus) and Settings (every control mouse-only) gave the keys nothing to act on. A world click with
+  Destinations or the reader open selected or launched behind the panel; with Settings or Locations open it did nothing
+  and the panel stayed.
+- **Decision:**
+  - `FileScape.Core.Interaction.PanelOwnership` holds one row per panel (`PanelId`): whether it takes the keyboard,
+    whether it is modal (above the focus holder), what has the keyboard as it opens, what a press on the world does
+    (`OutsideClick`), which game shortcuts still pass, and why. `Owner` picks the owner (a modal panel, then the keyboard
+    panel holding the GUI focus, then the table's order); `Route` sends what the owner's own handler left to Pass, Close
+    (Esc, the owner only) or Consume; `OnWorldPress` says what a press or a click on the world closes and whether it is
+    consumed. `Main.KeyboardOwner` only reports what is open (`OpenPanels`), maps a Godot key onto a `PanelKey`, runs the
+    owner's own keys (`OwnKey`) and carries out the answer.
+  - Keyboard panels: the picture viewer, a confirmation, the welcome, the reader, Settings, Locations, Destinations, the
+    location actions. The selection card, the walkthrough's card, the preview, the bench's list, Help and the menus
+    accompany play and leave the keys to it (by decision: they describe or guide while you play).
+  - The location actions own the keyboard with a highlight (no GUI focus: a focused Button would take Space, and Space is
+    the twirl that opens the panel): ↑ ↓ Tab Shift+Tab Home End move it, Enter runs it, 1–9 run their rows, E and Esc
+    close. Opening with E starts on the first row; a twirl starts on the terminal (AD-63). The second twirl that armed
+    Explorer is replaced by ↓ (with the keys the panel's, Space no longer jumps). The highlight stays on a chosen row.
+  - Settings' controls and the welcome's buttons take the focus (Tab, the arrows, Space/Enter); each opens on its first.
+  - World clicks: `DismissOnPress` (Settings, Locations, Help, the menus) closes on the press in `Main._Input`, before the
+    world or the GUI see it — no drag, selection or travel starts; `DismissOnClick` (Destinations, the location actions,
+    the reader) closes on a left click released without a drag (`PlanetWorld.Click` and the legacy views ask
+    `DismissOnWorldClick` before selecting), so a drag beside them still looks around (PLANET-25, demonstrated with real
+    input on `d2695b8`); `Keep` (a confirmation, the welcome) consumes the press and closes nothing. After a dismissal the
+    next press is never the second half of a double-click.
+  - After any close (Esc, a click, a panel's own key) the keyboard panel left open gets its focus back (`RestoreFocus`:
+    the filter, the rows, the text, the first setting); with none left the GUI focus is released.
+- **Alternatives:** guard the location actions on their own (the AD-62 shape that AD-68 replaced); give their rows GUI
+  focus (Space would run the highlighted row right after the twirl that opened it); close every panel on any press
+  (would take the camera from DJ while he looks round beside the list, PLANET-25); keep Settings modal to the pointer (a
+  dead click, the panel stays: what DJ asked to change); a table in the app (not testable without the engine).
+- **Changed on purpose:** Esc closes the panel that owns the keyboard, not the first in the old peel order (with
+  Locations and Destinations open together and the list focused, Esc used to close Locations). With the location
+  actions open, Space, W A S D and the arrows do nothing in the world; E closes them. Enter on an E-opened panel runs its
+  first row (it used to keep Enter's game meaning, open the selection with Windows). A world click with Destinations or
+  the reader open no longer selects behind them. `planets-dialog-keys` types a representative set (the letters bound to
+  shortcuts, two digits, the navigation keys and two chords) once per opener instead of every key three times, because
+  the table's tests now cover every panel × every kind of key.
+- **Known limits:** the table cannot see a panel that does not report itself in `OpenPanels`; a new panel must add a row
+  and a line there (`Every_panel_has_exactly_one_rule` catches the missing row, not the missing line). Godot's exclusive
+  confirmation takes its own keys and clicks before Main sees them; the table's `Keep` covers what reaches Main.
+- **Revisit if:** DJ wants a drag beside Destinations to close it too, Help to own the keyboard, or the twirl's second
+  press back (it would need Space to pass the location actions).
+
 ## AD-84 Every departure leaves from the launcher that leads there; Esc takes a dialog's move back; F again turns back (2026-11-20; extends AD-74)
 
 - **Problem (DJ, sixth pass):** "Some dialog-based navigation still launches the character from wherever they stand."

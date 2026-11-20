@@ -54,6 +54,24 @@ public partial class Hud
 
     public bool LocationsHolds(Control c) => _locPanel.Visible && _locPanel.IsAncestorOf(c);
 
+    /// <summary>
+    /// Gives the open Locations panel the keyboard again (AD-83: a panel over it closed and left the focus nowhere): the
+    /// rows, or the path field when there are no rows to choose.
+    /// </summary>
+    public void FocusLocations()
+    {
+        if (!_locPanel.Visible || GetViewport().GuiGetFocusOwner() is { } f && _locPanel.IsAncestorOf(f)) return;
+        if (_locList.ItemCount > 0 && _locList.IsItemSelectable(0)) _locList.GrabFocus();
+        else _pathEdit.GrabFocus();
+    }
+
+    /// <summary>Closes the HUD's drop-downs (the Legacy views menu, the needs-attention list): a click elsewhere (AD-83).</summary>
+    public void CloseMenus()
+    {
+        _legacyPanel.Visible = false;
+        _problemPanel.Visible = false;
+    }
+
     /// <summary>Whether the Locations rows (not the path field) have the keyboard (probes, PLANET-69).</summary>
     public bool LocationListFocused => _locList.HasFocus();
 

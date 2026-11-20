@@ -94,6 +94,14 @@
   after travel (Enter in the Destinations filter), home again (Backspace) and in the overview (T). Judged from the state
   file: input.unhandledKeys, input.commands and input.viewChanges must not change, nor the experience, the folder, the
   overview, the feet or the jumps; the panel stays open until Esc, which closes only it.
+  PLANET-115..119 (AD-83, 2026-11-20): then, with the real mouse, a click on a world in the sky with Settings (F4),
+  Locations (L) and Destinations (J) open closes the panel and selects nothing (input.selected, input.dismissals), S
+  walks again; a right-drag beside the list still turns the camera and the list stays. Then a second launch on the
+  fixture %TEMP%\FileScape-fixtures\dir with spaces shown with a Windows root's look (--test-root-look=windows, an
+  instrument: never a real root): real keys steer to the pane gateway (planets.rootMark), E opens the location actions
+  owning the keyboard (input.keyPanel) on the terminal; Up and W held move nothing; Home, Down, Enter records Explorer
+  (nav.shellCount); 3 copies (recorded, input.clipCount); Esc; a real jump and twirl opens them on the terminal, Down,
+  Enter; a click on the world closes them; F4 over them, Esc gives them the keys back; after travel and back, again.
 
   -OverviewEnter (PLANET-110/111/114, AD-82; sixth pass, stream 2) plays Destinations while the overview is open with
   real keys on the Starter Sky: T, J, type the -HearthWorld name, Enter; T, J, type, Down, Enter; T, J, type, Esc (the
@@ -169,6 +177,7 @@ function Launch {
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
   if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or $OverviewEnter -or $Depart -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
+  if ($script:RootLook) { $a += "--test-root-look=$($script:RootLook)" } # PLANET-119: a fixture with a root's look, never a real root
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
   $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart) { 0 } else { -1 }
   if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
@@ -645,6 +654,34 @@ try {
 
     Cases 'home' $true
     Shot 'dialogs-home' | Out-Null
+
+    # PLANET-117 (AD-83): a real click on the world with a transient panel open closes it and selects nothing.
+    # A world in the sky when one shows clear of the panels (a click would select it), else open sky at the upper right:
+    # clear of Destinations (left column), Locations and Settings (centred) and the card (right column, hidden: nothing selected).
+    function World-Point { $o = (State).planets.worldOnScreen; if ($o) { return @([int]$o[1], [int]$o[2]) }; return @(1450, 300) }
+    function Click-Outside($panel, [scriptblock]$open) {
+      Close-All; Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250 # nothing selected
+      & $open
+      for ($k = 0; $k -lt 20 -and -not (Is-Open $panel); $k++) { Start-Sleep -Milliseconds 150 }
+      Start-Sleep -Milliseconds 400
+      $xy = World-Point
+      if (-not (Is-Open $panel) -or -not $xy) { Check $false "click outside $panel`: open ($(Is-Open $panel)) with a world in view to click ($xy)"; Close-All; return }
+      $a = State
+      Click-At $xy; Start-Sleep -Milliseconds 400
+      $b = State
+      Check (-not (Is-Open $panel) -and [int]$b.input.selected -eq [int]$a.input.selected -and [int]$b.input.dismissals -eq [int]$a.input.dismissals + 1 -and $b.currentName -eq $a.currentName -and $b.input.keyPanel -eq 'None') "click outside $panel on world $($xy -join ',')`: it closes and selects nothing (selected $($a.input.selected) -> $($b.input.selected), dismissals +$([int]$b.input.dismissals - [int]$a.input.dismissals), keyboard $($b.input.keyPanel))"
+      $f = (State).planets.feet; Hold-Key 'S' 350; Start-Sleep -Milliseconds 300
+      $m = Moved ([pscustomobject]@{ feet = $f }) ([pscustomobject]@{ feet = (State).planets.feet })
+      Check ($m -gt 0.3) "click outside $panel`: then S walks again ($([Math]::Round($m, 2)) m)"
+    }
+    Click-Outside 'Settings' { Hold-Key 'F4' 40 }
+    Click-Outside 'Locations' { Hold-Key 'L' 40 }
+    Click-Outside 'Destinations' { Hold-Key 'J' 40 }
+    Close-All; Hold-Key 'J' 40; Start-Sleep -Milliseconds 400
+    Client-Pos $w 1000 450
+    Drag-Turns 'right' 'right-drag beside the open list (PLANET-25, AD-83)' | Out-Null
+    Check ((In).listOpen) "the list stays open through a drag beside it"
+    Close-All
     # Travel by Enter in the Destinations filter, then every panel again (shortcut and toolbar).
     Hold-Key 'J' 40; Type-Now 'Lantern'; Hold-Key 'Enter' 50
     for ($k = 0; $k -lt 125; $k++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq 'Lantern Workshop' -and -not $s.nav.tripActive) { break }; Start-Sleep -Milliseconds 200 }
@@ -664,6 +701,85 @@ try {
     Check ([bool](State).planets.overview) "the overview stays open through the panels and their Esc"
     Hold-Key 'T' 40; Start-Sleep -Seconds 2
     Shot 'dialogs-end' | Out-Null
+
+    # ---- PLANET-115/119: the location actions at a root-like fixture (a second launch, --test-root-look=windows)
+    if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000) }
+    $script:LaunchRoot = Join-Path $env:TEMP 'FileScape-fixtures\dir with spaces'
+    $script:RootLook = 'windows'
+    if (-not (Test-Path -LiteralPath $script:LaunchRoot)) { Check $false "the fixture $($script:LaunchRoot) exists (tools: FileScape.Fixtures)" }
+    else {
+      $p = Launch
+      Await-Window $p
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets -and $s.planets.phase -eq 'Walking' -and $s.planets.rootMark) { break }; Start-Sleep -Milliseconds 250 }
+      Start-Sleep -Seconds 3
+      function Mark { (State).planets.rootMark }
+      # Real keys to the gateway: turn with the arrows while it is off to a side, walk with W, as a player does.
+      function Steer-To-Mark([double]$stop = 1.8) {
+        for ($i = 0; $i -lt 60; $i++) {
+          $m = Mark; if (-not $m) { return $null }
+          if ([bool]$m.focused -and [double]$m.face -le $stop) { return $m }
+          $b = [double]$m.bearing
+          if ([Math]::Abs($b) -gt 10) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Abs($b) / 110 * 1000)); Start-Sleep -Milliseconds 120; continue }
+          Hold-Key 'W' ([int][Math]::Min(500, 80 + [double]$m.face * 45)); Start-Sleep -Milliseconds 150
+        }
+        return Mark
+      }
+      function At-Mark($where) { $m = Steer-To-Mark; Check ($m -and [bool]$m.focused) "$where`: real keys reach the gateway (face $([Math]::Round([double]$m.face, 2)) m, prompt '$((State).planets.prompt)')"; return ($m -and [bool]$m.focused) }
+      function Feet { (State).planets.feet }
+      function Actions-Case($where) {
+        if (-not (At-Mark $where)) { return }
+        Hold-Key 'E' 40; Start-Sleep -Milliseconds 400
+        $s = State
+        Check ([bool]$s.planets.rootMark.panel -and $s.input.keyPanel -eq 'LocationActions' -and $s.planets.rootMark.armed -eq 'Open terminal here') "$where, E: the location actions own the keyboard on '$($s.planets.rootMark.armed)' (keyboard $($s.input.keyPanel))"
+        $f = Feet; $u = [int]$s.input.unhandledKeys
+        Hold-Key 'Up' 500; Hold-Key 'W' 500; Hold-Key 'Left' 300; Start-Sleep -Milliseconds 300
+        $s = State
+        $mv = Moved ([pscustomobject]@{ feet = $f }) ([pscustomobject]@{ feet = $s.planets.feet })
+        Check ($mv -lt 0.05 -and [bool]$s.planets.rootMark.panel -and [int]$s.input.unhandledKeys -eq $u) "$where`: Up, W and Left held move nothing ($([Math]::Round($mv, 2)) m) and reach no shortcut; still open (highlight '$($s.planets.rootMark.armed)')"
+        Hold-Key 'Home' 40; Start-Sleep -Milliseconds 150; Hold-Key 'Down' 40; Start-Sleep -Milliseconds 200
+        $a = State
+        Hold-Key 'Enter' 40; Start-Sleep -Milliseconds 400
+        $b = State
+        Check ($a.planets.rootMark.armed -eq 'Show in Explorer' -and [int]$b.nav.shellCount -eq [int]$a.nav.shellCount + 1 -and $b.nav.shellLast -like 'open *') "$where`: Home, Down highlight '$($a.planets.rootMark.armed)'; Enter runs it (recorded: $($b.nav.shellLast))"
+        Hold-Key '3' 40; Start-Sleep -Milliseconds 300
+        Check ([int](State).input.clipCount -eq [int]$b.input.clipCount + 1) "$where`: the displayed 3 copies the path (recorded, not copied)"
+        Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 300
+        $s = State
+        Check (-not [bool]$s.planets.rootMark.panel -and $s.input.keyPanel -eq 'None') "$where`: Esc closes them; the keyboard is the game's ($($s.input.keyPanel))"
+      }
+      Actions-Case 'fixture as a root'
+      # The gesture: a real jump and twirl at the gateway opens them on the terminal.
+      if (At-Mark 'twirl') {
+        Hold-Key 'Space' 300; Start-Sleep -Milliseconds 60; Hold-Key 'Space' 200; Start-Sleep -Milliseconds 900
+        $s = State
+        Check ([bool]$s.planets.rootMark.panel -and $s.input.keyPanel -eq 'LocationActions' -and $s.planets.rootMark.armed -eq 'Open terminal here' -and [int]$s.planets.rootMark.opens -ge 2) "a jump and twirl opens the location actions owning the keyboard on '$($s.planets.rootMark.armed)' (keyboard $($s.input.keyPanel))"
+        $a = State; Hold-Key 'Down' 40; Start-Sleep -Milliseconds 150; Hold-Key 'Enter' 40; Start-Sleep -Milliseconds 400; $b = State
+        Check ([int]$b.nav.shellCount -eq [int]$a.nav.shellCount + 1 -and $b.nav.shellLast -like 'open *') "twirl, Down, Enter: Explorer (recorded: $($b.nav.shellLast))"
+        # A click on the world closes them and selects nothing.
+        $xy = World-Point
+        if ($xy) {
+          $a = State; Click-At $xy; Start-Sleep -Milliseconds 400; $b = State
+          Check (-not [bool]$b.planets.rootMark.panel -and [int]$b.input.selected -eq [int]$a.input.selected -and $b.input.keyPanel -eq 'None') "a click on world $($xy -join ',') closes the location actions and selects nothing ($($a.input.selected) -> $($b.input.selected))"
+        } else { Hold-Key 'Escape' 40; Log "  (no world in view to click: closed with Esc instead)" }
+      }
+      # After another panel closed: F4 over them, Esc gives the keys back.
+      if (At-Mark 'F4 over the location actions') {
+        Hold-Key 'E' 40; Start-Sleep -Milliseconds 300; Hold-Key 'F4' 40; Start-Sleep -Milliseconds 300
+        $a = State; Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 40; Start-Sleep -Milliseconds 200; $b = State
+        Check ($a.input.keyPanel -eq 'Settings' -and -not [bool]$b.input.settingsOpen -and $b.input.keyPanel -eq 'LocationActions' -and $b.planets.rootMark.armed -ne $a.planets.rootMark.armed) "F4 over the location actions, Esc: they have the keyboard again (Down: '$($a.planets.rootMark.armed)' -> '$($b.planets.rootMark.armed)')"
+        Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 300
+      }
+      # After travel: J, Enter on the first world, Backspace home, then the gateway again.
+      $home0 = (State).currentName
+      Hold-Key 'J' 40; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 40; Start-Sleep -Milliseconds 150; Hold-Key 'Enter' 50
+      for ($k = 0; $k -lt 100; $k++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -ne $home0 -and -not $s.nav.tripActive) { break }; Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Milliseconds 800; Close-All; Hold-Key 'Backspace' 40
+      for ($k = 0; $k -lt 100; $k++) { $s = State; if ($s.planets.phase -eq 'Walking' -and $s.currentName -eq $home0) { break }; Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Seconds 2
+      Check ((State).currentName -eq $home0) "travelled away and back home ($((State).currentName))"
+      Actions-Case 'after travel'
+      Shot 'dialogs-location-actions' | Out-Null
+    }
     Log "OS planets probe: $fails failure(s)"
     if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000) }
     $log | Set-Content (Join-Path $Out 'os-planets.log')
@@ -1592,6 +1708,10 @@ try {
   $moved = [Math]::Sqrt([Math]::Pow($s.planets.feet[0] - $f0[0], 2) + [Math]::Pow($s.planets.feet[1] - $f0[1], 2) + [Math]::Pow($s.planets.feet[2] - $f0[2], 2))
   Check ($t -ge 25 -and $moved -gt 1.5) "W + Right arrow walks and turns together ($([Math]::Round($t,1))deg, $([Math]::Round($moved,1)) m)"
   Shot 'end' | Out-Null
+}
+catch {
+  # A stop (the window would not come to the front, the target was lost) is recorded in the log, not only on stderr.
+  $script:fails++; Log "STOPPED OS probe: $($_.Exception.Message)"
 }
 finally {
   Release-All-Held

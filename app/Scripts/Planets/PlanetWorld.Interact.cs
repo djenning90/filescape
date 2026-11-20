@@ -83,6 +83,22 @@ public partial class PlanetWorld
     /// <summary>Set by Main as each event arrives (focus can return with the very click that should start a look).</summary>
     public bool PointerBlocked { set => _pointerBlocked = value; }
 
+    /// <summary>
+    /// Set by Main (<c>Main.KeyboardOwner</c>, AD-83): asked when a left click on the world is released without a drag;
+    /// true when it closed the open panels that close on a click, so the click does nothing else.
+    /// </summary>
+    public Func<bool>? WorldClickDismisses { get; set; }
+
+    /// <summary>
+    /// Main consumed a press on the world to close a panel (AD-83): the next press cannot be the second half of a
+    /// double-click, and nothing is pending.
+    /// </summary>
+    public void ForgetPress()
+    {
+        _leftPress = null;
+        _lastLeftWasDrag = true;
+    }
+
     /// <summary>How far (screen pixels) a held left button travels before the press is a drag, not a click.</summary>
     public const float DragThresholdPixels = 6f;
 
@@ -181,6 +197,16 @@ public partial class PlanetWorld
     /// file (the rule is in PlanetWorld.Actions). Each click's resolution is traced.</summary>
     private void Click(Vector2 at, bool doubleClick)
     {
+        // AD-83 (PLANET-117): a click on the world while a panel beside it is open (Destinations, the location actions,
+        // the reader) only puts the panel away; it selects and launches nothing, and the next press starts afresh (it
+        // cannot be the second half of a double-click).
+        if (WorldClickDismisses?.Invoke() == true)
+        {
+            _lastLeftWasDrag = true;
+            TraceClick($"click at ({at.X:0},{at.Y:0}): closed the open panel(s), nothing else");
+            return;
+        }
+
         if (_universe != null)
         {
             var uid = PickUniverse(at);
@@ -276,7 +302,6 @@ public partial class PlanetWorld
     {
         if (_universe != null) return UniverseCommand(e);
         if (e is InputEventKey { Pressed: true } or InputEventMouseButton { Pressed: true }) HurryBlend();
-        if (RootMarkKey(e)) return true; // PLANET-45: number keys choose the landmark panel's rows while it is open
         switch (e)
         {
             case InputEventKey { Pressed: true, Echo: false } k when k.IsAction(InputBindings.Jump):
@@ -684,7 +709,7 @@ public partial class PlanetWorld
         if (_contentsPanel.Visible) { CloseContents(); return true; }
         if (_previewPanel.Visible) { ClosePreview(); return true; }
         if (_benchPanel.Visible) { _benchPanel.Visible = false; return true; }
-        if (_rootPanel.Visible) { _rootPanel.Visible = false; return true; }
+        if (_rootPanel.Visible) { CloseRootMarkPanel(); return true; }
         return false;
     }
 
@@ -698,7 +723,7 @@ public partial class PlanetWorld
         CloseViewerForTravel(); // PLANET-96
         CloseContents();
         _benchPanel.Visible = false;
-        _rootPanel.Visible = false;
+        CloseRootMarkPanel();
         ClosePreview();
         _s.DismissNavigationDialogs();
     }

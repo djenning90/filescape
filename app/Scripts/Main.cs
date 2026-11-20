@@ -192,6 +192,7 @@ public partial class Main : Node3D
         _testListDelayMatch = args.TestListDelayMatch;
         _testBroad = args.TestBroad;
         _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain);
+        _testRootLook = args.TestRootLook switch { "windows" => FileScape.Core.Planets.WorldKind.WindowsRoot, "wsl" => FileScape.Core.Planets.WorldKind.WslRoot, _ => null };
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
@@ -276,6 +277,9 @@ public partial class Main : Node3D
 
     /// <summary>--test-play-discovery=off, --test-overview-detail=off, --test-overview-look=plain (AppArgs; PLANET-90..92 before/after instruments).</summary>
     private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain) _testInstruments;
+
+    /// <summary>--test-root-look (instrument, PLANET-119): the launch folder shown with a root's look; null for a person's launch.</summary>
+    private FileScape.Core.Planets.WorldKind? _testRootLook;
     private bool _recordShell;
 
     /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>
@@ -1135,6 +1139,9 @@ public partial class Main : Node3D
         // closed the panel the second time (os-planets-probe -Dialogs, 2026-11-19; AD-68). PanelOwnsKey does what
         // _UnhandledInput would: a trip's Esc first, then the panel's own Esc.
         if (@event is InputEventKey { Pressed: true, Keycode: Key.Escape } && KeyboardPanel != KeyPanel.None && PanelOwnsKey(@event)) return;
+        // AD-83: a press on the world while Settings, Locations, Help or a menu is open closes it and does nothing else
+        // (before the world or the GUI can start a drag or a selection with it; Main.KeyboardOwner).
+        if (@event is InputEventMouseButton { Pressed: true } press && DismissOnWorldPress(press)) return;
         if (_experience == Experience.Planets)
         {
             _planets.PointerBlocked = !_windowFocused || ModalOpen;
@@ -1295,7 +1302,10 @@ public partial class Main : Node3D
 
         if (mb.Pressed)
         {
-            if (mb.DoubleClick && mb.ButtonIndex == MouseButton.Left)
+            // A press right after one consumed to close a panel is never the second half of a double-click (AD-83).
+            var doubleClick = mb.DoubleClick && !_nextPressNotDouble;
+            _nextPressNotDouble = false;
+            if (doubleClick && mb.ButtonIndex == MouseButton.Left)
             {
                 var hit = PickAt(mb.Position);
                 if (hit >= 0 && _experience == Experience.Places && _tree != null)
@@ -1327,7 +1337,7 @@ public partial class Main : Node3D
 
         if (mb.ButtonIndex == _pressButton)
         {
-            if (!_dragged && mb.ButtonIndex == MouseButton.Left)
+            if (!_dragged && mb.ButtonIndex == MouseButton.Left && !DismissOnWorldClick()) // AD-83: a click that closed a panel selects nothing
             {
                 var hit = PickAt(mb.Position);
                 if (hit >= 0) Select(hit);

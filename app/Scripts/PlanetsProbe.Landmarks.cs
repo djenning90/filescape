@@ -16,9 +16,10 @@ namespace FileScape.App;
 /// it stops at its face); the prompt is "E · Show location actions" (PLANET-57); E opens the panel (nothing started yet),
 /// every row saying what it does; 1 records the terminal command for this folder, 2 Show in Explorer (the folder opened
 /// with Windows), 3 and 4 the two path forms (recorded, never copied: the person's clipboard is untouched); the
-/// filesystem's places are offered. On the Windows look, the twirl's quick route (AD-63): a jump does nothing, a twirl
-/// opens the panel with the terminal armed and starts nothing, another arms Explorer, Enter runs the armed row; 5.5 m
-/// away a twirl is only a twirl. Then the WSL panel's "/ the root" travels to the distribution's real root, whose own monolith opens a
+/// filesystem's places are offered. PLANET-115 (AD-83): the open panel owns the keyboard — the arrows and W move the
+/// highlight, never the traveller, Enter runs the highlighted row. On the Windows look, the twirl's quick route (AD-63): a
+/// jump does nothing, a twirl opens the panel with the terminal highlighted and starts nothing, ↓ moves to Explorer, Enter
+/// runs it; Esc, then a twirl and Enter runs the terminal; 5.5 m away a twirl is only a twirl. Then the WSL panel's "/ the root" travels to the distribution's real root, whose own monolith opens a
 /// terminal at /. The test shell records every start; nothing is started.
 /// </summary>
 public partial class PlanetsProbe
@@ -185,7 +186,25 @@ public partial class PlanetsProbe
         var does = P.RootMarkDescriptions;
         Check(does.Count == actions.Count && does.Count > 2 && does[0].StartsWith("Opens ", StringComparison.Ordinal) && does[1].StartsWith("Opens File Explorer at ", StringComparison.Ordinal) && does[2].StartsWith("Puts ", StringComparison.Ordinal),
             $"{tag}: each row says what it does: {string.Join(" | ", does.Take(4))}");
-        Check(P.RootMarkArmed == "", $"{tag}: opened with E, no row is armed (Enter has its usual meaning)");
+        // PLANET-115 (AD-83): the panel owns the keyboard at once, on its first row; the arrows and W move the highlight, never you.
+        Check(App.KeyboardPanel == Main.KeyPanel.LocationActions && P.RootMarkArmed == actions[0], $"{tag}: opened with E, the panel owns the keyboard on its first row (\"{P.RootMarkArmed}\", keyboard {App.KeyboardPanel})");
+        var feetAtPanel = P.Walker.Feet;
+        var cmdsAtPanel = App.ShortcutCommandCount;
+        await Hold(0.5, Godot.Key.Up);
+        await Hold(0.4, Godot.Key.W);
+        await Hold(0.4, Godot.Key.Left);
+        await Frames(4);
+        var movedAtPanel = Vector3Distance(feetAtPanel, P.Walker.Feet);
+        Check(movedAtPanel < 0.05f && App.ShortcutCommandCount == cmdsAtPanel && P.RootMarkPanelOpen, F($"{tag}: ↑, W and ← held with the panel open move nothing ({movedAtPanel:0.00} m) and reach no shortcut"));
+        await Key(Godot.Key.Home); // the held ↑ above moved the highlight (a held key repeats the moves)
+        await Key(Godot.Key.Down);
+        var second = P.RootMarkArmed;
+        await Key(Godot.Key.Up);
+        await Key(Godot.Key.Up);
+        var last = P.RootMarkArmed;
+        await Key(Godot.Key.Home);
+        Check(second == actions[1] && last == actions[^1] && P.RootMarkArmed == actions[0] && App.ShellLog.Count == shell0,
+            $"{tag}: ↓ highlights row 2 (\"{second}\"), ↑ ↑ wraps to the last (\"{last}\"), Home the first (\"{P.RootMarkArmed}\"); nothing started");
         foreach (var p in expectPlaces) Check(actions.Contains(p), $"{tag}: the panel offers {p.Trim()}");
         await Seconds(0.5);
         await Shot($"landmarks-{tag}-panel");
@@ -193,14 +212,14 @@ public partial class PlanetsProbe
         // 1: the terminal (recorded by the test shell, nothing started).
         await Key(Godot.Key.Key1);
         await Frames(3);
-        var last = App.ShellLog.Count > shell0 ? App.ShellLog[^1] : "(nothing)";
-        Check(App.ShellLog.Count == shell0 + 1 && last == expectTerminal, $"{tag}: 1 asks for the terminal in this folder: {last}");
+        var ran = App.ShellLog.Count > shell0 ? App.ShellLog[^1] : "(nothing)";
+        Check(App.ShellLog.Count == shell0 + 1 && ran == expectTerminal, $"{tag}: 1 asks for the terminal in this folder: {ran}");
         // 2: Show in Explorer (the folder opened with Windows; recorded, nothing opened).
         await Key(Godot.Key.Key2);
         await Frames(3);
         var folder = Tree.FullPath(App.Navigator.Current);
-        last = App.ShellLog.Count > shell0 + 1 ? App.ShellLog[^1] : "(nothing)";
-        Check(App.ShellLog.Count == shell0 + 2 && last == $"open {folder}", $"{tag}: 2 asks Explorer to show this folder: {last}");
+        ran = App.ShellLog.Count > shell0 + 1 ? App.ShellLog[^1] : "(nothing)";
+        Check(App.ShellLog.Count == shell0 + 2 && ran == $"open {folder}", $"{tag}: 2 asks Explorer to show this folder: {ran}");
         if (!copies) return;
 
         // 3 and 4: the two forms of the path (recorded, never put on the clipboard).
@@ -215,8 +234,9 @@ public partial class PlanetsProbe
 
     /// <summary>
     /// The twirl's quick route (AD-63), at the mark with its panel closed: an ordinary jump does nothing; a twirl opens the
-    /// panel with the terminal armed and starts nothing; another arms Explorer; Enter runs it (recorded); a twirl away from
-    /// the mark is only a twirl.
+    /// panel with the terminal highlighted and starts nothing, and the panel owns the keyboard (PLANET-115); ↓ highlights
+    /// Explorer; Enter runs it (recorded); Esc, then a twirl and Enter runs the terminal; a twirl away from the mark is only
+    /// a twirl.
     /// </summary>
     private async Task QuickRoute(string tag, string expectTerminal)
     {
@@ -236,23 +256,27 @@ public partial class PlanetsProbe
         await Frames(3);
         Check(P.RootMarkPanelOpen && P.RootMarkArmed == PlanetWorld.TerminalLabel && App.ShellLog.Count == shell0,
             $"{tag}: a twirl opens the panel with \"{P.RootMarkArmed}\" armed and starts nothing (prompt \"{P.PromptText}\")");
-        Check(P.PromptText.StartsWith($"Enter · {PlanetWorld.TerminalLabel}", StringComparison.Ordinal) && P.PromptText.Contains($"twirl again · {PlanetWorld.ExplorerLabel}"), $"{tag}: the cue says what Enter will do before you commit: \"{P.PromptText}\"");
+        Check(P.PromptText.StartsWith($"Enter · {PlanetWorld.TerminalLabel}", StringComparison.Ordinal) && P.PromptText.Contains("↑ ↓ choose"), $"{tag}: the cue says what Enter will do before you commit: \"{P.PromptText}\"");
+        Check(App.KeyboardPanel == Main.KeyPanel.LocationActions, $"{tag}: the twirl's panel owns the keyboard at once (keyboard {App.KeyboardPanel})");
         await Seconds(0.4);
         await Shot($"landmarks-{tag}-quick-terminal");
 
-        // Another twirl: Explorer armed.
-        await JumpAndTwirl();
+        // ↓: Explorer highlighted (a second twirl did this before the panel owned the keyboard).
+        await Until(() => P.Walker.Grounded, 3);
+        await Key(Godot.Key.Down);
         await Frames(3);
-        Check(P.RootMarkArmed == PlanetWorld.ExplorerLabel && App.ShellLog.Count == shell0, $"{tag}: another twirl arms \"{P.RootMarkArmed}\", still nothing started");
+        Check(P.RootMarkArmed == PlanetWorld.ExplorerLabel && App.ShellLog.Count == shell0, $"{tag}: ↓ highlights \"{P.RootMarkArmed}\", still nothing started");
         await Shot($"landmarks-{tag}-quick-explorer");
 
         // Enter runs it (recorded).
         await Key(Godot.Key.Enter);
         await Frames(3);
         var last = App.ShellLog.Count > shell0 ? App.ShellLog[^1] : "(nothing)";
-        Check(App.ShellLog.Count == shell0 + 1 && last == $"open {Tree.FullPath(App.Navigator.Current)}" && P.RootMarkArmed == "", $"{tag}: Enter runs the armed row: {last}");
+        Check(App.ShellLog.Count == shell0 + 1 && last == $"open {Tree.FullPath(App.Navigator.Current)}" && P.RootMarkArmed == PlanetWorld.ExplorerLabel, $"{tag}: Enter runs the highlighted row: {last}");
 
-        // And the terminal by twirl and Enter.
+        // And the terminal by twirl and Enter (Esc first: with the panel open Space is the panel's).
+        await Key(Godot.Key.Escape);
+        await Frames(3);
         await JumpAndTwirl();
         await Frames(3);
         await Key(Godot.Key.Enter);

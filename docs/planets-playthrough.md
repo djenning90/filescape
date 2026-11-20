@@ -316,3 +316,21 @@ On the sample world (Sample world in the toolbar, or `--root=sample`):
 4. **Judge by feel:** the recovery's window (about a tenth of a second after a short jump, 0.12–0.2 s after walking off),
    the twirl at the top of the jump, whether the leap's boards read from across the sky, the island outlines (spurs,
    lobes, ragged bridges), and whether any gap still looks jumpable and is not (where, please).
+
+## Panels that own the keys, and a click on the world (2026-11-20, PLANET-115..119, AD-83)
+
+**Launch:** the sample world (`--root=sample --vis=planets`); for a root's landmark, a real drive or distribution from
+This computer (or, for a check, a fixture with `--test-root-look=windows`).
+
+1. **The location actions.** At a root's gateway or monolith, E (or a jump and twirl) opens the panel, and it has the
+   keys at once: **↑ ↓** move the lime highlight (it starts on the first row; after a twirl, on *Open terminal here*),
+   **Enter** runs the highlighted row, the numbers **1–9** run their rows, **E** or **Esc** closes. With the panel open,
+   W A S D, the arrows and Space do nothing in the world. (The second twirl that armed Show in Explorer is now ↓.)
+2. **Settings** (F4 or ⚙) opens on its first setting: **Tab** and **↑ ↓** move, **Space** toggles, **← →** move a
+   slider. **The welcome** (first launch) answers with **← →**, **Tab** and **Enter**; **Esc** is *Explore on my own*.
+3. **Click the world** with Settings, Locations, Help or a menu open: the panel closes and the click does nothing else.
+   With Destinations, the location actions or the reader open, a click closes them the same way, and a drag still looks
+   around beside them. A confirmation and the welcome keep the click: they need an answer.
+4. **One panel over another:** J, then F4, then Esc: Settings closes and typing lands in the list's filter again.
+5. **Judge by feel:** whether a drag beside Destinations should close it too, and whether ↓ is as quick as the second
+   twirl was.
