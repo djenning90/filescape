@@ -409,7 +409,8 @@ public partial class PlanetWorld : Node3D
     private PlanetComposition Compose(FsTree tree, int folderId) =>
         PlanetComposer.Compose(tree, folderId, PlanetParams.Default, _s.IsVisible,
             // A probe's root look on the current folder stands that root's landmark too (PLANET-45).
-            rootMarkKind: ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind : null);
+            rootMarkKind: ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind
+            : ProbeRootLook is { } look && folderId == _s.Navigator.Root ? look : null);
 
     /// <summary>
     /// Makes <paramref name="folderId"/> the current planet at the origin with its children and parent around it.
@@ -486,10 +487,17 @@ public partial class PlanetWorld : Node3D
     /// <summary>The character of a folder's world (PLANET-27): what kind of place it is, from the tree and where you started.</summary>
     public WorldCharacter CharacterOf(int folderId) =>
         ProbeCharacter is { } forced && folderId == _current?.FolderId ? forced
+        : ProbeRootLook is { } look && folderId == _s.Navigator.Root ? new WorldCharacter(look, 0, 0, -1)
         : _s.Tree is { } t && t.Contains(folderId) ? WorldCharacter.Of(t, folderId, _s.Navigator.Root) : new WorldCharacter(WorldKind.Folder, 1, 1, -1);
 
     /// <summary>Probes only: show the current world with this character (to photograph a Windows volume without entering one).</summary>
     public WorldCharacter? ProbeCharacter { get; set; }
+
+    /// <summary>
+    /// Instrument (<c>--test-root-look</c>, PLANET-119): the launch folder (the navigator's root) is shown with this root's
+    /// look and landmark wherever you come back to it, so a real-input probe can use a root's location actions on a fixture.
+    /// </summary>
+    public WorldKind? ProbeRootLook { get; set; }
 
     /// <summary>
     /// A visual for <paramref name="body"/>: from the cache if one shows exactly this, else built now on the main thread

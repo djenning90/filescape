@@ -33,6 +33,7 @@ public partial class Main : IWorldSession
             OverviewDetailEnabled = !_testInstruments.DetailOff,
             OverviewLooksVaried = !_testInstruments.LookPlain,
         };
+        _planets.ProbeRootLook = _testRootLook; // instrument (--test-root-look): a fixture shown with a root's look
         _planets.WorldClickDismisses = DismissOnWorldClick; // AD-83 (Main.KeyboardOwner): a world click closes the panels beside it
         AddChild(_planets);
         SetupSound(); // Main.Sound.cs (PLANET-47)

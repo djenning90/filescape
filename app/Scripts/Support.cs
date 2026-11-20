@@ -77,6 +77,13 @@ public sealed record CommandLine
 
     public bool TestOverviewLookPlain { get; init; }
 
+    /// <summary>
+    /// --test-root-look=windows|wsl (instrument, PLANET-119, AD-83): the launch folder is shown with a Windows volume's or
+    /// a WSL distribution's look, landmark included, so a real-input probe can open a root's location actions on a
+    /// fixture and never on a real root (what the in-app journeys do with <c>PlanetWorld.ProbeCharacter</c>).
+    /// </summary>
+    public string? TestRootLook { get; init; }
+
     /// <summary>--test-relief=classic (comparison instrument, PLANET-59): ordinary worlds keep the hills they had before 2026-11-17, for before/after screenshots in one build.</summary>
     public bool TestClassicRelief { get; init; }
 
@@ -135,6 +142,7 @@ public sealed record CommandLine
             TestPlayDiscoveryOff = Get("test-play-discovery") == "off",
             TestOverviewDetailOff = Get("test-overview-detail") == "off",
             TestOverviewLookPlain = Get("test-overview-look") == "plain",
+            TestRootLook = Get("test-root-look"),
         };
     }
 }

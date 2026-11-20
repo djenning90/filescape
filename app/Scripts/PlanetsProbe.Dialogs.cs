@@ -68,7 +68,8 @@ public partial class PlanetsProbe
         s.AddRange(
         [
             new("Tab", Godot.Key.Tab), new("Shift+Tab", Godot.Key.Tab, Shift: true), new("Backspace", Godot.Key.Backspace), new("Delete", Godot.Key.Delete),
-            new("PageDown", Godot.Key.Pagedown), new("Home", Godot.Key.Home),
+            // Home then End: a filter's caret goes back to the end, so Backspace still edits the typed text afterwards.
+            new("PageDown", Godot.Key.Pagedown), new("Home", Godot.Key.Home), new("End", Godot.Key.End),
             new("Up", Godot.Key.Up), new("Down", Godot.Key.Down), new("Left", Godot.Key.Left), new("Right", Godot.Key.Right),
             new("Ctrl+V", Godot.Key.V, Ctrl: true), new("Ctrl+Tab", Godot.Key.Tab, Ctrl: true),
         ]);
@@ -121,7 +122,12 @@ public partial class PlanetsProbe
     {
         if (c.Panel == "Destinations")
         {
-            for (var i = 0; i < 40 && P.DestinationFilterText.Length > 0; i++) await Strike(new Stroke("Backspace", Godot.Key.Backspace));
+            // Up to 300: Ctrl+V in the typed set pastes whatever is on the clipboard into the filter (it can be long).
+            // The paste can land mid-text (wherever ← → left the caret): Backspace once (from the results it puts the keyboard in
+            // the filter), End (the caret to the end), then Backspace until empty. Found 2026-11-20 with text on the clipboard.
+            await Strike(new Stroke("Backspace", Godot.Key.Backspace));
+            await Strike(new Stroke("End", Godot.Key.End));
+            for (var i = 0; i < 300 && P.DestinationFilterText.Length > 0; i++) await Strike(new Stroke("Backspace", Godot.Key.Backspace));
             if (!P.DestinationTreeFocused) await Strike(new Stroke("Down", Godot.Key.Down));
             return P.DestinationTreeFocused;
         }
@@ -331,18 +337,22 @@ public partial class PlanetsProbe
 
     // ------------------------------------------------------------------ a click on the world (PLANET-117)
 
-    /// <summary>A point on the world a click would act on (a world in the sky, else the sky above the horizon), clear of every panel.</summary>
-    private Vector2 WorldPoint()
+    /// <summary>
+    /// A point on the world a click would act on, clear of every panel: a world in the sky (a click would select it), else
+    /// the first point of a 40-unit grid (below the toolbar, above the prompt) over no panel; null when panels cover it all.
+    /// </summary>
+    private Vector2? WorldPoint()
     {
         if (P.ClickableWorld() is { } w) return w.Centre;
         var size = App.GetViewport().GetVisibleRect().Size;
-        foreach (var p in new[] { new Vector2(0.5f, 0.3f), new Vector2(0.25f, 0.3f), new Vector2(0.75f, 0.3f), new Vector2(0.5f, 0.55f) })
+        for (var y = 170f; y < size.Y - 130; y += 40)
+        for (var x = 30f; x < size.X - 30; x += 40)
         {
-            var at = p * size;
+            var at = new Vector2(x, y);
             if (!P.OverHudAt(at)) return at;
         }
 
-        return size * new Vector2(0.5f, 0.3f);
+        return null;
     }
 
     /// <summary>
@@ -358,24 +368,29 @@ public partial class PlanetsProbe
         await Until(isOpen, 6);
         await Frames(3);
         if (!Check(isOpen(), $"click outside {panel}: open")) return;
-        var at = WorldPoint();
+        if (WorldPoint() is not { } at)
+        {
+            Log($"click outside {panel}: [instrument] no world shows past the open panels at this window size; not clicked");
+            return;
+        }
+
+        var what = P.ClickableWorld() is { } world ? $"world #{world.Id} in the sky" : "empty sky or ground";
         var selected = App.Selection.Selected;
         var dismissals = App.WorldPressDismissals;
-        var state = GameState();
+        var state = GameState().Replace("help True", "help False"); // Help's own closing is not a change behind it
         await Click(at);
         await Frames(4);
         if (keep)
         {
-            Check(isOpen() && App.Selection.Selected == selected && GameState() == state, F($"click outside {panel} at ({at.X:0},{at.Y:0}): kept (it needs a choice), nothing selected, nothing else changed"));
+            Check(isOpen() && App.Selection.Selected == selected && GameState() == state, F($"click outside {panel} on {what} at ({at.X:0},{at.Y:0}): kept (it needs a choice), nothing selected, nothing else changed"));
             return;
         }
 
         Check(!isOpen() && App.Selection.Selected == selected && GameState() == state && App.WorldPressDismissals == dismissals + 1 && App.KeyboardPanel == PanelId.None,
-            F($"click outside {panel} at ({at.X:0},{at.Y:0}): it closes and the click does nothing else (selection {App.Selection.Selected}, was {selected}; {GameState()}; owner {App.KeyboardPanel})"));
+            F($"click outside {panel} on {what} at ({at.X:0},{at.Y:0}): it closes and the click does nothing else (selection {App.Selection.Selected}, was {selected}; {GameState()}; owner {App.KeyboardPanel})"));
         await KeysAreTheGamesAgain($"click outside {panel}");
         // The next click acts as usual (it is not the second half of a double-click: nothing travels).
-        at = WorldPoint();
-        await Click(at);
+        if (WorldPoint() is { } next) await Click(next);
         await Frames(4);
         Check(!P.Busy, F($"click outside {panel}: the next click on the world is a single click (no travel; selection {App.Selection.Selected})"));
         App.Selection.Select(-1);
@@ -433,7 +448,7 @@ public partial class PlanetsProbe
         foreach (var s in new Stroke[] { new("t", Godot.Key.T, Ch: 't'), new("v", Godot.Key.V, Ch: 'v'), new("w", Godot.Key.W, Ch: 'w') }) await Strike(s);
         Check(App.KeyboardPanel == PanelId.Welcome && first is Button && second is Button && second != first && App.UnhandledKeyCount == unhandled && GameState() == state && App.WelcomeOpen,
             $"the welcome owns the keyboard: its first answer has it, → moves to the next ({(second as Button)?.Text}), T V W reach nothing");
-        await Click(WorldPoint());
+        if (WorldPoint() is { } outside) await Click(outside);
         await Frames(3);
         Check(App.WelcomeOpen && GameState() == state, "the welcome keeps a click on the world (it needs an answer)");
         await Key(Godot.Key.Escape);
@@ -500,6 +515,12 @@ public partial class PlanetsProbe
         await ClickOutside("Destinations", async () => await Key(Godot.Key.J), () => P.ListOpen);
         await ClickOutside("the reader", async () => { await Key(Godot.Key.Escape); await Frames(2); await Key(Godot.Key.R); }, () => App.Hud.ReadmeVisible);
         await ClickOutside("Help", async () => await Key(Godot.Key.F1), () => App.Hud.HelpVisible);
+        // A confirmation needs an answer: a click on the world neither answers it nor acts behind it.
+        var confirmed = false;
+        await ClickOutside("a confirmation", async () => { App.Confirm("planets-dialog-keys: a click elsewhere must not answer this.", () => confirmed = true); await Frames(2); }, () => App.ConfirmShowing, keep: true);
+        Check(!confirmed, "the confirmation's action did not run");
+        App.ProbeCancelConfirm();
+        await Frames(2);
         await DragBesideList();
 
         // ---- the location actions at a root landmark (PLANET-115): by E, by a jump and twirl, and a world click

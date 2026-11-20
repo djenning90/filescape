@@ -198,6 +198,7 @@ public partial class Main : Node3D
         _testListDelayMatch = args.TestListDelayMatch;
         _testBroad = args.TestBroad;
         _testInstruments = (args.TestPlayDiscoveryOff, args.TestOverviewDetailOff, args.TestOverviewLookPlain);
+        _testRootLook = args.TestRootLook switch { "windows" => FileScape.Core.Planets.WorldKind.WindowsRoot, "wsl" => FileScape.Core.Planets.WorldKind.WslRoot, _ => null };
         _recordShell = args.TestShellRecord;
         if (args.SpaciousLayout) _placeParams = PlaceParams.Spacious;
         if (args.TestMaxIslands is { } mi) _worldLayoutParams = WorldLayoutParams.Default with { MaxIslands = mi };
@@ -282,6 +283,9 @@ public partial class Main : Node3D
 
     /// <summary>--test-play-discovery=off, --test-overview-detail=off, --test-overview-look=plain (AppArgs; PLANET-90..92 before/after instruments).</summary>
     private (bool PlayDiscoveryOff, bool DetailOff, bool LookPlain) _testInstruments;
+
+    /// <summary>--test-root-look (instrument, PLANET-119): the launch folder shown with a root's look; null for a person's launch.</summary>
+    private FileScape.Core.Planets.WorldKind? _testRootLook;
     private bool _recordShell;
 
     /// <summary>Opens the Starter Sky in Planets (the toolbar's Sample world, the walkthrough), or the synthetic tree if it cannot be written.</summary>
