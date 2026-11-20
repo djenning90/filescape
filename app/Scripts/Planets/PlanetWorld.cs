@@ -338,7 +338,7 @@ public partial class PlanetWorld : Node3D
     /// </summary>
     private static readonly TimeSpan RecomposeGapWhileDiscovering = TimeSpan.FromSeconds(4);
 
-    private TimeSpan _lastRecomposeSwap = TimeSpan.MinValue;
+    private TimeSpan? _lastRecomposeSwap;
 
     /// <summary>Recompositions swapped in this session and the longest swap, milliseconds (probes).</summary>
     public int RecomposeSwaps { get; private set; }
@@ -351,7 +351,7 @@ public partial class PlanetWorld : Node3D
         var now = _s.Now;
         if (now - _lastSignatureCheck < RecomposeCheckInterval) return;
         // Background discovery at work: recompose at most every RecomposeGapWhileDiscovering (see there).
-        if (PlayDiscoveryEnabled && _discovery.State == OverviewDiscoveryState.Discovering && now - _lastRecomposeSwap < RecomposeGapWhileDiscovering) return;
+        if (PlayDiscoveryEnabled && _discovery.State == OverviewDiscoveryState.Discovering && _lastRecomposeSwap is { } lastSwap && now - lastSwap < RecomposeGapWhileDiscovering) return;
         _lastSignatureCheck = now;
         var sig = PlanetComposer.Signature(tree, _current.FolderId);
         if (sig == _signature) return;

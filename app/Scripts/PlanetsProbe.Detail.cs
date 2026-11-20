@@ -141,6 +141,33 @@ public partial class PlanetsProbe
         return F($"{n} worlds, fingerprint {h:x16}");
     }
 
+    /// <summary>
+    /// Writes looks.txt in the output folder: one line per listed world drawn, a hash of its path and a hash of its look
+    /// (no names). Two runs on the same tree list different worlds by the time they look (discovery's timing), so the
+    /// whole-set fingerprint differs; the worlds both runs share must have equal looks (PLANET-92: stable across runs).
+    /// </summary>
+    private void WriteLookMap()
+    {
+        var lines = new List<string>();
+        foreach (var id in P.UniverseIds.Where(i => Tree[i].ScanState == DirScanState.Complete))
+        {
+            if (P.UniverseLook(id) is not { } look) continue;
+            ulong Fnv(IEnumerable<int> xs)
+            {
+                var h = 1469598103934665603UL;
+                foreach (var x in xs) { h ^= (ulong)x; h *= 1099511628211UL; }
+                return h;
+            }
+
+            var path = Fnv(Tree.FullPath(id).Select(c => (int)c));
+            var lk = Fnv(new[] { look.Base.R, look.Base.G, look.Base.B, look.Custom.R, look.Custom.G, look.Custom.B, look.Custom.A }.Select(v => (int)MathF.Round(v * 1000)));
+            lines.Add(F($"{path:x16} {lk:x16}"));
+        }
+
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(Out, "looks.txt"), lines);
+        Log(F($"looks.txt: {lines.Count} listed worlds (path hash, look hash)"));
+    }
+
     /// <summary>What the overview draws now: worlds drawn, folded, overlapping disc pairs and worlds, draw calls.</summary>
     private void LogDetail(string when)
     {
@@ -174,6 +201,7 @@ public partial class PlanetsProbe
         LogDetail(F($"after {fill + 4:0} s"));
         Log("perf overview: " + FrameStats(_discoveryFrameMs));
         Log("looks: " + LookFingerprint());
+        WriteLookMap();
         if (!countsOnly) await Shot("nav-full");
         Check(!P.UniverseHintShown, "the hint has stepped aside by now");
         if (P.OverviewDetailEnabled)
