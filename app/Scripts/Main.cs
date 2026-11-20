@@ -1609,8 +1609,10 @@ public partial class Main : Node3D
         {
             reason = $"“{node.Name}” is a link. FileScape did not follow it; Windows will open its target, which may be elsewhere.";
         }
-        else if ((node.Flags & NodeFlags.CloudPlaceholder) != 0)
+        else if ((node.Flags & NodeFlags.CloudPlaceholder) != 0 && !FileScape.Core.Planets.GalleryRules.OpensWithoutAsking(node))
         {
+            // A cloud-only picture opens without the question (PLANET-135: DJ allowed pictures to be fetched; the question
+            // on every photo obstructed). Documents and other cloud files still ask.
             reason = $"“{node.Name}” is a cloud placeholder. Opening it may download it from the provider.";
         }
 

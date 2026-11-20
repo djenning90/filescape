@@ -353,7 +353,7 @@ public sealed class DirectoryScanner : IScanSource
     public const FileAttributes Unpinned = (FileAttributes)0x00100000;
 
     /// <summary>The node flags an entry's attributes imply; any recall or offline attribute marks a cloud placeholder.</summary>
-    internal static NodeFlags FlagsFor(FileAttributes attrs)
+    public static NodeFlags FlagsFor(FileAttributes attrs)
     {
         var f = NodeFlags.None;
         if ((attrs & FileAttributes.Hidden) != 0) f |= NodeFlags.Hidden;

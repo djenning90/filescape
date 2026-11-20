@@ -252,7 +252,6 @@ public partial class PictureViewer : Control
             if (_refused.TryGetValue(id, out var why)) ShowStatus($"This picture can't be shown here: {why}.\nEnter opens it with Windows.");
             else if (GalleryRules.Verdict(n) is var verdict && verdict != GalleryRules.PictureVerdict.Viewable) Refuse(id, verdict switch
             {
-                GalleryRules.PictureVerdict.CloudPlaceholder => "it is a cloud file that may not be on this PC, and reading it could download it",
                 GalleryRules.PictureVerdict.Link => "it is a link, and FileScape does not read through links",
                 _ => $"it is {SizeFormat.Short(n.Size)}, over the {SizeFormat.Short(GalleryRules.MaxPictureBytes)} a preview reads",
             });
