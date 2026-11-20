@@ -196,8 +196,14 @@ public partial class PlanetWorld
 
     private int _apexTwirlsSeen;
 
-    /// <summary>Records an airborne press on a Hazard World's walking frame (<see cref="LastHazardPress"/>) from the walker's event.</summary>
-    private void NoteHazardPress(Core.Movement.JumpEventKind kind)
+    /// <summary>
+    /// Records an airborne press on a Hazard World's walking frame (<see cref="LastHazardPress"/>) from the walker's event.
+    /// A press that did nothing this frame is named for why (stream 2, 2026-11-19: "buffered" covered all three, and the
+    /// real-input long jump's "buffered" at 0.37 s could not be told apart): "carry-ignored" (the catch's carry was
+    /// already under way), "spent" (the twirl or catch was already used in this airtime) or "buffered" (kept for the
+    /// landing just below).
+    /// </summary>
+    private void NoteHazardPress(Core.Movement.JumpEventKind kind, in PressBefore before)
     {
         var apex = _walker.ApexTwirls != _apexTwirlsSeen;
         _apexTwirlsSeen = _walker.ApexTwirls;
@@ -207,10 +213,52 @@ public partial class PlanetWorld
             Core.Movement.JumpEventKind.Jump => "coyote-jump",
             Core.Movement.JumpEventKind.AirJump => apex ? "apex-twirl" : "twirl",
             Core.Movement.JumpEventKind.LastEffort => "effort",
+            _ when before.Carrying => "carry-ignored",
+            _ when before.AirJumpsLeft == 0 => "spent",
             _ => "buffered",
         };
         LastHazardPress = (_airSeconds, was);
+        LogHazardPress(before, was);
     }
+
+    // ---- the press log (instrument, stream 2, 2026-11-19): every Space press on a Hazard World with its time and the
+    // jump's phase at that moment, so a real-input run can say what each press met (the state file's "presses").
+
+    /// <summary>The walker as a press found it, read just before the frame's update.</summary>
+    private readonly record struct PressBefore(bool Grounded, float VerticalSpeed, float Height, bool OverHole, bool Carrying, int AirJumpsLeft, float ToEdge);
+
+    /// <summary>
+    /// One Space press on a Hazard World: the game time (seconds since start), seconds after leaving the ground (0 on the
+    /// ground), the jump's phase just before it ("ground", "rising", "top" — within ±HazardMoveParams.ApexSpeed —,
+    /// "falling", "carry", "fall" for the spiral), what it did, the vertical speed (m/s, up positive), the feet's height
+    /// over the rim's level (metres), whether the walker was over open sky, metres to the leap's take-off edge (−1 off its
+    /// bridge or past the edge) and the twirls left.
+    /// </summary>
+    public readonly record struct HazardPress(double AtSeconds, float AirSeconds, string Phase, string Was, float VerticalSpeed, float Height, bool OverHole, float ToEdge, int AirJumpsLeft);
+
+    /// <summary>The press log keeps this many presses (the newest last): one probe case's worth, a few kilobytes of state.</summary>
+    private const int HazardPressLogLength = 12;
+
+    private readonly List<HazardPress> _hazardPresses = new();
+
+    /// <summary>The latest presses on Hazard Worlds, oldest first (at most <see cref="HazardPressLogLength"/>).</summary>
+    public IReadOnlyList<HazardPress> HazardPresses => _hazardPresses;
+
+    private PressBefore ReadPressBefore() => new(_walker.Grounded, _walker.VerticalVelocity.Value, _walker.Height.Value,
+        Shell?.OverHole(_walker.Up) ?? false, _walker.Carrying, _walker.AirJumpsLeft, LeapToEdgeMetres());
+
+    private void LogHazardPress(in PressBefore b, string was)
+    {
+        var apex = _walker.Params.Hazard.ApexSpeed.Value;
+        var phase = _phase == Phase.Falling ? "fall" : b.Grounded ? "ground" : b.Carrying ? "carry"
+            : b.VerticalSpeed > apex ? "rising" : b.VerticalSpeed >= -apex ? "top" : "falling";
+        if (_hazardPresses.Count >= HazardPressLogLength) _hazardPresses.RemoveAt(0);
+        _hazardPresses.Add(new HazardPress(_s.Now.TotalSeconds, b.Grounded ? 0 : _airSeconds, phase, was, b.VerticalSpeed, b.Height, b.OverHole, b.ToEdge, b.AirJumpsLeft));
+    }
+
+    /// <summary>The press log as JSON for the state file: an array of objects, oldest first.</summary>
+    private string HazardPressesJson() => "[" + string.Join(",", _hazardPresses.Select(p => System.FormattableString.Invariant(
+        $"{{\"t\":{p.AtSeconds:0.000},\"air\":{p.AirSeconds:0.000},\"phase\":\"{p.Phase}\",\"was\":\"{p.Was}\",\"vy\":{p.VerticalSpeed:0.00},\"h\":{p.Height:0.00},\"overHole\":{(p.OverHole ? "true" : "false")},\"toEdge\":{p.ToEdge:0.00},\"twirlsLeft\":{p.AirJumpsLeft}}}"))) + "]";
 
     /// <summary>The recovery tip is shown after a fall until a recovery has been made, at most this many times per run.</summary>
     private const int RecoveryTipShows = 2;
@@ -281,7 +329,7 @@ public partial class PlanetWorld
             if (_s.Tree is { } tree && tree.Contains(_fallReturnFrom) && _current != null)
             {
                 // Until a recovery has been made, the first falls also teach it (PLANET-62).
-                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? " Tip: slip off an edge? Press Space at once (within about 0.4 s) and a twirl catches the rim." : "";
+                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? System.FormattableString.Invariant($" Tip: slip off an edge? Press Space at once (within about {_walker.Params.Hazard.Window.TotalSeconds:0.0#} s) and a twirl catches the rim.") : "";
                 if (tip.Length > 0) _recoveryTipsShown++;
                 ShowHint($"Back in {tree.DisplayName(_current.FolderId)}, beside {tree.DisplayName(_fallReturnFrom)}'s launcher: step on and press Space to try again.{tip}");
             }
@@ -439,6 +487,7 @@ public partial class PlanetWorld
                 f.SinceEffort = 0;
                 LateEfforts++;
                 LastHazardPress = (_airSeconds, "fall-effort");
+                LogHazardPress(new PressBefore(false, 0, 0, true, false, 0, -1), "fall-effort");
                 _audio.LastEffort();
                 _avatar.Flail();
                 Mark("last-effort-late");

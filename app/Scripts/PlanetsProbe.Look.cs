@@ -16,6 +16,14 @@ namespace FileScape.App;
 /// framing, and that the arrival framing itself is unchanged until you look. The saved look settings are logged; run it
 /// with each <c>--prefs</c> variant (the planets camera does not use the Places reverse settings, AD-67).
 /// A change must keep: every drag judged from the camera actually drawn, not from the chosen value alone.
+/// <para>
+/// PLANET-84 (AD-75, 2026-11-19): DJ — "After I look sharply up or down, beginning to walk should smoothly bring the camera
+/// back to its usual walking perspective. Let an active mouse drag take control immediately. Preserve my heading and the
+/// useful arrival framing." <see cref="ReturnToLevel"/> looks sharply down and up standing still, then walks, and judges
+/// the return frame by frame (the usual walking view reached, no jump between frames, the heading kept); a drag held
+/// while walking keeps the camera where the drag puts it until it is let go; in the overlook view the walk returns to
+/// the overlook's own perspective. Standing still, a look still stays put (the checks above).
+/// </para>
 /// </summary>
 public partial class PlanetsProbe
 {
@@ -68,20 +76,8 @@ public partial class PlanetsProbe
         await VerticalLook("after walking", MouseButton.Left, -LookDragPixels);
         await Sweep("after walking");
 
-        // ---- while walking: the swing-in and the follow camera must keep the pitch you chose
-        HoldKey(Godot.Key.W, true);
-        await Seconds(0.8);
-        var walkBefore = P.ViewPitchDegrees;
-        await DragBy(MouseButton.Right, new Vector2(0, LookDragPixels));
-        await Seconds(LookSettleSeconds);
-        var walkAfter = P.ViewPitchDegrees;
-        await Seconds(LookHoldSeconds);
-        var walkLater = P.ViewPitchDegrees;
-        HoldKey(Godot.Key.W, false);
-        Check(walkBefore - walkAfter >= LookMinResponseDegrees && MathF.Abs(walkLater - walkAfter) <= 2 * LookMaxDriftDegrees,
-            F($"while walking a drag down tilts the view down: {walkBefore:+0.0;-0.0}° → {walkAfter:+0.0;-0.0}° → {walkLater:+0.0;-0.0}° {LookHoldSeconds:0} s later, still walking"));
-        await Seconds(1.0);
-        await DragBy(MouseButton.Right, new Vector2(0, -LookDragPixels)); // back towards the usual pitch
+        // ---- PLANET-84: walking brings a sharp look back to the usual perspective; a held drag wins while it is held
+        await ReturnToLevel();
 
         // ---- the overlook view (B), then back
         await Key(Godot.Key.B);
@@ -89,6 +85,9 @@ public partial class PlanetsProbe
         Check(P.OverlookView01 >= 1f, "B: the overlook view");
         await VerticalLook("in the overlook view", MouseButton.Right, LookDragPixels);
         await VerticalLook("in the overlook view", MouseButton.Left, -LookDragPixels);
+        await WalkBack("in the overlook view", PlanetWorld.StartPitch);
+        Check(P.OverlookView01 >= 1f && MathF.Abs(P.BoomPitchDegrees - PlanetWorld.OverlookPitch) < 1f,
+            F($"in the overlook view: the walk keeps the overlook view ({P.OverlookView01:0.00}) at its own pitch, boom {P.BoomPitchDegrees:0.0}° (overlook {PlanetWorld.OverlookPitch:0}°)"));
         await Key(Godot.Key.B);
         await Until(() => P.OverlookView01 <= 0f, 3);
 
@@ -153,6 +152,116 @@ public partial class PlanetsProbe
         await Shot("look-overview");
         await Key(Godot.Key.Escape);
         await Until(() => !P.UniverseOpen && !P.Busy, 10);
+    }
+
+    /// <summary>A sharp look in <see cref="ReturnToLevel"/>, window pixels (at 0.15°/px: 60° of chosen pitch, to an end stop).</summary>
+    private const float SharpLookPixels = 400f;
+
+    /// <summary>The walk in <see cref="WalkBack"/> lasts this long, seconds (the return's time constant is 0.4 s).</summary>
+    private const double ReturnWalkSeconds = 2.0;
+
+    /// <summary>After <see cref="ReturnWalkSeconds"/> of walking the chosen pitch must be within this of the usual, degrees.</summary>
+    private const float ReturnToleranceDegrees = 1.0f;
+
+    /// <summary>The drawn view may move at most this much between two frames during the return, degrees (a glide, not a cut: at 60 fps the return's fastest step is ≈ 2°).</summary>
+    private const float ReturnMaxFrameStepDegrees = 3.0f;
+
+    /// <summary>Walking forward from where the camera looks, the heading may turn at most this much, degrees.</summary>
+    private const float ReturnMaxHeadingDegrees = 3.0f;
+
+    /// <summary>
+    /// PLANET-84: standing still, a sharp look down (then, separately, up) stays put; then W: the chosen pitch glides back
+    /// to the usual within <see cref="ReturnWalkSeconds"/>, the drawn view never jumps between frames, and the heading is
+    /// kept. Then a drag held down while walking: nothing eases while the button is down; once let go, the walk brings the
+    /// view back after <c>PitchReturnDelaySeconds</c>.
+    /// </summary>
+    private async Task ReturnToLevel()
+    {
+        // The usual walking view, measured while walking at the usual pitch.
+        HoldKey(Godot.Key.W, true);
+        await Seconds(1.5);
+        var usualView = P.ViewPitchDegrees;
+        HoldKey(Godot.Key.W, false);
+        await Until(() => P.Walker.Velocity.Length() < 0.1f, 3);
+        Log(F($"the usual walking view: {usualView:+0.0;-0.0}° (chosen pitch {P.ChosenPitchDegrees:0.0}°)"));
+
+        foreach (var (what, dy) in new[] { ("down", SharpLookPixels), ("up", -SharpLookPixels) })
+        {
+            await DragBy(MouseButton.Right, new Vector2(0, dy));
+            await Seconds(LookSettleSeconds);
+            var tilted = P.ViewPitchDegrees;
+            var chosen = P.ChosenPitchDegrees;
+            await Seconds(LookHoldSeconds);
+            Check(MathF.Abs(P.ViewPitchDegrees - tilted) <= LookMaxDriftDegrees && MathF.Abs(tilted - usualView) >= 15f,
+                F($"standing, a sharp look {what} stays put: {usualView:+0.0;-0.0}° → {tilted:+0.0;-0.0}° → {P.ViewPitchDegrees:+0.0;-0.0}° {LookHoldSeconds:0} s later (chosen {chosen:0.0}°)"));
+            await Shot($"look-sharp-{what}");
+            await WalkBack($"after a sharp look {what}", PlanetWorld.StartPitch, usualView);
+        }
+
+        // A drag held while walking: the drag owns the camera until it is let go.
+        HoldKey(Godot.Key.W, true);
+        await Seconds(0.8);
+        var start = ToWindow(App.GetViewport().GetVisibleRect().Size / 2 + new Vector2(0, 80));
+        Mouse(MouseButton.Right, true, start);
+        await Frames(2);
+        var at = start;
+        for (var i = 0; i < 10; i++)
+        {
+            var d = new Vector2(0, LookDragPixels / 10);
+            at += d;
+            Inject(new InputEventMouseMotion { Position = at, GlobalPosition = at, Relative = d, ScreenRelative = d, ButtonMask = MouseButtonMask.Right });
+            await Frames(1);
+        }
+
+        await Seconds(0.3);
+        var held = P.ChosenPitchDegrees;
+        var heldView = P.ViewPitchDegrees;
+        await Seconds(1.5);
+        var heldLater = P.ChosenPitchDegrees;
+        Check(MathF.Abs(heldLater - held) < 0.1f && MathF.Abs(held - PlanetWorld.StartPitch) > 20f,
+            F($"while walking, a drag held down keeps the camera where it put it: chosen {held:0.0}° → {heldLater:0.0}° 1.5 s later, button still down (view {heldView:+0.0;-0.0}°)"));
+        Mouse(MouseButton.Right, false, start);
+        await Seconds(ReturnWalkSeconds + 0.5);
+        var released = P.ChosenPitchDegrees;
+        HoldKey(Godot.Key.W, false);
+        Check(MathF.Abs(released - PlanetWorld.StartPitch) <= ReturnToleranceDegrees,
+            F($"once the drag is let go, the walk brings the pitch back: {heldLater:0.0}° → {released:0.0}° (usual {PlanetWorld.StartPitch:0}°)"));
+        await Until(() => P.Walker.Velocity.Length() < 0.1f, 3);
+    }
+
+    /// <summary>
+    /// Walks forward for <see cref="ReturnWalkSeconds"/> and judges the return to <paramref name="usualChosen"/> (the
+    /// usual chosen pitch; in the overlook view its framing is added on top), frame by frame: no jump in the drawn view,
+    /// the heading kept, and — with <paramref name="usualView"/> — the usual walking view reached.
+    /// </summary>
+    private async Task WalkBack(string where, float usualChosen, float? usualView = null)
+    {
+        var yaw0 = P.CameraHeadingDegrees();
+        var chosen0 = P.ChosenPitchDegrees;
+        var view0 = P.ViewPitchDegrees;
+        var last = view0;
+        var maxStep = 0f;
+        var frames = 0;
+        HoldKey(Godot.Key.W, true);
+        var t0 = Time.GetTicksMsec();
+        while (Time.GetTicksMsec() - t0 < ReturnWalkSeconds * 1000)
+        {
+            await Frames(1);
+            var v = P.ViewPitchDegrees;
+            maxStep = MathF.Max(maxStep, MathF.Abs(v - last));
+            last = v;
+            frames++;
+        }
+
+        var chosen1 = P.ChosenPitchDegrees;
+        var view1 = P.ViewPitchDegrees;
+        var yaw1 = P.CameraHeadingDegrees();
+        HoldKey(Godot.Key.W, false);
+        var turned = MathF.Abs(Mathf.Wrap(yaw1 - yaw0, -180f, 180f));
+        var reached = usualView is not { } uv || MathF.Abs(view1 - uv) <= 2f;
+        Check(MathF.Abs(chosen1 - usualChosen) <= ReturnToleranceDegrees && reached && maxStep <= ReturnMaxFrameStepDegrees && turned <= ReturnMaxHeadingDegrees,
+            F($"{where}: walking {ReturnWalkSeconds:0.0} s brings the camera back smoothly: chosen {chosen0:0.0}° → {chosen1:0.0}° (usual {usualChosen:0}°), view {view0:+0.0;-0.0}° → {view1:+0.0;-0.0}°{(usualView is { } u ? F($" (usual walking {u:+0.0;-0.0}°)") : "")}, largest step {maxStep:0.00}° a frame over {frames} frames, heading turned {turned:0.0}°"));
+        await Until(() => P.Walker.Velocity.Length() < 0.1f, 3);
     }
 
     /// <summary>

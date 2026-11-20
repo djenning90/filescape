@@ -175,6 +175,50 @@ public partial class PlanetWorld
     /// <summary>The fastest the camera's up has turned this session, degrees per second (probes check the E4 cap).</summary>
     public float MaxCameraRollRateDegreesPerSecond => _maxRollRateDegreesPerSecond;
 
+    // ---- the pitch's return to the usual walking perspective (PLANET-84, AD-75)
+
+    /// <summary>
+    /// Walking eases the chosen pitch back to the usual one (<see cref="StartCamPitchDegrees"/>) at this rate, per second:
+    /// 1 − e^(−2.5 t), a time constant of 0.4 s, so a sharp look up or down is ≈ 90 % of the way back after 0.9 s of
+    /// walking and the return reads as the camera settling, not a snap. Higher is brisker (by eye, 2026-11-19; DJ to judge).
+    /// </summary>
+    private const float PitchReturnRatePerSecond = 2.5f;
+
+    /// <summary>
+    /// After a drag that tilted the view, the return waits this long, seconds, even if you are walking: letting go of a
+    /// drag mid-walk does not spring the view straight back (by eye, 2026-11-19; the heading's swing-in waits
+    /// <see cref="SwingInDelaySeconds"/>).
+    /// </summary>
+    private const float PitchReturnDelaySeconds = 0.5f;
+
+    /// <summary>Within this of the usual pitch, degrees, the return finishes exactly on it (the exponential never quite arrives).</summary>
+    private const float PitchReturnSnapDegrees = 0.05f;
+
+    /// <summary>Seconds since the last vertical drag (or since a drag was last held); starts "long ago".</summary>
+    private float _sincePitchLookSeconds = 99f;
+
+    /// <summary>
+    /// PLANET-84 (AD-75): once you walk, the pitch you chose with a vertical drag eases back to the usual walking pitch,
+    /// so after looking sharply up or down the walk is seen from the usual chase perspective again. Only the chosen pitch
+    /// moves: the heading (yaw), the wheel's distance and the framings (the arrival's and the overlook's offsets, added in
+    /// <see cref="UpdateCamera"/>) are untouched, so in the overlook view the walk returns to the overlook's own pitch. A
+    /// drag held down wins at once (nothing eases while <c>_orbiting</c>); standing still keeps whatever you chose. Walking
+    /// frames only: the overview (its own orbit), flights, hops and the fall never call it.
+    /// </summary>
+    private void ReturnPitchWhileWalking(float dt, bool moving)
+    {
+        _sincePitchLookSeconds += dt;
+        if (_orbiting)
+        {
+            _sincePitchLookSeconds = 0; // a held drag owns the camera
+            return;
+        }
+
+        if (!moving || _sincePitchLookSeconds < PitchReturnDelaySeconds) return;
+        _camPitchDegrees = Mathf.Lerp(_camPitchDegrees, StartCamPitchDegrees, 1 - MathF.Exp(-PitchReturnRatePerSecond * dt));
+        if (MathF.Abs(_camPitchDegrees - StartCamPitchDegrees) < PitchReturnSnapDegrees) _camPitchDegrees = StartCamPitchDegrees;
+    }
+
     /// <summary>The overlook view is more than half blended in (the names of every destination then show).</summary>
     public bool OnOverlook => _overlook01 > 0.5f;
 
@@ -223,8 +267,10 @@ public partial class PlanetWorld
         var wish = camF * fwd + camR * strafe;
 
         // Space on a launcher pad launches (the pad is the button); elsewhere it jumps, and again in the air it twirls higher.
+        var pressBefore = jump && Shell != null ? ReadPressBefore() : default; // the press log (PlanetWorld.Hazard)
         if (jump && _walker.Grounded && FocusLauncher() is { } pad)
         {
+            if (Shell != null) LogHazardPress(pressBefore, "launch");
             BeginLaunch(pad.TargetId, pad.Direction, fromPad: true);
             return;
         }
@@ -235,7 +281,8 @@ public partial class PlanetWorld
         _walker.Update(new SphereWalkInput(Nv(wish), run, jump, jumpHeld), Core.Units.Durations.FromSeconds(dt));
         var ev = _walker.LastEvent;
         _airSeconds = _walker.Grounded ? 0 : _airSeconds + dt;
-        if (jump && airborneBefore && Shell != null) NoteHazardPress(ev.Kind);
+        if (jump && airborneBefore && Shell != null) NoteHazardPress(ev.Kind, pressBefore);
+        else if (jump && Shell != null) LogHazardPress(pressBefore, ev.Kind == Core.Movement.JumpEventKind.Jump ? "jump" : "ground-none");
         switch (ev.Kind)
         {
             case Core.Movement.JumpEventKind.Jump:
@@ -288,7 +335,9 @@ public partial class PlanetWorld
 
         _overlook01 = Mathf.MoveToward(_overlook01, wantOverlook ? 1 : 0, dt * OverlookBlendPerSecond);
         UpdateArrivalFraming(dt, moved: jump || wish.LengthSquared() > 0.01f || !_walker.Grounded);
-        UpdateCamera(dt, lookAt: null, moving: _walker.Velocity.Length() > 0.8f); // above 0.8 m/s counts as moving (the camera may swing in)
+        var moving = _walker.Velocity.Length() > 0.8f; // above 0.8 m/s counts as moving (the camera may swing in)
+        ReturnPitchWhileWalking(dt, moving);
+        UpdateCamera(dt, lookAt: null, moving: moving);
         UpdateFocus();
         UpdateEdgeWarning(dt);
     }

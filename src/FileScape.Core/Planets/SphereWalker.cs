@@ -135,10 +135,13 @@ public sealed record HazardMoveParams
 
     /// <summary>
     /// The press must come within this long of the feet passing below the rim's level, seconds. Walking off, that is from
-    /// the moment the feet leave the rim: "Space within 0.4 s of slipping". 0.4 s (2026-11-19, was 0.3): DJ asked for a
-    /// window a player can find and repeat; in the app only ≈ 0.12–0.23 s of the old one was ever reachable (AD-69).
+    /// the moment the feet leave the rim: "Space within 0.35 s of slipping". 0.4 s (2026-11-19, AD-69, was 0.3): DJ asked
+    /// for a window a player can find and repeat; in the app only ≈ 0.12–0.23 s of the old one was ever reachable. 0.35 s
+    /// (2026-11-19, AD-75, PLANET-86): DJ found it close and asked for it only slightly tighter; walking, the catch now
+    /// closes 0.05 s sooner and an uncaught slip falls 0.05 s sooner; running it is unchanged (<see cref="ReturnReach"/>
+    /// closes it first, at 0.27–0.29 s). Shorter is harder.
     /// </summary>
-    public TimeSpan Window { get; init; } = TimeSpan.FromSeconds(0.4);
+    public TimeSpan Window { get; init; } = TimeSpan.FromSeconds(0.35);
 
     /// <summary>
     /// No deeper than this below the rim's level, metres. Walking off, the feet are ≈ 1.6 m down 0.4 s after the slip, so
@@ -156,11 +159,27 @@ public sealed record HazardMoveParams
 
     /// <summary>
     /// The rim last stood on can be caught from up to this far, metres along the surface from where the feet last had
-    /// support to the walker's centre (2026-11-19, AD-69). Walking off (6 m/s) the walker is ≈ 2.4 m out when
+    /// support to the walker's centre (2026-11-19, AD-69). Walking off (6 m/s) the walker is ≈ 2.1 m out when
     /// <see cref="Window"/> closes; running (11 m/s) it is out of reach ≈ 0.3 s after the slip. A jump that falls short of a
     /// leap took off ≥ 4 m back, so this never carries one across (HazardMovementTests).
     /// </summary>
     public Meters ReturnReach { get; init; } = Meters.Of(3.2f);
+
+    /// <summary>
+    /// The leap's take-off board, metres before each end of its gap (PLANET-85, AD-75): leaving the ground from there
+    /// heading across, a press in the coyote time is the long jump's take-off, not the catch. 1.0 m, the amber board the
+    /// art draws (PlanetArt.Hazard's own LeapBoardMetres).
+    /// </summary>
+    public Meters LeapBoard { get; init; } = Meters.Of(1.0f);
+
+    /// <summary>
+    /// <see cref="LeapBoard"/> counts only at a gap no longer than this, metres: every leap the terrain makes (≤ 7.2 m,
+    /// HazardTerrain.LeapMaxMetres) at its jagged ends (+0.2 m), never a stretch the long jump cannot clear.
+    /// </summary>
+    public Meters LeapBoardMaxGap { get; init; } = Meters.Of(HazardTerrain.LeapMaxMetres + 2 * ShellSpan.GapJagMetres);
+
+    /// <summary>...and only heading within this of straight across the gap, degrees (a slip off the board's side is still the catch).</summary>
+    public float LeapBoardMaxDegrees { get; init; } = 45f;
 
     /// <summary>The lift takes the feet this far above the rim's level at its top, metres (just enough to step back on).</summary>
     public Meters Clearance { get; init; } = Meters.Of(0.35f);
@@ -203,6 +222,9 @@ public sealed record HazardMoveParams
         NonNegative(ApexNudge.Value, nameof(ApexNudge));
         NonNegative(LateSpeed.Value, nameof(LateSpeed));
         NonNegative(MinLift.Value, nameof(MinLift));
+        NonNegative(LeapBoard.Value, nameof(LeapBoard));
+        NonNegative(LeapBoardMaxGap.Value, nameof(LeapBoardMaxGap));
+        NonNegative(LeapBoardMaxDegrees, nameof(LeapBoardMaxDegrees));
         return this;
     }
 }
@@ -319,6 +341,9 @@ public sealed class SphereWalker
     /// </summary>
     public bool RecoveryOpen => !_recoverySpent && _jump.AirJumpsLeft > 0 && _belowRimSeconds >= 0 && _belowRimSeconds <= _recoveryWindowSeconds
         && -Height.Value <= _p.Hazard.MaxDepth.Value && _catchInReach;
+
+    /// <summary>Airborne boosts (the twirl) still available in this airtime: 0 after the twirl, the catch or a last effort (probes: the press log).</summary>
+    public int AirJumpsLeft => _jump.AirJumpsLeft;
 
     /// <summary>The recovery's lift and carry are under way (set by the recovery, cleared on landing or a teleport): no air steering, and no fall while it rises.</summary>
     public bool Carrying => _carrying;
@@ -621,6 +646,10 @@ public sealed class SphereWalker
         if (_jump.CanTakeOff(dtSeconds))
         {
             if (CoyoteJumpLands(shell, up, velocity, heightMeters)) return JumpEvent.None; // a late jump that makes it: the coyote jump
+            // A late press off a leap's take-off board, heading across: the long jump's take-off (PLANET-85, AD-75). With
+            // real keys a press a frame or two after the board's edge was the catch, which carried the walker back and
+            // spent the twirl, so the second press did nothing (cfee25d's "buffered" at 0.367 s).
+            if (shell.LeapTakeOff(_lastGroundUp, velocity, rp.LeapBoard.Value, rp.LeapBoardMaxGap.Value, rp.LeapBoardMaxDegrees)) return JumpEvent.None;
         }
         else
         {

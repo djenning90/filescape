@@ -72,10 +72,10 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
     /// <paramref name="pressAfter"/> s after the feet leave the rim. <paramref name="holdOn"/>: W stays held after the
     /// slip (else let go). Also returns when the fall began, seconds after the slip (−1: it did not).
     /// </summary>
-    private static (Response What, float FallAt) Slip(float gap, bool run, bool holdOn, float pressAfter)
+    private static (Response What, float FallAt) Slip(float gap, bool run, bool holdOn, float pressAfter, HazardMoveParams? hazard = null)
     {
         var (surface, span, g0, g1) = Gap(gap);
-        var w = new SphereWalker();
+        var w = new SphereWalker(hazard == null ? null : SphereWalkParams.Default with { Hazard = hazard });
         var start = span.PointAlong(g0 - 3f);
         w.Teleport(surface, start, span.DirectionAt(start));
         var target = span.PointAlong(g1 + 3f);
@@ -159,10 +159,41 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
         rows.Should().NotContain(r => r.What == Response.Nothing, "no press before the return is dead");
         rows.Should().NotContain(r => r.What == Response.CatchFailed, "a catch puts the walker back on the rim, W held or not");
         rows.Should().NotContain(r => r.What == Response.JumpFell, "a coyote jump into the open sky is the catch instead");
-        var catchUntil = run ? 0.25f : 0.38f; // seconds after the slip: walking the window, running the reach closes it
+        var catchUntil = run ? 0.25f : 0.33f; // seconds after the slip: walking the window (0.35 s, AD-75), running the reach closes it
         rows.Where(r => r.p <= catchUntil).Should().OnlyContain(r => r.What == Response.Catch, F($"Space within {catchUntil:0.00} s of slipping catches the rim"));
         rows.Where(r => r.p >= noPress + StepSeconds).Should().OnlyContain(r => r.What == Response.FallEffort, "after that the fall's own effort answers");
         noPress.Should().BeLessThan(run ? 0.35f : 0.45f, "an uncaught slip falls promptly");
+    }
+
+    /// <summary>
+    /// The catch's window with <paramref name="hazard"/>: the last press time (10 ms steps) that is still a catch, walking
+    /// and running with W held and let go, and when an uncaught slip falls (seconds after the slip; the 9 m gap as above).
+    /// </summary>
+    private static string CatchWindows(HazardMoveParams hazard)
+    {
+        var parts = new List<string>();
+        foreach (var run in new[] { false, true })
+        foreach (var holdOn in new[] { true, false })
+        {
+            var last = PressTimes.Where(p => Slip(9f, run, holdOn, p, hazard).What == Response.Catch).DefaultIfEmpty(-1).Max();
+            var fall = Slip(9f, run, holdOn, -1, hazard).FallAt;
+            parts.Add(F($"{(run ? "running" : "walking")} W {(holdOn ? "held" : "let go")}: catch to {last:0.00} s, falls at {fall:0.00} s"));
+        }
+
+        return string.Join("; ", parts);
+    }
+
+    [Fact]
+    public void The_tightening_candidates_measured_one_at_a_time()
+    {
+        // Stream 2 (2026-11-19, AD-75): DJ — "make the recovery challenge only slightly tighter. Change one parameter at a
+        // time, compare it with the current build". The same scripted slips (this class's enumeration) with the current
+        // values and with each candidate changed alone. The chosen one is HazardMoveParams.Default (AD-75 records why).
+        var current = new HazardMoveParams { Window = TimeSpan.FromSeconds(0.4), ReturnReach = Units.Meters.Of(3.2f) };
+        output.WriteLine("current (cfee25d): " + CatchWindows(current));
+        foreach (var w in new[] { 0.35, 0.3 }) output.WriteLine(F($"Window {w:0.00} s alone: ") + CatchWindows(current with { Window = TimeSpan.FromSeconds(w) }));
+        foreach (var r in new[] { 2.9f, 2.6f }) output.WriteLine(F($"ReturnReach {r:0.0} m alone: ") + CatchWindows(current with { ReturnReach = Units.Meters.Of(r) }));
+        output.WriteLine("default now: " + CatchWindows(HazardMoveParams.Default));
     }
 
     [Fact]
@@ -323,6 +354,100 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
         }
 
         return false;
+    }
+
+    /// <summary>A display frame at 60 fps, seconds: the real-input replays step the walker as the app does.</summary>
+    private const float AppFrameSeconds = 1f / 60;
+
+    /// <summary>What the first and second press of a replayed long jump did, and how it ended.</summary>
+    private readonly record struct LongJumpReplay(JumpEventKind First, float FirstAt, JumpEventKind Second, bool Across, bool Fell);
+
+    /// <summary>
+    /// The real-input probe's long jump (tools/os-planets-probe.ps1 -Recovery) replayed at 60 fps: stood
+    /// <paramref name="standMetres"/> before the edge, W held from rest throughout, the first Space
+    /// <paramref name="firstAtMetres"/> before the edge (negative: past it, already over the gap) held
+    /// <paramref name="firstHoldSeconds"/>, the second <paramref name="secondAt"/> s after the feet left the ground, held
+    /// 0.2 s. What each press did (the walker's event in the press's frame) and whether it crossed or fell.
+    /// </summary>
+    private static LongJumpReplay ReplayLongJump(float gap, float standMetres, float firstAtMetres, float firstHoldSeconds, float secondAt)
+    {
+        var (surface, span, g0, g1) = Gap(gap);
+        var w = new SphereWalker();
+        var start = span.PointAlong(g0 - standMetres);
+        w.Teleport(surface, start, span.DirectionAt(start));
+        var target = span.PointAlong(g1 + 3f);
+        var frame = TimeSpan.FromSeconds(AppFrameSeconds);
+        var first = JumpEventKind.None;
+        var second = JumpEventKind.None;
+        float leftAt = -1, firstAt = -1, holdUntil = -1;
+        bool pressed1 = false, pressed2 = false;
+        for (var i = 0; i < 600; i++)
+        {
+            var t = i * AppFrameSeconds;
+            var wish = Vector3.Normalize(target - w.Up * Vector3.Dot(target, w.Up));
+            var along = span.Measure(w.Up).AlongMetres;
+            var press = false;
+            if (!pressed1 && along >= g0 - firstAtMetres) { press = pressed1 = true; holdUntil = t + firstHoldSeconds; firstAt = leftAt < 0 ? 0 : t - leftAt; }
+            else if (pressed1 && !pressed2 && leftAt >= 0 && t - leftAt >= secondAt - 1e-4f) { press = pressed2 = true; holdUntil = t + 0.2f; }
+            w.Update(new SphereWalkInput(wish, false, press, t < holdUntil), frame);
+            if (!w.Grounded && leftAt < 0) leftAt = t;
+            if (press && !pressed2) first = w.LastEvent.Kind;
+            else if (press) second = w.LastEvent.Kind;
+            if (w.FallCommitted) return new(first, firstAt, second, false, true);
+            if (pressed2 && w.Grounded && t - leftAt > 0.1f && span.Measure(w.Up).AlongMetres > g1) return new(first, firstAt, second, true, false);
+        }
+
+        return new(first, firstAt, second, false, false);
+    }
+
+    [Fact]
+    public void The_real_input_long_jump_replayed_press_by_press()
+    {
+        // Stream 2 (2026-11-19): with real input on cfee25d the long jump fell twice, its second press recorded as
+        // "buffered" 0.367 s after take-off. The probe timed the first press from the state file, written every 0.15 s
+        // (≈ 0.9 m apart at walking pace), so it could land anywhere from the board to past the edge. Replayed here at
+        // 60 fps from the probe's 3 m stand point: where the first press lands decides what both presses do.
+        // Before PLANET-85 (AD-75) every first press just past the edge (0.02–0.12 s after leaving it) was the catch: it
+        // carried the walker back, the second press found the twirl spent and did nothing, and W still held walked it off
+        // again. Now, off the board heading across, a press in the coyote time is the take-off.
+        var coyote = (float)JumpParams.Default.CoyoteTime.TotalSeconds;
+        foreach (var gap in new[] { HazardTerrain.LeapMinMetres, HazardTerrain.LeapMaxMetres })
+        foreach (var at in new[] { 0.55f, 0.4f, 0.2f, 0.05f, -0.1f, -0.3f, -0.5f, -0.7f })
+        {
+            var r = ReplayLongJump(gap, 3f, at, 0.13f, 0.367f);
+            output.WriteLine(F($"leap {gap:0.0} m, first press {at:+0.00;-0.00} m before the edge ({r.FirstAt:0.000} s after leaving it): {r.First}; second at 0.367 s: {r.Second}; {(r.Across ? "across" : r.Fell ? "fell" : "short, no fall")}"));
+            if (r.FirstAt <= coyote) r.Across.Should().BeTrue(F($"a take-off press {r.FirstAt:0.000} s after the board (within the coyote time) and the twirl at 0.367 s cross a {gap:0.0} m leap"));
+            else r.First.Should().Be(JumpEventKind.Recovery, "after the coyote time the press is the catch, as before");
+        }
+    }
+
+    [Fact]
+    public void A_slip_off_the_side_of_a_leap_board_is_still_the_catch()
+    {
+        // PLANET-85's take-off counts only heading across the gap: stepping off the board's side and pressing at once
+        // (0–0.1 s) is the catch back onto it, as AD-69 has it.
+        var (surface, span, g0, _) = Gap(HazardTerrain.LeapMaxMetres);
+        foreach (var pressAfter in new[] { 0f, 0.05f, 0.1f })
+        {
+            var w = new SphereWalker();
+            var start = span.PointAlong(g0 - 0.5f);
+            var along = span.DirectionAt(start);
+            var side = Vector3.Normalize(Vector3.Cross(start, along));
+            w.Teleport(surface, start, side);
+            var leftAt = -1f;
+            var what = JumpEventKind.None;
+            for (var i = 0; i < 300 && what == JumpEventKind.None && !w.FallCommitted; i++)
+            {
+                var t = i * StepSeconds;
+                var wish = Vector3.Normalize(side - w.Up * Vector3.Dot(side, w.Up));
+                if (!w.Grounded && leftAt < 0) leftAt = t;
+                var press = leftAt >= 0 && t - leftAt >= pressAfter - 1e-4f;
+                w.Update(new SphereWalkInput(leftAt < 0 ? wish : Vector3.Zero, false, press, press), Frame);
+                if (press) what = w.LastEvent.Kind;
+            }
+
+            what.Should().Be(JumpEventKind.Recovery, F($"Space {pressAfter:0.00} s after stepping off the side of a leap's board is the catch"));
+        }
     }
 
     private static string F(FormattableString s) => FormattableString.Invariant(s);
