@@ -586,7 +586,9 @@ try {
     Shot 'dialogs-home' | Out-Null
 
     # PLANET-117 (AD-83): a real click on the world with a transient panel open closes it and selects nothing.
-    function World-Point { $o = (State).planets.worldOnScreen; if ($o) { return @([int]$o[1], [int]$o[2]) }; return $null }
+    # A world in the sky when one shows clear of the panels (a click would select it), else open sky at the upper right:
+    # clear of Destinations (left column), Locations and Settings (centred) and the card (right column, hidden: nothing selected).
+    function World-Point { $o = (State).planets.worldOnScreen; if ($o) { return @([int]$o[1], [int]$o[2]) }; return @(1450, 300) }
     function Click-Outside($panel, [scriptblock]$open) {
       Close-All; Hold-Key 'Escape' 40; Start-Sleep -Milliseconds 250 # nothing selected
       & $open
@@ -1567,6 +1569,10 @@ try {
   $moved = [Math]::Sqrt([Math]::Pow($s.planets.feet[0] - $f0[0], 2) + [Math]::Pow($s.planets.feet[1] - $f0[1], 2) + [Math]::Pow($s.planets.feet[2] - $f0[2], 2))
   Check ($t -ge 25 -and $moved -gt 1.5) "W + Right arrow walks and turns together ($([Math]::Round($t,1))deg, $([Math]::Round($moved,1)) m)"
   Shot 'end' | Out-Null
+}
+catch {
+  # A stop (the window would not come to the front, the target was lost) is recorded in the log, not only on stderr.
+  $script:fails++; Log "STOPPED OS probe: $($_.Exception.Message)"
 }
 finally {
   Release-All-Held
