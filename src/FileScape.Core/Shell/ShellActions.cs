@@ -125,16 +125,39 @@ public static class LaunchRisk
 }
 
 /// <summary>
-/// Windows implementation built on ShellExecuteExW and Explorer: the real actions behind Open, Show in Explorer and the
+/// Windows implementation built on ShellExecuteExW and the shell: the real actions behind Open, Show in Explorer and the
 /// editor launches (DEV-03). Every call is synchronous and reports Windows' own error text rather than a shell dialog.
+/// <para>
+/// <see cref="OutsideJob"/> (PLANET-89, AD-76): when FileScape runs in a job object (under FileScape.console.exe), what
+/// it starts for the person is started by the desktop's Explorer instead (<see cref="DesktopShell"/>), so it is not in
+/// the job: the console wrapper waits for every process in its job and kills them on Ctrl+C. Explorer reports no
+/// errors back, so then only "it is no longer there" is checked first; anything else Windows shows itself (its own
+/// "How do you want to open this file?" for a type with no app). Show in Explorer never starts a child with
+/// FileScape's handles (SHOpenFolderAndSelectItems asks the running shell).
+/// </para>
 /// </summary>
 public sealed class WindowsShellActions : IShellActions
 {
+    /// <summary>Start what the person opens through the desktop shell, outside FileScape's job (set when FileScape runs in one).</summary>
+    public bool OutsideJob { get; init; }
+
+    /// <summary>"shell:" names (This PC) are not files: the existence check does not apply to them.</summary>
+    private static bool IsShellName(string path) => path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase);
+
     public ShellResult Open(string path)
     {
         if (!OperatingSystem.IsWindows())
         {
             return new ShellResult(false, false, "Opening files requires Windows.");
+        }
+
+        if (OutsideJob)
+        {
+            if (!IsShellName(path) && !File.Exists(path) && !Directory.Exists(path))
+                return new ShellResult(false, false, ShellErrors.OpenFailed(path, FileNotFoundCode, new Win32Exception(FileNotFoundCode).Message));
+            LetTheViewerComeForward();
+            if (DesktopShell.TryShellExecute(path, null, null, "", out _)) return new ShellResult(true, false, $"Opened with Windows: {path}");
+            // No desktop shell to ask (no Explorer, another shell): open directly, as outside a job.
         }
 
         // Calls COM-backed shell code. Godot's main thread is a GUI thread with a message loop. NOASYNC makes the
@@ -166,6 +189,8 @@ public sealed class WindowsShellActions : IShellActions
     public ShellResult Start(string program, IReadOnlyList<string> args)
     {
         if (!OperatingSystem.IsWindows()) return new ShellResult(false, false, "Starting programs requires Windows.");
+        if (OutsideJob && DesktopShell.TryShellExecute(program, CommandLine(args), null, "", out _))
+            return new ShellResult(true, false, $"Started {Path.GetFileName(program)} {CommandLine(args)}");
         var info = new ShellExecuteInfo
         {
             cbSize = Marshal.SizeOf<ShellExecuteInfo>(),
@@ -212,20 +237,35 @@ public sealed class WindowsShellActions : IShellActions
             return new ShellResult(false, false, "Explorer requires Windows.");
         }
 
+        // Before 2026-11-19 this was Process.Start("explorer.exe /select,...") with UseShellExecute = false: a child that
+        // inherited FileScape's handles and, under the console wrapper, joined its job (PLANET-89).
+        if (OutsideJob && DesktopShell.TryShellExecute("explorer.exe", $"/select,\"{path}\"", null, "", out _))
+            return new ShellResult(true, false, $"Explorer asked to show: {path}");
+        _ = CoInitializeEx(IntPtr.Zero, CoinitApartmentThreaded | CoinitDisableOle1Dde);
+        var hr = SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _);
+        if (hr != 0)
+        {
+            var code = hr & 0xFFFF;
+            var why = code is FileNotFoundCode or PathNotFoundCode ? "it is no longer there (moved, renamed or deleted since FileScape listed it)" : "Windows refused";
+            return new ShellResult(false, false, $"Could not show {path} in File Explorer: {why}. (Windows: {new Win32Exception(code).Message.TrimEnd('.')}; HRESULT 0x{hr:X8}.)");
+        }
+
         try
         {
-            using var p = Process.Start(new ProcessStartInfo("explorer.exe")
-            {
-                ArgumentList = { $"/select,{path}" },
-                UseShellExecute = false,
-            });
-            return new ShellResult(true, false, $"Explorer asked to show: {path}");
+            LetTheViewerComeForward();
+            hr = SHOpenFolderAndSelectItems(pidl, 0, IntPtr.Zero, 0);
+            return hr == 0
+                ? new ShellResult(true, false, $"Explorer asked to show: {path}")
+                : new ShellResult(false, false, $"Could not show {path} in File Explorer (HRESULT 0x{hr:X8}: {new Win32Exception(hr & 0xFFFF).Message.TrimEnd('.')}).");
         }
-        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        finally
         {
-            return new ShellResult(false, false, $"Could not start Explorer: {ex.Message}");
+            Marshal.FreeCoTaskMem(pidl);
         }
     }
+
+    /// <summary>Win32 ERROR_FILE_NOT_FOUND and ERROR_PATH_NOT_FOUND (winerror.h).</summary>
+    private const int FileNotFoundCode = 2, PathNotFoundCode = 3;
 
     /// <summary>
     /// PLANET-52: lets the app that opens the file take the foreground, so it comes forward instead of only flashing on
@@ -288,6 +328,12 @@ public sealed class WindowsShellActions : IShellActions
 
     [DllImport("ole32.dll")]
     private static extern int CoInitializeEx(IntPtr reserved, uint coInit);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(string name, IntPtr bindingContext, out IntPtr pidl, uint sfgaoIn, out uint sfgaoOut);
+
+    [DllImport("shell32.dll")]
+    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint count, IntPtr children, uint flags);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

@@ -133,6 +133,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-gallery") await GalleryRun(); // PlanetsProbe.Gallery.cs (PLANET-96)
         else if (Mode == "planets-travel") await TravelRun(); // PlanetsProbe.Travel.cs (PLANET-81/82)
         else if (Mode == "planets-overview-enter") await OverviewEnterRun(); // PlanetsProbe.Travel.cs (PLANET-83)
+        else if (Mode == "planets-selection-actions") await SelectionActionsRun(); // PlanetsProbe.SelectionActions.cs (PLANET-87)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

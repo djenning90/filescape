@@ -189,6 +189,81 @@ Esc should also undo a breadcrumb/Locations/path move (needs a navigator undo), 
 should show the traveller on its pad. After the overview's landing one frame at ≈ 0.33 s turns the body 23.5° in camera
 space with the body upright on its own up: the camera, not the traveller (not investigated; stream 4's area).
 
+### The selection card, a real Windows open, and Command Prompt after X (PLANET-87..89, AD-76)
+
+Stream 3, branch `worktree-agent-a6cacd782b3b77a70` (from `31c9758`). DJ: "Audit the right-side panel's Open, Parent, Copy
+Path, Show in Explorer, and Fly to actions … Some appeared to do nothing or behaved unexpectedly." "After I close the
+game with X, the command remains busy until I press Ctrl+C."
+
+**Selection card, reproduced first** (`--automate=planets-selection-actions`, the base product with the new instrument,
+13 failures; `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-selection\base-sample\`): *Fly to* did nothing in every
+Planets cell (it called the legacy maps' camera) while F turned to face the target, or silently nothing when the target
+was not on this world; *Parent (Esc)*: Esc clears the selection on a planet and leaves the overview; *Open (Enter)* in the
+overview: Enter lands; the hub ("This computer") has an empty path, so Open and Show in Explorer handed `""` to Windows
+and Copy path copied nothing; Parent on the hub was disabled with no reason; after Parent in the overview F framed the
+world selected before. Instrument note: Copy path wrote the real clipboard even under `--test-shell=record` (fixed first:
+it is recorded now, like the root landmark's copy).
+
+| View → / target ↓ | Open | Show in Explorer | Parent | Fly to / Face it / Zoom to | Copy path |
+|---|---|---|---|---|---|
+| File on this world | Open (Enter): opens with its app | reveals | Parent: selects its world | Face it (F): turns to it | copies |
+| Child world (in the sky) | Open (Enter): Explorer | reveals | selects this world | Face it (F) | copies |
+| The world you stand on | Open (Enter): Explorer | reveals | selects its parent | off: "you are standing on …" | copies |
+| Location root (`C:\`, `\\wsl.localhost\Ubuntu-24.04`) | Explorer | reveals | selects This computer | off: "not on this world … Go inside (G) or the list (J)" | copies |
+| Hub (This computer) | Open (Enter): This PC (`shell:MyComputerFolder`) | off: "FileScape's hub, not a folder" | off: "the top" | off | off: "no path to copy" |
+| A world in the overview | Open (Enter lands; the button opens with Windows) | reveals | selects the containing world and zooms to it | Zoom to (F) | copies |
+
+Disabled actions say why in their tooltip ("Unavailable: …"); their key, pressed anyway, shows the same reason as a toast.
+The legacy maps keep "Parent (Esc)" and "Fly to (F)".
+
+| Area | Status | Evidence |
+|---|---|---|
+| Card actions, every view × target, buttons and shortcuts (PLANET-87) | **Demonstrated** in-app; real mouse and keys: unknown | `planets-selection-actions` 44/0 on the Starter Sky (`fix1-sample`, root `C:\`) and 44/0 on the WSL fixture (`fix1-wsl`, root `\\wsl.localhost\Ubuntu-24.04`); base 13 failures (`base-sample`); Core `SelectionActionsTests` 4/4 |
+| Real Windows open, app not running, then running (PLANET-88) | **Demonstrated** for Edge with `.xml`; other handlers unknown | `tools/os-open-probe.ps1`: base and fix 5/5 each. The first fixture opened in a new Edge window titled with its name; the second landed in that same Edge process, which came forward; both stayed open after FileScape closed. On the fix build Edge's parent is Explorer, on the base FileScape |
+| Command Prompt after X, DJ's command typed at an interactive conhost cmd (PLANET-89) | **Demonstrated** for conhost; DJ's own terminal (likely Windows Terminal): unknown | `tools/os-shutdown-probe.ps1`, table below |
+| Core | WSL 738 passed, 26 skipped, 0 failed; Windows 737 passed, 29 skipped, 0 failed (a first Windows run had 2 failures whose names were not captured, under the other streams' load: **unknown**) | `tools/fs.sh test-wsl`, `tools/fs.sh test` |
+
+**Command Prompt, reproduced first.** All runs used `--root=sample` or a fixture, plus a probe preferences file. X was sent as `WM_SYSCOMMAND SC_CLOSE` to FileScape's own window. Evidence: `%TEMP%\FileScape-shutdown\out\` (`base`, `base-zip`, `base-open-edge`, `fix`, `fix-open-edge`).
+
+| Route (typed at the prompt) | Base `cfee25d2b709` (staged copy and ZIP extraction) | Fix (`staging-20261120-015228-1713692`) |
+|---|---|---|
+| `"…\FileScape.exe" -- …` | cmd free (it ran a typed command while FileScape ran and 1.7 s after X), but ≈ 12 log lines sat under the prompt; the last line was `[exit] … press Enter for a fresh prompt.`, with no prompt: **looks busy** | nothing under the prompt; the prompt is the last line during the run and after X; a typed command ran 1.7 s after X |
+| `"…\FileScape.console.exe" -- …` | busy while running (it waits, as designed); free 1.7 s after X | the same, 1.7 s |
+| the same, FileScape opening an `.xml` in Edge (`--test-hold=open:`) | **busy after X** until Edge was closed (Edge was FileScape's child, inside the wrapper's job); cmd returned 4.9 s after the probe closed Edge; Ctrl+C would have killed Edge | free 1.8 s after X; Edge (child of Explorer) stayed open |
+| `cmd /c "…FileScape.exe …"` | returned 1.5 s after X | returned after X |
+| a `.bat` that runs it | waits while FileScape runs, free after X | the same |
+
+**Root causes:**
+- **Typed `FileScape.exe`:** Godot's Windows build attaches to the parent console in native start-up and prints under a prompt cmd has already shown. This is DJ's handoff command.
+- **`FileScape.console.exe`:** the wrapper waits for every process in its job, so an app FileScape opened kept it waiting.
+
+**Fixes (AD-76):**
+- FileScape.exe lets go of a console that did not wait, and the engine header is off.
+- Under a job, Open, Start and Show in Explorer go through the desktop's Explorer.
+- Show in Explorer uses SHOpenFolderAndSelectItems (before: `Process.Start explorer.exe`, which passed on FileScape's inheritable handles).
+- The log file keeps everything, including the `[console]` and `[exit]` lines.
+
+**Instrument defects:**
+- Copy path wrote the real clipboard under the test shell (fixed in the product, recorded now).
+- The audit at first compared `select:X` with `select:(none)` as the same effect.
+- The shutdown probe listed "nothing" when exactly one process ran (PowerShell unrolled a one-item list).
+- The open probe stopped when an Edge helper process ended mid-listing, while still reporting 0 failures.
+
+All four are fixed.
+
+**Spills on DJ's desktop (recorded):**
+1. A base-build run opened a `.csv`. `.csv` has no per-user default here (AssocQueryString still names Excel), so Windows' "How do you want to open" (OpenWith.exe, PID 14844) stayed in front from 17:56:51 until the integrator reported it. It blocked another stream's Guard. Closed with WM_CLOSE to its window. Both probes now refuse a type without a UserChoice.
+2. After the fix-build Edge run, Edge relaunched itself in the background (`--no-startup-window`, no window) from 18:35 to about 18:42. I ended that process tree; the probes now end such relaunches.
+3. Edge opened DJ's Personal profile and restored its earlier session ("and 9 more pages"), so those pages were on screen during the runs. Edge's saved session now also holds the fixture tabs.
+
+No input went to another window: these probes send no desktop input.
+
+**Open / DJ:**
+- DJ's own terminal: if it is Windows Terminal, the same Godot attach applies, but it was not tested; a new tab could have landed in DJ's open Windows Terminal.
+- Under the wrapper, a type with no app gets Windows' own "Open with" dialog: Explorer reports no error back to FileScape.
+- Real keys and mouse on the card: not run.
+- Not exported or installed.
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)

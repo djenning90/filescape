@@ -720,13 +720,13 @@ public partial class PlanetWorld
                 CloseUniverse(returnToSurface: true);
                 return true;
             case InputEventKey { Pressed: true, Echo: false } key when key.Keycode is Key.Enter or Key.KpEnter || key.IsAction(InputBindings.EnterFolder):
-                BeginUniverseLanding(_uniSelected);
+                BeginUniverseLanding(UniverseCardSelection());
                 return true;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Home, CtrlPressed: false }:
                 if (_current != null) SelectInUniverse(_current.FolderId);
                 return true;
             case InputEventKey { Pressed: true, Echo: false } f when f.IsAction(InputBindings.Frame):
-                if (_uniSelected >= 0) SelectInUniverse(_uniSelected); // F frames the selected world again
+                ZoomToSelection(); // F frames the selected world again (the card's "Zoom to (F)")
                 return true;
             case InputEventKey { Pressed: true, Echo: false } b when b.IsAction(InputBindings.Overview):
                 return true; // B (the overlook view) means nothing up here
@@ -739,6 +739,26 @@ public partial class PlanetWorld
         }
 
         return false; // Backspace, J, L, Ctrl+L…: the shared commands (a navigation change lands from the overview)
+    }
+
+    /// <summary>
+    /// The world the overview's keys act on: the card's selection when the overview draws it, else the overview's own
+    /// (PLANET-87: the card's Parent, or a pick in a list, moves the shared selection; F and Enter must follow it, not
+    /// the world clicked before).
+    /// </summary>
+    private int UniverseCardSelection()
+    {
+        var card = _s.Selection.Selected;
+        return _uniIndex.ContainsKey(card) ? card : _uniSelected;
+    }
+
+    /// <summary>F and the card's "Zoom to (F)" in the overview: frame the selected world. False when it is not drawn.</summary>
+    public bool ZoomToSelection()
+    {
+        var id = UniverseCardSelection();
+        if (id < 0 || !_uniIndex.ContainsKey(id)) return false;
+        SelectInUniverse(id);
+        return true;
     }
 
     /// <summary>Selects a world (the shared selection, so the card shows it) and zooms in on its system.</summary>

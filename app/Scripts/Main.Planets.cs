@@ -62,7 +62,7 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.Readme) && _planets.ExpandPreview()) return true; // R with a text preview open: read it in full (PLANET-44)
         if (key.IsAction(InputBindings.Readme) && _planets.OpenViewer()) return true; // R with a picture's preview open: view it large (PLANET-96)
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
-        if (key.IsAction(InputBindings.Frame)) { _planets.FaceSelection(); return true; }
+        if (key.IsAction(InputBindings.Frame)) { CardFly(); return true; } // Main.SelectionActions: face it, or say why not
         if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
         // U and Backspace leave through their pad like any launch (PLANET-82): the navigator moves at the take-off, so Esc can still stop them.
         if (key.IsAction(InputBindings.UpPlace) && _planets.LaunchUp()) return true;
