@@ -253,7 +253,7 @@ public partial class PlanetWorld
         var phase = _phase == Phase.Falling ? "fall" : b.Grounded ? "ground" : b.Carrying ? "carry"
             : b.VerticalSpeed > apex ? "rising" : b.VerticalSpeed >= -apex ? "top" : "falling";
         if (_hazardPresses.Count >= HazardPressLogLength) _hazardPresses.RemoveAt(0);
-        _hazardPresses.Add(new HazardPress(_s.Now.TotalSeconds, _airSeconds, phase, was, b.VerticalSpeed, b.Height, b.OverHole, b.ToEdge, b.AirJumpsLeft));
+        _hazardPresses.Add(new HazardPress(_s.Now.TotalSeconds, b.Grounded ? 0 : _airSeconds, phase, was, b.VerticalSpeed, b.Height, b.OverHole, b.ToEdge, b.AirJumpsLeft));
     }
 
     /// <summary>The press log as JSON for the state file: an array of objects, oldest first.</summary>
