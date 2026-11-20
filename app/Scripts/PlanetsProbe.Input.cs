@@ -146,13 +146,19 @@ public partial class PlanetsProbe
         await Seconds(1);
         Check(App.Navigator.Current == root, "with the list closed Backspace is History back again (home)");
         await TypeAfterOpening("☰ Destinations", async () => await Click(App.Hud.DestinationsButtonRect.GetCenter()), "Music");
+        // PLANET-117 (AD-83, 2026-11-20): a click on the world closes the list and does nothing else (it used to keep the list
+        // and only take the keyboard from the filter); a drag beside it still looks around, and the list keeps the keyboard.
+        var selectedBefore = App.Selection.Selected;
         await ClickWorldAt(new Vector2(900, 250));
         await Frames(3);
-        Check(!P.DestinationFilterFocused, $"a click on the world takes the keyboard from the filter (focus: {FocusName})");
+        Check(!P.ListOpen && App.Selection.Selected == selectedBefore && !P.Busy, $"a click on the world closes the list and does nothing else (selection {App.Selection.Selected}, focus: {FocusName})");
+        await TypeAfterOpening("☰ Destinations again", async () => await Click(App.Hud.DestinationsButtonRect.GetCenter()), "Music");
+        await DragCamera(new Vector2(240, 0));
+        await Frames(3);
         count = App.UnhandledKeyCount;
         state = WorldState();
         await TypeKeys(" Box");
-        Check(P.DestinationFilterText == "Music Box" && P.DestinationFilterFocused && WorldState() == state, $"typing with the list still open goes back into its filter (“{P.DestinationFilterText}”, focus: {FocusName})");
+        Check(P.ListOpen && P.DestinationFilterText == "Music Box" && P.DestinationFilterFocused && WorldState() == state, $"after a drag beside the open list, typing goes into its filter (“{P.DestinationFilterText}”, focus: {FocusName})");
         leaked = LeakedSince(count);
         Check(leaked.Count == 0, $"…and fires no shortcut ([{string.Join(",", leaked)}])");
         await Key(Godot.Key.Escape);
