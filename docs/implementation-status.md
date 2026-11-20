@@ -53,6 +53,7 @@ begun under it.
 | The overview's Enter (PLANET-83) | **Demonstrated** in-app on the fixture | `after-overview-delay`: 33 of 33 landed (the two failing cases 9 of 9), the safety net never needed; 35 PASS / 0 FAIL |
 | Real keys through the Guard | **Unknown**: not run (the desktop is shared by six streams; the injected route covers the logic) | — |
 | Core (WSL) | 734 passed, 26 skipped, 0 failed (268 s) | `tools/fs.sh test-wsl` |
+| No regressions (functional tier, from the worktree with `fs.sh run`) | **Demonstrated** in-app | `planets-navigation` 47/0, `planets-journey` 39/0, `planets-arrival` 25/0, `planets-flows` 28/0, `planets-tutorial` 36/0, `planets-hazard` 82/0, `planets-dialog-keys` 148/0, `planets-overview-routes` 9/0 (`…\2026-11-19-travel\reg-*`) |
 
 **Open / for DJ:** the run's pace and arc (`DepartRun*`), the feet-first turn's timing (`LandingUprightSeconds`), whether
 Esc should also undo a breadcrumb/Locations/path move (needs a navigator undo), and whether the overview's departure
