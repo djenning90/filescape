@@ -196,6 +196,7 @@ public partial class PlanetsProbe
         await Frames(4);
         var movedAtPanel = Vector3Distance(feetAtPanel, P.Walker.Feet);
         Check(movedAtPanel < 0.05f && App.ShortcutCommandCount == cmdsAtPanel && P.RootMarkPanelOpen, F($"{tag}: ↑, W and ← held with the panel open move nothing ({movedAtPanel:0.00} m) and reach no shortcut"));
+        await Key(Godot.Key.Home); // the held ↑ above moved the highlight (a held key repeats the moves)
         await Key(Godot.Key.Down);
         var second = P.RootMarkArmed;
         await Key(Godot.Key.Up);

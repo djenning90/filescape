@@ -4,7 +4,37 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
-## Fifth playtest follow-up (2026-11-19)
+## Sixth pass (2026-11-20)
+
+### Stream 3: every panel's keyboard and mouse ownership (PLANET-115..119, AD-83)
+
+Branch `worktree-agent-a7cd53113f299da62` from `7680d22`. Not exported for delivery; app runs were the worktree
+project (`fs.sh run`) and one stage (`staging-20261120-182632-2170182`, `2e1f64d`) by `check journeys`.
+
+**Reproduced first (Core):** `PanelOwnershipTests` against a table that mirrored the old rule: 5 of 10 failed. The
+location actions were never a keyboard panel (AD-68 listed them among the overlays that leave the keys to play), so the
+walk read the arrows every frame and only the number keys, reaching the world after everything else, chose rows. The
+welcome and Settings had no focusable control. A world click with Destinations or the reader open acted behind them;
+with Settings or Locations open it was dead and the panel stayed.
+
+| Area | Status | Evidence |
+|---|---|---|
+| One ownership table in Core (`PanelOwnership`), read by `Main.KeyboardOwner`; every panel × every kind of key, the owner, every panel × a world press or click (PLANET-116/118) | **Demonstrated** (Core) | `PanelOwnershipTests` 10/10 (5/10 against the old rule) |
+| The location actions own the keys at once, by E or by a jump and twirl: ↑ ↓ Tab Home End move the highlight, Enter runs it, 1–9 run their rows, E/Esc close; ↑, W, ←, Space held move nothing (PLANET-115) | **Demonstrated** in-app | `planets-dialog-keys` 138/0 (sample with a root's look: E and a twirl, 0.00 m moved, Enter recorded the terminal); `planets-landmarks` 74/0 (38 s; 71/3 before the probe's Home fix) |
+| Settings opens on its first setting (Tab, Space); the welcome answers with ← → / Enter, Esc is "Explore on my own" | **Demonstrated** in-app | `planets-dialog-keys` |
+| A world click closes Settings, Locations, Help (on the press), Destinations, the reader, the location actions (on a click); it selects nothing, S walks again, the next click is single; a right-drag beside the list still turns (60°) and the list stays; a confirmation and the welcome keep the click (PLANET-117) | **Demonstrated** in-app | `planets-dialog-keys` (a click on a world in the sky where one showed, else empty ground) |
+| A panel closing over another hands the keys back (F4 over Destinations, Ctrl+L over the location actions, then Esc) (PLANET-118) | **Demonstrated** in-app | `planets-dialog-keys` |
+| Real input (PLANET-119) | **Unknown**: `os-planets-probe.ps1 -Dialogs` extended (clicks outside, a drag beside the list, a second launch on the fixture with `--test-root-look=windows`: steering, E, the twirl, F4 over, after travel); parse-checked, 0 errors; not run | — |
+| No regressions nearby | **Demonstrated** / one timing bound | `planets-navigation` 46/1 on the project: the one failure is "the list stays responsive" (slowest rebuild 17.1 ms against a 16.7 ms frame; a Debug project run beside other streams; not this change's code) |
+| `planets-dialog-keys` trimmed | **Demonstrated** | 172 s (fifth pass) → 89 s on the staged build with the new cases (128/7 then; 138/0 on the project after the instrument fixes, ≈ 97 s) |
+
+**Instrument defects (fixed):** the trimmed typed set had lost End after Home; Ctrl+V pastes the real clipboard into the
+filter (long text, mid-text caret), so clearing it needs End and up to 300 Backspaces; the click-outside point fell on
+the reader or Help when no world showed (a grid search now); a held ↑ in `planets-landmarks` moved the highlight before
+the ↓ check (Home first). **Changed on purpose** (AD-83): Esc closes the owner, not the first panel in the old peel
+order; a second twirl no longer arms Explorer (↓ does); Enter on an E-opened panel runs its first row.
+**For DJ:** whether a drag beside Destinations should close it too; whether ↓ is as quick as the second twirl.
+
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
 
