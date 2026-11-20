@@ -56,6 +56,7 @@ public partial class Hud : CanvasLayer
     private Button _openButton = null!;
     private Button _revealButton = null!;
     private Button _parentButton = null!;
+    private Button _flyButton = null!, _copyButton = null!;
     private VBoxContainer _legendBox = null!;
     private Label _stats = null!;
     private Label _toast = null!;
@@ -328,9 +329,9 @@ public partial class Hud : CanvasLayer
         _openButton = MakeButton("Open (Enter)", () => OpenRequested?.Invoke(), "Open with the Windows-associated application. Asks first for programs and scripts.");
         _revealButton = MakeButton("Show in Explorer", () => RevealRequested?.Invoke(), "Open Explorer with this item selected.");
         _parentButton = MakeButton("Parent (Esc)", () => ParentRequested?.Invoke(), "Select the containing directory.");
-        var fly = MakeButton("Fly to (F)", () => FlyToRequested?.Invoke(), "Bring the selection into view.");
-        var copy = MakeButton("Copy path", () => CopyPathRequested?.Invoke(), "Copy the full path to the clipboard.");
-        foreach (var b in new[] { _openButton, _revealButton, _parentButton, fly, copy })
+        _flyButton = MakeButton("Fly to (F)", () => FlyToRequested?.Invoke(), "Bring the selection into view.");
+        _copyButton = MakeButton("Copy path", () => CopyPathRequested?.Invoke(), "Copy the full path to the clipboard.");
+        foreach (var b in new[] { _openButton, _revealButton, _parentButton, _flyButton, _copyButton })
         {
             b.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             buttons.AddChild(b);
@@ -692,12 +693,36 @@ public partial class Hud : CanvasLayer
         _inspectorSwatch.Color = swatch;
     }
 
+    /// <summary>Nothing selected: every action off (labels and tooltips stay as the last selection left them).</summary>
     public void SetSelectionActions(bool canOpen, bool canReveal, bool canParent)
     {
         _openButton.Disabled = !canOpen;
         _revealButton.Disabled = !canReveal;
         _parentButton.Disabled = !canParent;
     }
+
+    /// <summary>
+    /// The card's five actions for the selection, from <see cref="FileScape.Core.Interaction.SelectionActions.For"/>
+    /// (PLANET-87, AD-76): each label shows a shortcut only where that key does the same, and a disabled action's tooltip
+    /// says why.
+    /// </summary>
+    public void SetCardActions(FileScape.Core.Interaction.CardActions a)
+    {
+        foreach (var (button, action) in new[] { (_openButton, a.Open), (_revealButton, a.Reveal), (_parentButton, a.Parent), (_flyButton, a.Fly), (_copyButton, a.Copy) })
+        {
+            button.Disabled = !action.Enabled;
+            button.Text = action.Label;
+            button.TooltipText = action.Tooltip;
+        }
+    }
+
+    /// <summary>
+    /// Probes (PLANET-87): the selection card's action buttons as drawn — a stable name, the label (with the shortcut it
+    /// shows), whether it is disabled, its tooltip, whether it is visible, and its rectangle (viewport units). Read-only.
+    /// </summary>
+    public IEnumerable<(string Name, string Text, bool Disabled, string Tooltip, bool Visible, Rect2 Rect)> SelectionActionButtons =>
+        new[] { ("open", _openButton), ("reveal", _revealButton), ("parent", _parentButton), ("fly", _flyButton), ("copy", _copyButton), ("enter", _enterButton) }
+            .Select(p => (p.Item1, p.Item2.Text, p.Item2.Disabled, p.Item2.TooltipText, p.Item2.IsVisibleInTree(), p.Item2.GetGlobalRect()));
 
     public void SetLegend(string colorMeaning, IReadOnlyList<(Color Color, string Label)> entries, string heightMeaning, bool markers = true)
     {

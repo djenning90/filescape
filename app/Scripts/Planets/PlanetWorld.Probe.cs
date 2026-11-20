@@ -163,6 +163,9 @@ public partial class PlanetWorld
         return _camera.IsPositionBehind(at) ? null : _camera.UnprojectPosition(at);
     }
 
+    /// <summary>The folders drawn as worlds in this world's sky (probes, PLANET-87).</summary>
+    public IEnumerable<int> ChildWorldIds => _children.Keys;
+
     /// <summary>The overview has a world for this folder.</summary>
     public bool UniverseKnows(int id) => _uniIndex.ContainsKey(id);
 

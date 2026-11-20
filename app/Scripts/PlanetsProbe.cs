@@ -125,6 +125,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-sky") await SkyRun(); // PlanetsProbe.Sky.cs (PLANET-60)
         else if (Mode == "planets-overview-discovery") await OverviewDiscoveryRun(); // PlanetsProbe.Discovery.cs (PLANET-76..78)
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
+        else if (Mode == "planets-selection-actions") await SelectionActionsRun(); // PlanetsProbe.SelectionActions.cs (PLANET-87)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

@@ -619,22 +619,33 @@ public partial class PlanetWorld
         return (stand, NVector3.Normalize(facing));
     }
 
-    /// <summary>F: turn to face the selection (an object here, or its world in the sky).</summary>
-    public void FaceSelection()
+    /// <summary>
+    /// F and the card's "Face it (F)": turn to face the selection (an object here, or its world in the sky). False when
+    /// there is nothing on this world or in its sky to face (the caller says why: PLANET-87, never a silent no-op).
+    /// </summary>
+    public bool FaceSelection()
     {
-        var tree = _s.Tree;
-        if (tree == null || _current == null) return;
-        var id = _s.Selection.Selected;
-        Godot.Vector3? at = null;
-        if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == id) is { } it) at = Gd(_current.Comp.Surface.PointAt(it.Direction));
-        else if (_children.TryGetValue(id, out var b)) at = b.Node.GlobalPosition;
-        else if (_parent?.FolderId == id) at = _parent.Node.GlobalPosition;
-        if (at is not { } p) return;
+        if (_s.Tree == null || _current == null) return false;
+        if (FacePoint(_s.Selection.Selected) is not { } p) return false;
         var up = Gd(_walker.Up);
         var to = p - Gd(_walker.Feet);
         to -= up * to.Dot(up);
         if (to.LengthSquared() > 1e-4f) _camFwd = to.Normalized();
         _sinceOrbitSeconds = 0;
+        return true;
+    }
+
+    /// <summary>Whether <see cref="FaceSelection"/> could face <paramref name="id"/>: an object on this world, a child world or the parent world in its sky.</summary>
+    public bool CanFace(int id) => _current != null && FacePoint(id) != null;
+
+    /// <summary>Where <paramref name="id"/> is to be faced (world space), or null when it is not on this world or in its sky.</summary>
+    private Godot.Vector3? FacePoint(int id)
+    {
+        if (_current == null || id < 0) return null;
+        if (_current.Comp.Items.FirstOrDefault(i => i.NodeId == id) is { } it) return Gd(_current.Comp.Surface.PointAt(it.Direction));
+        if (_children.TryGetValue(id, out var b)) return b.Node.GlobalPosition;
+        if (_parent?.FolderId == id) return _parent.Node.GlobalPosition;
+        return null;
     }
 
     /// <summary>Esc: close the planet's own overlays first (list, preview); false when there was nothing to close.</summary>

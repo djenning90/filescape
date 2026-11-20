@@ -436,8 +436,8 @@ public partial class Main : Node3D
         _hud.QualityToggled += ToggleQuality;
         _hud.OpenRequested += RequestOpen;
         _hud.RevealRequested += RequestReveal;
-        _hud.ParentRequested += () => { if (_tree != null && _selection.Parent(_tree)) FlyToSelection(); };
-        _hud.FlyToRequested += FlyToSelection;
+        _hud.ParentRequested += CardParent; // Main.SelectionActions (PLANET-87)
+        _hud.FlyToRequested += CardFly;
         _hud.CopyPathRequested += CopyPath;
         _hud.HelpToggled += () => _hud.ToggleHelp();
         _hud.InspectorClosed += () => _selection.Select(-1);
@@ -559,6 +559,7 @@ public partial class Main : Node3D
     {
         if (_closing) return; // SHUT-01: no new work once closing has begun
         if (_experimentOnly) return;
+        RefreshCardOnViewChange();
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
         if (_now > TimeSpan.Zero && (now - _now).TotalMilliseconds > HitchThresholdMs)
@@ -1560,6 +1561,14 @@ public partial class Main : Node3D
         }
 
         var node = _tree[_selection.Selected];
+        if (node.IsHub)
+        {
+            // The hub has no filesystem path (PLANET-87): Open shows This PC, which is what it stands for.
+            var r = _shell.Open(SelectionActions.ThisPcShellPath);
+            ReportShell(r.Succeeded && !r.WasMock && !_recordShell ? r with { Message = "This PC opened in File Explorer." } : r);
+            return;
+        }
+
         var path = _tree.FullPath(node.Id);
         if (!_tree.Source.IsLive)
         {
@@ -1594,23 +1603,22 @@ public partial class Main : Node3D
     /// <summary>Shows the selection in Windows Explorer (or the mock shell's simulation for sample data).</summary>
     public void RequestReveal()
     {
-        if (_tree == null || _selection.Selected < 0)
-        {
-            return;
-        }
+        if (CardSelection("show in Explorer") is not { } node) return;
+        var a = CardActionsFor(node).Reveal;
+        if (!a.Enabled) { ToastUnavailable(a); return; } // the hub, synthetic data (PLANET-87)
 
-        ReportShell(_shell.RevealInExplorer(_tree.FullPath(_selection.Selected)));
+        ReportShell(_shell.RevealInExplorer(_tree!.FullPath(node.Id)));
     }
 
     private void CopyPath()
     {
-        if (_tree == null || _selection.Selected < 0)
-        {
-            return;
-        }
+        if (CardSelection("copy the path of") is not { } node) return;
+        var a = CardActionsFor(node).Copy;
+        if (!a.Enabled) { ToastUnavailable(a); return; } // the hub has no path (PLANET-87)
 
-        DisplayServer.ClipboardSet(_tree.FullPath(_selection.Selected));
-        _hud.Toast("Path copied to the clipboard.");
+        // Through the session's one copy path (Main.RootMark): recorded, not copied, under --test-shell=record or on
+        // synthetic data, so a probe never overwrites the person's clipboard.
+        ((FileScape.App.Planets.IDeveloperSession)this).CopyText(_tree!.FullPath(node.Id), "Path");
     }
 
     /// <summary>Logs a shell action's outcome and toasts it: amber when simulated (sample data), green on success (6 s),
@@ -1702,7 +1710,7 @@ public partial class Main : Node3D
             _hud.SetInspectorCard(compact: false, visible: true, "", null);
         }
 
-        _hud.SetSelectionActions(canOpen: true, canReveal: _tree.Source.IsLive, canParent: !node.IsRoot);
+        ApplyCardActions(node); // Main.SelectionActions (PLANET-87): labels, enabled and why not, for this view
         var places = worldCard;
         _hud.SetWorldActions(_explorer != null && NeedsRetry(node), null);
         var enterable = (node.IsDirectory || (node.Kind == NodeKind.Link && node.Link is { CanFollow: true })) && node.Id != _nav.Current;
