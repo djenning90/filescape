@@ -1224,3 +1224,47 @@ Sources checked during the discussion:
 
 Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
 as FileScape while naming remains open.
+
+## AD-78 The tutorial card in rich text; the way back's rim and spire; a picture gallery as the first content world (2026-11-19)
+
+- **Problem:** DJ after the fourth playtest (PLANET-94..96): the Learn to play steps were plain sentences with the keys
+  in a separate row of caps at the card's right edge, so the action and its keys had to be found; the way back differed
+  from other pads only by a pale tint and the ▲ on its sign, which in a crowded world (Constellations: 29 pads, 8 moons)
+  is lost among ordinary destinations; and none of the content worlds of `docs/next-worlds.md` (AD-61) could be played.
+- **Tutorial card:** each lesson is written in a tiny markup (`*the action*`, `{Key}`) that Core turns into BBCode
+  (`LessonText`): the action leads in bold gold, the keys sit as caps (lime on dark green, the beacon's colour) where the
+  sentence uses them, and at most one short, quieter tip line follows. The separate key-cap row is gone; the lesson's
+  key list stays as data for probes and the state file, so the real-input `-Tutorial` mode and the in-app journeys match
+  titles and keys exactly as before. Alternatives: keeping the right-hand caps (the eye still had to jump between them
+  and the sentence); styled `[code]` spans (monospace read as code, not keys).
+- **Way back:** a **rim** (a thin glowing ring in the way back's sky blue round its pad: a different outline at ground
+  level) and a **spire** (four thin rings that climb from 2.2 m to 8.2 m over the pad, narrowing to a small light, on a
+  faint thread: a ▲-shaped silhouette that shows over the world's curve when the pad is below the horizon), plus a
+  framed sign (the only sign with a frame). Only on the planet you stand on. Chosen over a column of light (the
+  walkthrough's beacon is a lime column; the two must never be confused), over brighter petals (bloom washes the pads
+  beside it), and over a taller spire (it would compete with the landmark and the sky's worlds). Rings rather than a
+  solid cone: it stays a line drawing, restrained, and you see through it.
+- **Content world — why the Gallery:** of the three proposals (and audio folders) it is the one whose interaction can be
+  *played* now on generated data, and the one DJ named. The Arrivals Port (ranked first in AD-61) is mostly a sorted
+  list: useful, but its payoff is a panel, and its recognition needs the Downloads known folder; the Reading Room's nook
+  needs version-stack design; audio has a working preview already. The Gallery shows what a content world adds that a
+  file manager does not: walking among your pictures and stepping into one.
+- **What was built (a prototype, narrower than the sketch):** recognition by a person-made marker only
+  (`.filescape-gallery`, the per-folder "yes" the sketch asked for before pictures are read while walking; no known
+  folder or mix rules yet); in a gallery the easels load their thumbnails by themselves (nearest first, two at a time,
+  at most 32 per planet); everywhere, R (or ⤢) on a picture's preview opens a full-window **viewer** that steps through
+  the folder's pictures, zooms about the pointer, pans and fits, and closes back to where you stood with the preview on
+  the last picture. No gallery path, month arches, contact sheet, video frames or saved overrides.
+- **Bounds (consistent with the preview, FILE-02):** the preview's 24 MiB read limit; cloud placeholders and links are
+  never read (decided from metadata, nothing is touched); the header's pixel count is checked before decoding
+  (`ImageHeader`, 60 Mpx — the budget that before applied only after decoding) — this now protects the preview and the
+  easels too; decoding on a worker, shrunk to 2,048 px for the viewer; one viewer decode at a time (quick steps keep
+  only the latest wish); three decoded pictures kept; a placeholder while loading and the reason when a picture cannot
+  be shown. Unmarked folders read nothing by themselves (unchanged).
+- **Sample data:** `GallerySample` writes a mixed "Picture Gallery" (pictures painted by the Starter Sky's own painters at
+  several shapes and sizes, a BMP, README, notes, a table, a sound, an archive, a subfolder) beside the Starter Sky in
+  the app's own data folder (`--root=gallery`, or U from the Starter Sky), and with stress cases (damaged, 63 Mpx,
+  over 24 MiB) as a fixture (`FileScape.Fixtures create-gallery`). No image files are committed.
+- **Revisit if:** DJ finds the spire too quiet or too busy (heights, ring count and energies are named constants in
+  `PlanetVisual.WayBack.cs`); the gallery should be recognised without a marker (the AD-61 rules) or ask "Show the
+  pictures here?" on arrival instead; the viewer's memory budget should follow the screen size.

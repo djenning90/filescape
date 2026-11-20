@@ -4,6 +4,65 @@ Last updated: 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera l
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fifth playtest follow-up (2026-11-19)
+
+### Tutorial card, the way back's look, a picture gallery (PLANET-94..96, AD-78)
+
+Stream 5. Branch `worktree-agent-a00ee56f8b7f9b056`. Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-stream5\`
+(`base-looks2` = the unmodified code with only the instrument added; `looks-*`, `tutorial-*`, `gallery-*`). Runs from
+the worktree project with `fs.sh run`, not an exported build. Not exported or installed.
+
+**Seen on the base code first** (`planets-looks`, 1600 × 900, UI 1.0): the card's steps were one plain sentence each
+("Press J for this world's list, then choose Music Box (double-click, or ↓ and Enter).") with the keys repeated as caps
+in a row at the card's right edge. On Constellations (29 pads, 8 moons) the way back's pad is pink-blue among pink pads;
+from across the rings only its sign's small ▲ and "the way back" set it apart, and from the far side only the sign
+shows (the pad is below the curve).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Card: the action leads in bold gold, keys as inline caps, one quieter tip line (PLANET-94) | **Demonstrated** in-app; readability by feel: DJ | `planets-looks`: steps 1, 2, 4, 8, 10, 13 each show all their keys; screenshots `looks-2\01..06`. Core `LessonTextTests` 4/4 |
+| Walkthrough unchanged | **Demonstrated** in-app: `planets-tutorial` 36/0, `planets-tutorial-cues` 55/0 (titles, keys and steps unchanged); real input `-Tutorial`: **not run** (matches titles and the key list, which did not change) | `planets-tutorial`, `planets-tutorial-cues` |
+| Way back: blue rim round the pad, a spire of climbing rings over it, a framed sign; only on the planet you stand on (PLANET-95) | **Demonstrated** in-app (built, visible in the shots); recognisable at a glance: **provisional**, DJ | `looks-2\07..12` against `base-looks2\07..12`. From the arrival the rim reads clearly; across the rings on Constellations the spire and frame mark it, though the sign overlaps the spire's lower half and the lighthouse stands behind it; on Garden Photos the spire shows over the horizon with the pad hidden. From the far side of a 29 m world (38 m) neither pad nor spire can show (the curve hides ≈ 80 m of height); the framed sign still does |
+| Gallery easels fill by themselves in a marked folder, nearest first, bounded (PLANET-96) | **Demonstrated** in-app | `planets-gallery` on the fixture: 8 pictures shown on 11 picture easels (the three stress cases stay blank), 10 reads asked (≤ 32), the arrival's frames ≤ 17 ms while they loaded (only a few frames measured: they loaded within the first second) |
+| Viewer: R (or ⤢) on a picture's preview; ← → through the folder's 11 pictures; wheel zoom about the pointer, drag pan, 0 fit; Esc/R back where you stood with the preview on the last picture; game keys inert (PLANET-96) | **Demonstrated** in-app; feel: DJ | `planets-gallery` 45/0 (`gallery-2`): moved 0.00 m with W, T, J, U, Space, G pressed while viewing; the camera's zoom unchanged by the wheel |
+| Bounds: the large print 2560 × 1920 decoded at 2048 × 1536; 63 Mpx refused from its header in 2 ms; 24.1 MiB refused from its size with no read; damaged refused with the reason; ≤ 1 decode at once, ≤ 3 kept; six quick steps started 2 decodes; decodes 0–92 ms (199/247 ms on the first run) | **Demonstrated** in-app and Core | `planets-gallery`; Core `GalleryTests` 6/6 |
+| An unmarked folder (Sketches) reads nothing by itself; E then R still views its 2 pictures | **Demonstrated** in-app | `planets-gallery` |
+| The app's own sample (`--root=gallery`) | **Demonstrated** in-app: `planets-gallery --root=gallery` 39/0 (`gallery-sample2`; the sample has no stress cases). The first run failed one check: the prompt named a neighbouring easel nearer than the hopped-to picture (an instrument defect: the probe now checks the viewer prompt only when that picture is in focus; the fixture run `gallery-2` passed 45/0 with the stricter check) | `gallery-sample` |
+| Existing journeys after the change | **Demonstrated** in-app: `planets-journey` 41/0 (Garden Photos' easels, nearest-first now), `planets-dialog-keys` 148/0 (keyboard ownership with the new viewer panel), `planets-reader` 33/0 (R still expands text; WSL readme fixture), `planets-looks` 9/0. Windows Core: 742 passed, 1 failed — `SkySynthTests.Rendering_a_revisit_with_the_second_theme_is_cheap` (a render-time bound, 61–76 ms against 60 ms, while other streams' journeys ran; untouched code: **environment**, not a product defect of this change); my tests 10/10 on Windows | |
+| Core | **Demonstrated**: WSL 744 passed, 26 skipped, 0 failed (4 min 14 s) | `tools/fs.sh test-wsl` |
+
+**How to play the gallery:** `FileScape.exe -- --root=gallery` (or from the Starter Sky press U: "Picture Gallery"
+stands beside it). The easels fill with pictures as you walk. Walk up to one, **E** to look, **R** (or ⤢) to view it
+large; **← →** step through the folder's pictures, the **wheel** zooms about the pointer, **drag** pans, **0** fits,
+**Enter** opens it with Windows, **Esc** (or R, ✕) brings you back where you stood. Any folder of your own works the same
+from E then R; put an empty file named `.filescape-gallery` in it and its easels also fill by themselves.
+
+**Why the gallery:** it is the proposal whose interaction can be played today on generated data — you walk among the
+pictures and step into one — and the one DJ named. The others need decisions first (below).
+
+**The content-world proposals (`docs/next-worlds.md`, AD-61) — where they stand:**
+
+- **Gallery (photos and videos):** prototyped here, narrower than the sketch. Built: recognition by a person-made marker
+  (the per-folder "yes"), walking thumbnails (nearest first, ≤ 32, two at a time), the picture viewer, header-checked
+  bounds. Already there before: the Meadow theme for picture-heavy folders, easels with automatic thumbnails in the
+  Starter Sky only, the 512 px preview on E. Not built: known-folder, camera-name and mix recognition; the gallery path
+  and month arches; the contact sheet; video frames; a saved per-folder choice or a "Show the pictures here?" prompt.
+- **Reading Room (documents):** not built. What exists: the Library theme for document-heavy folders, the bounded text
+  and Markdown preview (E) and the reading view (R) with usable links (PLANET-44/52/53). Missing: recognition, the
+  reading nook (recent documents ring), version stacks.
+- **Arrivals Port (Downloads):** not built (AD-61 ranked it first to prototype). What exists: `AgeBands`, piles, the
+  list (J) and Reveal. Missing: recognition by the Downloads known folder, the arrivals board, parcels in age rings,
+  partial-download parcels, its music.
+- **Audio folders:** no world of their own. What exists: audio-heavy folders become Chime worlds (bell flowers, the bell
+  tower, PLANET-56); E on a .wav/.ogg/.mp3 under 12 MiB plays a bounded preview with the music ducked. Opportunity: a
+  listening room on the gallery's pattern — a marker as the folder's "yes", the nearest file's first seconds playing as
+  you pass (one at a time, ducked, bounded like the preview), a step-through player like the picture viewer.
+
+Instrument defects: the first `planets-looks` run looped forever skipping steps — skipping past "5 · The overview"
+without opening it is undone at once by the walkthrough; the probe now opens the overview there (and has a guard). The
+first "from the arrival" shot did not face the way back (the arrival framing held the camera); the probe now stands the
+traveller facing it first.
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)
