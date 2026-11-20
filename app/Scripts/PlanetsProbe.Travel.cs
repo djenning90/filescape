@@ -16,7 +16,7 @@ namespace FileScape.App;
 /// it, facing, squash, head and foot height) through its last second in the air and its first on the ground, written to
 /// <c>landing-trace.csv</c> with a summary per landing in the log.</item>
 /// <item><c>--automate=planets-overview-enter --root=&lt;a root with a child named --test-target (default "home")&gt;</c>:
-/// DJ's route (2026-11-19) repeated in its variants — the list then the overview, the overview then the list, the list's
+/// DJ's route (2026-11-19) in its variants (each once since the sixth pass; <c>--repeats=N</c>) — the list then the overview, the overview then the list, the list's
 /// Enter, the overview's Enter, a click and a double-click — each judged by whether the accepted Enter completed (the
 /// navigator there, the overview closed, on foot) or said why within the wait. With <c>--counts-only</c> (a real root)
 /// nothing but the target's and the root's names is logged and no screenshot is taken.</item>
@@ -287,9 +287,15 @@ public partial class PlanetsProbe
         };
         var failed = 0;
         var deepOnly = OS.GetCmdlineUserArgs().Any(a => a == "--deep-only"); // only the trip-from-the-overview case below
+        // Each variant once by default (PLANET-114, sixth pass): the decisions the three repeats were hunting (which world
+        // Enter acts on, a commit landing through the overview) are unit-tested now (OverviewCameraTests, Core
+        // OverviewEnter); --repeats=N plays each N times again (the intermittent hunt).
+        var repeats = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--repeats=", StringComparison.Ordinal)) is { } ra
+            && int.TryParse(ra["--repeats=".Length..], out var rn) && rn > 0 ? rn : OverviewEnterRepeats;
+        Log($"each variant {repeats} time(s)");
         foreach (var (vname, run) in deepOnly ? [] : variants)
         {
-            for (var rep = 0; rep < OverviewEnterRepeats; rep++)
+            for (var rep = 0; rep < repeats; rep++)
             {
                 await BackTo(root);
                 var from = P.LaunchLog.Count;
@@ -318,7 +324,7 @@ public partial class PlanetsProbe
         if (deep >= 0)
         {
             var deepName = Tree[deep].Name;
-            for (var rep = 0; rep < OverviewEnterRepeats; rep++)
+            for (var rep = 0; rep < repeats; rep++)
             {
                 await BackTo(root);
                 deepTries++;
@@ -339,12 +345,13 @@ public partial class PlanetsProbe
             }
         }
 
-        Log($"overview Enter: {failed} of {(deepOnly ? 0 : variants.Length * OverviewEnterRepeats) + deepTries} attempts did not land");
+        Log($"overview Enter: {failed} of {(deepOnly ? 0 : variants.Length * repeats) + deepTries} attempts did not land");
         Check(P.TravelUnderOverviewClosed == 0, $"no travel began under the overview (the safety net closed it {P.TravelUnderOverviewClosed} times)");
     }
 
-    /// <summary>Each variant of the route is tried this many times (the failure DJ saw was intermittent).</summary>
-    private const int OverviewEnterRepeats = 3;
+    /// <summary>Each variant of the route is tried this many times by default: once (sixth pass; it was 3 while the
+    /// intermittent failure was hunted, 256 s a run; the decisions are unit-tested now). <c>--repeats=N</c> overrides.</summary>
+    private const int OverviewEnterRepeats = 1;
 
     /// <summary>An accepted Enter must have landed, or said why, within this long, seconds (the overview's fly-in is ≈ 0.75 s, the descent 1 s; listing a WSL folder can take a few seconds).</summary>
     private const double OverviewEnterWaitSeconds = 8;
@@ -393,6 +400,7 @@ public partial class PlanetsProbe
     private async Task BackTo(int root)
     {
         for (var i = 0; i < 3 && (P.UniverseOpen || P.ListOpen); i++) { await Key(Godot.Key.Escape); await Frames(4); }
+        await Until(() => !P.UniverseOpen, 4); // Esc flies back down (≤ 1.8 s; a second Esc hurries it, PLANET-111)
         await Until(() => !P.Busy, 10);
         if (App.Navigator.Current != root)
         {

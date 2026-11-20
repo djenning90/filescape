@@ -15,7 +15,8 @@ namespace FileScape.App.Planets;
 /// partly listed ones dimmer, folders known only by name are pale ghosts; folders you have visited this session wear a
 /// ring; where you stand has a gold beacon. Left- or right-drag (or ← →) orbits, middle-drag or WASD pans, the wheel zooms; click a world
 /// to select it (the shared selection: its card shows it) and zoom in on it; Enter or a double-click lands there, through
-/// the navigator, so history and Backspace work as everywhere; Esc or T returns to where you stood.
+/// the navigator, so history and Backspace work as everywhere; Esc or T flies back down to where you stood (PLANET-111,
+/// <see cref="BeginUniverseReturn"/>). Shift speeds up pan, keyboard orbit and the wheel (PLANET-110, <see cref="OverviewControls"/>).
 /// </summary>
 public partial class PlanetWorld
 {
@@ -60,8 +61,7 @@ public partial class PlanetWorld
     /// <summary>WASD pan speed, camera distances per second: crossing the view takes about the same time at any zoom.</summary>
     private const float KeyPanDistancesPerSecond = 0.9f;
 
-    /// <summary>One wheel notch: in multiplies the distance by 0.85, out by 1.18 (≈ 1/0.85, so in-then-out comes back).</summary>
-    private const float WheelZoomIn = 0.85f, WheelZoomOut = 1.18f;
+    // One wheel notch's zoom and what Shift does to every control: OverviewControls (Core, PLANET-110).
 
     /// <summary>The closest and farthest the wheel goes, metres.</summary>
     private const float MinZoomMetres = 4f, MaxZoomMetres = 6000f;
@@ -187,7 +187,7 @@ public partial class PlanetWorld
     {
         if (_universe != null)
         {
-            CloseUniverse(returnToSurface: true);
+            BeginUniverseReturn();
             return;
         }
 
@@ -572,6 +572,7 @@ public partial class PlanetWorld
         _uniHalo = null;
         _uniHere = -1;
         _uniLanding = null;
+        _uniReturn = null;
         _uniFrame = null;
         CloseDiscovery(); // PlanetWorld.Discovery.cs
         HideUniverseHint(); // PlanetWorld.UniverseNav.cs
@@ -613,33 +614,51 @@ public partial class PlanetWorld
             }
         }
 
-        if (!blockedKeys && _uniLanding == null)
+        if (_uniReturn is { } back)
+        {
+            // Esc's way back (PLANET-111): along the zoom-and-pan path to your world, then down onto the planet.
+            var t = back.T + dt;
+            _uniReturn = back with { T = t };
+            var progress = Mathf.Clamp(t / back.Seconds, 0f, 1f);
+            var view = back.Path.At(back.Path.Length * OverviewReturn.Ease(progress));
+            _uniFocus = _uniFocusTarget = Gd(view.Focus);
+            _uniDistance = _uniDistanceTarget = view.DistanceMetres;
+            if (progress >= 1f)
+            {
+                PlaceUniverseCamera();
+                FinishUniverseReturn();
+                return;
+            }
+        }
+
+        if (!blockedKeys && _uniLanding == null && _uniReturn == null)
         {
             var right = new Vector3(Mathf.Cos(_uniYaw), 0, -Mathf.Sin(_uniYaw));
             var forward = Vector3.Up.Cross(right);
-            _uniYaw -= Axis(InputBindings.TurnLeft, InputBindings.TurnRight) * KeyLookDegreesPerSecond * Mathf.Pi / 180f * dt; // ← → orbit (AD-47)
+            var fast = Godot.Input.IsActionPressed(InputBindings.Fast); // Shift (PLANET-110): per-control factors in OverviewControls
+            _uniYaw -= Axis(InputBindings.TurnLeft, InputBindings.TurnRight) * KeyLookDegreesPerSecond * Mathf.Pi / 180f * dt
+                * OverviewControls.SpeedFactor(OverviewMove.KeyOrbit, fast); // ← → orbit (AD-47)
             var move = right * Axis(InputBindings.Left, InputBindings.Right)
                 + forward * Axis(InputBindings.Back, InputBindings.Forward)
                 + Vector3.Up * (Axis(InputBindings.Down, InputBindings.Up));
             if (move.LengthSquared() > 0.01f)
             {
-                _uniFocusTarget += move.LimitLength() * _uniDistance * KeyPanDistancesPerSecond * dt;
+                _uniFocusTarget += move.LimitLength() * _uniDistance * KeyPanDistancesPerSecond * OverviewControls.SpeedFactor(OverviewMove.KeyPan, fast) * dt;
                 _uniFrame = null; // the player took the camera: growth no longer reframes it
             }
         }
 
         // The flash follows the landing's progress (0 → 1 over the flight) and otherwise fades to 0; squaring the level
         // keeps it faint early and brightens it late, so the light seems to rush up as you arrive.
-        _warpFlash = Mathf.MoveToward(_warpFlash, _uniLanding is { } ul ? Mathf.Clamp(ul.T / ul.Seconds, 0, 1) : 0, dt * FlashRatePerSecond);
+        _warpFlash = _uniReturn is { } rf
+            ? Mathf.Max(OverviewReturn.FlashLevel(Mathf.Clamp(rf.T / rf.Seconds, 0f, 1f)), Mathf.MoveToward(_warpFlash, 0, dt * FlashRatePerSecond)) // the opening's flash may still be fading
+            : Mathf.MoveToward(_warpFlash, _uniLanding is { } ul ? Mathf.Clamp(ul.T / ul.Seconds, 0, 1) : 0, dt * FlashRatePerSecond);
         _flash.Color = FlashColor with { A = Mathf.Clamp(_warpFlash * _warpFlash * FlashPeakOpacity, 0, FlashPeakOpacity) };
         var ease = 1 - Mathf.Exp(-dt * FocusFollowRatePerSecond); // frame-rate independent smoothing (see the constants above)
         _uniFocus = _uniFocus.Lerp(_uniFocusTarget, ease);
         _uniDistance = Mathf.Lerp(_uniDistance, _uniDistanceTarget, 1 - Mathf.Exp(-dt * ZoomFollowRatePerSecond));
-        var offset = new Vector3(Mathf.Sin(_uniYaw) * Mathf.Cos(_uniPitch), Mathf.Sin(_uniPitch), Mathf.Cos(_uniYaw) * Mathf.Cos(_uniPitch));
-        _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
-        _camera.LookAt(_uniFocus, Vector3.Up);
-        _camera.Fov = OverviewFovDegrees;
-        StepDiscovery(tree); // PlanetWorld.Discovery.cs: ask for more listings, relayout when the tree has grown
+        PlaceUniverseCamera();
+        if (_uniReturn == null) StepDiscovery(tree); // PlanetWorld.Discovery.cs: ask for more listings, relayout when the tree has grown (not on the way back: nothing may move under it)
         PlaceUniverse(dt);
 
         var mouse = GetViewport().GetMousePosition();
@@ -704,8 +723,17 @@ public partial class PlanetWorld
         var selName = _uniSelected >= 0 && tree.Contains(_uniSelected) ? tree.DisplayName(_uniSelected) : "";
         var (listed, partial, unknown, visitedCount) = UniverseCounts;
         SetPrompt(_uniSelected == _current?.FolderId ? $"★ {selName}: you are here · click a world, then Enter to land there" : $"{selName} · Enter (or double-click) to land there",
-            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   drag or ← → orbit · middle-drag or WASD pan · wheel zooms toward the pointer · [ ] round the ring · Z up a level · X: pause discovery · Esc or T: back");
+            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   Shift: faster · X: pause discovery · Esc or T: back down · F1: every control");
         UpdateUniverseHint(dt); // PlanetWorld.UniverseNav.cs
+    }
+
+    /// <summary>The overview camera from its orbit: <see cref="_uniDistance"/> from <see cref="_uniFocus"/> at the orbit's angles.</summary>
+    private void PlaceUniverseCamera()
+    {
+        var offset = new Vector3(Mathf.Sin(_uniYaw) * Mathf.Cos(_uniPitch), Mathf.Sin(_uniPitch), Mathf.Cos(_uniYaw) * Mathf.Cos(_uniPitch));
+        _camera.GlobalPosition = _uniFocus + offset * _uniDistance;
+        _camera.LookAt(_uniFocus, Vector3.Up);
+        _camera.Fov = OverviewFovDegrees;
     }
 
     /// <summary>
@@ -736,13 +764,118 @@ public partial class PlanetWorld
     /// <summary>A click this close to a world's centre picks it however small it is drawn, pixels.</summary>
     private const float PickMinPixels = 8f;
 
+    /// <summary>Esc's way back in progress (PLANET-111): the path, seconds into it, and its length in seconds.</summary>
+    private (ZoomPanPath Path, float T, float Seconds)? _uniReturn;
+
+    /// <summary>On the way back down from the overview (probes).</summary>
+    public bool UniverseReturning => _uniReturn != null;
+
+    /// <summary>
+    /// Esc or T in the overview (PLANET-111, AD-82): fly back down to where you stand. The camera follows a zoom-and-pan
+    /// path (<see cref="ZoomPanPath"/>) from wherever it is to <see cref="OverviewReturn.CloseRadii"/> radii from your
+    /// world, the map still drawn and a soft light rising at the end; then <see cref="FinishUniverseReturn"/> hands it to
+    /// the planet. A second Esc or T hurries it (keeping the progress made, <see cref="OverviewReturn.HurriedSeconds"/>).
+    /// Without a drawn world for where you stand (it always is: the way there is pinned) it falls back to the old glide.
+    /// </summary>
+    private void BeginUniverseReturn()
+    {
+        if (_universe == null) return;
+        if (_uniReturn is { } going)
+        {
+            // Hurry: the remaining share of the move takes HurriedSeconds, from the same progress (never a jump).
+            var p = Mathf.Clamp(going.T / going.Seconds, 0f, 0.999f);
+            var total = MathF.Min(going.Seconds, OverviewReturn.HurriedSeconds / (1f - p));
+            _uniReturn = going with { T = p * total, Seconds = total };
+            return;
+        }
+
+        if (_uniLanding != null) return; // already flying into another world
+        if (_uniHere < 0 || _current == null)
+        {
+            CloseUniverse(returnToSurface: true);
+            return;
+        }
+
+        EndOrbit();
+        _uniPanning = false;
+        _uniFrame = null;
+        var here = _uniBodies[_uniHere];
+        var to = new OverviewView(Nv(here.At), here.Body.Radius * OverviewReturn.CloseRadii);
+        var path = new ZoomPanPath(new OverviewView(Nv(_uniFocus), _uniDistance), to);
+        _uniReturn = (path, 0f, (float)OverviewReturn.Duration(path).TotalSeconds);
+        UniverseReturns++;
+    }
+
+    /// <summary>
+    /// The hand-over (PLANET-111): the overview closes and the camera starts on the planet where the overview left it —
+    /// as many planet radii from its centre as it was (drawn) body radii from your world, looking at the centre, above and
+    /// behind the traveller (<see cref="OverviewReturn.SurfaceStart"/>) — then glides into the walking camera over
+    /// <see cref="OverviewReturn.SurfaceBlendSeconds"/> (the same blend as an arrival's establishing shot). The soft light
+    /// carries over and fades. Nothing about where you stand changes.
+    /// </summary>
+    private void FinishUniverseReturn()
+    {
+        var here = _uniBodies[_uniHere];
+        var drawn = MathF.Max(DrawnRadius(here.Body, here.At), 1e-3f);
+        var radii = _camera.GlobalPosition.DistanceTo(here.At) / drawn;
+        var offCentre = Mathf.RadToDeg((-_camera.GlobalBasis.Z).AngleTo(here.At - _camera.GlobalPosition));
+        var flash = _warpFlash;
+        CloseUniverse(returnToSurface: false);
+        if (_current == null) return;
+        var (eye, forward, screenUp) = OverviewReturn.SurfaceStart(_walker.Up, _walker.Facing, _current.Comp.Shape.Radius, radii);
+        _camBlendFrom = new Transform3D(Basis.LookingAt(Gd(forward), Gd(screenUp)), Gd(eye));
+        _camera.GlobalTransform = _camBlendFrom;
+        _camera.Fov = OverviewFovDegrees;
+        _camBlend = _camBlendTotal = OverviewReturn.SurfaceBlendSeconds;
+        _warpFlash = flash;
+        _flash.Color = FlashColor with { A = Mathf.Clamp(_warpFlash * _warpFlash * FlashPeakOpacity, 0, FlashPeakOpacity) };
+        _audio.Arrive();
+        LastReturnHandOver = (radii, eye.Length() / _current.Comp.Shape.Radius, offCentre);
+    }
+
+    /// <summary>
+    /// One frame of the way back as the player sees your world (probes, PLANET-111): whether the overview is drawn, the
+    /// camera's distance from your world's centre in its radii (the drawn body's in the overview, the planet's after), how
+    /// far the centre is off the view's axis (degrees), and the light's opacity. Continuous through the hand-over.
+    /// </summary>
+    public (bool Overview, float DistanceRadii, float OffCentreDegrees, float Flash) ReturnTraceSample()
+    {
+        var eye = _camera.GlobalPosition;
+        var fwd = -_camera.GlobalBasis.Z;
+        if (_universe != null && _uniHere >= 0)
+        {
+            var h = _uniBodies[_uniHere];
+            var to = h.At - eye;
+            return (true, to.Length() / MathF.Max(DrawnRadius(h.Body, h.At), 1e-3f), Mathf.RadToDeg(fwd.AngleTo(to)), _flash.Color.A);
+        }
+
+        if (_current == null) return default;
+        return (false, eye.Length() / _current.Comp.Shape.Radius, Mathf.RadToDeg(fwd.AngleTo(-eye)), _flash.Color.A);
+    }
+
+    /// <summary>Ways back begun with Esc or T (probes).</summary>
+    public int UniverseReturns { get; private set; }
+
+    /// <summary>The last hand-over (probes): the camera's distance from your world in drawn body radii in the overview's
+    /// last frame and in planet radii in the planet's first, and how far your world was off the view's centre, degrees.</summary>
+    public (float OverviewRadii, float SurfaceRadii, float OffCentreDegrees) LastReturnHandOver { get; private set; }
+
     /// <summary>Input in the overview (from Main's unhandled input): keys and clicks. Returns true when consumed.</summary>
     private bool UniverseCommand(InputEvent e)
     {
+        if (_uniReturn != null && e is InputEventKey { Pressed: true } k
+            && (k.Keycode is Key.Enter or Key.KpEnter || (k.Keycode == Key.Home && !k.CtrlPressed) || k.IsAction(InputBindings.EnterFolder) || k.IsAction(InputBindings.Frame)
+                || k.PhysicalKeycode is Key.Bracketleft or Key.Bracketright or Key.Z))
+        {
+            // On the way back down the overview's own moves wait (Esc or T again hurries it). The shared commands still
+            // act: Backspace, the list or a path change the navigator, which lands out of the light as from the overview.
+            return true;
+        }
+
         switch (e)
         {
             case InputEventKey { Pressed: true, Echo: false } key when key.IsAction(InputBindings.FlightToggle) || key.Keycode == Key.Escape:
-                CloseUniverse(returnToSurface: true);
+                BeginUniverseReturn();
                 return true;
             case InputEventKey { Pressed: true, Echo: false } key when key.Keycode is Key.Enter or Key.KpEnter || key.IsAction(InputBindings.EnterFolder):
                 BeginUniverseLanding(UniverseCardSelection());
@@ -777,11 +910,7 @@ public partial class PlanetWorld
     /// (PLANET-87: the card's Parent, or a pick in a list, moves the shared selection; F and Enter must follow it, not
     /// the world clicked before).
     /// </summary>
-    private int UniverseCardSelection()
-    {
-        var card = _s.Selection.Selected;
-        return _uniIndex.ContainsKey(card) ? card : _uniSelected;
-    }
+    private int UniverseCardSelection() => OverviewEnter.Target(_s.Selection.Selected, _uniSelected, _uniIndex.ContainsKey);
 
     /// <summary>F and the card's "Zoom to (F)" in the overview: frame the selected world. False when it is not drawn.</summary>
     public bool ZoomToSelection()
@@ -795,7 +924,7 @@ public partial class PlanetWorld
     /// <summary>Selects a world (the shared selection, so the card shows it) and zooms in on its system.</summary>
     public void SelectInUniverse(int id)
     {
-        if (!_uniIndex.TryGetValue(id, out var i)) return;
+        if (_uniReturn != null || !_uniIndex.TryGetValue(id, out var i)) return;
         _uniSelected = id;
         _s.Select(id);
         _audio.Select();
@@ -808,29 +937,34 @@ public partial class PlanetWorld
     /// <summary>The shared selection as the overview last saw it (a change made elsewhere is followed, PLANET-83).</summary>
     private int _uniSharedSeen = -1;
 
-    /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it. An Enter that cannot start says why (PLANET-83).</summary>
+    /// <summary>
+    /// Enter (and every commit made while the overview is open): fly into the chosen world (≈ 0.75 s), then land on it. An
+    /// Enter that cannot start says why (PLANET-83). The decision is <see cref="OverviewEnter.Decide"/> (Core, unit-tested).
+    /// A commit during Esc's way back down takes over from it (PLANET-114: you changed your mind; the camera flies on from
+    /// where the way back had got to).
+    /// </summary>
     public void BeginUniverseLanding(int id)
     {
-        if (_universe == null || _uniLanding != null) return;
-        if (id < 0)
+        if (_universe == null) return;
+        var action = OverviewEnter.Decide(id, _current?.FolderId ?? -1, _uniIndex.ContainsKey, _uniLanding != null);
+        if (_uniReturn != null && action != OverviewEnterAction.BackDown && action != OverviewEnterAction.Wait) _uniReturn = null;
+        switch (action)
         {
-            _s.Toast("Click a world first, then Enter to land there.");
-            return;
+            case OverviewEnterAction.Wait:
+                return;
+            case OverviewEnterAction.SayChooseFirst:
+                _s.Toast("Click a world first, then Enter to land there.");
+                return;
+            case OverviewEnterAction.TravelOutOfLight:
+                // Not drawn (beyond the overview's budget, or hidden): the navigator still goes there, out of the light.
+                if (!_s.TravelInto(id)) RefuseLanding(id);
+                return;
+            case OverviewEnterAction.BackDown:
+                BeginUniverseReturn(); // where you stand: the way back down, as Esc (a second one hurries it)
+                return;
         }
 
-        if (!_uniIndex.TryGetValue(id, out var i))
-        {
-            // Not drawn (beyond the overview's budget, or hidden): the navigator still goes there, out of the light.
-            if (!_s.TravelInto(id)) RefuseLanding(id);
-            return;
-        }
-
-        if (id == _current?.FolderId)
-        {
-            CloseUniverse(returnToSurface: true);
-            return;
-        }
-
+        var i = _uniIndex[id];
         var seconds = _audio.AlignToSixteenth(LandingSeconds, maxShiftSeconds: LandingBeatShiftSeconds); // ends on the beat (AD-42)
         _uniLanding = (id, 0f, seconds);
         _uniFocusTarget = UniverseOrigin + _uniMotion[i].To;
@@ -884,6 +1018,11 @@ public partial class PlanetWorld
     // Overview input from Main._Input (drag and wheel), so the GUI never sees them first.
     private bool UniverseInput(InputEvent e)
     {
+        if (_uniReturn != null && e is InputEventMouseButton { ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown or MouseButton.Middle } or InputEventMouseMotion { ButtonMask: MouseButtonMask.Middle })
+        {
+            return true; // the way back owns the camera (PLANET-111)
+        }
+
         switch (e)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.Middle, Pressed: false }:
@@ -896,12 +1035,14 @@ public partial class PlanetWorld
             case InputEventMouseMotion mm when _uniPanning:
                 var right = _camera.GlobalBasis.X;
                 var up = _camera.GlobalBasis.Y;
-                _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * PanDistancesPerPixel;
+                _uniFocusTarget -= (right * mm.ScreenRelative.X - up * mm.ScreenRelative.Y) * _uniDistance * PanDistancesPerPixel
+                    * OverviewControls.SpeedFactor(OverviewMove.DragPan, mm.ShiftPressed);
                 _uniFrame = null;
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
-                _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * (wheel.ButtonIndex == MouseButton.WheelUp ? WheelZoomIn : WheelZoomOut), MinZoomMetres, MaxZoomMetres);
-                if (wheel.ButtonIndex == MouseButton.WheelUp) ZoomTowardPointer(wheel.Position); // PlanetWorld.UniverseNav.cs (PLANET-93)
+                // Shift: a notch counts as two (PLANET-110).
+                _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * OverviewControls.WheelDistanceFactor(wheel.ButtonIndex == MouseButton.WheelUp, wheel.ShiftPressed), MinZoomMetres, MaxZoomMetres);
+                if (wheel.ButtonIndex == MouseButton.WheelUp) ZoomTowardPointer(wheel.Position, wheel.ShiftPressed); // PlanetWorld.UniverseNav.cs (PLANET-93)
                 _uniFrame = null;
                 NoteUniverseControl(UniverseControl.Wheel);
                 return true;
@@ -913,8 +1054,11 @@ public partial class PlanetWorld
     /// <summary>A left- or right-drag in the overview: orbit round the focus.</summary>
     private void OrbitUniverse(Vector2 screenPixels)
     {
-        _uniYaw -= screenPixels.X * OrbitRadiansPerPixel;
-        _uniPitch = Mathf.Clamp(_uniPitch + screenPixels.Y * OrbitRadiansPerPixel, -MaxPitchRadians, MaxPitchRadians);
+        if (_uniReturn != null) return; // Esc's way back owns the camera (PLANET-111)
+        // A drag orbit is direct manipulation: Shift leaves it as it is (OverviewControls.FastDragOrbitFactor).
+        var k = OrbitRadiansPerPixel * OverviewControls.SpeedFactor(OverviewMove.DragOrbit, Godot.Input.IsActionPressed(InputBindings.Fast));
+        _uniYaw -= screenPixels.X * k;
+        _uniPitch = Mathf.Clamp(_uniPitch + screenPixels.Y * k, -MaxPitchRadians, MaxPitchRadians);
     }
 
     /// <summary>Over a HUD panel or the planet's own list or preview: the GUI gets the event (scrolling a list, say).</summary>

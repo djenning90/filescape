@@ -1,6 +1,6 @@
 # Legacy views: Places and the maps
 
-FileScape began with these experiences. They still work and live in the toolbar's **Legacy views** menu (or V and Tab). This page keeps their guide (moved from the README on 2026-11-15, when Planets became the main view, AD-51).
+FileScape began with these experiences. They still work and live in the toolbar's **Legacy views** menu (or V and Tab). This page keeps their guide (moved from the README on 2026-11-15, when Planets became the main view, AD-51). Going from the planets to a legacy view and back (V, Tab, M or the menu) puts you back where you stood on the planet, facing and looking as before, unless you moved elsewhere or chose something else meanwhile (2026-11-20, PLANET-112, AD-82).
 
 **Two modes** (AD-22): **Connected world** (default: start anywhere, everything listed when you visit it, links followed, drives and WSL in Locations) and **Bounded tree scan** (the original whole-tree reference: one folder scanned completely, links not followed, the Classic FSN and District maps show its whole tree). In Locations (L) use **Go** for the first, **Scan as tree** / **Scan this folder as a tree** for the second; from the command line `--scan=tree --root=…`.
 

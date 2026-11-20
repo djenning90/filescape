@@ -91,10 +91,18 @@
   file: input.unhandledKeys, input.commands and input.viewChanges must not change, nor the experience, the folder, the
   overview, the feet or the jumps; the panel stays open until Esc, which closes only it.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
+  -OverviewEnter (PLANET-110/111/114, AD-82; sixth pass, stream 2) plays Destinations while the overview is open with
+  real keys on the Starter Sky: T, J, type the -HearthWorld name, Enter; T, J, type, Down, Enter; T, J, type, Esc (the
+  list closes, the overview stays), Enter (the row's world is the shared selection). Each must land (state: current,
+  phase Walking, overview closed) or show a toast, within 15 s; Backspace returns home between them. Then Shift with real
+  keys in the overview (Left held 600 ms with and without Shift: the orbit's yaw, ratio about 1.6; a real wheel notch out
+  with and without Shift: the zoom, about 1.18 and 1.39), and a real Esc: the overview stays drawn while the camera flies
+  home (closed no sooner than 0.7 s), then you stand where you stood.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -OverviewEnter | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [int]$StateIntervalMs = -1)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$OverviewEnter, [int]$StateIntervalMs = -1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -155,7 +163,7 @@ function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or $OverviewEnter -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
   $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look) { 0 } else { -1 }
@@ -346,6 +354,64 @@ try {
     for ($i = 0; $i -lt 100 -and [int](Disc).inFlight -gt 0; $i++) { Start-Sleep -Milliseconds 200 }
     Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 1500
     Check (-not (State).planets.overview) "Esc leaves the overview"
+    $log | Set-Content (Join-Path $Out 'os-planets.log')
+    exit $fails
+  }
+  if ($OverviewEnter) {
+    # Every key below goes through Guard (os-input-probe.ps1): FileScape's own window, by process and title, in front.
+    function Type-Line($text) { foreach ($ch in [char[]]$text.ToUpperInvariant()) { Hold-Key ($(if ($ch -eq ' ') { 'Space' } else { [string]$ch })) 30; Start-Sleep -Milliseconds 40 } }
+    function Wait-Overview([bool]$open, [int]$ms = 6000) { for ($i = 0; $i -lt $ms / 100; $i++) { $s = State; if ([bool]$s.planets.overview -eq $open) { return $s }; Start-Sleep -Milliseconds 100 }; return State }
+    function Wait-Home($name) { for ($i = 0; $i -lt 100; $i++) { $s = State; if ($s.currentName -eq $name -and $s.planets.phase -eq 'Walking' -and -not $s.planets.overview) { return $s }; Start-Sleep -Milliseconds 150 }; return State }
+    $home0 = (State).currentName
+    Log "starting on $home0; target $HearthWorld"
+    $cases = @(
+      @('T, J, type, Enter', { Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line $HearthWorld; Start-Sleep -Milliseconds 500; Hold-Key 'Enter' 60 }),
+      @('T, J, type, Down, Enter', { Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line $HearthWorld; Start-Sleep -Milliseconds 500; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 300; Hold-Key 'Enter' 60 }),
+      @('T, J, type, Esc, Enter', { Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Line $HearthWorld; Start-Sleep -Milliseconds 500; Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400; Hold-Key 'Enter' 60 })
+    )
+    foreach ($c in $cases) {
+      $s = Wait-Home $home0
+      Hold-Key 'T' 60
+      $s = Wait-Overview $true
+      Start-Sleep -Milliseconds 1500
+      $toast0 = (State).input.toast
+      & $c[1]
+      $t0 = Get-Date
+      for ($i = 0; $i -lt 100; $i++) { $s = State; if (($s.currentName -eq $HearthWorld -and $s.planets.phase -eq 'Walking' -and -not $s.planets.overview) -or ($s.input.toast -and $s.input.toast -ne $toast0)) { break }; Start-Sleep -Milliseconds 150 }
+      $s = State
+      $landed = $s.currentName -eq $HearthWorld -and -not $s.planets.overview
+      $said = if ($s.input.toast -ne $toast0) { $s.input.toast } else { '' }
+      Check ($landed -or $said) ("{0}: {1} in {2:0.0} s (at {3}, overview {4}, phase {5})" -f $c[0], $(if ($landed) { "landed on $HearthWorld" } elseif ($said) { "said why: $said" } else { 'did NOT travel and said nothing' }), ((Get-Date) - $t0).TotalSeconds, $s.currentName, $s.planets.overview, $s.planets.phase)
+      if ($landed) { Shot ("enter-" + ($c[0] -replace '[^\w]+', '-')) | Out-Null }
+      for ($k = 0; $k -lt 3 -and ((State).planets.overview -or (State).input.listOpen); $k++) { Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 2200 }
+      if ((State).currentName -ne $home0) { Hold-Key 'Backspace' 60; [void](Wait-Home $home0); Start-Sleep -Milliseconds 800 }
+      Check ((State).currentName -eq $home0) "back home ($home0) for the next case"
+    }
+
+    # Shift with real keys: the orbit (Left) and the wheel.
+    $s = Wait-Home $home0
+    $f0 = $s.planets.feet
+    Hold-Key 'T' 60; [void](Wait-Overview $true); Start-Sleep -Milliseconds 2500
+    $y0 = [double](State).planets.uniYaw; Hold-Key 'Left' 600; Start-Sleep -Milliseconds 400; $y1 = [double](State).planets.uniYaw
+    Hold-Key @('Shift', 'Left') 600; Start-Sleep -Milliseconds 400; $y2 = [double](State).planets.uniYaw
+    $plain = [Math]::Abs($y1 - $y0); $fast = [Math]::Abs($y2 - $y1)
+    Check ($plain -gt 0.3 -and $fast / $plain -gt 1.3 -and $fast / $plain -lt 1.95) ("Shift+Left orbits faster: {0:0.00} rad plain, {1:0.00} with Shift (x{2:0.00}, expected 1.6)" -f $plain, $fast, ($fast / [Math]::Max($plain, 1e-6)))
+    Client-Pos $w 160 700
+    $z0 = [double](State).planets.uniZoom; Wheel -1; Start-Sleep -Milliseconds 1800; $z1 = [double](State).planets.uniZoom
+    Key-Down 'Shift'; Start-Sleep -Milliseconds 80; Wheel -1; Start-Sleep -Milliseconds 80; Key-Up 'Shift'; Start-Sleep -Milliseconds 1800; $z2 = [double](State).planets.uniZoom
+    Check ([Math]::Abs($z1 / $z0 - 1.18) -lt 0.04 -and [Math]::Abs($z2 / $z1 - 1.3924) -lt 0.06) ("a real wheel notch out: x{0:0.000}; with Shift x{1:0.000} (expected 1.18 and 1.392)" -f ($z1 / $z0), ($z2 / $z1))
+    Shot 'overview-before-esc' | Out-Null
+    # A real Esc: the overview stays drawn while the camera flies home, then closes; you stand where you stood.
+    $t0 = Get-Date
+    Hold-Key 'Escape' 60
+    $s = Wait-Overview $false 5000
+    $closedAfter = ((Get-Date) - $t0).TotalSeconds
+    Start-Sleep -Milliseconds 2000
+    $s = State
+    $moved = [Math]::Sqrt([Math]::Pow($s.planets.feet[0] - $f0[0], 2) + [Math]::Pow($s.planets.feet[1] - $f0[1], 2) + [Math]::Pow($s.planets.feet[2] - $f0[2], 2))
+    Check (-not $s.planets.overview -and $closedAfter -ge 0.7 -and $closedAfter -le 2.6 -and $moved -lt 0.05 -and $s.currentName -eq $home0) ("a real Esc flies back down: the overview closed after {0:0.00} s, you stand {1:0.000} m from where you stood" -f $closedAfter, $moved)
+    Shot 'after-esc' | Out-Null
+    Log "OS planets probe: $fails failure(s)"
     $log | Set-Content (Join-Path $Out 'os-planets.log')
     exit $fails
   }
