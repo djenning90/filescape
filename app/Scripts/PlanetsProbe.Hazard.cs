@@ -262,6 +262,10 @@ public partial class PlanetsProbe
         // regression as these steps did; the journey keeps the apex twirl above and the plain jump with its fall.
         if (leap)
         {
+            // Straight after the flight back from the moon the arrival's camera is still turning, and the gap ahead is read
+            // along the camera ("chasm" instead of "leap", 2026-11-20): let the landing settle first.
+            await WaitSettled();
+            await Until(() => P.CameraSettled, 5);
             if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Plain);
             else Log("SKIP the plain jump: not on Debris Field after the moon");
         }
