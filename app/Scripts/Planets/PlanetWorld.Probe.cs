@@ -29,6 +29,9 @@ public partial class PlanetWorld
     /// <summary>The planet you stand on, as drawn (probes read its thumbnail counters).</summary>
     public PlanetVisual? CurrentVisual => _current?.Visual;
 
+    /// <summary>The planets' camera (probes: what it can see, PLANET-136).</summary>
+    public Camera3D ViewCamera => _camera;
+
     /// <summary>The chase camera's distance, metres (the wheel zooms it; PLANET-52: the wheel over a reader must not).</summary>
     public float ChaseDistanceMetres => _camDistance;
 

@@ -140,6 +140,12 @@ public partial class Main : Node3D
 
     /// <summary>The last shell action's result (the reader's status line says whether it worked).</summary>
     public ShellResult? LastShellResult { get; private set; }
+
+    /// <summary>The legacy views' selection or hover box is drawn (probes, PLANET-136: never in Planets).</summary>
+    public bool LegacyHighlightVisible => _selectionBox.Visible || _hoverBox.Visible;
+
+    /// <summary>Where the legacy selection box stands in the world (probes: whether a Planets camera could see it).</summary>
+    public GVector3 LegacyHighlightPosition => _selectionBox.GlobalPosition;
     public int LabelsShown => _labels.LastShown;
     public IReadOnlyList<Rect2> LabelRects => _labels.ShownRects;
 

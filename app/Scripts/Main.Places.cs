@@ -215,6 +215,11 @@ public partial class Main
         _hereLabel.Visible = false;
         _beam.Visible = false;
         _spot.Visible = false;
+        // PLANET-136: the selection and hover boxes belong to Places and the maps, which place them every frame; Planets
+        // never does, so a box left drawn from the last legacy frame stood in the planet world as a pulsing pale-gold
+        // cube nothing answered to (DJ, Saved Pictures, 2026-11-20). The view being entered draws its own again.
+        _selectionBox.Visible = false;
+        _hoverBox.Visible = false;
         _labels.HideAll();
         _signs.Clear();
         _aerialShown = false;
