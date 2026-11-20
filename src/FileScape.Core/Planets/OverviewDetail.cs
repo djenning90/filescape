@@ -9,8 +9,8 @@ namespace FileScape.Core.Planets;
 /// The rule, per laid-out system (a world with children in the layout): it is <b>expanded</b> (its children drawn) when
 /// its ring is large enough on screen to hold them apart — at least <see cref="Rules.ExpandRingPixels"/> of radius, and
 /// enough circumference for <see cref="Rules.ChildSpacingPixels"/> per child — or when it is on the way to a focus (the
-/// selected world, the world approached; always expanded, so you see where you are). Below a focus the bar is lower
-/// (<see cref="Rules.FocusFactor"/>: the selected or approached system opens sooner); away from the focus it rises with
+/// selected world, the world approached, where you stand; always expanded, so you see where you are). Below the selected or
+/// approached world the size bar (not the spacing) is lower (<see cref="Rules.FocusFactor"/>: those systems open sooner); away from the focus it rises with
 /// every level a branch leaves the focus's path (<see cref="Rules.BranchPenaltyPerLevel"/>), so distant branches show
 /// shallower detail. A system once expanded stays so until its ring falls below <see cref="Rules.CollapseShare"/> of the
 /// bar (no flicker at the edge). A world is <b>shown</b> when its parent is shown and expanded. A shown system that is
@@ -37,7 +37,8 @@ public static class OverviewDetail
         /// apart (a 64-world ring opens at ≈ 160 px of radius).</summary>
         public float ChildSpacingPixels { get; init; } = 16f;
 
-        /// <summary>Below a focus (the selected or approached world) the bar is this share: such systems open sooner.</summary>
+        /// <summary>Below a focus (the selected or approached world) the size bar is this share: such systems open sooner.
+        /// The spacing bar is never lowered, so children never open on top of each other.</summary>
         public float FocusFactor { get; init; } = 0.6f;
 
         /// <summary>The bar rises by this share for each level a branch is away from the focus's path: distant
@@ -50,13 +51,16 @@ public static class OverviewDetail
 
     /// <summary>
     /// Decides, for every body, whether it is shown, expanded and how many worlds are folded inside it.
-    /// <paramref name="pixelsPerMetre"/> is each body's on-screen scale at its distance (0 when unknown: never opens by
-    /// size); <paramref name="focus"/> node ids whose path from the root is always open and whose subtrees open sooner;
+    /// <paramref name="pixelsPerMetre"/> is each body's ring's on-screen scale at its distance (0 when unknown: never opens
+    /// by size; the app folds in how much the ring is foreshortened); <paramref name="focus"/> node ids whose path from the
+    /// root is always open and whose subtrees open sooner (the selected and approached worlds);
+    /// <paramref name="pathOnly"/> node ids whose path is always open but whose subtrees get no lower bar (where you
+    /// stand: on a drive root everything is below it, and a lower bar everywhere would draw everything);
     /// <paramref name="wasExpanded"/> last decision (same order and length, or null). Results are written into
     /// <paramref name="shown"/>, <paramref name="expanded"/> and <paramref name="folded"/> (each the bodies' length).
     /// </summary>
     public static void Compute(IReadOnlyList<UniverseBody> bodies, ReadOnlySpan<float> pixelsPerMetre, IReadOnlyCollection<int> focus,
-        bool[]? wasExpanded, bool[] shown, bool[] expanded, int[] folded, Rules? rules = null)
+        bool[]? wasExpanded, bool[] shown, bool[] expanded, int[] folded, Rules? rules = null, IReadOnlyCollection<int>? pathOnly = null)
     {
         rules ??= new Rules();
         var n = bodies.Count;
@@ -78,6 +82,12 @@ public static class OverviewDetail
         {
             if (!index.TryGetValue(f, out var fi)) continue;
             isFocus[fi] = true;
+            for (var a = fi; a >= 0 && !onPath[a]; a = parent[a]) onPath[a] = true;
+        }
+
+        foreach (var f in pathOnly ?? [])
+        {
+            if (!index.TryGetValue(f, out var fi)) continue;
             for (var a = fi; a >= 0 && !onPath[a]; a = parent[a]) onPath[a] = true;
         }
 
@@ -104,8 +114,9 @@ public static class OverviewDetail
                 continue;
             }
 
-            var bar = MathF.Max(rules.ExpandRingPixels, childCount[i] * rules.ChildSpacingPixels / (2 * MathF.PI));
-            if (inFocus[i]) bar *= rules.FocusFactor;
+            // The focus lowers only the size bar, never the spacing: below it a ring still opens only when its children
+            // fit round it apart (lowering both drew a drive root's systems on top of each other, 80 % overlapping).
+            var bar = MathF.Max(rules.ExpandRingPixels * (inFocus[i] ? rules.FocusFactor : 1f), childCount[i] * rules.ChildSpacingPixels / (2 * MathF.PI));
             bar *= 1 + rules.BranchPenaltyPerLevel * branch[i];
             if (wasExpanded != null && i < wasExpanded.Length && wasExpanded[i]) bar *= rules.CollapseShare;
             var ppm = i < pixelsPerMetre.Length ? pixelsPerMetre[i] : 0f;

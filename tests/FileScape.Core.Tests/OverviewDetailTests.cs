@@ -138,6 +138,32 @@ public sealed class OverviewDetailTests
     }
 
     [Fact]
+    public void A_focus_never_opens_a_ring_too_small_to_hold_its_children_apart()
+    {
+        // Found on C:\ (2026-11-19): the focus lowered the spacing bar too, so below where you stand (a drive root: all of
+        // it) rings opened with 10 px per child and 80 % of the drawn worlds overlapped. 60 children need ≈ 153 px.
+        var root = new Spec("r");
+        var big = new Spec("big");
+        for (var i = 0; i < 60; i++) big.Dir(new Spec($"c{i:D2}").Dir(new Spec("x")));
+        var tree = root.Dir(big).Dir(new Spec("other").Dir(new Spec("y"))).Build();
+        var bodies = UniverseLayout.Compute(tree);
+        var bi = bodies.ToList().FindIndex(b => tree[b.NodeId].Name == "big");
+        var spacingBar = 60 * new OverviewDetail.Rules().ChildSpacingPixels / (2 * MathF.PI);
+        var ppm = spacingBar * 0.8f / bodies[bi].OrbitRadius;
+        Run(bodies, ppm, [bodies[bi].NodeId]).Expanded[bi].Should().BeTrue("on the focus's own path it is always open");
+        var child = bodies.First(b => b.ParentId == bodies[bi].NodeId).NodeId;
+        Run(bodies, ppm, [0]).Expanded[bi].Should().BeFalse("below the focus, the spacing bar still holds");
+        // Where you stand (a path only): its subtree gets no lower size bar.
+        var shown = new bool[bodies.Count];
+        var expanded = new bool[bodies.Count];
+        var folded = new int[bodies.Count];
+        var scale = Enumerable.Repeat(ppm, bodies.Count).ToArray();
+        OverviewDetail.Compute(bodies, scale, [], null, shown, expanded, folded, pathOnly: [child]);
+        expanded[bi].Should().BeTrue("the way to where you stand is open");
+        shown[bodies.ToList().FindIndex(b => b.NodeId == child)].Should().BeTrue();
+    }
+
+    [Fact]
     public void Folded_counts_include_what_the_layout_budget_left_out()
     {
         // 70 children: the layout draws 64 and counts 6 as hidden.

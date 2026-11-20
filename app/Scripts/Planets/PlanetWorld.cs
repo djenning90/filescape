@@ -329,12 +329,29 @@ public partial class PlanetWorld : Node3D
     /// recorded: a growing listing is picked up within about a third of a second, and the signature is not computed every frame).</summary>
     private static readonly TimeSpan RecomposeCheckInterval = TimeSpan.FromSeconds(0.35);
 
+    /// <summary>
+    /// While background discovery is listing during play (PLANET-90), the least time between two recompositions of the
+    /// world you stand on, seconds. Discovery lists your own world's subtree first, and every listing below it changes
+    /// its children's sizes and so its signature: without this the planet was rebuilt every 0.35 s, each swap a long
+    /// frame (measured: walking p99 9.1 → 27.8 ms on the deep fixture). With it the planet still grows with what is found,
+    /// in steps; the first change after a quiet spell is still taken at once.
+    /// </summary>
+    private static readonly TimeSpan RecomposeGapWhileDiscovering = TimeSpan.FromSeconds(4);
+
+    private TimeSpan _lastRecomposeSwap = TimeSpan.MinValue;
+
+    /// <summary>Recompositions swapped in this session and the longest swap, milliseconds (probes).</summary>
+    public int RecomposeSwaps { get; private set; }
+    public double RecomposeSwapMsMax { get; private set; }
+
     /// <summary>A listing that arrives or grows changes what the planet shows: recompose (throttled), keep where you stand.</summary>
     private void MaybeRecompose(FsTree tree)
     {
         if (_current == null || Busy) return;
         var now = _s.Now;
         if (now - _lastSignatureCheck < RecomposeCheckInterval) return;
+        // Background discovery at work: recompose at most every RecomposeGapWhileDiscovering (see there).
+        if (PlayDiscoveryEnabled && _discovery.State == OverviewDiscoveryState.Discovering && now - _lastRecomposeSwap < RecomposeGapWhileDiscovering) return;
         _lastSignatureCheck = now;
         var sig = PlanetComposer.Signature(tree, _current.FolderId);
         if (sig == _signature) return;
@@ -364,9 +381,13 @@ public partial class PlanetWorld : Node3D
         if (!pending.Ground.IsCompleted) return;
         _pendingRecompose = null;
         if (pending.Comp.FolderId != _current.FolderId) return;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         BuildCurrent(tree, _current.FolderId, arriveFrom: -2, comp: pending.Comp);
         _walker.ChangeSurface(_current.Comp.Surface); // keeps speed and any jump in progress
         UpdateDestinations();
+        RecomposeSwaps++;
+        RecomposeSwapMsMax = Math.Max(RecomposeSwapMsMax, sw.Elapsed.TotalMilliseconds);
+        _lastRecomposeSwap = _s.Now;
     }
 
     // ------------------------------------------------------------------ building planets

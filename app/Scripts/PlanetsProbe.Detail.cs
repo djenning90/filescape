@@ -73,6 +73,7 @@ public partial class PlanetsProbe
         Log($"play discovery {(on ? "on" : "off (--test-play-discovery=off)")}; pace {P.DiscoveryScheduler.Bounds.PlayListingsPerSecond} listings/s, {P.DiscoveryScheduler.Bounds.PlayMaxInFlight} in flight");
         var (l0, d0) = ListedBelow(root);
         Log(F($"  at 0 s: {l0} folders listed below the arrival, deepest level {d0}; tree {Tree.Count} entries"));
+        var swaps0 = P.RecomposeSwaps;
         var clock = System.Diagnostics.Stopwatch.StartNew();
         _playFrameMs.Clear();
         _playTracking = true;
@@ -94,7 +95,7 @@ public partial class PlanetsProbe
         _playTracking = false;
         var (l30, d30) = ListedBelow(root);
         Log(F($"  at {clock.Elapsed.TotalSeconds:0} s: {l30} folders listed below the arrival, deepest level {d30}; play discovery asked {P.PlayDiscoveryRequested}; tree {Tree.Count} entries; candidate rebuilds {P.PlayDiscoveryRebuilds}, longest {P.PlayDiscoveryRebuildMsMax:0.00} ms"));
-        Log("perf walking with play discovery " + (on ? "on" : "off") + ": " + FrameStats(_playFrameMs));
+        Log("perf walking with play discovery " + (on ? "on" : "off") + ": " + FrameStats(_playFrameMs) + F($"; frames over 25 ms: {_playFrameMs.Count(x => x > 25)}; the planet recomposed {P.RecomposeSwaps - swaps0} times (longest swap {P.RecomposeSwapMsMax:0.0} ms)"));
         if (on) Check(P.PlayDiscoveryRequested > 0 && l30 > l0, F($"background discovery lists while you play: {l0} → {l30} folders listed, {P.PlayDiscoveryRequested} asked"));
         else Check(P.PlayDiscoveryRequested == 0, "with --test-play-discovery=off nothing is asked for while you play");
         Check(P.DiscoveryScheduler.InFlight <= P.DiscoveryScheduler.Bounds.PlayMaxInFlight, F($"within the play bound: {P.DiscoveryScheduler.InFlight} in flight"));
@@ -163,10 +164,14 @@ public partial class PlanetsProbe
         await Frames(3);
         Check(P.UniverseHintShown && P.UniverseHintText.Contains("[ ]", StringComparison.Ordinal), "the overview teaches its controls briefly in the view");
         if (!countsOnly) await Shot("nav-open");
-        await Seconds(12); // discovery fills the overview
+        // Discovery fills the overview: 12 s, or --nav-fill-seconds=N (≈ 40 s fills C:\ toward the 1,500-world budget, for
+        // the draw-cost measurement).
+        var fill = System.Environment.GetCommandLineArgs().Concat(OS.GetCmdlineUserArgs()).FirstOrDefault(a => a.StartsWith("--nav-fill-seconds=", StringComparison.Ordinal)) is { } fa
+            ? double.Parse(fa["--nav-fill-seconds=".Length..], System.Globalization.CultureInfo.InvariantCulture) : 12;
+        await Seconds(fill);
         _discoveryFrameMs.Clear();
         await Seconds(4); // frame times of the settled, full overview
-        LogDetail("after 16 s");
+        LogDetail(F($"after {fill + 4:0} s"));
         Log("perf overview: " + FrameStats(_discoveryFrameMs));
         Log("looks: " + LookFingerprint());
         if (!countsOnly) await Shot("nav-full");

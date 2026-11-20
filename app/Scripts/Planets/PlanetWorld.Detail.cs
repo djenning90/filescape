@@ -114,13 +114,23 @@ public partial class PlanetWorld
                 // pixelsPerRadian / d pixels across).
                 var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
                 var cam = _camera.GlobalPosition;
-                for (var i = 0; i < n; i++) _uniPpm[i] = pixelsPerRadian / MathF.Max(1f, cam.DistanceTo(_uniBodies[i].At));
+                for (var i = 0; i < n; i++)
+                {
+                    // A ring seen at a slant is an ellipse: its circumference (what holds the children apart) is about the
+                    // mean of its axes, r (1 + |n·v|) / 2, so a ring seen edge-on opens later than one seen face-on.
+                    var at = _uniBodies[i].At;
+                    var d = MathF.Max(1f, cam.DistanceTo(at));
+                    var slant = MathF.Abs(Gd(_uniBodies[i].Body.OrbitNormal).Dot((at - cam) / d));
+                    _uniPpm[i] = pixelsPerRadian / d * (1f + slant) / 2f;
+                }
+
                 _uniApproached = ZoomedToward();
-                var focus = new List<int>(3) { _uniSelected, _uniApproached };
-                if (_current != null) focus.Add(_current.FolderId); // where you stand stays drawn, however far
+                var focus = new List<int>(2) { _uniSelected, _uniApproached };
+                // Where you stand stays drawn, however far, but its subtree gets no lower bar (on a root that is everything).
+                int[] here = _current != null ? [_current.FolderId] : [];
                 var was = (bool[])_uniExpanded.Clone();
                 for (var i = 0; i < n; i++) was[i] |= _uniWasExpanded[i];
-                OverviewDetail.Compute(_uniBodies.Select(b => b.Body).ToList(), _uniPpm, focus, was, _uniShown, _uniExpanded, _uniFolded);
+                OverviewDetail.Compute(_uniBodies.Select(b => b.Body).ToList(), _uniPpm, focus, was, _uniShown, _uniExpanded, _uniFolded, pathOnly: here);
                 Array.Clear(_uniWasExpanded);
             }
 
