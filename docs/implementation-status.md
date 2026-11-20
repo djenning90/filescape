@@ -4,6 +4,47 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Sixth pass (2026-11-20)
+
+### Stream 7: file actions (Open vs Show in folder, real Windows checks) and the planetoid prototype retired (PLANET-137..140, AD-87)
+
+Branch `worktree-agent-a167623cd39e944bb` from `7680d22`. Staged (not promoted) `7090272` at
+`%LOCALAPPDATA%\FileScape\staging-20261120-183534-2229009`; the WSL-distribution rule and the docs came after it.
+Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-s7\` (`actions-detached`, `actions-wrapper-assoc`: `actions-probe.log`, `opened.txt`).
+
+**What was found on the base build (`70b6ffc`):** Show in Explorer of a folder *did* select it in its parent (the app's
+own `--test-hold=reveal` on a fixture, with and without the console route, and the bare SHOpenFolderAndSelectItems call
+on a WSL fixture folder). The two actions looked alike because both open an Explorer window and nothing on the card said
+which shows a folder's inside and which its place (**product**, labels). Under a job (FileScape.console.exe, and every
+launch from WSL, PowerShell or WMI) Show went through the desktop shell's `explorer /select`: it reported success for a
+missing item and opened Linux without selecting a distribution (**product**).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Labels say what opens: Open / Open folder / Open drive / Open target / Open This PC; Show in folder / Show in This PC / Show on server; never the same label (PLANET-137/138) | **Demonstrated** in Core | `SelectionActionsKindsTests` (7, through `SelectionActions.Describe`, written first: 5 failed before the rules); `SelectionActionsTests` 4/4 |
+| Off with the reason, Enter obeys it: gone, unreachable, access-denied folder (Open), Linux pipe, broken/Linux link (Open), WSL distribution and letterless volume (Show); cloud placeholder warns it downloads (PLANET-139) | **Demonstrated** in Core; in-app via `card` steps for a folder and a file | the same tests; probe `card` lines |
+| Show in folder selects the item in its containing folder: a file, a folder, a junction, a junction whose target is gone, a `.lnk`, `C:\` in This PC; a missing item says "no longer there" and opens nothing; no process of FileScape's started (PLANET-138) | **Demonstrated** on Windows, under a job both ways (WMI-launched and FileScape.console.exe) | probe 16 pass + 1 fail (WMI-launched; the fail is the WSL step, then still judged, see next row) and 19/0 including the 4 association opens (console wrapper; the WSL step recorded, not judged) |
+| A WSL distribution in Linux | **Failed in Windows** (observed: Linux opens after ≈ 18 s, nothing selected, both routes) → the card's Show is off with the reason | probe `OBSERVED` line; `shopen` measurement |
+| Open on a folder shows the folder itself | **Demonstrated** | probe |
+| Real associations with apps already running (PLANET-140): `.txt` → DJ's running Notepad (new tab), `.html` → DJ's running Chrome (new tab; the per-user default reported by the registry key was Edge, Windows used Chrome), `.xml` → Edge (not running: started with the Personal profile and restored 14 pages), `.png` → Photos | **Demonstrated** (open landed, window titled with the fixture) | probe `opened.txt` |
+| The direct (no job) ShellExecuteEx route for Open, as after a double-click | **Unknown**: no launch available here runs FileScape outside a job | `where` step: "parent WmiPrvSE, in a job" |
+| `planets-selection-actions` on `7090272` (sample data, buttons and keys, recorded shell) | **Demonstrated** in-app | 44/0 in 60.5 s (as on the base) |
+
+**Planetoid prototype retired** (traced first: Planetoid, PlanetoidTraveller and its Arc, PlanetoidExperiment and
+`planetoid.gdshader` had no other user): the `--experiment=planetoids` option (`--experiment` stays for planet-gallery),
+the scene, the Core types, the shader, `PlanetoidTests` (6 tests, 0.12 s together on WSL) and the `planetoids` journey
+(14.3 s in the last full check) are removed. `docs/planetoid-feasibility.md` is marked historical; architecture, units,
+legacy views, the workflow table and PLANET-02 updated. Saving: ≈ 14.4 s of `check full`, plus the experiment's build.
+
+**Left open on DJ's desktop (for the handoff):** a tab `fs-actions-notes.txt` in DJ's Notepad; a tab `fs-actions-page`
+(the `.html` fixture) in DJ's Chrome; Edge, started by the probe for the `.xml` fixture with DJ's Personal profile
+(restoring 14 pages), was closed with WM_CLOSE, so Edge's saved session now holds the fixture tab; Edge then relaunched
+itself in the background (10 windowless msedge processes from 11:00:27) and a windowless Photos (#71424) stayed — not
+ended (ending them was refused by the session's permission check). Every Explorer window the probes opened was closed
+(3 Explorer windows before and after); one Linux view left by an earlier run was found and closed.
+
+**Next migration candidates:** the journey's label/enabled matrix per kind is now fully in Core (`SelectionActions.For` × `Describe`); its remaining in-app value is that a button and its key reach the same handler and the recorded shell request — a later pass could drop the label assertions and keep one cell per action.
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
