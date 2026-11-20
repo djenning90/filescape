@@ -77,6 +77,9 @@ public partial class PlanetWorld
         _uniShowFade = new float[n];
         _uniOpenFade = new float[n];
         _uniPpm = new float[n];
+        _uniMinPx = new float[n];
+        Array.Fill(_uniMinPx, MinDrawnRadiusPixels);
+        _uniChords = OverviewDetail.ClosestChildChords(bodies); // per layout: the places only glide between layouts
         for (var i = 0; i < n; i++)
         {
             if (first || !oldIndex.TryGetValue(bodies[i].NodeId, out var oi) || oi >= oldShow.Length) continue;
@@ -132,6 +135,21 @@ public partial class PlanetWorld
                 for (var i = 0; i < n; i++) was[i] |= _uniWasExpanded[i];
                 OverviewDetail.Compute(_uniBodies.Select(b => b.Body).ToList(), _uniPpm, focus, was, _uniShown, _uniExpanded, _uniFolded, pathOnly: here);
                 Array.Clear(_uniWasExpanded);
+                // Worlds on a ring that is open although crowded (the way to the selected world or where you stand: a
+                // drive root's own ring) are drawn smaller than the usual 6 px, down to CrowdedMinPixels, so neighbours
+                // stay apart instead of merging into one shape.
+                for (var i = 0; i < n; i++)
+                {
+                    var p = _uniBodies[i].Body.ParentId;
+                    if (p < 0 || !_uniIndex.TryGetValue(p, out var pi) || _uniChords[pi] <= 0)
+                    {
+                        _uniMinPx[i] = MinDrawnRadiusPixels;
+                        continue;
+                    }
+
+                    var chordPx = _uniChords[pi] * pixelsPerRadian / MathF.Max(1f, cam.DistanceTo(_uniBodies[pi].At));
+                    _uniMinPx[i] = Mathf.Clamp(chordPx * CrowdedRadiusShare, CrowdedMinPixels, MinDrawnRadiusPixels);
+                }
             }
 
             DetailMsMax = Math.Max(DetailMsMax, sw.Elapsed.TotalMilliseconds);
@@ -146,6 +164,19 @@ public partial class PlanetWorld
 
         _uniDetailSnap = false;
     }
+
+    /// <summary>A world on a crowded open ring is drawn at most this share of the gap to its closest sibling as radius
+    /// (0.4: two such discs leave a fifth of the gap between them), and never under <see cref="CrowdedMinPixels"/>.</summary>
+    private const float CrowdedRadiusShare = 0.4f;
+
+    /// <summary>The smallest radius a world on a crowded ring is drawn, pixels: still a dot you can see and click.</summary>
+    private const float CrowdedMinPixels = 2.5f;
+
+    /// <summary>Each body's least drawn radius in pixels now (see <see cref="CrowdedRadiusShare"/>) and each system's
+    /// closest-children distance in the current layout, metres.</summary>
+    private float[] _uniMinPx = [], _uniChords = [];
+
+    private float MinPixelsAt(int i) => i < _uniMinPx.Length ? _uniMinPx[i] : MinDrawnRadiusPixels;
 
     /// <summary>How much a body is drawn now, 0…1 (its level-of-detail fade).</summary>
     private float ShowScale(int i) => i < _uniShowFade.Length ? _uniShowFade[i] : 1f;

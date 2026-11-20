@@ -114,12 +114,14 @@ public partial class PlanetWorld
     /// distance from the camera (pixels per radian = view height / (2 tan(fov/2))). A world that has just been discovered
     /// grows into it (<see cref="AppearScale"/>, applied by <see cref="PlaceUniverse"/>).
     /// </summary>
-    private float DrawnRadius(UniverseBody b, Vector3 at) => DrawnRadius(b.Radius, at);
+    private float DrawnRadius(UniverseBody b, Vector3 at) => DrawnRadius(b.Radius, at, _uniIndex.TryGetValue(b.NodeId, out var i) ? MinPixelsAt(i) : MinDrawnRadiusPixels);
 
-    private float DrawnRadius(float radius, Vector3 at)
+    /// <param name="minPixels">The least drawn radius in pixels: <see cref="MinDrawnRadiusPixels"/>, or less for worlds on a
+    /// crowded ring (PlanetWorld.Detail.cs, PLANET-91).</param>
+    private float DrawnRadius(float radius, Vector3 at, float minPixels = MinDrawnRadiusPixels)
     {
         var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f));
-        return MathF.Max(radius, _camera.GlobalPosition.DistanceTo(at) * MinDrawnRadiusPixels / pixelsPerRadian);
+        return MathF.Max(radius, _camera.GlobalPosition.DistanceTo(at) * minPixels / pixelsPerRadian);
     }
 
     private readonly List<(UniverseBody Body, Vector3 At)> _uniBodies = [];
@@ -490,7 +492,7 @@ public partial class PlanetWorld
             {
                 var i = list[k];
                 var radius = Mathf.Lerp(_uniMotion[i].RadiusFrom, _uniBodies[i].Body.Radius, e);
-                var r = DrawnRadius(radius, _uniBodies[i].At) * AppearScale(i) * ShowScale(i);
+                var r = DrawnRadius(radius, _uniBodies[i].At, MinPixelsAt(i)) * AppearScale(i) * ShowScale(i);
                 mm.SetInstanceTransform(k, new Transform3D(Basis.Identity.Scaled(new Vector3(r, r, r)), _uniLocal[i]));
             }
         }

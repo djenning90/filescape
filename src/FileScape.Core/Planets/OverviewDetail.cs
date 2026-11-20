@@ -75,26 +75,7 @@ public static class OverviewDetail
             if (parent[i] >= 0) childCount[parent[i]]++;
         }
 
-        // The closest pair of children round each ring (laid-out places, metres): what decides whether they fit apart.
-        var minChord = new float[n];
-        var kids = new Dictionary<int, List<int>>();
-        for (var i = 0; i < n; i++)
-        {
-            if (parent[i] < 0) continue;
-            if (!kids.TryGetValue(parent[i], out var list)) kids[parent[i]] = list = [];
-            list.Add(i);
-        }
-
-        foreach (var (p, list) in kids)
-        {
-            var best = float.MaxValue;
-            for (var a = 0; a < list.Count; a++)
-            {
-                for (var b = a + 1; b < list.Count; b++) best = MathF.Min(best, System.Numerics.Vector3.Distance(bodies[list[a]].Position, bodies[list[b]].Position));
-            }
-
-            minChord[p] = list.Count >= 2 ? best : 0f;
-        }
+        var minChord = ClosestChildChords(bodies, parent); // what decides whether a ring's children fit apart
 
         // The focus path (a focus and its ancestors) and the focus subtrees.
         var onPath = new bool[n];
@@ -158,5 +139,47 @@ public static class OverviewDetail
         }
 
         for (var i = 0; i < n; i++) folded[i] = !shown[i] ? 0 : expanded[i] ? bodies[i].HiddenChildren : below[i];
+    }
+
+    /// <summary>
+    /// For each body, the distance between its two closest children in the layout (metres; 0 with fewer than two): how
+    /// far apart a ring's children can be drawn. The layout gives each child an arc in proportion to its whole system, so
+    /// small worlds side by side are much closer than an even share of the ring. <paramref name="parent"/> is each body's
+    /// parent index (−1 for none), or null to work it out. O(Σ k²) over the systems (k ≤ 64): call per layout or per
+    /// detail step, not per frame.
+    /// </summary>
+    public static float[] ClosestChildChords(IReadOnlyList<UniverseBody> bodies, int[]? parent = null)
+    {
+        var n = bodies.Count;
+        if (parent == null)
+        {
+            var index = new Dictionary<int, int>(n);
+            for (var i = 0; i < n; i++) index[bodies[i].NodeId] = i;
+            parent = new int[n];
+            for (var i = 0; i < n; i++) parent[i] = bodies[i].ParentId >= 0 && index.TryGetValue(bodies[i].ParentId, out var p) ? p : -1;
+        }
+
+        var kids = new Dictionary<int, List<int>>();
+        for (var i = 0; i < n; i++)
+        {
+            if (parent[i] < 0) continue;
+            if (!kids.TryGetValue(parent[i], out var list)) kids[parent[i]] = list = [];
+            list.Add(i);
+        }
+
+        var chord = new float[n];
+        foreach (var (p, list) in kids)
+        {
+            if (list.Count < 2) continue;
+            var best = float.MaxValue;
+            for (var a = 0; a < list.Count; a++)
+            {
+                for (var b = a + 1; b < list.Count; b++) best = MathF.Min(best, System.Numerics.Vector3.Distance(bodies[list[a]].Position, bodies[list[b]].Position));
+            }
+
+            chord[p] = best;
+        }
+
+        return chord;
     }
 }
