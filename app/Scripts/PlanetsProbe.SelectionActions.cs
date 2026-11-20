@@ -25,10 +25,10 @@ namespace FileScape.App;
 public partial class PlanetsProbe
 {
     /// <summary>What a cell can change, read before and after an action.</summary>
-    private sealed record ActionSnap(int Shell, int Clip, int Sel, float Yaw, int UniFocus, int Folder, bool Overview, string Toast, bool Confirm);
+    private sealed record ActionSnap(int Shell, int Clip, int Sel, float Yaw, int UniFocus, float UniMetres, int Folder, bool Overview, string Toast, bool Confirm);
 
     private ActionSnap SnapActions() => new(App.ShellLog.Count, App.ClipboardLog.Count, App.Selection.Selected, P.CameraHeadingDegrees(),
-        P.UniverseOpen ? P.UniverseFraming.Focus : -1, App.Navigator.Current, P.UniverseOpen, App.Hud.ShownToast, App.ConfirmShowing);
+        P.UniverseOpen ? P.UniverseFraming.Focus : -1, P.UniverseOpen ? P.UniverseFraming.Metres : 0f, App.Navigator.Current, P.UniverseOpen, App.Hud.ShownToast, App.ConfirmShowing);
 
     /// <summary>The effect between two snapshots, as one comparable word plus detail ("none" when nothing changed).</summary>
     private string Effect(ActionSnap a, ActionSnap b)
@@ -40,7 +40,8 @@ public partial class PlanetsProbe
         if (b.Folder != a.Folder || (a.Overview && !b.Overview)) parts.Add(F($"travel:{(b.Overview ? "overview" : "surface")}:{NodeName(b.Folder)}"));
         else if (b.Sel != a.Sel) parts.Add("select:" + NodeName(b.Sel));
         if (!a.Overview && !b.Overview && MathF.Abs(Mathf.Wrap(b.Yaw - a.Yaw, -180f, 180f)) > 2f) parts.Add("camera");
-        if (a.Overview && b.Overview && b.UniFocus != a.UniFocus) parts.Add("frame:" + NodeName(b.UniFocus));
+        if (a.Overview && b.Overview && (b.UniFocus != a.UniFocus || MathF.Abs(b.UniMetres - a.UniMetres) > ReframeFraction * a.UniMetres))
+            parts.Add("frame:" + NodeName(b.UniFocus));
         if (b.Toast != "" && b.Toast != a.Toast) parts.Add("toast:" + b.Toast);
         return parts.Count == 0 ? "none" : string.Join(" | ", parts);
     }
@@ -110,12 +111,40 @@ public partial class PlanetsProbe
     }
 
     /// <summary>Selects the target again as a click would, closes what a previous cell left, and clears the toast.</summary>
+    /// <summary>Wheel notches out before "Zoom to (F)" is tried, so bringing the view back shows (PLANET-87/93).</summary>
+    private const int WheelOutNotches = 4;
+
+    /// <summary>A change of the overview's distance larger than this fraction counts as a reframe.</summary>
+    private const float ReframeFraction = 0.25f;
+
+    /// <summary>Waits (at most <paramref name="timeout"/> s) until the overview's distance changes by under 1 % in 0.2 s.</summary>
+    private async Task UntilFramingSteady(double timeout = 5)
+    {
+        var start = Time.GetTicksMsec();
+        while (Time.GetTicksMsec() - start < timeout * 1000)
+        {
+            var a = P.UniverseFraming.Metres;
+            await Seconds(0.2);
+            if (MathF.Abs(P.UniverseFraming.Metres - a) < 0.01f * MathF.Max(a, 1f)) return;
+        }
+    }
+
     private async Task ResetCell(int id, bool overview, int frameElsewhere = -1)
     {
         if (App.ConfirmShowing) App.ProbeCancelConfirm();
         if (overview && !P.UniverseOpen) { P.ToggleUniverse(); App.Hud.SetPlanetsOverview(true); await Until(() => P.UniverseOpen && P.UniverseSettled, 10); await Seconds(0.8); }
-        if (overview && frameElsewhere >= 0) { P.SelectInUniverse(frameElsewhere); await Seconds(0.3); App.Selection.Select(id); } // [direct] framed elsewhere, card on id (as after Parent)
+        if (overview && frameElsewhere >= 0)
+        {
+            // The overview follows the card's selection (PLANET-83), so "framed elsewhere" is now: the card's world framed,
+            // then the view wheeled out from it, as a player does before asking to be brought back (PLANET-93).
+            P.SelectInUniverse(id); // [direct] a click on the world
+            await Seconds(0.8);
+            var at = App.GetViewport().GetVisibleRect().Size / 2;
+            for (var i = 0; i < WheelOutNotches; i++) { Mouse(MouseButton.WheelDown, true, at); Mouse(MouseButton.WheelDown, false, at); await Frames(3); }
+            await Seconds(0.8);
+        }
         else if (overview) P.SelectInUniverse(id); // [direct] a click on the world
+        if (overview) await UntilFramingSteady(); // a glide left by the cell before (the wheel-out) must not leak into this one
         else App.Selection.Select(id); // [direct] the selection a click makes
         App.Hud.Toast("", null, 0);
         await Frames(3);
@@ -157,7 +186,7 @@ public partial class PlanetsProbe
             await Key(key);
             await Seconds(0.5);
             var keyEffect = Effect(s0, SnapActions());
-            if (keyEffect == "none" && overview) { await Seconds(2.5); keyEffect = Effect(s0, SnapActions()); } // a landing takes ≈ 2 s
+            if (overview && !keyEffect.Contains("travel:")) { await Seconds(2.5); keyEffect = Effect(s0, SnapActions()); } // a landing takes ≈ 2 s (its fly-in reframes first)
             Log($"cell {where} · {action} key {key} ({(claimed ? "shown on the button" : "not shown")}) → {keyEffect}");
             if (claimed && !label.Disabled)
                 Check(Kind(keyEffect) == Kind(buttonEffect), $"{where}: {key}, shown on \"{label.Text}\", does what the button does (key: {keyEffect}; button: {buttonEffect})");
