@@ -33,6 +33,7 @@ public class DepartureTests
         return (tree, comp, ids);
     }
 
+    /// <summary>Node ids by (unique) name in the fixture.</summary>
     private sealed class Ids(FsTree tree)
     {
         public int this[string name] => tree.Find(name).Id;
