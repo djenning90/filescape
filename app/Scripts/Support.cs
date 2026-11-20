@@ -42,8 +42,9 @@ public sealed record CommandLine
     public string? Experiment { get; init; }
 
     /// <summary>
-    /// --test-hold=dialog|fly|listing (SHUT-01 instrument): after start-up, put the app into that state and stay there
-    /// (no automation, no quit) so an outside probe can close the window and time the exit.
+    /// --test-hold=dialog|fly|listing|reveal|open:&lt;path&gt; (SHUT-01 instrument): after start-up, put the app into that state
+    /// and stay there (no automation, no quit) so an outside probe can close the window and time the exit. open: opens
+    /// that file with the real shell (PLANET-88/89: tools/os-open-probe.ps1, tools/os-shutdown-probe.ps1 -AppArgs).
     /// </summary>
     public string? TestHold { get; init; }
 

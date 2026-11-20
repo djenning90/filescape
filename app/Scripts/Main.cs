@@ -356,6 +356,11 @@ public partial class Main : Node3D
             case "reveal" when _tree != null && _nav.Current >= 0:
                 GD.Print($"[test-hold] {_shell.RevealInExplorer(_tree.FullPath(_nav.Current)).Message}");
                 break;
+            case var h when h.StartsWith("open:", StringComparison.Ordinal) && _tree != null:
+                // PLANET-88/89: one real open through the session's shell (its associated app starts or receives it), then
+                // stay; an outside probe checks the app's window and, under the console wrapper, whether X lets the terminal go.
+                GD.Print($"[test-hold] {_shell.Open(h["open:".Length..]).Message}");
+                break;
         }
     }
 
@@ -475,7 +480,7 @@ public partial class Main : Node3D
         _session?.Dispose();
         _session = new ScanSession(source);
         _tree = new FsTree(_session.Source);
-        _shell = _tree.Source.IsLive ? (_recordShell ? new RecordingShellActions() : new WindowsShellActions()) : new MockShellActions();
+        _shell = _tree.Source.IsLive ? (_recordShell ? new RecordingShellActions() : new WindowsShellActions { OutsideJob = ConsoleLaunch.InJob }) : new MockShellActions(); // OutsideJob: PLANET-89
         _layout = null;
         _layoutTreeVersion = -1;
         _lastLayoutAt = TimeSpan.FromSeconds(-10);

@@ -6,6 +6,9 @@ config_version=5
 config/name="FileScape"
 config/description="Explore your files as little worlds you can run around."
 run/main_scene="res://Main.tscn"
+; No engine header (version and renderer lines) on stdout: typed at a Command Prompt, FileScape.exe must print nothing
+; under the prompt (AD-76, PLANET-89). The build is logged as [build].
+run/print_header=false
 config/icon="res://icon.svg"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
