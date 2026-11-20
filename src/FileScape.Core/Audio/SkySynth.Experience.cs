@@ -77,6 +77,9 @@ public sealed partial class SkySynth
     /// <summary>The identity of the music sounding now (the previous world's while a change waits for its downbeat).</summary>
     public MusicIdentity PlayingIdentity => ClockAt(_frame).Identity;
 
+    /// <summary>The key of the music sounding now (<see cref="Key"/> is the current world's, which a held change has not started yet).</summary>
+    public MusicalKey PlayingKey => ToKey(ClockAt(_frame).Profile);
+
     /// <summary>The theme (key) of the music sounding now.</summary>
     public PlanetTheme PlayingTheme => ClockAt(_frame).Theme;
 

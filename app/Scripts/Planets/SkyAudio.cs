@@ -96,7 +96,9 @@ public partial class SkyAudio : Node
     /// <summary>A synth seeded with <paramref name="seed"/> that starts in <paramref name="theme"/>.</summary>
     public SkyAudio(int seed, PlanetTheme theme)
     {
-        _synth = new SkySynth(seed, theme, MixRateHz);
+        // AD-79: the game holds a world change until the music playing has sounded its first phrase (quick hops hear
+        // phrases, not fragments); offline renders and Core's tests keep the immediate change unless they ask.
+        _synth = new SkySynth(seed, theme, MixRateHz) { MinimumDwell = SkySynth.GameMinimumDwell };
         ProcessMode = ProcessModeEnum.Always; // sound keeps flowing while the tree is paused
     }
 
@@ -185,14 +187,22 @@ public partial class SkyAudio : Node
     private readonly List<float> _recorded = [];
     private readonly Stopwatch _recordClock = new();
 
-    /// <summary>The most a recording keeps, seconds of output (≈ 23 MB at 48 kHz stereo floats).</summary>
-    private const int MaxRecordSeconds = 60;
+    /// <summary>The most a recording keeps by default, seconds of output (≈ 23 MB at 48 kHz stereo floats).</summary>
+    private const int DefaultMaxRecordSeconds = 60;
+
+    /// <summary>The most a recording keeps, seconds: FILESCAPE_AUDIO_RECORD_SECONDS (probes; up to 600, the music journey
+    /// records ≈ 5 min) or <see cref="DefaultMaxRecordSeconds"/>.</summary>
+    private int MaxRecordSeconds = DefaultMaxRecordSeconds;
+
+    /// <summary>The longest recording FILESCAPE_AUDIO_RECORD_SECONDS may ask for, seconds (≈ 230 MB of floats at 48 kHz stereo).</summary>
+    private const int LongestRecordSeconds = 600;
 
     private void StartOutputRecording()
     {
         var path = System.Environment.GetEnvironmentVariable("FILESCAPE_AUDIO_RECORD");
         if (string.IsNullOrEmpty(path)) return;
         _recordPath = path;
+        if (int.TryParse(System.Environment.GetEnvironmentVariable("FILESCAPE_AUDIO_RECORD_SECONDS"), out var seconds)) MaxRecordSeconds = Math.Clamp(seconds, 1, LongestRecordSeconds);
         _capture = new AudioEffectCapture { BufferLength = 1f };
         AudioServer.AddBusEffect(0, _capture);
         _recordClock.Restart();
@@ -476,6 +486,39 @@ public partial class SkyAudio : Node
     /// <see cref="SkySynth.SetWorld"/>).
     /// </summary>
     public void SetWorld(PlanetTheme theme, WorldCharacter character, int visits) { lock (_gate) _synth.SetWorld(theme, character, visits); }
+
+    /// <summary>
+    /// What the player is doing, for the music (AD-79): on a world, on the overlook (and at its telescope), or in the
+    /// overview; <paramref name="visits"/> counts how often this experience has begun at this place (1 the first time).
+    /// The change is heard on the next beat; back to the world, its music resumes where it was (<see cref="SkySynth.SetExperience"/>).
+    /// </summary>
+    public void SetExperience(MusicExperience experience, int visits) { lock (_gate) _synth.SetExperience(experience, visits); }
+
+    /// <summary>
+    /// The music's state for the state file and the music journey (AD-79): the activity, the identity chosen for the place
+    /// (and its key: root, mode) and the one sounding (playing, playingRoot), whether a change waits for the dwell, how long the sounding music has played, its bar, the
+    /// piece's variation, the key and the tempo.
+    /// </summary>
+    public string MusicStateJson()
+    {
+        lock (_gate)
+        {
+            var s = _synth;
+            var key = s.Key;
+            return System.FormattableString.Invariant($"{{\"experience\":\"{s.Experience}\",\"identity\":\"{s.Identity}\",\"playing\":\"{s.PlayingIdentity}\",\"placeScore\":\"{s.Place.Score}\",\"held\":{(s.ChangeHeld ? "true" : "false")},\"playingFor\":{s.PlayingFor.TotalSeconds:0.000},\"bar\":{s.PlayingBar},\"variation\":{s.PieceVariation},\"root\":{key.RootMidiNote},\"mode\":\"{key.Mode}\",\"playingRoot\":{s.PlayingKey.RootMidiNote},\"bpm\":{s.TempoBeatsPerMinute:0.#},\"voices\":{s.ActiveVoices},\"musicVoices\":{s.ActiveMusicVoices},\"frames\":{s.FramesRendered}}}");
+        }
+    }
+
+    /// <summary>A consistent snapshot of the music's state (AD-79 probes), taken under the audio lock.</summary>
+    public (MusicExperience Experience, MusicIdentity Identity, MusicIdentity Playing, bool Held, double PlayingForSeconds, int Bar, int Variation, int Root, string Mode, int Voices, int MusicVoices) MusicState()
+    {
+        lock (_gate)
+        {
+            var s = _synth;
+            var key = s.PlayingKey; // the key sounding, not a held change's
+            return (s.Experience, s.Identity, s.PlayingIdentity, s.ChangeHeld, s.PlayingFor.TotalSeconds, s.PlayingBar, s.PieceVariation, key.RootMidiNote, key.Mode, s.ActiveVoices, s.ActiveMusicVoices);
+        }
+    }
 
     /// <summary>Changes the key to a planet theme's and keeps the current world's character (see <see cref="SetWorld"/>).</summary>
     public void SetTheme(PlanetTheme theme) { lock (_gate) _synth.SetTheme(theme); }

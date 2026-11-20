@@ -27,7 +27,8 @@ namespace FileScape.App;
 /// Other modes: planets-discover, planets-flows (the three flows from DJ's 2026-11-11 playtest), planets-route and
 /// planets-route-hub (PLANET-27..30, world characters), planets-landmarks (PLANET-45, the root landmarks' terminal,
 /// path and places panel; <c>PlanetsProbe.Landmarks.cs</c>), planets-lookouts (PLANET-55/56, PLANET-73..75: the telescope from its approach, scenery that answers, the
-/// bell tower and the lighthouse; <c>PlanetsProbe.Lookouts.cs</c>), planets-reel (a short recording) and planets-camera-trace (a
+/// bell tower and the lighthouse; <c>PlanetsProbe.Lookouts.cs</c>), planets-music (AD-79: which music plays where, the overlook's and the overview's pieces, the minimum dwell;
+/// <c>PlanetsProbe.Music.cs</c>), planets-reel (a short recording) and planets-camera-trace (a
 /// frame-by-frame trace of the overview camera for comparing a refactor). Timing: waits use <see cref="ProbeBase"/>'s
 /// clock, which is simulated time while a movie is written, so the same thresholds hold for a recording; frame times
 /// are judged only outside the functional tier.
@@ -67,6 +68,7 @@ public partial class PlanetsProbe : ProbeBase
         base._Process(delta); // simulated time for recordings
         TrackFrameGap(); // PlanetsProbe.Audio.cs
         TrackDiscoveryFrame(delta); // PlanetsProbe.Discovery.cs
+        TrackMusic(); // PlanetsProbe.Music.cs
         if (!_recording || !P.Active) return;
         var phase = P.PhaseName;
         _frames.Add((delta * 1000, phase));
@@ -125,6 +127,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-sky") await SkyRun(); // PlanetsProbe.Sky.cs (PLANET-60)
         else if (Mode == "planets-overview-discovery") await OverviewDiscoveryRun(); // PlanetsProbe.Discovery.cs (PLANET-76..78)
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
+        else if (Mode == "planets-music") await MusicRun(); // PlanetsProbe.Music.cs (AD-79, PLANET-97/98)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

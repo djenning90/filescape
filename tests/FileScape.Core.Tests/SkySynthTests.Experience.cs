@@ -497,6 +497,82 @@ public partial class SkySynthTests
     }
 
     /// <summary>
+    /// AD-79's listening folder (SKYSYNTH_MUSIC_DIR), every piece as the game plays it (the synth driven by the app's calls,
+    /// the game's dwell on): the overlook on a first visit (the world, the climb, a whole cycle, back down), its second light,
+    /// the star chart Ionian (from the hub) and Dorian (from the deep woods), its second variation, the DSP before/after, and
+    /// the dwell demo (twelve hops 1.5 s apart, without and with the dwell). SKYSYNTH_MUSIC_THEME picks the world's theme
+    /// (default Hearth). Logs each file's duration, sample and true peak, loudness and silent runs; fails on clipping or a gap.
+    /// </summary>
+    [SkySynthMusicFact]
+    public void Render_the_music_integration_samples()
+    {
+        var dir = Environment.GetEnvironmentVariable("SKYSYNTH_MUSIC_DIR")!;
+        Directory.CreateDirectory(dir);
+        var theme = Enum.TryParse<PlanetTheme>(Environment.GetEnvironmentVariable("SKYSYNTH_MUSIC_THEME"), out var t) ? t : PlanetTheme.Hearth;
+        var cycleOverlook = 16 * 4 * 60 / ModeSketches.OverlookBpm;
+        var cycleChart = 16 * 4 * 60 / ModeSketches.StarChartBpm;
+
+        float[] Played(PlanetTheme th, WorldCharacter place, (double At, MusicExperience Experience, int Visits)[] script, double seconds)
+        {
+            var s = GameSynth(2026, th, place);
+            s.SetWorld(th, place, 1);
+            var all = new float[Frames(seconds) * 2];
+            var next = 0;
+            for (var done = 0; done < all.Length; done += 441 * 2)
+            {
+                while (next < script.Length && done / 2 >= Frames(script[next].At))
+                {
+                    s.SetExperience(script[next].Experience, script[next].Visits);
+                    next++;
+                }
+
+                s.Render(all.AsSpan(done, Math.Min(441 * 2, all.Length - done)));
+            }
+
+            return all;
+        }
+
+        float[] Hopped(bool dwell)
+        {
+            var s = dwell ? GameSynth(5) : new SkySynth(5, PlanetTheme.Hearth, Rate);
+            var all = new List<float>();
+            var buf = new float[Frames(0.01) * 2];
+            for (var i = 0; i < 200; i++) { s.Render(buf); all.AddRange(buf); }
+            for (var hop = 0; hop < 12; hop++)
+            {
+                s.SetWorld(HopWorlds[hop].Theme, HopWorlds[hop].Character, 1);
+                s.Arrive();
+                for (var i = 0; i < 150; i++) { s.Render(buf); all.AddRange(buf); }
+            }
+
+            for (var i = 0; i < 800; i++) { s.Render(buf); all.AddRange(buf); }
+            return [.. all];
+        }
+
+        var files = new (string Name, float[] Samples)[]
+        {
+            ("overlook-first-visit", Played(theme, Hub, [(6, MusicExperience.Overlook, 1), (6 + cycleOverlook + 1, MusicExperience.World, 1)], 6 + cycleOverlook + 9)),
+            ("overlook-second-light", Played(theme, Hub, [(2, MusicExperience.Overlook, 2)], 2 + cycleOverlook + 3)),
+            ("overview-star-chart-ionian", Played(theme, Hub, [(3, MusicExperience.Overview, 1), (3 + cycleChart + 0.5, MusicExperience.World, 1)], 3 + cycleChart + 6)),
+            ("overview-star-chart-dorian", Played(PlanetTheme.Workshop, Band(3), [(3, MusicExperience.Overview, 1), (3 + cycleChart + 0.5, MusicExperience.World, 1)], 3 + cycleChart + 6)),
+            ("overview-star-chart-second", Played(theme, Hub, [(2, MusicExperience.Overview, 2)], 2 + cycleChart + 3)),
+            ("dsp-before-saws", SkySynth.RenderSketch(ModeSketches.AuroraComparison(aurora: false), Rate)),
+            ("dsp-after-aurora", SkySynth.RenderSketch(ModeSketches.AuroraComparison(aurora: true), Rate)),
+            ("dwell-demo-before-hops-cut", Hopped(dwell: false)),
+            ("dwell-demo-after-phrases-finish", Hopped(dwell: true)),
+        };
+        foreach (var (name, x) in files)
+        {
+            WriteWav(Path.Combine(dir, name + ".wav"), [.. x], Rate);
+            var scan = Scan(x, x.Length / 2.0 / Rate - 2.5);
+            output.WriteLine($"{name}.wav: {x.Length / 2.0 / Rate:0.0} s, peak {scan.Peak:0.000}, true peak {TruePeak(x, 2):0.000}, {Lufs(x):0.0} LUFS, " +
+                             $"silent runs: {(scan.Runs.Count == 0 ? "none" : string.Join(", ", scan.Runs.Select(r => $"{r.At:0.00}+{r.Length:0.00} s")))}");
+            scan.Peak.Should().BeLessThan(SoftClipFrom, name);
+            scan.Runs.Should().BeEmpty(name);
+        }
+    }
+
+    /// <summary>
     /// The scan of a recording (SKYSYNTH_SCAN_WAV, e.g. the in-app capture of the music journey): duration, sample and true
     /// peak, samples at full scale, and every silent run (50 ms windows below −60 dBFS) after the first second.
     /// </summary>

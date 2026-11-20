@@ -1224,3 +1224,66 @@ Sources checked during the discussion:
 
 Next time, resume from DJ's preference for Otherwhere's meaning and breadth. The private GitHub backup can proceed
 as FileScape while naming remains open.
+
+## AD-79 Music by activity, place and visit; a minimum dwell; the aurora voice (2026-11-19; extends AD-49, AD-72)
+
+- **Problem:** DJ (PLANET-97..99), after the seven-mode reel: "My preference broadly declined through the sequence, with
+  the first version strongest and the seventh unpleasant to my ear … The Lydian Overlook is beautiful. Try it in the
+  overlook or telescope experience. Overview could also have its own identity … Keep the existing arrangements
+  available." A small, understandable scheme for choosing variations (place identity, activity, revisits); phrases that
+  have time to develop when moving quickly between folders; one DSP extension with an audible payoff.
+- **Reproduced on the base code (Core, the app's calls):** twelve hops 1.5 s apart cut the music twelve times; each world
+  sounded 3–5 notes of the theme's two-bar motif (10 notes), and a world met again resumed in its free section, so the
+  theme was hardly heard. The overlook, the telescope and the overview played the world's music unchanged (nothing else
+  existed in game; AD-72's pieces were offline).
+- **Decision — the scheme, three questions in order (`SkySynth.Experience.cs`):**
+  1. **Activity picks the piece** (`MusicExperience`): on a world (walking, jumping, flying, hopping) the world's own
+     arrangement, chosen exactly as before (AD-49/52/60/66); on the overlook (standing on it, at its telescope, or its
+     view on B) **the Lydian overlook**; in the overview (T) **the star chart**. The app tells the synth when the activity
+     changes (`PlanetWorld.Music.cs`: the overlook after 0.4 s on it, left after 1.2 s off it or at once by a launch or
+     hop; the overview at once). A change of activity is heard on the next beat.
+  2. **Place picks the key and the mode family**: the world's theme gives the root, and the pieces (written in D) are
+     transposed to it (−6…+5 semitones); the overlook is always Lydian; the overview is **Ionian**, or **Dorian where the
+     place is already Dorian** (the WSL root, the deep woods, the underglow, a Theatre folder): 84 of 132 place × theme
+     combinations Ionian, 48 Dorian. **Locrian is omitted** (no piece, not even as colour); Phrygian stays the hazard
+     world's; Aeolian and Mixolydian are not used by the new pieces (the repository keeps its Mixolydian).
+  3. **Visits pick the variation**: as for worlds (AD-49), a remembered experience resumes, a piece **at its next
+     section** (overlook: intro, theme, answer, close; star chart: intro, short theme, answer, constellation, cadence), and
+     a forgotten one starts on visit n's cycle n−1. The pieces' variations take turns by cycle: the overlook's first time
+     is **the sketch exactly as DJ heard it**, the second light gives the theme to the glass with the flute a third below
+     and the strings to the aurora pad; the star chart's second variation swaps the bell and the aurora lead.
+  - **Minimum dwell** (`MinimumDwell`; the game sets `GameMinimumDwell` = **3.5 s**, `DwellPhraseBars` = **2**): a world's
+     music, once begun, plays at least 3.5 s and then to its next two-bar phrase boundary before another world replaces it
+     (two bars last 3.8 s at 126 BPM, 5.1 s at the hub's 94, 6.2 s for the orchestra's half-time theme), so every world
+     plays at least the theme's motif. Until then a further change only retargets it (the music ends where the player
+     is), a change back cancels it, and an arrival chord sounds in the key playing. **Never held:** a hazard world either
+     way (danger and the way out), a change of activity, the first change after start. Core's default is 0 (the old
+     next-beat change), so offline renders and the existing tests are unchanged; `SkyAudio` turns it on.
+- **Decision — how they play live:** the pieces are `ExperiencePiece`s built once from the sketches' `SketchScore`s and
+  played by a deck (`Arrangement.Score`) one sixteenth at a time through the same instruments as `RenderSketch`
+  (`PlaySketchNote`, now taking a frame, group and transposition), so they cross-fade, remember and grid-lock like worlds
+  and cost what a world costs (no offline buffers). New identities `Overlook` and `Overview` are appended after the
+  world identities (`WorldIdentities` lists the ten). The overlook runs as half time over a 168 pulse so the effects' 32nd
+  stays within the 80 ms bound (an 84 BPM 32nd is 89 ms).
+- **Decision — the DSP extension, the aurora voice (`SkySynth.Analog.cs`, `Wave.Analog`):** an expressive subtractive
+  voice in the spirit of classic analog polysynths: the existing polyBLEP saw stack (1–3 copies, detuned), a soft
+  saturating drive (a Padé tanh with make-up), and a resonant topology-preserving state-variable low-pass (12 dB/oct,
+  resonance to 0.95) whose cutoff follows its own attack–decay–sustain envelope, the velocity (softer is darker as well
+  as quieter) and the amplitude's release; each note drifts a few cents. Three sounds: a pad whose filter opens over 2.2 s
+  "like a sky", a soft brassy lead that blooms with each note, a round plucked bass. Used in the star chart (pad, lead,
+  bass) and the overlook's second light (pad). Every other wave renders bit-identically.
+- **Measured (Core, WSL, Debug):** behaviour baseline identical; the whole-cycle hashes of all ten existing scores at
+  visits 1–3 identical (new lines added for Overlook and Overview). Pieces as played in game: overlook in Workshop 91 s
+  peak 0.19, −26.0 LUFS, music voices ≤ 21 of 28; star chart Ionian −27 LUFS after +1 dB level (0.21 peak), Dorian likewise;
+  no silent windows; the loudness test (all identities within 2 dB) passes with them included; every tempo-locked and
+  hazard cue test passes over them. Aurora: ≈ 30 ns per voice per sample (0.13 % of a core in real time per voice; the
+  saw-stack strings it extends 20 ns), extremes (MIDI 24–108, velocities 0.1–1) finite, peak 0.16; before/after −31.3 /
+  −29.4 LUFS.
+- **Alternatives:** the experience pieces as one-shot cues over the world's music (two keys at once, and no memory);
+  pre-rendered loops (memory and no transposition); a seeded mode per folder for the overview (less understandable, and it
+  would spread the modes DJ liked less); a dwell measured in time only (it could cut a phrase) or in phrases only (the
+  orchestra's four bars are 12 s); the FM voice (FileScape already has many FM bells: the subtractive voice adds a colour
+  it did not have).
+- **Unknown:** nobody has listened. Whether the star chart and the second light are good, whether the aurora sounds belong,
+  and whether 3.5 s feels right through hops are DJ's call by ear. **Revisit if:** DJ wants the overlook on B left out, a
+  different dwell (`GameMinimumDwell`), Dorian for fewer places, or the aurora in a world's arrangement.

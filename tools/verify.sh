@@ -166,6 +166,10 @@ if [[ "$TIER" == full || "$TIER" == release ]]; then
   # PLANET-55/56: the telescope's cue on the walk up and E there; the bell tower walked onto and under, rung by a twirl
   # underneath (not by a jump, not beside it), swinging, opening nothing.
   journey planets-lookouts planets-lookouts.log 300 --automate=planets-lookouts --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  # AD-79 (PLANET-97/98): which music plays where: the world's arrangement as before, the Lydian overlook up at the
+  # telescope, the star chart in the overview, the world's music back after each, a return resuming the overlook, and the
+  # minimum dwell through quick hops; no underruns in the ≈ 4 min run.
+  journey planets-music planets-music.log 420 --automate=planets-music --root=sample --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   # 2026-11-16 (PLANET-39..41): the Destinations tree, trips hop by hop and their Stop, Locations, favourites; one folder
   # held "still listing" by the delay instrument; then the fixture's inaccessible folder as the list shows it.
   journey planets-navigation planets-navigation.log 300 --automate=planets-navigation --root=sample --vis=planets --test-shell=record --ui-scale=1 --test-list-delay-ms=12000 "--test-list-delay-match=Pressed Flowers" --tier=functional

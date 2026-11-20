@@ -253,6 +253,7 @@ public partial class PlanetWorld : Node3D
         }
 
         if (blockedKeys || _universe != null || _phase != Phase.Walking || _hop != null) _keyLook = 0; // no turning on after the keys stop being read
+        UpdateMusicExperience(dt); // AD-79: the overlook's and the overview's own music (PlanetWorld.Music.cs)
         if (_universe != null)
         {
             UpdateUniverse(tree, dt, blockedKeys);

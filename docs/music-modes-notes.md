@@ -57,3 +57,28 @@ reproduced in FileScape. Everything below is paraphrased.
 - Phrygian kept for threat (the hazard world in the mode-shift journey closes ♭II–i); Locrian heard as broken rather
   than threatening; Dorian used for the landed, wistful deep woods; Lydian for floating and wonder (the overlook); Aeolian
   for loss (the empty moon); Mixolydian for the bright, unresolved lift of a launch.
+
+## Into the game (2026-11-19, AD-79, PLANET-97..99)
+
+DJ's reaction to the reel: preference broadly declined Ionian → Locrian (Locrian unpleasant), "the Lydian Overlook is
+beautiful". What went in: the Lydian overlook on the overlook and at its telescope (first time as heard, then a "second
+light"), an original Ionian/Dorian star chart for the overview, a minimum dwell so phrases finish through quick hops, and
+the aurora analog voice. Locrian is used nowhere; Phrygian stays the hazard world's; Aeolian (the empty moon) and the
+Mixolydian launcher stay offline for now.
+
+### Wider ideas for later (not built)
+
+- **More experiences:** the Aeolian lament for an empty moon or a sealed (access-denied) world, alongside the abyss
+  score; the Mixolydian launcher as an occasional take-off variation on a revisit of a launcher pad; a soft Dorian
+  "reading room" bed under the reader's full-screen view (today the preview ducks the music, which already serves it).
+- **The aurora voice further:** a 24 dB ladder (cascaded or Moog-style ZDF) as a second filter mode; pulse-width
+  modulation and a sub-oscillator; filter keyboard tracking as a parameter; slow per-voice LFOs on cutoff (pads that
+  breathe); unison spread across the stereo field; poly-glide (portamento) for leads; a resonance that self-oscillates
+  for sweeps and risers; giving one world identity an aurora lead (the WSL root's square lead is the obvious candidate).
+- **An FM voice (the other option):** a 4-operator stack with operator feedback and per-operator envelopes (DX-style
+  algorithms), velocity-to-index for an electric-piano tine; it would sit beside the existing 2-operator bells.
+- **Engine:** a per-deck send to a second, longer reverb for the experience pieces; a chorus/ensemble on the pads;
+  a gentle bus compressor before the limiter; true-peak-aware limiting (today's peaks sit far below it).
+- **The scheme:** time of day or session length as a fourth question (later variations after long play); a "home
+  stretch" variation when returning to the hub after a long trip; a per-folder seed choosing among the theme's
+  variations for first visits (stable surprise) without touching which arrangement plays.

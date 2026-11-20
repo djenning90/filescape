@@ -4,6 +4,34 @@ Last updated: 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera l
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fifth playtest follow-up (2026-11-19)
+
+### Music by activity, place and visit; the minimum dwell; the aurora voice (PLANET-97..99, AD-79)
+
+DJ, after the seven-mode reel: bring selected sketches into the game (the Lydian overlook on the overlook or telescope, an
+overview identity), a small scheme for variations, phrases that develop through quick folder changes, keep the existing
+arrangements, one DSP extension. **Reproduced on the base code first** (Core, the app's call sequence): twelve hops 1.5 s
+apart cut the music twelve times, each world sounding 3–5 notes of the theme's 10-note motif; the overlook, telescope and
+overview played the world's music (AD-72's pieces were offline only). Commits on `worktree-agent-a7e3217d9f49ef0a9`
+(Core, app and journey, docs).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Scheme: activity picks the piece, place the key and mode (overlook Lydian; overview Ionian, Dorian where the place is Dorian: 84/48 of 132 places; Locrian never), visits the variation; existing arrangements where they were (PLANET-97) | **Demonstrated** (Core and in-app) | `SkySynthTests.Experience.cs`; behaviour baseline identical, all ten existing scores' whole-cycle hashes (visits 1–3) identical; `planets-music` 13/0 (journey-2) |
+| Minimum dwell 3.5 s then the next two-bar boundary; hazard and activity changes at once; retargets, cancels, arrival chord in the key sounding (PLANET-97) | **Demonstrated** (Core); in-app **demonstrated** on the sample's hops (2 world changes through 6 arrivals 2–3 s apart, each after ≥ 3.5 s; the hazard world at once; ends on the world you stand on); feel: DJ | Core: 12 → 6 changes, 10 theme notes a world; journey-2 |
+| The Lydian overlook on the overlook and at the telescope (as heard, then its second light), the star chart in the overview, both in the world's key, live on a deck (PLANET-98) | **Demonstrated** in-app (B-flat on the Starter Sky; returns resume at a section); by ear: DJ | journey-2; renders peaks ≤ 0.23, −26.3…−27.6 LUFS, music voices ≤ 23/28, no gaps |
+| The aurora voice (driven saws → resonant SVF with its own envelope, velocity, drift), in the star chart and the second light; before/after (PLANET-99) | **Demonstrated** (measured); by ear: DJ | 12 ns per voice-sample Release (0.05 % of a core per voice; 30 ns Debug), the saw stack 9; extremes finite; `dsp-*.wav` |
+| Playback stability | **Demonstrated** in-app | journey-2 (≈ 2 min 40 s of music, 0 underruns after the first sound, voices ≤ 35/40); the capture scanned: true peak 0.61, no sample at full scale, no silent window |
+| Core suite | WSL 752 passed / 27 skipped / 5 failed: four render-cost bounds (second theme, 75–84 ms vs 60) and the layout speed test, all timing under the other streams' load (load average ≈ 7); the five pass run alone (instrument: shared machine) | `tools/fs.sh test-wsl` (4 min 49 s) |
+
+Samples and README: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-music-integration\` (in-game captures and per-piece
+renders, durations there). **Instrument defect found and fixed:** journey-1's dwell check failed because the probe read
+the key of the world *waiting* for the dwell (`Key`) as if it were playing; `SkySynth.PlayingKey` now reports the key
+sounding. **Unknown / for DJ by ear:** the star chart (new music), the second light, the aurora sound, whether 3.5 s
+feels right; the overlook music also plays in the B overlook view (by design: it is the overlook's view). The Aeolian
+lament and the Mixolydian launcher stay offline. Not exported or installed. Real-input probes not run (none needed: no
+input changes).
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)
