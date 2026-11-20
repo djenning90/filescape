@@ -1238,6 +1238,11 @@ as FileScape while naming remains open.
   pass without placing anything; rebuilt at most every 2 s when the tree changed), and the focus is a priority order — the
   current world's subtree, then its parent's (its neighbours), then its grandparent's, then the rest breadth-first
   (`Step(..., Pace.Play, focusInOrder: true)`). The overview's own order (selected and approached worlds equal) is unchanged.
+  Because discovery lists your own world's subtree first, and each listing changes its signature, the world you stand on
+  recomposes at most every 4 s while discovery is listing (`RecomposeGapWhileDiscovering`): without it the planet was
+  rebuilt every 0.35 s and the walking p99 went from 9.1 to 27.8 ms; with it p99 is 5.6 ms with discovery on and off.
+  `verify.sh` runs the overview discovery journey with `--test-play-discovery=off` (its 0 s picture is the visit's own
+  listings) and the WSL-root journey likewise (a real root: nothing listed in the background during a probe).
 - **Decision — a level of detail separate from discovery (PLANET-91):** the layout and the tree are untouched; a separate
   rule (`OverviewDetail`) decides ten times a second which laid-out worlds are drawn. A system opens when its ring is large
   enough on screen to hold its children apart (≥ 40 px radius, and its two closest children ≥ 16 px apart on screen: the layout gives small worlds small arcs, so an average over the ring was not enough); on the way to the
@@ -1247,7 +1252,7 @@ as FileScape while naming remains open.
   ring's on-screen size counts its foreshortening (an ellipse's circumference, r (1 + |n·v|) / 2); for each level a branch is away from that path the bar rises by 0.5 ×
   (distant branches shallower); an open system folds again only below 0.8 × its bar. Worlds fade in and out (6/s). A
   folded system wears a faint haze the size of its ring, and its name (shown for the four biggest folded systems in view)
-  says "N worlds folded in (come closer)". Discovery's candidates stay every laid-out world, so what is known never
+  says "+N worlds inside" (the first wording, "N worlds folded in (come closer)", was cut off in the name tag). Discovery's candidates stay every laid-out world, so what is known never
   depends on what is drawn, and a folded world is never re-listed or forgotten.
 - **Decision — varied miniature worlds (PLANET-92):** `OverviewWorldLook` in Core: the dominant kind of file picks the hue
   family (images rose, documents blue, code amber, audio violet, video indigo, archives rust, data cyan), a strong second

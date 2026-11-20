@@ -4,6 +4,67 @@ Last updated: 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera l
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Fifth playtest follow-up (2026-11-19)
+
+### A large universe: discovery in play, detail apart from discovery, varied worlds, navigation, the "X pauses" closeout (PLANET-90..93, AD-77)
+
+DJ: "The progressive Overview discovery is especially compelling to watch. Keep building on that feeling while making
+navigation more dependable and the larger universe easier to read." Branch `worktree-agent-af0d56d54acba5ad2` (stream 4).
+All in-app runs are from the worktree project (`fs.sh run`, 1600 × 900, UI 1.0), not an exported build. Evidence:
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-19-stream4\` (one folder and one `.out` per run). Real roots (`C:\`,
+`\\wsl.localhost\Ubuntu-24.04\`) ran with `--counts-only`: counts and timings only, no names, no screenshots.
+
+**The "X pauses" closeout (product defect, instrument correct).** Reproduced on the unmodified builds by repeating the
+discovery journey on the staged exes: `78a41f3` (the export that failed twice in `check full`) failed 1 of 6 runs;
+`cfee25d` passed 6 of 6, and failed 1 of 4 with a CPU load in WSL — with the detailed message: `paused True,
+"◐ Discovering… 919 worlds, 303 listed · X pauses"`: the flag was set, the indicator not yet. Cause: `OverviewDiscovery.State` became Paused only
+at the scheduler's next step (every 0.1 s, i.e. every 6–7 frames), so for up to 0.1 s after X the indicator still said
+"Discovering… · X pauses"; the journey reads it a constant ≈ 80 ms after pressing X (every log), so it failed whenever
+the next step fell later. Shown deterministically in Core on the base source (`Pausing_says_so_at_once_not_at_the_next_step`
+fails there: "found Discovering"). Fix: setting `Paused` sets the state at once. After the fix: 8 of 8 passed (6 plain, 2 under the load), plus every other discovery run on this branch.
+
+**What changed (AD-77):** discovery also runs while you walk, at a quieter pace, with your own world first. The overview
+draws only what fits on screen: a system unfolds when its children fit apart, or when it is on the way to the selected
+world, the approached world or where you stand. Folded systems show a haze and "+N worlds inside". Worlds take their
+colour and pattern from what the folder holds and from its names. The wheel zooms toward the pointer, [ and ] step
+round a ring, Z goes up a level, and a two-line hint teaches these when the overview opens.
+
+| Area | Status | Evidence |
+|---|---|---|
+| X pauses at once (the closeout) | **Demonstrated**: Core test (fails on the base source, passes now); discovery journey 8 of 8 after the fix (6 plain, 2 under a WSL CPU load), plus `disc-deep-4`; before: 2 of 16 failed on the base exes | `x-*`, `xfix-*`, `disc-deep-4` |
+| Background discovery in play: current world, then its parent, then the rest; 2/s, 2 in flight; only while walking (PLANET-90) | **Demonstrated** in Core and in-app | Core `During_play_the_current_world_goes_first_then_its_parent_at_the_quieter_pace`; `play-deep-on2`: in 30 s of walking 20 → 80 folders listed (67 asked), deepest level 3 → 4; the overview then opened with 253 worlds (levels 0–5) instead of 51 (0–3) with `--test-play-discovery=off` |
+| Play stays responsive (PLANET-90) | **Demonstrated** (deep fixture, no vsync, 30 s walking) | on: p50 3.7 / p95 4.2 / p99 5.6 / max 39.0 ms, 7 frames over 25 ms (the 7 recompositions, ≤ 34.8 ms each); off: 3.7 / 4.2 / 5.6 / 42.2 ms, 1 over 25 ms. **Product defect found and fixed:** without the recompose gap the walking world was rebuilt every 0.35 s as its subtree was discovered: p99 27.8 ms vs 9.1 ms off (`play-deep-on`, `play-deep-off`). Candidate rebuild ≤ 4.4 ms every ≥ 2 s |
+| Detail apart from discovery: overlap on screen, before → after (PLANET-91) | **Demonstrated** | Deep fixture (`--test-broad`) at 10 s: 338 worlds on screen, 420 overlapping disc pairs, 82 % of them overlapping another → 55, 2, 7 %; at 30 s: 507, 1,328, 82 % → 95, 3, 6 % (`disc-deep-off` vs `disc-deep-4`). `C:\` (counts only, 16 s): 695, 4,856, 99 % → 12 drawn (742 worlds folded into them), 1 pair, 17 % (`nav-c-detailoff` vs `nav-c-on3`; the intermediate rules gave 125 drawn / 126 pairs / 80 % and 48 / 32 / 50 %). Ubuntu root (counts only, 16 s): 471, 1,513, 97 % → 26 drawn (1,199 folded), 15 pairs, 65 % — the remaining pairs are on the root's own ring, which stays open as the way in and is seen at a slant (`nav-ubu-off` vs `nav-ubu-on3`); after zooming toward a world, 9 on screen, 0 pairs |
+| Discovery unchanged by the detail | **Demonstrated** | Deep fixture with play discovery off (as AD-71 measured): 40 → 320 → 905 worlds below the arrival at 0/10/30 s, as before (40, 317, 905); every laid-out world stays a candidate |
+| A folded system shows a haze and "+N worlds inside"; the selected world's way is always drawn | **Demonstrated** in-app; how it reads: DJ | `planets-overview-navigate`: 478 worlds folded into 48 drawn (deep, 16 s); screenshots `nav-deep-4\02-nav-full.png`, `disc-deep-4\03-discovery-30s.png` (before: `disc-deep-off\03-discovery-30s.png`) |
+| Varied, stable worlds (PLANET-92) | **Demonstrated** (stability and variety by measure); how it looks: DJ | Core `OverviewWorldLookTests` (4); two runs on the deep fixture: 172 shared listed worlds, all identical (`nav-deep-3`/`-4`), 170 of 170 (`nav-deep-4`/`-5`); `C:\` 200 of 200 (`nav-c-on2`/`-on3`); `looks.txt` holds path and look hashes only |
+| Draw cost at 1,500 worlds (PLANET-92) | **Demonstrated**: no measurable cost | `C:\`, every world drawn (`--test-overview-detail=off`), 1,500 worlds, no vsync: varied looks p50 5.8 / p95 7.1 / p99 7.6 ms; the old material 7.1 / 11.1 / 14.8 ms (the machine was shared, so the spread is noise); 145 draw calls in both: one draw for every solid world |
+| Navigation: selection anchors the orbit; [ ] round a ring; Z up; wheel toward the pointer; F; the hint (PLANET-93) | **Demonstrated** in-app (injected input); the feel: DJ | `planets-overview-navigate` 13/0 on the deep fixture, `C:\` and the Ubuntu root: ] three times gives three new worlds on the same ring with the orbit centred on each; [ steps back; Z selects the parent; five notches over a world brought the orbit's centre from 595–1,047 m to 3–176 m from it and the distance from 1,150–1,643 to 510–729 m; frame times while navigating p95 16.7 ms (vsync) and 5.0 ms (`C:\`, no vsync) |
+| Fill-in, before vs after | **Demonstrated** | Overview only: unchanged (above). With play discovery: after 30 s of walking the overview opens with 253 worlds rather than 51. `C:\` (overview, counts only): 283 → 526 → 1,074 worlds at 0/10/30 s (before 220 → 518 → 1,070) |
+| Core | WSL 747 passed / 0 failed (plus `OverviewDetailTests` 7/7 after the last rule changes); Windows 745 / 1 failed: `Rendering_each_arrangement_with_cues_is_cheap(DeepWoods)`, a timing test that passed alone (4/4) — load from the shared desktop, not this change; behaviour baseline identical before/after the layout refactor | `tools/fs.sh test-wsl`, `tools/fs.sh test` |
+| Real input (`os-planets-probe.ps1`) | **Unknown**: not run (the coordinator runs real input); `-Discovery` should still pass (its steps do not depend on the 0 s picture) but was not re-run | — |
+
+**Instrument defects:** the first discovery runs on this branch failed "more levels without a visit" (0..4 → 0..5): play
+discovery had already listed a level before T, so the journey's 0 s baseline moved. `verify.sh` now runs that journey with
+`--test-play-discovery=off`, so it measures the overview alone as before. The navigation probe's orbit-centre check
+allowed 1 m and failed at 1.0 m on `C:\` while a relayout glided the world; it now allows 1 % of the view distance. The
+first fingerprint of looks compared whole sets, which differ between runs (discovery's timing); `looks.txt` compares the
+worlds both runs share. One run (`nav-deep-4`, first attempt) found no App assembly: a WSL `dotnet build` of the app had
+left `.godot/mono/temp/bin` in a state the next Windows build did not fill; a clean Windows build fixed it, and the app is
+built only with `fs.sh build` now. **Product defects found by the instruments and fixed:** the recompose storm while
+discovering in play (above); a `TimeSpan.MinValue` overflow in the first version of the recompose gap (8,384 errors in one
+run, caught by the run's error count); the detail rule's first two versions left 80 % and then 50 % of the drawn worlds
+on `C:\` overlapping (the focus lowered the spacing bar too, where you stand counted as a focus, and an average spacing
+ignored that the layout packs small worlds side by side), now the closest two children must be 16 px apart and worlds
+on a ring that must stay open are drawn down to 2.5 px.
+
+**Provisional / for DJ:** how the folding feels (when systems open and fold as you zoom, `ExpandRingPixels`,
+`ChildSpacingPixels`), the haze's strength, the colour families on his own folders, the wheel's pull toward the pointer
+(30 % a notch), whether [ ] and Z are the right keys, the hint's wording and timing, the play pace (2/s) and the planet
+growing in 4-second steps while discovery lists your own world. Not run: real input; an exported build; `check full`
+(the integrator runs it). On `C:\` the 1,500-world layout budget still limits how far discovery reaches.
+
+
 ## Fourth playtest follow-up (2026-11-19)
 
 ### The final candidate (`cfee25d2b709`, staged, not installed)
