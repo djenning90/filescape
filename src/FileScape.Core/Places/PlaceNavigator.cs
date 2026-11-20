@@ -156,6 +156,20 @@ public sealed class PlaceNavigator
     }
 
     /// <summary>
+    /// Whether <paramref name="change"/> is the last move and can be taken back exactly (PLANET-121, AD-84): it was not
+    /// itself a Back (that popped history), nothing moved since, and no <see cref="Reset"/> cleared the way back.
+    /// </summary>
+    public bool CanRevert(PlaceChange change) =>
+        change.Move != PlaceMove.Back && Current == change.To && CurrentVia == change.ViaLink && _history.Count > 0 && _history[^1].Id == change.From;
+
+    /// <summary>
+    /// Takes back <paramref name="change"/> when <see cref="CanRevert"/>: Esc during a departure the navigator already
+    /// made (a dialog's choice) leaves you where you were, with history as it was before the move. Raises
+    /// <see cref="Changed"/> as a <see cref="PlaceMove.Back"/> (the app is told it is back).
+    /// </summary>
+    public bool Revert(PlaceChange change) => CanRevert(change) && Back();
+
+    /// <summary>
     /// Makes the last <paramref name="moves"/> moves one step of history (AD-56, PLANET-40): a multi-hop trip records a
     /// visit per hop as it flies, and when it ends (arrived or stopped) only the entry for where it started is kept, so
     /// Backspace returns to the start of the trip. The caller guarantees those moves were the trip's own (nothing else
