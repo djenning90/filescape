@@ -11,7 +11,6 @@ FileScape began with these experiences. They still work and live in the toolbar'
 | `FileScape.exe -- --root=hub` | Starts at **This computer** (This PC): every drive and WSL distribution as a gate, nothing listed until you go in. |
 | `FileScape.console.exe …` | From a terminal: the same, but it waits for the window and returns to the prompt with the exit code. `FileScape.exe` returns at once, and its log lands after the prompt. |
 | `FileScape.exe -- --layout=spacious` | The pre-compact layout, for comparison. |
-| `FileScape.exe -- --experiment=planetoids` | The isolated planetoid experiment. |
 
 It starts in **Places** on synthetic sample data (amber badge). Click **Open…** (Ctrl+O) and choose **⌂ This computer**, a drive, a path or Browse…, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Projects are marked ⚙: **R** reads the README, and the card offers your editors. Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
 
@@ -61,7 +60,6 @@ tools/fs.sh test                                        # tests with Windows dot
 | Maps | **M** Places ↔ map · **Tab** cycles Places → Classic FSN → District · **G** on a folder in a map enters it in Places. In the maps the arrows still move sideways and the right mouse flies while held |
 | Open | **Enter** opens with Windows (asks first for programs, links, cloud files); MOCK on sample data |
 | Other | **F1** help · **F2** quality · **F3** stats · **F4** settings (saved to `%APPDATA%\FileScape\preferences.json`) |
-| Experiment | `FileScape.exe -- --experiment=planetoids`: an isolated planetoid-traversal experiment (not FileScape's view; see `docs/planetoid-feasibility.md`) |
 
 Walking backwards through a gate never travels; flying above a gate's lintel leaves the place without travelling.
 

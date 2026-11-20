@@ -72,9 +72,8 @@ FileScape.Core                                             app/
 │ Scanning/WorldExplorer.Reveal (list from the air,  │◀─────│   pick islands; G/T travel converts frames       │
 │   never a location root)                           │      │ Places/AerialWorld  islands, roads, link arcs    │
 │ Places/Walker  jump arc (hang, hop), head clearance│      │ Ui/SignLayer  screen-space names (gates, places) │
-│ Experiments/Planetoids  chart + traveller (isolated)│     │ Visual/FileIcons  SVG → atlas (badges, HUD)      │
+│                                                   │      │ Visual/FileIcons  SVG → atlas (badges, HUD)      │
 └───────────────────────────────────────────────────┘      │ Ui/Hud  key, Destinations drawer, inspector card │
-                                                           │ Experiments/PlanetoidExperiment (--experiment)   │
                                                            └─────────────────────────────────────────────────┘
 ```
 
@@ -109,7 +108,7 @@ Key flows:
 - **Listing ahead (AD-31):** `WorldExplorer` queues: urgent → prefetch (destinations, the way back) → context (the destinations' folders, per-visit budget, idle only, one at a time) → background. `ListAhead.Refusal` (Core) bounds what may be listed ahead; refusals become the gate's note. `DirScanState.Listing` → `ListingState.Listing` ("listing now…").
 - **Prominence and projects (AD-32, AD-33):** `Prominence.For` (Core: pins, known folders passed in by the app, Linux home paths, `PlaceKinds` evidence) → cached per tree version in `Main.Projects` → sign mark and boost, `PlaceWorld.SetProminentGates`, Destinations rows, card line. `Readme.Read`/`ToBbcode` and `EditorLaunch.Options` (Core) feed the card's README viewer (`Hud.Project`) and editor buttons; launching goes through `IShellActions.Start` (ShellExecuteEx) after `Confirm`.
 - **Compact places and the horizon (AD-34, AD-35):** `PlaceParams.Compact` (default) / `Spacious` (`--layout=spacious`). `Horizon.Compose` (Core) turns the composition's vistas and the tree into silhouette, haze and veil marks; `PlaceWorld` draws them in the vista slots (hidden from the air).
-- **Planetoid experiment:** `Planetoid` charts (handedness: east × north = up) carry a composed `PlaceComposition` onto a sphere (`PlanetoidExperiment.OnSurface`); picking marches the world ray and tests boxes in the chart; `PlanetoidTraveller.LaunchGuided` is the fast transfer.
+- **Planetoid experiment (retired 2026-11-20):** the isolated prototype that tested curved bodies (PLANET-02) was removed once the planets superseded it; `docs/planetoid-feasibility.md` keeps its findings.
 - **Verification (AD-29):** `tools/verify.sh` (via `fs.sh check`) runs tiers; `ProbeTier` (app) implements `--tier=functional` and off-thread screenshot saving.
 
 The planetary world on the shared session (2026-11-11, AD-39..43):

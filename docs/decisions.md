@@ -1639,3 +1639,43 @@ as FileScape while naming remains open.
 - **Unknown / for DJ:** whether 1.8 s is the right cap for a long way back (a 500 × zoom peaks at ≈ 5.4 e-folds/s), the
   light's strength, and whether pan × 3 is right. **Revisit if:** the overview gains a telescope reuse (stream 5) that
   needs a different return target, or DJ wants Esc to keep the overview's selection framed on the way down.
+
+## AD-87 Open opens the thing, Show in folder selects it where it lives; what Windows cannot do is off with its reason; the planetoid prototype is retired (2026-11-20; amends AD-76)
+
+- **Problem (DJ, sixth pass):** "Open on a folder and Show in Explorer appeared to do the same thing. Make their
+  purposes distinct and label them accurately … Exercise files, folders, roots, links, and unavailable items. Disable
+  actions that cannot apply and display meaningful failures." And: retire the original planetoid prototype.
+- **Found:** on the base build (`70b6ffc`) Show in Explorer of a folder did select it in its parent (measured three
+  ways: the app's own reveal with and without the console route, and the bare SHOpenFolderAndSelectItems call on a WSL
+  fixture). What made the two look alike was the card: "Open (Enter)" and "Show in Explorer" both open an Explorer
+  window, and neither label or tooltip said which shows the folder's inside and which its place. Two real defects in
+  the console/job route (`FileScape.console.exe`, and any launch from WSL or PowerShell, which also runs in a job):
+  Show went through the desktop shell's `explorer /select`, which reported success for an item that was gone, and
+  for a WSL distribution opened Linux selecting nothing. Every enabled Open was attempted even for items FileScape knew
+  were gone, unreachable or denied (an access-denied folder in File Explorer offers to change its permissions).
+- **Decision (card):** `SelectionActions.Describe(tree, id)` (Core) reads what the rules need from the app's tree
+  (kind; gone / denied / unreachable from the listing's flags; link kind and status; shortcut; cloud placeholder; Linux
+  special), and `For` labels Open by what opens (Open, Open folder, Open drive, Open target, Open This PC) and Show as
+  Show in folder / Show in This PC / Show on server. Off, with the reason and what still works: Open for a gone or
+  unreachable item, an access-denied folder (Show stays), a Linux pipe or device, a broken, denied, unreachable or
+  Linux symbolic link (Show selects the link itself); Show for a gone or unreachable item, a WSL distribution (Windows
+  selects nothing in Linux) and a volume without a drive letter. A cloud placeholder opens after the existing warning
+  (tooltip: it downloads); Show does not download it. Enter checks the same rule as the button.
+- **Decision (shell):** `RevealInExplorer` checks that the item itself is there (`File.GetAttributes`: a junction whose
+  target is gone still counts), names it as the one child of its parent's ID list and calls SHOpenFolderAndSelectItems
+  in and out of a job — it asks the running shell and started no process of FileScape's in any step (the probe lists
+  FileScape's children after each). The desktop shell's `explorer /select` is only the fallback when the ID list cannot
+  be parsed.
+- **Instrument:** `--test-hold=shell-steps:<dir>` (one launch; the probe writes a step, the app runs it with the real
+  shell and answers) and `tools/os-file-actions-probe.ps1` (File Explorer's own windows: the folder shown and the
+  item selected; associated apps by window title; closes only what it opened, lists everything in `opened.txt`).
+- **Planetoid prototype retired:** `--experiment=planetoids`, `PlanetoidExperiment`, `Core.Experiments.Planetoids`
+  (Planetoid, PlanetoidTraveller), `planetoid.gdshader`, `PlanetoidTests` (6 tests, ≈ 0.12 s) and the `planetoids`
+  journey (14.3 s in the last full check) are removed; nothing else used them (traced by type, shader path and
+  method). `--experiment` stays for `planet-gallery`. `docs/planetoid-feasibility.md` is marked historical; AD-xx entries
+  that cite it keep their account.
+- **Not tested:** the direct ShellExecuteEx route (no job, as after a double-click) for Open: every launch available
+  to an agent here (WSL interop, PowerShell, WMI) runs FileScape in a job, so Open went through the desktop shell; Show
+  uses one route either way.
+- **Revisit when:** a Windows update lets File Explorer select a distribution in Linux (the probe's OBSERVED line), or
+  the location-actions panel's "Show in Explorer" row (which opens the folder itself) is reworded to match.

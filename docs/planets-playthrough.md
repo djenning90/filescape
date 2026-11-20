@@ -17,7 +17,7 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
    launcher. Stand on it; the prompt says **Space · fly to Garden Photos**. Press Space: the petals close, you crouch,
    the camera turns to the world, and you fly. You shrink into the little world on the way and land on it.
 4. **Look closer at a file.** The easels show the real pictures. Walk up to one; the prompt says **E · look closer**.
-   **E** shows the picture and its details (and selects it: the card on the right has Open, Show in Explorer, Copy
+   **E** shows the picture and its details (and selects it: the card on the right has Open, Show in folder, Copy
    path). **Enter** opens it with Windows.
 5. **Compare with Places.** Press **V**: the flat Places world, in the same folder with the same picture selected.
    **V** again: back on the planet, beside the picture.

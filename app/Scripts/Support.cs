@@ -41,7 +41,7 @@ public sealed record CommandLine
     /// <summary>--prefs=path: the preferences file. Default: %APPDATA%\FileScape\preferences.json, except under --automate, where nothing is read or saved unless --prefs is given (probes never touch DJ's settings).</summary>
     public string? PreferencesFile { get; init; }
 
-    /// <summary>--experiment=planetoids: the isolated planetoid traversal experiment (PLANET-02) instead of FileScape.</summary>
+    /// <summary>--experiment=planet-gallery: the isolated planet showcase (Planets.PlanetGallery) instead of FileScape. (--experiment=planetoids, the planetoid prototype of PLANET-02, was retired on 2026-11-20.)</summary>
     public string? Experiment { get; init; }
 
     /// <summary>

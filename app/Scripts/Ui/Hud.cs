@@ -327,7 +327,7 @@ public partial class Hud : CanvasLayer
         buttons.AddThemeConstantOverride("h_separation", 6);
         buttons.AddThemeConstantOverride("v_separation", 6);
         _openButton = MakeButton("Open (Enter)", () => OpenRequested?.Invoke(), "Open with the Windows-associated application. Asks first for programs and scripts.");
-        _revealButton = MakeButton("Show in Explorer", () => RevealRequested?.Invoke(), "Open Explorer with this item selected.");
+        _revealButton = MakeButton("Show in folder", () => RevealRequested?.Invoke(), "Open the folder that contains it in File Explorer, with it selected.");
         _parentButton = MakeButton("Parent (Esc)", () => ParentRequested?.Invoke(), "Select the containing directory.");
         _flyButton = MakeButton("Fly to (F)", () => FlyToRequested?.Invoke(), "Bring the selection into view.");
         _copyButton = MakeButton("Copy path", () => CopyPathRequested?.Invoke(), "Copy the full path to the clipboard.");
