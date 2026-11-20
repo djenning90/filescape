@@ -72,10 +72,10 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
     /// <paramref name="pressAfter"/> s after the feet leave the rim. <paramref name="holdOn"/>: W stays held after the
     /// slip (else let go). Also returns when the fall began, seconds after the slip (−1: it did not).
     /// </summary>
-    private static (Response What, float FallAt) Slip(float gap, bool run, bool holdOn, float pressAfter)
+    private static (Response What, float FallAt) Slip(float gap, bool run, bool holdOn, float pressAfter, HazardMoveParams? hazard = null)
     {
         var (surface, span, g0, g1) = Gap(gap);
-        var w = new SphereWalker();
+        var w = new SphereWalker(hazard == null ? null : SphereWalkParams.Default with { Hazard = hazard });
         var start = span.PointAlong(g0 - 3f);
         w.Teleport(surface, start, span.DirectionAt(start));
         var target = span.PointAlong(g1 + 3f);
@@ -159,10 +159,41 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
         rows.Should().NotContain(r => r.What == Response.Nothing, "no press before the return is dead");
         rows.Should().NotContain(r => r.What == Response.CatchFailed, "a catch puts the walker back on the rim, W held or not");
         rows.Should().NotContain(r => r.What == Response.JumpFell, "a coyote jump into the open sky is the catch instead");
-        var catchUntil = run ? 0.25f : 0.38f; // seconds after the slip: walking the window, running the reach closes it
+        var catchUntil = run ? 0.25f : 0.33f; // seconds after the slip: walking the window (0.35 s, AD-75), running the reach closes it
         rows.Where(r => r.p <= catchUntil).Should().OnlyContain(r => r.What == Response.Catch, F($"Space within {catchUntil:0.00} s of slipping catches the rim"));
         rows.Where(r => r.p >= noPress + StepSeconds).Should().OnlyContain(r => r.What == Response.FallEffort, "after that the fall's own effort answers");
         noPress.Should().BeLessThan(run ? 0.35f : 0.45f, "an uncaught slip falls promptly");
+    }
+
+    /// <summary>
+    /// The catch's window with <paramref name="hazard"/>: the last press time (10 ms steps) that is still a catch, walking
+    /// and running with W held and let go, and when an uncaught slip falls (seconds after the slip; the 9 m gap as above).
+    /// </summary>
+    private static string CatchWindows(HazardMoveParams hazard)
+    {
+        var parts = new List<string>();
+        foreach (var run in new[] { false, true })
+        foreach (var holdOn in new[] { true, false })
+        {
+            var last = PressTimes.Where(p => Slip(9f, run, holdOn, p, hazard).What == Response.Catch).DefaultIfEmpty(-1).Max();
+            var fall = Slip(9f, run, holdOn, -1, hazard).FallAt;
+            parts.Add(F($"{(run ? "running" : "walking")} W {(holdOn ? "held" : "let go")}: catch to {last:0.00} s, falls at {fall:0.00} s"));
+        }
+
+        return string.Join("; ", parts);
+    }
+
+    [Fact]
+    public void The_tightening_candidates_measured_one_at_a_time()
+    {
+        // Stream 2 (2026-11-19, AD-75): DJ — "make the recovery challenge only slightly tighter. Change one parameter at a
+        // time, compare it with the current build". The same scripted slips (this class's enumeration) with the current
+        // values and with each candidate changed alone. The chosen one is HazardMoveParams.Default (AD-75 records why).
+        var current = new HazardMoveParams { Window = TimeSpan.FromSeconds(0.4), ReturnReach = Units.Meters.Of(3.2f) };
+        output.WriteLine("current (cfee25d): " + CatchWindows(current));
+        foreach (var w in new[] { 0.35, 0.3 }) output.WriteLine(F($"Window {w:0.00} s alone: ") + CatchWindows(current with { Window = TimeSpan.FromSeconds(w) }));
+        foreach (var r in new[] { 2.9f, 2.6f }) output.WriteLine(F($"ReturnReach {r:0.0} m alone: ") + CatchWindows(current with { ReturnReach = Units.Meters.Of(r) }));
+        output.WriteLine("default now: " + CatchWindows(HazardMoveParams.Default));
     }
 
     [Fact]

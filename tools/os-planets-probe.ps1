@@ -1084,21 +1084,42 @@ try {
       }
       # The catch: Space early (in the coyote time, W held: it used to be a jump further out), mid-window (W let go) and
       # late (W held). Up to three tries each; a try that falls is a FAIL of the timing only if the press came in time.
-      foreach ($case in @(@{ Name = 'early'; At = 0.04; HoldOn = $true }, @{ Name = 'mid-window'; At = 0.2; HoldOn = $false }, @{ Name = 'late'; At = 0.33; HoldOn = $true })) {
+      # The late press comes 0.07 s before the build's window closes (planets.catchWindow: 0.4 s on cfee25d, 0.35 s since
+      # AD-75), so the same probe measures both builds.
+      $win = if ($null -ne (State).planets.catchWindow) { [double](State).planets.catchWindow } else { 0.4 }
+      Log ("  the build's catch window: {0:0.00} s" -f $win)
+      foreach ($case in @(@{ Name = 'early'; At = 0.04; HoldOn = $true }, @{ Name = 'mid-window'; At = 0.2; HoldOn = $false }, @{ Name = 'late'; At = ($win - 0.07); HoldOn = $true })) {
         $recovered = $false; $inTime = $false
         for ($try = 1; $try -le 3 -and -not $recovered; $try++) {
           $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted; $t0 = Last-Press-T
           $s = Slip $case.At -HoldOn:$case.HoldOn
           $pl = $s.planets
           $recovered = [int]$pl.recoveries -gt $rec0 -and [int]$pl.fallsStarted -eq $f
-          $inTime = [double]$pl.pressAfterSeconds -ge 0 -and [double]$pl.pressAfterSeconds -le 0.4
+          $inTime = [double]$pl.pressAfterSeconds -ge 0 -and [double]$pl.pressAfterSeconds -le $win
           Log ("  {0} try {1}: Space {2:0.000} s after the slip -> '{3}'; recoveries +{4}, falls +{5}, efforts {6}" -f $case.Name, $try, [double]$pl.pressAfterSeconds, $pl.pressWas, ([int]$pl.recoveries - $rec0), ([int]$pl.fallsStarted - $f), $pl.lastEfforts)
           [void](Log-Presses "$($case.Name) try $try" $t0)
           if (-not $recovered -and [int]$pl.fallsStarted -gt $f) { $s = Back-In }
         }
         Shot "hazard-recovered-$($case.Name)" | Out-Null
-        Check $recovered "a slip off the rim caught by Space $($case.Name) (aimed $($case.At) s after it, W $(if ($case.HoldOn) { 'held on' } else { 'let go' })): back on the ground (last press $($s.planets.pressAfterSeconds) s, '$($s.planets.pressWas)'; in the 0.4 s window: $inTime)"
+        Check $recovered "a slip off the rim caught by Space $($case.Name) (aimed $($case.At) s after it, W $(if ($case.HoldOn) { 'held on' } else { 'let go' })): back on the ground (last press $($s.planets.pressAfterSeconds) s, '$($s.planets.pressWas)'; in the $win s window: $inTime)"
       }
+      # Just too late (AD-75): Space 0.04 s after the window closes, W held, is not a catch: a visible and audible effort
+      # (the walker's flail or the fall's), and the fall goes on. Judged by when the press arrived: one that came in time
+      # after all is tried again (up to three tries).
+      $judged = $false
+      for ($try = 1; $try -le 3 -and -not $judged; $try++) {
+        $s0 = (State).planets; $rec0 = [int]$s0.recoveries; $f = [int]$s0.fallsStarted; $e0 = [int]$s0.lastEfforts; $t0 = Last-Press-T
+        $s = Slip ($win + 0.04) -HoldOn
+        $pl = $s.planets; $at = [double]$pl.pressAfterSeconds
+        Log ("  just too late try {0}: Space {1:0.000} s after the slip -> '{2}'; recoveries +{3}, falls +{4}, efforts +{5}" -f $try, $at, $pl.pressWas, ([int]$pl.recoveries - $rec0), ([int]$pl.fallsStarted - $f), ([int]$pl.lastEfforts - $e0))
+        [void](Log-Presses "just too late try $try" $t0)
+        if ($at -gt $win) {
+          $judged = $true
+          Check ([int]$pl.recoveries -eq $rec0 -and [int]$pl.lastEfforts -gt $e0 -and $pl.pressWas -in @('effort', 'fall-effort')) ("Space just after the {0:0.00} s window ({1:0.000} s) is not a catch but an effort the player sees and hears ('{2}', efforts +{3})" -f $win, $at, $pl.pressWas, ([int]$pl.lastEfforts - $e0))
+        }
+        if ([int]$pl.fallsStarted -gt $f) { $s = Back-In }
+      }
+      if (-not $judged) { Check $false "a press just after the window (none of three arrived after $win s)" }
       # Too late: Space 0.7 s after the slip (the fall began at ≈ 0.4 s) is a last effort, and so is each press after it
       # in the fall (two more); the fall goes on and returns you to the parent promptly; straight back in.
       $s = State; $e0 = [int]$s.planets.lastEfforts; $fe0 = [int]$s.planets.fallEfforts; $f0 = [int]$s.planets.fallsStarted; $r0 = [int]$s.planets.fallReturns; $t0 = Last-Press-T

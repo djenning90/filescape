@@ -135,10 +135,13 @@ public sealed record HazardMoveParams
 
     /// <summary>
     /// The press must come within this long of the feet passing below the rim's level, seconds. Walking off, that is from
-    /// the moment the feet leave the rim: "Space within 0.4 s of slipping". 0.4 s (2026-11-19, was 0.3): DJ asked for a
-    /// window a player can find and repeat; in the app only ≈ 0.12–0.23 s of the old one was ever reachable (AD-69).
+    /// the moment the feet leave the rim: "Space within 0.35 s of slipping". 0.4 s (2026-11-19, AD-69, was 0.3): DJ asked
+    /// for a window a player can find and repeat; in the app only ≈ 0.12–0.23 s of the old one was ever reachable. 0.35 s
+    /// (2026-11-19, AD-75, PLANET-86): DJ found it close and asked for it only slightly tighter; walking, the catch now
+    /// closes 0.05 s sooner and an uncaught slip falls 0.05 s sooner; running it is unchanged (<see cref="ReturnReach"/>
+    /// closes it first, at 0.27–0.29 s). Shorter is harder.
     /// </summary>
-    public TimeSpan Window { get; init; } = TimeSpan.FromSeconds(0.4);
+    public TimeSpan Window { get; init; } = TimeSpan.FromSeconds(0.35);
 
     /// <summary>
     /// No deeper than this below the rim's level, metres. Walking off, the feet are ≈ 1.6 m down 0.4 s after the slip, so
@@ -156,7 +159,7 @@ public sealed record HazardMoveParams
 
     /// <summary>
     /// The rim last stood on can be caught from up to this far, metres along the surface from where the feet last had
-    /// support to the walker's centre (2026-11-19, AD-69). Walking off (6 m/s) the walker is ≈ 2.4 m out when
+    /// support to the walker's centre (2026-11-19, AD-69). Walking off (6 m/s) the walker is ≈ 2.1 m out when
     /// <see cref="Window"/> closes; running (11 m/s) it is out of reach ≈ 0.3 s after the slip. A jump that falls short of a
     /// leap took off ≥ 4 m back, so this never carries one across (HazardMovementTests).
     /// </summary>

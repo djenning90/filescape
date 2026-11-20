@@ -295,12 +295,14 @@ public partial class PlanetsProbe
     /// AD-65's recovery twirl with the real keys, at the three press times AD-69 promises (PLANET-71): from
     /// <paramref name="stand"/> (1.3 m from an edge, facing it along <paramref name="toward"/>), W walks off the rim and
     /// Space comes early (0.03 s after the feet leave it, inside the coyote time, W still held: it used to be a coyote jump
-    /// further out), mid-window (0.2 s, W let go) or late (0.35 s, W held) — each lifts the traveller back onto the rim.
+    /// further out), mid-window (0.2 s, W let go) or late (0.05 s before the window closes: 0.30 s with AD-75's 0.35 s,
+    /// W held) — each lifts the traveller back onto the rim.
     /// The state file says the same (recoveries, pressAfterSeconds, pressWas).
     /// </summary>
     private async Task RecoverySlips(PlanetComposition comp, NVector3 stand, NVector3 toward)
     {
-        foreach (var (after, holdOn, what) in new[] { (0.03f, true, "early"), (0.2f, false, "mid-window"), (0.35f, true, "late") })
+        var late = (float)P.Walker.Params.Hazard.Window.TotalSeconds - 0.05f;
+        foreach (var (after, holdOn, what) in new[] { (0.03f, true, "early"), (0.2f, false, "mid-window"), (late, true, "late") })
         {
             await RecoverySlip(comp, stand, toward, after, holdOn, what);
         }
