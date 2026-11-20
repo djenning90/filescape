@@ -1240,7 +1240,7 @@ as FileScape while naming remains open.
   (`Step(..., Pace.Play, focusInOrder: true)`). The overview's own order (selected and approached worlds equal) is unchanged.
 - **Decision — a level of detail separate from discovery (PLANET-91):** the layout and the tree are untouched; a separate
   rule (`OverviewDetail`) decides ten times a second which laid-out worlds are drawn. A system opens when its ring is large
-  enough on screen to hold its children apart (≥ 40 px radius and ≥ 16 px of circumference per child); on the way to the
+  enough on screen to hold its children apart (≥ 40 px radius, and its two closest children ≥ 16 px apart on screen: the layout gives small worlds small arcs, so an average over the ring was not enough); on the way to the
   selected world, the approached world (nearest the orbit's centre) and where you stand it is always open; below the
   selected or approached world the size bar is 0.6 × (never the spacing: lowering both, and treating where you stand as a
   focus, left 80 % of the drawn worlds overlapping on `C:\`, since everything on a root is below where you stand); a
@@ -1266,7 +1266,7 @@ as FileScape while naming remains open.
 - **Decision — the "X pauses" closeout:** a product defect seen through a strict instrument. `OverviewDiscovery.State` moved to
   Paused only at the scheduler's next step (every 0.1 s, i.e. every 6–7 frames), so for up to 0.1 s after X the indicator
   still said "Discovering… · X pauses"; the journey read it ≈ 80 ms after the key and failed whenever the next step had not
-  run yet (3 of 14 runs across builds; reproduced deterministically in Core on the base source). Setting `Paused` now sets
+  run yet (2 of 16 repeated runs on the base exes, one of them under load, besides the two `check full` failures; reproduced deterministically in Core on the base source). Setting `Paused` now sets
   the state at once. The instrument was right to fail; it is unchanged.
 - **Considered, not built:** raising the overview's 1,500-world layout budget now that drawing is separate (a relayout at
   1,500 already costs up to ≈ 10 ms on the main thread); per-world materials or textures (a material per world would end

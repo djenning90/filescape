@@ -8,7 +8,7 @@ namespace FileScape.Core.Planets;
 /// <para>
 /// The rule, per laid-out system (a world with children in the layout): it is <b>expanded</b> (its children drawn) when
 /// its ring is large enough on screen to hold them apart — at least <see cref="Rules.ExpandRingPixels"/> of radius, and
-/// enough circumference for <see cref="Rules.ChildSpacingPixels"/> per child — or when it is on the way to a focus (the
+/// its two closest children at least <see cref="Rules.ChildSpacingPixels"/> apart — or when it is on the way to a focus (the
 /// selected world, the world approached, where you stand; always expanded, so you see where you are). Below the selected or
 /// approached world the size bar (not the spacing) is lower (<see cref="Rules.FocusFactor"/>: those systems open sooner); away from the focus it rises with
 /// every level a branch leaves the focus's path (<see cref="Rules.BranchPenaltyPerLevel"/>), so distant branches show
@@ -33,7 +33,7 @@ public static class OverviewDetail
         /// 12 px across) would sit on top of their parent. Higher folds more.</summary>
         public float ExpandRingPixels { get; init; } = 40f;
 
-        /// <summary>Ring circumference needed per child, pixels: a 12 px disc and a gap, so neighbours on the ring stay
+        /// <summary>The least on-screen distance between the two closest children of an open ring, pixels: a 12 px disc and a gap, so neighbours on the ring stay
         /// apart (a 64-world ring opens at ≈ 160 px of radius).</summary>
         public float ChildSpacingPixels { get; init; } = 16f;
 
@@ -73,6 +73,27 @@ public static class OverviewDetail
         {
             parent[i] = bodies[i].ParentId >= 0 && index.TryGetValue(bodies[i].ParentId, out var p) ? p : -1;
             if (parent[i] >= 0) childCount[parent[i]]++;
+        }
+
+        // The closest pair of children round each ring (laid-out places, metres): what decides whether they fit apart.
+        var minChord = new float[n];
+        var kids = new Dictionary<int, List<int>>();
+        for (var i = 0; i < n; i++)
+        {
+            if (parent[i] < 0) continue;
+            if (!kids.TryGetValue(parent[i], out var list)) kids[parent[i]] = list = [];
+            list.Add(i);
+        }
+
+        foreach (var (p, list) in kids)
+        {
+            var best = float.MaxValue;
+            for (var a = 0; a < list.Count; a++)
+            {
+                for (var b = a + 1; b < list.Count; b++) best = MathF.Min(best, System.Numerics.Vector3.Distance(bodies[list[a]].Position, bodies[list[b]].Position));
+            }
+
+            minChord[p] = list.Count >= 2 ? best : 0f;
         }
 
         // The focus path (a focus and its ancestors) and the focus subtrees.
@@ -116,7 +137,12 @@ public static class OverviewDetail
 
             // The focus lowers only the size bar, never the spacing: below it a ring still opens only when its children
             // fit round it apart (lowering both drew a drive root's systems on top of each other, 80 % overlapping).
-            var bar = MathF.Max(rules.ExpandRingPixels * (inFocus[i] ? rules.FocusFactor : 1f), childCount[i] * rules.ChildSpacingPixels / (2 * MathF.PI));
+            // Spacing: the closest two children on the ring (chord c) must be ChildSpacingPixels apart on screen, i.e. the ring
+            // radius R must reach ChildSpacingPixels × R / c. For k evenly spaced children that is ≈ k × spacing / 2π; the
+            // layout gives each child an arc in proportion to its system, so small worlds beside each other sit closer
+            // (averaging over the ring left half the worlds drawn on C:\ overlapping).
+            var spacing = minChord[i] > 0 ? rules.ChildSpacingPixels * bodies[i].OrbitRadius / minChord[i] : 0f;
+            var bar = MathF.Max(rules.ExpandRingPixels * (inFocus[i] ? rules.FocusFactor : 1f), MathF.Max(spacing, childCount[i] * rules.ChildSpacingPixels / (2 * MathF.PI)));
             bar *= 1 + rules.BranchPenaltyPerLevel * branch[i];
             if (wasExpanded != null && i < wasExpanded.Length && wasExpanded[i]) bar *= rules.CollapseShare;
             var ppm = i < pixelsPerMetre.Length ? pixelsPerMetre[i] : 0f;

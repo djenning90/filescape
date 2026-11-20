@@ -333,7 +333,7 @@ public partial class PlanetWorld : Node3D
     /// While background discovery is listing during play (PLANET-90), the least time between two recompositions of the
     /// world you stand on, seconds. Discovery lists your own world's subtree first, and every listing below it changes
     /// its children's sizes and so its signature: without this the planet was rebuilt every 0.35 s, each swap a long
-    /// frame (measured: walking p99 9.1 → 27.8 ms on the deep fixture). With it the planet still grows with what is found,
+    /// frame (deep fixture, no vsync: walking p99 9.1 ms off, 27.8 ms on; with the gap p99 5.6 ms on and off, 7 swaps of ≤ 35 ms in 30 s). With it the planet still grows with what is found,
     /// in steps; the first change after a quiet spell is still taken at once.
     /// </summary>
     private static readonly TimeSpan RecomposeGapWhileDiscovering = TimeSpan.FromSeconds(4);
