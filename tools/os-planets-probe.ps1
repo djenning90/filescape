@@ -865,8 +865,11 @@ try {
     $n = 0
     for (; $n -lt 30 -and (State).tutorialStep -eq 12; $n++) { Client-Pos $script:w 800 620; Wheel -1; Start-Sleep -Milliseconds 350 }
     Start-Sleep -Milliseconds 500; $s = State
-    Log "  after $n real wheel notches: camera $z0 -> $($s.planets.uniZoom) m, worlds in view $w0 -> $($s.planets.uniWorlds)"
-    Check ($s.tutorialStep -ge 13 -and [double]$s.planets.uniZoom -ge 3 * $z0 -and ([int]$s.planets.uniWorlds -ge $w0 + 10 -or $w0 -ge 60)) "the real wheel zoomed out and the step completed ($($s.tutorialTitle); when it opened with most of the sky in view, the zoom alone counts)"
+    Log "  after $n real wheel notches: camera $z0 -> $($s.planets.uniZoom) m, worlds in view $w0 -> $($s.planets.uniWorlds) (drawn $($s.planets.uniDrawn))"
+    # The lesson's own bar (Main.ZoomedOutEnough): ten more worlds in view, or ten fewer than the overview draws now (the level
+    # of detail folds distant systems as you zoom out, PLANET-91), or the sky was nearly all in view when it opened.
+    $drawn = if ($null -ne $s.planets.uniDrawn) { [int]$s.planets.uniDrawn } else { [int]::MaxValue }
+    Check ($s.tutorialStep -ge 13 -and [double]$s.planets.uniZoom -ge 3 * $z0 -and ([int]$s.planets.uniWorlds -ge [Math]::Min($w0 + 10, [Math]::Max(0, $drawn - 10)) -or $w0 -ge 60)) "the real wheel zoomed out and the step completed ($($s.tutorialTitle); when it opened with most of the sky in view, the zoom alone counts)"
     Shot 'landmarks-zoom-after' | Out-Null
     Hold-Key 'Escape' 60; $s = Wait-Step 99 8000
     Check ($s.tutorialTitle -eq 'done') "Esc back where you stood: walkthrough complete"

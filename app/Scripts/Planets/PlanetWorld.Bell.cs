@@ -213,7 +213,7 @@ public partial class PlanetWorld
         var stones = c?.Comp.Overlook is { } ov2 && !OnBenchWorld
             ? string.Join(",", ov2.Steps.Select(st => System.FormattableString.Invariant($"[{CameraTurnTo(st.Direction):0.#},{PlanetShape.Angle(_walker.Up, st.Direction) * c.Comp.Shape.Radius:0.##}]")))
             : "";
-        return System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},");
+        return System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},\"uniDrawn\":{UniverseDrawnCount},");
     }
 
     /// <summary>Where the bell tower's axis is and a point <paramref name="metres"/> out from it towards the arrival (probes walk in from there), or null without a bell.</summary>
