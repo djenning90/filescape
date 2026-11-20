@@ -12,6 +12,10 @@ Left-drag to look around, use WASD to move, and press Space to jump.
 Stand on a launcher and press Space to fly to its folder.
 Press T for Overview, Esc to return to the surface, and F1 for all controls.
 
+From Command Prompt, FileScape.exe returns to the prompt at once. To watch the log
+in the window you started it from, run FileScape.console.exe instead: it returns
+when you close the game.
+
 If you report a problem, include the build ID from build-info.txt and the steps
 that got you there. Starter Sky is a good place to capture a screenshot you
 are comfortable sharing.
