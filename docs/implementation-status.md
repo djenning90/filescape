@@ -27,7 +27,8 @@ staged or installed: every app run was from the worktree project (`fs.sh run`) o
   two late at the board gets the same catch.
 - Real input on the base this session: **not run** — the probe launched the staged build and stopped before any input
   (Windows would not bring the window to the front; the foreground was ShellHost and the desktop had been idle 7 min).
-  Nothing was sent anywhere.
+  Retried once ≈ 1 h later (`base-hazard-2`): the same stop, with another program's "Open with" dialog in front and the
+  desktop idle ≈ 1 h. Nothing was sent anywhere; the launched builds were closed by the probe.
 
 | Area | Status | Evidence |
 |---|---|---|
@@ -38,9 +39,10 @@ staged or installed: every app run was from the worktree project (`fs.sh run`) o
 | Press log and fresh state for probes | **Demonstrated** in-app | `planets.presses` in the state file; each press logged in `planets-hazard` |
 | Real input `-Hazard -Recovery` ×5 and `-Look` | **Unknown**: written and parse-checked, not run (see above) | — |
 | Core (WSL) | 737 passed, 26 skipped, 0 failed; behaviour baseline identical before/after | `tools/fs.sh test-wsl` |
+| No regressions | **Demonstrated** in-app | `planets-navigation` 47/0 (with its listing-delay instrument; a first run without the instrument's arguments failed its two listing checks, an invocation error); `planets-hazard` 87/0 |
 
 Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-19-stream2\` (`base-look`, `work-look-1`, `work-hazard-1`
-(fix, window 0.40), `work-hazard-2` (final), `work-nav-1`, `base-hazard-1` (the stopped real-input attempt)).
+(fix, window 0.40), `work-hazard-2` (final), `work-nav-2`, `base-hazard-1`/`-2` (the stopped real-input attempts)).
 
 **How to play them now:** slip off an edge? Space within about a third of a second (0.35 s) walking, about a quarter
 running. Long jump: Space on the amber board — or just as you run off it — and again at the top of the jump.
