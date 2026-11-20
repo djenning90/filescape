@@ -65,6 +65,18 @@ public sealed record CommandLine
     /// </summary>
     public bool TestBroad { get; init; }
 
+    /// <summary>
+    /// Before/after instruments for the fifth playtest follow-up (PLANET-90..92, AD-77), so one build measures both:
+    /// --test-play-discovery=off (no background discovery while you play), --test-overview-detail=off (every laid-out
+    /// world drawn, as before the level of detail), --test-overview-look=plain (every solid world in the old palette
+    /// colour and the old material, as before the varied looks).
+    /// </summary>
+    public bool TestPlayDiscoveryOff { get; init; }
+
+    public bool TestOverviewDetailOff { get; init; }
+
+    public bool TestOverviewLookPlain { get; init; }
+
     /// <summary>--test-relief=classic (comparison instrument, PLANET-59): ordinary worlds keep the hills they had before 2026-11-17, for before/after screenshots in one build.</summary>
     public bool TestClassicRelief { get; init; }
 
@@ -120,6 +132,9 @@ public sealed record CommandLine
             TestListDelayMatch = Get("test-list-delay-match"),
             TestClassicRelief = Get("test-relief") == "classic",
             TestBroad = Get("test-broad") != null,
+            TestPlayDiscoveryOff = Get("test-play-discovery") == "off",
+            TestOverviewDetailOff = Get("test-overview-detail") == "off",
+            TestOverviewLookPlain = Get("test-overview-look") == "plain",
         };
     }
 }

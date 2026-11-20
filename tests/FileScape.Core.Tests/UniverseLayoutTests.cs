@@ -29,6 +29,17 @@ public class UniverseLayoutTests
     }
 
     [Fact]
+    public void The_selection_alone_is_the_layouts_worlds_in_its_order()
+    {
+        // PLANET-90: background discovery during play takes its candidates from the selection pass without laying out.
+        var tree = Spec.WithDirs("root", 80).Build();
+        var bodies = UniverseLayout.Compute(tree);
+        UniverseLayout.Selection(tree).Should().Equal(bodies.Select(b => (b.NodeId, b.Depth)));
+        var sample = Sample();
+        UniverseLayout.Selection(sample).Should().Equal(UniverseLayout.Compute(sample).Select(b => (b.NodeId, b.Depth)));
+    }
+
+    [Fact]
     public void Every_known_folder_is_one_world_and_none_overlap()
     {
         var tree = Sample();

@@ -103,6 +103,7 @@ public partial class PlanetWorld
         BuildRootMarkPanel(root); // PLANET-45 (PlanetWorld.RootMark.cs)
         BuildDiscoveryPanel(root); // PLANET-76 (PlanetWorld.Discovery.cs)
         BuildPictureViewer(); // PLANET-96 (PlanetWorld.Gallery.cs)
+        BuildUniverseHint(root); // PLANET-93 (PlanetWorld.UniverseNav.cs)
         _previewPlayer = new AudioStreamPlayer { VolumeDb = -4 };
         AddChild(_previewPlayer);
     }

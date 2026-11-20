@@ -26,7 +26,13 @@ public partial class Main : IWorldSession
     /// <summary>Adds the planetary world; it stays inactive (no camera, no ticks) until Planets is the experience.</summary>
     private void BuildPlanets()
     {
-        _planets = new PlanetWorld(this) { Name = "Planets" };
+        _planets = new PlanetWorld(this)
+        {
+            Name = "Planets",
+            PlayDiscoveryEnabled = !_testInstruments.PlayDiscoveryOff,
+            OverviewDetailEnabled = !_testInstruments.DetailOff,
+            OverviewLooksVaried = !_testInstruments.LookPlain,
+        };
         AddChild(_planets);
         SetupSound(); // Main.Sound.cs (PLANET-47)
         ConnectPlanetsDestinations(); // Main.Navigation

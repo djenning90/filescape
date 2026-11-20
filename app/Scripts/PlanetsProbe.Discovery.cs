@@ -128,6 +128,7 @@ public partial class PlanetsProbe
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var s0 = Snap(root, 0);
         LogSnap(s0);
+        LogDetail("at 0 s"); // PlanetsProbe.Detail.cs (PLANET-91: drawn, folded, overlap)
         Check(P.DiscoveryIndicatorShown && P.DiscoveryText.Contains("Discover", StringComparison.Ordinal), F($"a small indicator says discovery is going on: \"{(countsOnly ? P.DiscoveryText.Split('·')[0].Trim() : P.DiscoveryText)}\""));
         if (!countsOnly) await Shot("discovery-0s");
         await Seconds(2.5); // the opening pull-back settles before motion is judged
@@ -138,6 +139,7 @@ public partial class PlanetsProbe
         _discoveryTracking = false;
         var s10 = Snap(root, 10);
         LogSnap(s10);
+        LogDetail("at 10 s");
         if (!countsOnly) await Shot("discovery-10s");
         var aim10 = P.UniverseCameraAim;
         var anchorNow = P.UniverseScreen(P.UniverseSelected);
@@ -180,6 +182,7 @@ public partial class PlanetsProbe
         await WaitUntilSecond(clock, 30);
         var s30 = Snap(root, 30);
         LogSnap(s30);
+        LogDetail("at 30 s");
         if (!countsOnly) await Shot("discovery-30s");
         Check(s30.Worlds >= s10.Worlds && s30.DeepestListed >= s10.DeepestListed, F($"it keeps going: {s10.Worlds} → {s30.Worlds} worlds, deepest listed {s10.DeepestListed} → {s30.DeepestListed}"));
         if (!countsOnly) Check(s30.DeepestListed >= s0.DeepestListed + 2, F($"multiple additional levels listed without visiting them: {s0.DeepestListed} → {s30.DeepestListed}"));

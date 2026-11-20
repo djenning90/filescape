@@ -70,6 +70,7 @@ public partial class PlanetsProbe : ProbeBase
         TrackDiscoveryFrame(delta); // PlanetsProbe.Discovery.cs
         TrackMusic(); // PlanetsProbe.Music.cs
         TrackTravelFrame(); // PlanetsProbe.Travel.cs
+        TrackPlayFrame(delta); // PlanetsProbe.Detail.cs
         if (!_recording || !P.Active) return;
         var phase = P.PhaseName;
         _frames.Add((delta * 1000, phase));
@@ -127,6 +128,8 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-relief") await ReliefRun(); // PlanetsProbe.Relief.cs (PLANET-59)
         else if (Mode == "planets-sky") await SkyRun(); // PlanetsProbe.Sky.cs (PLANET-60)
         else if (Mode == "planets-overview-discovery") await OverviewDiscoveryRun(); // PlanetsProbe.Discovery.cs (PLANET-76..78)
+        else if (Mode == "planets-play-discovery") await PlayDiscoveryRun(); // PlanetsProbe.Detail.cs (PLANET-90)
+        else if (Mode == "planets-overview-navigate") await OverviewNavigateRun(); // PlanetsProbe.Detail.cs (PLANET-91..93)
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
         else if (Mode == "planets-music") await MusicRun(); // PlanetsProbe.Music.cs (AD-79, PLANET-97/98)
         else if (Mode == "planets-looks") await LooksRun(); // PlanetsProbe.Looks.cs (PLANET-94/95)

@@ -1400,6 +1400,62 @@ as FileScape while naming remains open.
 - **Revisit when:** Godot lets an exported GUI build skip AttachConsole, or DJ's terminal is Windows Terminal and it
   behaves differently (not tested: a new tab could land in DJ's open Windows Terminal).
 
+## AD-77 Discovery in play, a level of detail separate from discovery, varied miniature worlds, and moving through a large overview (2026-11-19; amends AD-71)
+
+- **Problem:** DJ (fifth playtest follow-up, PLANET-90..93): keep the progressive Overview discovery, but let it run during
+  ordinary play too (same scheduler, what he is visiting first, the game responsive); the breadth and depth overwhelm the
+  view ("at the Ubuntu root, worlds overlap until they form solid shapes"); many miniature planets look uniformly pink;
+  navigation through a large universe should be more dependable; and the intermittent "X pauses" failure must be closed.
+- **Decision — discovery during play (PLANET-90):** the overview's `OverviewDiscovery` and `WorldExplorer.Discover`, unchanged
+  in what they list and refuse, at a quieter **play pace** (`Limits.PlayListingsPerSecond` 2/s, `PlayMaxInFlight` 2, so two
+  of the explorer's four workers stay free for the visit), only while walking (never during a flight, a landing or a hop),
+  paused by the same X. The candidates are what the overview would draw (`UniverseLayout.Selection`, the layout's first
+  pass without placing anything; rebuilt at most every 2 s when the tree changed), and the focus is a priority order — the
+  current world's subtree, then its parent's (its neighbours), then its grandparent's, then the rest breadth-first
+  (`Step(..., Pace.Play, focusInOrder: true)`). The overview's own order (selected and approached worlds equal) is unchanged.
+  Because discovery lists your own world's subtree first, and each listing changes its signature, the world you stand on
+  recomposes at most every 4 s while discovery is listing (`RecomposeGapWhileDiscovering`): without it the planet was
+  rebuilt every 0.35 s and the walking p99 went from 9.1 to 27.8 ms; with it p99 is 5.6 ms with discovery on and off.
+  `verify.sh` runs the overview discovery journey with `--test-play-discovery=off` (its 0 s picture is the visit's own
+  listings) and the WSL-root journey likewise (a real root: nothing listed in the background during a probe).
+- **Decision — a level of detail separate from discovery (PLANET-91):** the layout and the tree are untouched; a separate
+  rule (`OverviewDetail`) decides ten times a second which laid-out worlds are drawn. A system opens when its ring is large
+  enough on screen to hold its children apart (≥ 40 px radius, and its two closest children ≥ 16 px apart on screen: the layout gives small worlds small arcs, so an average over the ring was not enough); on the way to the
+  selected world, the approached world (nearest the orbit's centre) and where you stand it is always open; below the
+  selected or approached world the size bar is 0.6 × (never the spacing: lowering both, and treating where you stand as a
+  focus, left 80 % of the drawn worlds overlapping on `C:\`, since everything on a root is below where you stand); a
+  ring's on-screen size counts its foreshortening (an ellipse's circumference, r (1 + |n·v|) / 2); for each level a branch is away from that path the bar rises by 0.5 ×
+  (distant branches shallower); an open system folds again only below 0.8 × its bar. Worlds fade in and out (6/s). A
+  folded system wears a faint haze the size of its ring, and its name (shown for the four biggest folded systems in view)
+  says "+N worlds inside" (the first wording, "N worlds folded in (come closer)", was cut off in the name tag). Discovery's candidates stay every laid-out world, so what is known never
+  depends on what is drawn, and a folded world is never re-listed or forgotten.
+- **Decision — varied miniature worlds (PLANET-92):** `OverviewWorldLook` in Core: the dominant kind of file picks the hue
+  family (images rose, documents blue, code amber, audio violet, video indigo, archives rust, data cyan), a strong second
+  kind (≥ 20 %) the second colour; a folder of folders takes one of eight mineral families (sand, slate, sage, ochre,
+  teal, rust, lilac, stone) — the old Hearth salmon came from every folder of folders; a project is the workshop's teal;
+  an empty folder pale. Pattern: banded (folders of folders with ≥ 40 entries below), spotted (one kind ≥ 70 %), swirled
+  (three or more kinds), capped or plain. The seed is FNV-1a of the case-folded names of the folder and its parent, never
+  the node id (ids follow listing order, which discovery makes vary between runs), so looks are stable across runs.
+  Drawn by one shared `ShaderMaterial` (`overview_world.gdshader`), the look passed as the MultiMesh instance colour and
+  custom data: still one draw for every solid world.
+- **Decision — navigation (PLANET-93):** selection is the orbit anchor (as before: a click, and now [ / ] and Z, select,
+  frame and centre the orbit on the world); the **wheel zooms toward the pointer** (each notch in over a world slides the
+  orbit's centre 30 % of the way to it); **[ ]** step round the selected world's ring; **Z** goes up a level; a two-line
+  hint at the top of the view on opening (9 s the first two times, then 4 s; it fades once two of its controls are used).
+  No key travels; landing stays Enter or a double-click through the shared path.
+- **Decision — the "X pauses" closeout:** a product defect seen through a strict instrument. `OverviewDiscovery.State` moved to
+  Paused only at the scheduler's next step (every 0.1 s, i.e. every 6–7 frames), so for up to 0.1 s after X the indicator
+  still said "Discovering… · X pauses"; the journey read it ≈ 80 ms after the key and failed whenever the next step had not
+  run yet (2 of 16 repeated runs on the base exes, one of them under load, besides the two `check full` failures; reproduced deterministically in Core on the base source). Setting `Paused` now sets
+  the state at once. The instrument was right to fail; it is unchanged.
+- **Considered, not built:** raising the overview's 1,500-world layout budget now that drawing is separate (a relayout at
+  1,500 already costs up to ≈ 10 ms on the main thread); per-world materials or textures (a material per world would end
+  the single draw); collapsing by tree depth alone (a fixed depth cannot tell a wide root from a deep one; screen size can);
+  discovery in play outside the scope rule (still only inside the arrival folder or below a visited place).
+- **Revisit if:** DJ finds the play pace too eager or too slow, the folding too early or late (`ExpandRingPixels`,
+  `ChildSpacingPixels`, `FocusFactor`, `BranchPenaltyPerLevel`), the haze too faint or strong, a colour family wrong for
+  his folders, the wheel's pull toward the pointer too strong (`WheelTowardShare`), or [ ] and Z unhelpful.
+
 ## AD-78 The tutorial card in rich text; the way back's rim and spire; a picture gallery as the first content world (2026-11-19)
 
 - **Problem:** DJ after the fourth playtest (PLANET-94..96): the Learn to play steps were plain sentences with the keys

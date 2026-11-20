@@ -431,9 +431,10 @@ public partial class PlanetWorld
         if (_universe == null) return list;
         var vp = GetViewport().GetVisibleRect();
         var right = _camera.GlobalBasis.X;
-        foreach (var (b, at) in _uniBodies)
+        for (var i = 0; i < _uniBodies.Count; i++)
         {
-            if (_camera.IsPositionBehind(at)) continue;
+            var (b, at) = _uniBodies[i];
+            if (!Drawn(i) || _camera.IsPositionBehind(at)) continue; // folded worlds are not on screen (PLANET-91)
             var c = _camera.UnprojectPosition(at);
             var edge = _camera.UnprojectPosition(at + right * DrawnRadius(b, at));
             var px = 2f * c.DistanceTo(edge);
