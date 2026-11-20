@@ -130,6 +130,18 @@ public partial class PlanetWorld
         return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
     }
 
+    /// <summary>The heading to the world <paramref name="id"/> in this sky, as <see cref="CameraHeadingDegrees"/> measures it (0 when it is not in the sky; probes).</summary>
+    public float HeadingTo(int id)
+    {
+        if (SkyCentreOf(id) is not { } p) return 0;
+        var up = Gd(_walker.Up);
+        var north = Gd(PlanetFrame.North(_walker.Up));
+        var f = p - Gd(_walker.Feet);
+        f -= up * f.Dot(up);
+        if (f.LengthSquared() < 1e-6f) return 0;
+        return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
+    }
+
     /// <summary>
     /// The look's elevation as the player sees it, degrees (PLANET-67): the angle of the camera's view direction above the
     /// local horizontal — the traveller's up on a planet, the overview's up in the overview; negative looks down. A

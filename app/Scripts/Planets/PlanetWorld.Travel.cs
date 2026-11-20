@@ -13,7 +13,7 @@ namespace FileScape.App.Planets;
 /// release lands on the music's sixteenth-note grid), a brisk arc (1.5–2.5 s) into the target's placement, and a
 /// landing that re-expresses the whole scene in the target's frame, so nothing on screen jumps. The navigator is told
 /// at the release (so the folder is listed while you fly); a change that comes from elsewhere (Backspace, the
-/// breadcrumb, Destinations, a path) starts the same launch from where you stand. A destination that is not a
+/// breadcrumb, Destinations, a path) starts the same departure, from the launcher that leads there (AD-84). A destination that is not a
 /// neighbour in the sky is reached by a warp: a rise into a streak of light and a descent onto the new world.
 /// <para>
 /// The phases (<see cref="Phase"/>): <b>WindUp</b> (crouch, camera turns to the target; at its end the release asks the
@@ -140,8 +140,11 @@ public partial class PlanetWorld
     /// <summary>Logs a phase change for probes (the names are read by probes: keep them as they are).</summary>
     private void Mark(string phase) => LaunchLog.Add((phase, _s.Now.TotalSeconds));
 
-    /// <summary>Space on a launcher pad: wind up towards its world, then release.</summary>
-    private void BeginLaunch(int targetId, NVector3 padDirection, bool fromPad)
+    /// <summary>
+    /// A launch asked for on this world (Space on a pad, G and its kin, a trip's hop): the departure from the launcher
+    /// that leads there (PlanetWorld.Departure; a pad press winds up on its pad at once, as it always did).
+    /// </summary>
+    private void BeginLaunch(int targetId, DepartureEntry entry)
     {
         // One transfer at a time; during a trip only the trip launches (its hop is marked InHop just before).
         if (_phase != Phase.Walking || _trip is { InHop: false } || _current == null || _s.Tree == null) return;
@@ -152,19 +155,7 @@ public partial class PlanetWorld
         }
 
         _hop = null;
-        if (!fromPad)
-        {
-            Depart(targetId, change: null, ReleaseAction.Into); // PLANET-82: to its pad first (PlanetWorld.Departure)
-            return;
-        }
-
-        _transfer = new Transfer { LaunchTarget = targetId, FromPad = fromPad, PadDirection = padDirection };
-        _transfer.WindUp = _audio.AlignToSixteenth(WindUpSeconds, maxShiftSeconds: WindUpBeatShiftSeconds);
-        _phase = Phase.WindUp;
-        _audio.WindUp(_transfer.WindUp);
-        _current.Visual?.ChargeLauncher(targetId, _transfer.WindUp);
-        CloseOverlays();
-        Mark("windup");
+        Depart(targetId, change: null, ReleaseAction.Into, entry); // PLANET-82, PLANET-120: its pad first
     }
 
     /// <summary>
@@ -212,10 +203,13 @@ public partial class PlanetWorld
             return; // the arrival compares the navigator with where it lands and moves on if they differ
         }
 
-        // The breadcrumb, Destinations, Locations, Go to path, a link answering: the same departure as any other (its pad
-        // first, PLANET-82), the navigator already there.
+        // Back where you already are (Esc took back a dialog's departure, PlaceNavigator.Revert): nothing to travel.
+        if (_current != null && change.To == _current.FolderId) return;
+
+        // The breadcrumb, Destinations, favourites, Locations, Go to path, a link answering: the same departure as any other
+        // (from the launcher that leads there, PLANET-120), the navigator already there.
         _hop = null;
-        Depart(change.To, change, ReleaseAction.Into);
+        Depart(change.To, change, ReleaseAction.Into, DepartureEntry.NavigatorChange);
     }
 
     /// <summary>One frame of a place change (any phase but Walking); the overlook view fades out meanwhile.</summary>
@@ -358,10 +352,18 @@ public partial class PlanetWorld
         Mark("cancel");
     }
 
-    /// <summary>Where the destination hangs in the sky (for the wind-up's camera), or null when it is not in view (a warp).</summary>
+    /// <summary>
+    /// Where the destination hangs in the sky (for the wind-up's camera); for a place not in this sky, the world its pad
+    /// leads to (the way down, or the way back: AD-84), so the wind-up looks where the warp is headed; else null.
+    /// </summary>
     private Godot.Vector3? TargetCentreForCamera(Transfer tr)
     {
-        var id = tr.Change?.To ?? tr.LaunchTarget;
+        return SkyCentreOf(tr.Change?.To ?? tr.LaunchTarget) ?? (tr.Pad is { } pad ? SkyCentreOf(pad.TargetId) : null);
+    }
+
+    /// <summary>Where the world for <paramref name="id"/> hangs in this sky (a child or the parent), or null.</summary>
+    private Godot.Vector3? SkyCentreOf(int id)
+    {
         if (_children.TryGetValue(id, out var c)) return c.Node.GlobalPosition;
         if (_parent != null && _parent.FolderId == id) return _parent.Node.GlobalPosition;
         return null;
@@ -638,7 +640,7 @@ public partial class PlanetWorld
 
     // ------------------------------------------------------------------ commands from the session
 
-    /// <summary>G: launch to the selected folder from where you stand (or to the folder of a selected file).</summary>
+    /// <summary>G: launch to the selected folder from the launcher that leads there (PlanetWorld.Departure).</summary>
     public void LaunchToSelection()
     {
         if (_universe != null)
@@ -654,8 +656,7 @@ public partial class PlanetWorld
         var n = tree[id];
         if (id == _current.FolderId) { _s.Toast("You are already here."); return; }
         if (!n.IsDirectory && n.Kind != NodeKind.Link) { _s.Toast("Files are not worlds: E looks closer, Enter opens it with Windows."); return; }
-        var launcher = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == id);
-        BeginLaunch(id, launcher?.Direction ?? _walker.Up, fromPad: false);
+        BeginLaunch(id, DepartureEntry.GoInside);
     }
 
     /// <summary>Home: back to the arrival meadow by a short hop.</summary>

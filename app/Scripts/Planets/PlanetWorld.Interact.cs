@@ -622,18 +622,45 @@ public partial class PlanetWorld
     }
 
     /// <summary>
-    /// F and the card's "Face it (F)": turn to face the selection (an object here, or its world in the sky). False when
-    /// there is nothing on this world or in its sky to face (the caller says why: PLANET-87, never a silent no-op).
+    /// F's way back (PLANET-123, AD-84): the camera heading before the last Face, while turning back still applies (the
+    /// same world and selection, not moved or looked away, within the window: <see cref="FaceToggle{TView}"/>).
+    /// </summary>
+    private readonly FaceToggle<Godot.Vector3> _faceToggle = new();
+
+    /// <summary>What the last F did, for probes: "face", "restore" or "" (nothing to face).</summary>
+    public string LastFaceAction { get; private set; } = "";
+
+    /// <summary>Where things stand for F's way back: this world, the selection, the feet (metres) and the camera's heading.</summary>
+    private FaceToggle<Godot.Vector3>.Where FaceWhere() =>
+        new(_current?.FolderId ?? -1, _s.Selection.Selected, _walker.Feet, Nv(_camFwd), _s.Now);
+
+    /// <summary>
+    /// F and the card's "Face it (F)": turn to face the selection (an object here, or its world in the sky); a second
+    /// press, while it still applies, turns back to the heading you had before (PLANET-123). False when there is nothing
+    /// on this world or in its sky to face (the caller says why: PLANET-87, never a silent no-op).
     /// </summary>
     public bool FaceSelection()
     {
+        LastFaceAction = "";
         if (_s.Tree == null || _current == null) return false;
+        if (_faceToggle.TryRestore(FaceWhere(), out var before))
+        {
+            _camFwd = before;
+            _sinceOrbitSeconds = 0;
+            LastFaceAction = "restore";
+            _s.Toast("Turned back to your earlier view (F faces it again).");
+            return true;
+        }
+
         if (FacePoint(_s.Selection.Selected) is not { } p) return false;
+        var prior = _camFwd;
         var up = Gd(_walker.Up);
         var to = p - Gd(_walker.Feet);
         to -= up * to.Dot(up);
         if (to.LengthSquared() > 1e-4f) _camFwd = to.Normalized();
         _sinceOrbitSeconds = 0;
+        _faceToggle.Faced(FaceWhere(), prior);
+        LastFaceAction = "face";
         return true;
     }
 

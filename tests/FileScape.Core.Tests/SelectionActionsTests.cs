@@ -56,7 +56,7 @@ public class SelectionActionsTests
     [Fact]
     public void On_a_planet_F_faces_what_is_on_this_world_and_says_why_not_otherwise()
     {
-        SelectionActions.For(CardView.PlanetSurface, T(CardTarget.File)).Fly.Should().Be(new CardAction(true, "Face it (F)", "Turn to face it on this world or in its sky."));
+        SelectionActions.For(CardView.PlanetSurface, T(CardTarget.File)).Fly.Should().Be(new CardAction(true, "Face it (F)", "Turn to face it on this world or in its sky; F again turns back."));
         SelectionActions.For(CardView.PlanetSurface, T(CardTarget.Folder, standing: true)).Fly.Tooltip.Should().Contain("standing on");
         var far = SelectionActions.For(CardView.PlanetSurface, T(CardTarget.LocationRoot, inView: false)).Fly;
         far.Enabled.Should().BeFalse();

@@ -1,3 +1,4 @@
+using FileScape.Core.Planets;
 using FileScape.Core.Places;
 using Godot;
 
@@ -213,9 +214,8 @@ public partial class PlanetWorld
         }
 
         _s.Select(next);
-        var launcher = _current.Comp.Launchers.FirstOrDefault(l => l.TargetId == next);
         t.InHop = true;
-        BeginLaunch(next, launcher?.Direction ?? _walker.Up, fromPad: false);
+        BeginLaunch(next, DepartureEntry.TripHop);
         if (_phase is not (Phase.Departing or Phase.WindUp))
         {
             t.InHop = false;

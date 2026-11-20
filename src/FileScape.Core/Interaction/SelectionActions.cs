@@ -104,7 +104,7 @@ public static class SelectionActions
             _ => t.StandingOn
                 ? Off("Face it (F)", $"you are standing on {t.Name}.")
                 : t.InView
-                    ? new CardAction(true, "Face it (F)", "Turn to face it on this world or in its sky.")
+                    ? new CardAction(true, "Face it (F)", "Turn to face it on this world or in its sky; F again turns back.")
                     : Off("Face it (F)", $"{t.Name} is not on this world or in its sky. Go inside (G) or the list (J) takes you there."),
         };
 
