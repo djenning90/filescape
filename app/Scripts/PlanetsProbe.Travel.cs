@@ -263,9 +263,13 @@ public partial class PlanetsProbe
             ("T, J, type, ↓, Enter", async t => { await OpenOverview(); await ListFilter(name); await Key(Godot.Key.Down); await Frames(3); await Key(Godot.Key.Enter); }),
             ("T, click the world, Enter", async t => { await OpenOverview(); await ClickWorld(t, false); await Key(Godot.Key.Enter); }),
             ("T, double-click the world", async t => { await OpenOverview(); await ClickWorld(t, true); }),
+            ("T, J, type, click the row, Enter", async t => { await OpenOverview(); await ListFilter(name); await ClickRow(t); await Key(Godot.Key.Enter); }),
+            ("T, J, type, click the row, Esc, Enter", async t => { await OpenOverview(); await ListFilter(name); await ClickRow(t); await Key(Godot.Key.Escape); await Frames(3); await Key(Godot.Key.Enter); }),
+            ("J, type, click the row, Esc, T, Enter", async t => { await ListFilter(name); await ClickRow(t); await Key(Godot.Key.Escape); await OpenOverview(); await Key(Godot.Key.Enter); }),
         };
         var failed = 0;
-        foreach (var (vname, run) in variants)
+        var deepOnly = OS.GetCmdlineUserArgs().Any(a => a == "--deep-only"); // only the trip-from-the-overview case below
+        foreach (var (vname, run) in deepOnly ? [] : variants)
         {
             for (var rep = 0; rep < OverviewEnterRepeats; rep++)
             {
@@ -290,7 +294,34 @@ public partial class PlanetsProbe
             }
         }
 
-        Log($"overview Enter: {failed} of {variants.Length * OverviewEnterRepeats} attempts did not land");
+        // A folder two levels down chosen in the list opened in the overview: a trip from the overview (PLANET-83).
+        var deep = Tree[target].Children.FirstOrDefault(c => Tree[c].IsDirectory, -1);
+        var deepTries = 0;
+        if (deep >= 0)
+        {
+            var deepName = Tree[deep].Name;
+            for (var rep = 0; rep < OverviewEnterRepeats; rep++)
+            {
+                await BackTo(root);
+                deepTries++;
+                var from = P.LaunchLog.Count;
+                var toastBefore = App.Hud.ToastText;
+                await OpenOverview();
+                await ListFilter(deepName);
+                await Key(Godot.Key.Enter);
+                var accepted = P.NowSeconds;
+                await Until(() => (App.Navigator.Current == deep && !P.Busy && !P.UniverseOpen && P.Composition?.FolderId == deep) || (App.Hud.ToastText != "" && App.Hud.ToastText != toastBefore), OverviewEnterWaitSeconds + 6);
+                await Frames(3);
+                var arrived = App.Navigator.Current == deep && !P.UniverseOpen && P.Composition?.FolderId == deep;
+                var toast = App.Hud.ToastText != toastBefore ? App.Hud.ToastText : "";
+                var marks = string.Join(" ", P.LaunchLog.Skip(from).Select(l => F($"{l.Phase}@{l.AtSeconds - accepted:+0.00;-0.00}")));
+                if (!arrived) failed++;
+                Check(arrived || toast != "", $"T, J, type a folder two levels down, Enter #{rep + 1}: {(arrived ? "landed there" : toast != "" ? "did not travel and said why: " + toast : "did NOT travel and said nothing")} (overview {(P.UniverseOpen ? "open" : "closed")}, phase {P.PhaseName}, trip {(P.TripActive ? "active" : "none")}; marks {marks})");
+                if (P.TripActive) { await Key(Godot.Key.Escape); await Frames(5); }
+            }
+        }
+
+        Log($"overview Enter: {failed} of {variants.Length * OverviewEnterRepeats + deepTries} attempts did not land");
     }
 
     /// <summary>Each variant of the route is tried this many times (the failure DJ saw was intermittent).</summary>
@@ -325,8 +356,17 @@ public partial class PlanetsProbe
             at = P.UniverseScreen(id) ?? Vector2.Zero;
         }
 
-        await Click(at);
-        if (doubleClick) await Click(at);
+        if (doubleClick) await DoubleClickAt(at); // as Godot delivers one (the second press flagged DoubleClick)
+        else await Click(at);
+        await Frames(3);
+    }
+
+    /// <summary>Clicks the target's row in the open Destinations list (selects it: the shared selection and the card).</summary>
+    private async Task ClickRow(int id)
+    {
+        var r = P.DestinationRowRect($"f{id}");
+        if (r.Size.X <= 0) Log("the target's row is not shown in the list");
+        else await Click(r.GetCenter());
         await Frames(3);
     }
 
