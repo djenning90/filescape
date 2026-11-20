@@ -13,7 +13,7 @@ public interface IShellActions
     /// <summary>Opens the item with its Windows association (the default verb).</summary>
     ShellResult Open(string path);
 
-    /// <summary>Opens an Explorer window with the item selected.</summary>
+    /// <summary>Opens the folder that contains the item in File Explorer, with the item selected (a link: the link itself; PLANET-138).</summary>
     ShellResult RevealInExplorer(string path);
 
     /// <summary>Starts an installed program with separate arguments (an editor, DEV-03), detached from FileScape's console.</summary>
@@ -238,29 +238,59 @@ public sealed class WindowsShellActions : IShellActions
         }
 
         // Before 2026-11-19 this was Process.Start("explorer.exe /select,...") with UseShellExecute = false: a child that
-        // inherited FileScape's handles and, under the console wrapper, joined its job (PLANET-89).
-        if (OutsideJob && DesktopShell.TryShellExecute("explorer.exe", $"/select,\"{path}\"", null, "", out _))
-            return new ShellResult(true, false, $"Explorer asked to show: {path}");
+        // inherited FileScape's handles and, under the console wrapper, joined its job (PLANET-89). From 2026-11-19 to
+        // 2026-11-20 a job sent "explorer /select" through the desktop shell first; that route cannot report a missing
+        // item and did not select a WSL distribution in Linux (tools/os-file-actions-probe.ps1). SHOpenFolderAndSelectItems
+        // asks the running shell and starts no process of FileScape's (the probe checks FileScape's children after every
+        // step), so it is the route in and out of a job; the desktop shell is only the fallback.
+        if (!IsShellName(path) && !ItselfExists(path))
+            return new ShellResult(false, false, $"Could not show {path} in File Explorer: it is no longer there (moved, renamed or deleted since FileScape listed it).");
         _ = CoInitializeEx(IntPtr.Zero, CoinitApartmentThreaded | CoinitDisableOle1Dde);
         var hr = SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _);
         if (hr != 0)
         {
+            if (OutsideJob && DesktopShell.TryShellExecute("explorer.exe", $"/select,\"{path}\"", null, "", out _))
+                return new ShellResult(true, false, $"Explorer asked (through the desktop shell) to show: {path}");
             var code = hr & 0xFFFF;
             var why = code is FileNotFoundCode or PathNotFoundCode ? "it is no longer there (moved, renamed or deleted since FileScape listed it)" : "Windows refused";
             return new ShellResult(false, false, $"Could not show {path} in File Explorer: {why}. (Windows: {new Win32Exception(code).Message.TrimEnd('.')}; HRESULT 0x{hr:X8}.)");
         }
 
+        // PLANET-138 (2026-11-20, DJ: "Open on a folder and Show in Explorer appeared to do the same thing"): the item is
+        // named as the one child of its parent's ID list, so File Explorer opens the parent with the item selected; for
+        // a drive the parent is This PC, for \\wsl.localhost\Ubuntu it is Linux, for a share its server. (The documented
+        // cidl-0 form did the same for ordinary folders, measured on the base build; the explicit form also says when
+        // nothing contains the item. What made the two actions look alike was mostly their labels: SelectionActions.)
+        var parent = ILClone(pidl);
         try
         {
+            if (parent == IntPtr.Zero || !ILRemoveLastID(parent))
+                return new ShellResult(false, false, $"Could not show {path} in File Explorer: nothing in File Explorer contains it.");
+            var child = ILFindLastID(pidl);
+            var children = new[] { child };
             LetTheViewerComeForward();
-            hr = SHOpenFolderAndSelectItems(pidl, 0, IntPtr.Zero, 0);
+            hr = SHOpenFolderAndSelectItems(parent, 1, children, 0);
             return hr == 0
                 ? new ShellResult(true, false, $"Explorer asked to show: {path}")
                 : new ShellResult(false, false, $"Could not show {path} in File Explorer (HRESULT 0x{hr:X8}: {new Win32Exception(hr & 0xFFFF).Message.TrimEnd('.')}).");
         }
         finally
         {
+            if (parent != IntPtr.Zero) Marshal.FreeCoTaskMem(parent);
             Marshal.FreeCoTaskMem(pidl);
+        }
+    }
+
+    /// <summary>
+    /// Whether the item itself is there — a link or junction counts even when its target is gone (its attributes are the
+    /// link's own; File.Exists and Directory.Exists would follow it). Show in folder selects the link, not the target.
+    /// </summary>
+    private static bool ItselfExists(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return e is UnauthorizedAccessException; // denied: it is there, Windows only refuses to say more
         }
     }
 
@@ -333,7 +363,20 @@ public sealed class WindowsShellActions : IShellActions
     private static extern int SHParseDisplayName(string name, IntPtr bindingContext, out IntPtr pidl, uint sfgaoIn, out uint sfgaoOut);
 
     [DllImport("shell32.dll")]
-    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint count, IntPtr children, uint flags);
+    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint count, IntPtr[] children, uint flags);
+
+    /// <summary>A copy of an ID list (freed with CoTaskMemFree).</summary>
+    [DllImport("shell32.dll")]
+    private static extern IntPtr ILClone(IntPtr pidl);
+
+    /// <summary>Cuts the last item off an ID list in place: the parent's ID list. False for the desktop (nothing above).</summary>
+    [DllImport("shell32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ILRemoveLastID(IntPtr pidl);
+
+    /// <summary>The last item of an ID list (a pointer into it, not a copy): the child relative to its parent.</summary>
+    [DllImport("shell32.dll")]
+    private static extern IntPtr ILFindLastID(IntPtr pidl);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

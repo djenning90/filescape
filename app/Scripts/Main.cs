@@ -372,6 +372,58 @@ public partial class Main : Node3D
                 // stay; an outside probe checks the app's window and, under the console wrapper, whether X lets the terminal go.
                 GD.Print($"[test-hold] {_shell.Open(h["open:".Length..]).Message}");
                 break;
+            case var h when h.StartsWith("shell-steps:", StringComparison.Ordinal):
+                ShellStepsPoll(h["shell-steps:".Length..]);
+                break;
+        }
+    }
+
+    /// <summary>How often the shell-steps instrument looks for its next step, seconds.</summary>
+    private const double ShellStepPollSeconds = 0.25;
+
+    /// <summary>
+    /// PLANET-140 instrument (<c>--test-hold=shell-steps:&lt;dir&gt;</c>, tools/os-file-actions-probe.ps1): an outside probe
+    /// writes one step to <c>&lt;dir&gt;\next.txt</c> ("open &lt;path&gt;", "reveal &lt;path&gt;", "card &lt;path&gt;" or "where"); the app
+    /// runs it with the session's real shell (under the console wrapper, through the desktop shell, AD-76), deletes the
+    /// file and writes the outcome to <c>done.txt</c>. "card" writes the card's Open and Show labels for that path when it
+    /// is in the tree. One launch serves every step, each waited on by its file, not by a fixed sleep.
+    /// </summary>
+    private void ShellStepsPoll(string dir)
+    {
+        if (_closing) return;
+        var next = System.IO.Path.Combine(dir, "next.txt");
+        if (System.IO.File.Exists(next))
+        {
+            string step;
+            try { step = System.IO.File.ReadAllText(next).Trim(); System.IO.File.Delete(next); }
+            catch (System.IO.IOException) { step = ""; } // the probe is still writing it: next poll
+            if (step.Length > 0)
+            {
+                var split = step.IndexOf(' ');
+                var (verb, path) = split > 0 ? (step[..split], step[(split + 1)..]) : (step, "");
+                var outcome = verb switch
+                {
+                    "open" => Describe(_shell.Open(path)),
+                    "reveal" => Describe(_shell.RevealInExplorer(path)),
+                    "card" => CardFor(path),
+                    "where" => ConsoleLaunch.Describe,
+                    _ => "unknown step",
+                };
+                GD.Print($"[test-hold] step {verb} {path} → {outcome}");
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "done.txt"), $"{verb}\t{path}\t{outcome}");
+            }
+        }
+
+        GetTree().CreateTimer(ShellStepPollSeconds).Timeout += () => ShellStepsPoll(dir);
+
+        static string Describe(ShellResult r) => $"succeeded={r.Succeeded} {r.Message}";
+        string CardFor(string path)
+        {
+            if (_tree == null) return "no tree";
+            var id = Enumerable.Range(0, _tree.Count).FirstOrDefault(i => string.Equals(_tree.FullPath(i), path, StringComparison.OrdinalIgnoreCase), -1);
+            if (id < 0) return "not in the tree";
+            var a = CardActionsFor(_tree[id]);
+            return $"open \"{a.Open.Label}\" {(a.Open.Enabled ? "on" : "off")} · show \"{a.Reveal.Label}\" {(a.Reveal.Enabled ? "on" : "off")} · {a.Reveal.Tooltip}";
         }
     }
 
@@ -1585,6 +1637,9 @@ public partial class Main : Node3D
         }
 
         var node = _tree[_selection.Selected];
+        // PLANET-139: what the card disables (gone, unreachable, access denied, a Linux pipe, a broken link) Enter does
+        // not attempt either; it says why, as the tooltip does.
+        if (CardActionsFor(node).Open is { Enabled: false } off) { ToastUnavailable(off); return; }
         if (node.IsHub)
         {
             // The hub has no filesystem path (PLANET-87): Open shows This PC, which is what it stands for.

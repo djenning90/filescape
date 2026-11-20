@@ -28,11 +28,6 @@ public partial class Main
     /// <summary>The card's description of a node: its kind, name, and where it can be shown from here.</summary>
     private CardTargetInfo CardTargetFor(FsNode node)
     {
-        var tree = _tree!;
-        var kind = node.IsHub ? CardTarget.Hub
-            : node.Kind == NodeKind.Link ? CardTarget.Link
-            : node.IsDirectory ? (node.LocationPath != null || (node.ParentId >= 0 && tree[node.ParentId].IsHub) ? CardTarget.LocationRoot : CardTarget.Folder)
-            : CardTarget.File;
         var view = CurrentCardView;
         var inView = view switch
         {
@@ -41,7 +36,7 @@ public partial class Main
             _ => true,
         };
         var standing = view == CardView.PlanetSurface && node.Id == _nav.Current;
-        return new CardTargetInfo(kind, tree.DisplayName(node.Id), tree.Source.IsLive, node.IsRoot, standing, inView);
+        return SelectionActions.Describe(_tree!, node.Id, standing, inView); // kind, reachability, links (PLANET-137..140)
     }
 
     /// <summary>The selected node, or null (with a toast naming what to do) when nothing is selected.</summary>
