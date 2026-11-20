@@ -262,10 +262,6 @@ public partial class PlanetsProbe
         // regression as these steps did; the journey keeps the apex twirl above and the plain jump with its fall.
         if (leap)
         {
-            // Straight after the flight back from the moon the arrival's camera is still turning, and the gap ahead is read
-            // along the camera ("chasm" instead of "leap", 2026-11-20): let the landing settle first.
-            await WaitSettled();
-            await Until(() => P.CameraSettled, 5);
             if (P.Composition?.FolderId == debris && P.FallReturns == returns) await LeapCrossing(P.Composition!, P.Shell!, LeapTwirl.Plain);
             else Log("SKIP the plain jump: not on Debris Field after the moon");
         }
@@ -393,9 +389,11 @@ public partial class PlanetsProbe
         var s = shell.Spans[link.Span];
         var (g0, g1) = s.Gaps[0];
         Log(F($"the leap: {g1 - g0:0.00} m, on a bridge of {s.LengthMetres:0.0} m"));
-        // The plain jump and the late take-off come straight after a crossing, from the far side: they are stood back on
-        // the near side [direct] (the walk round from there is not what they test).
-        if (mode is not (LeapTwirl.Plain or LeapTwirl.LateTakeOff))
+        // The late take-off comes straight after a crossing, from the far side: it is stood back on the near side [direct]
+        // (the walk round from there is not what it tests). The plain jump walks there too since TEST-09: it now follows
+        // the flight back from a moon, and stood there [direct] at once its gap ahead read "chasm" instead of "leap"
+        // (2026-11-20; the gap is read along the camera, which the fresh arrival still frames).
+        if (mode != LeapTwirl.LateTakeOff)
         {
             var near = await WalkRoute(shell.Waypoints[link.From], 0.8f, "the leap's near side");
             if (!near.Reached) return false;
