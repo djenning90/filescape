@@ -4,6 +4,47 @@ Last updated: 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: 
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Sixth pass (2026-11-20)
+
+### Stream 4: every departure from a launcher, Esc takes a dialog's move back, F again turns back (PLANET-120..124, AD-84)
+
+DJ: "Some dialog-based navigation still launches the character from wherever they stand … route departures through the
+intended launch-pad behaviour … Make F / Face reversible." The inventory of entry points is in AD-84.
+
+**Reproduced first, in Core:** `DepartureTests` builds the query each entry point builds. Against the earlier rule
+(the destination's own pad only), 12 of 23 failed. These were the deeper Destinations row / Straight there, a favourite
+elsewhere, a repository below, Backspace further away (two cases), the breadcrumb / Ctrl+Home, Locations / Ctrl+L,
+Ctrl+O's new root, the walkthrough's way back, the telescope, a link deeper down, and the top of the tree. The other 11
+passed (the entry points that already had a pad, plus the pad-less, sky and cap cases).
+
+**Changed:**
+- `DeparturePlanner` (Core) chooses the launcher: the link's, the destination's own, the pad on the way down, or the
+  way back. The run's cap (0.8 s, 1.1 s on a Hazard World) now lives in Core.
+- `PlanetWorld.Depart` calls the planner for every entry point. The wind-up on a pad that leads on looks up at that
+  world. A pad-less departure kindles a ring at the feet. A run starts from the feet's height.
+- `PlaceNavigator.CanRevert/Revert`: Esc before the take-off takes a dialog's move back.
+- Ctrl+O's new root is travelled to, not cut to.
+- `FaceToggle` (Core): F again turns back if it is the same world and selection, you moved ≤ 2.5 m, looked away
+  ≤ 20°, and it is within 20 s.
+- Help (F1) and the card's tooltip say so. `DepartFor(target, DepartureEntry.Telescope)` is there for stream 5.
+
+| Area | Status | Evidence |
+|---|---|---|
+| The rule per entry point (PLANET-120) | **Demonstrated** (Core) | `DepartureTests` 23/0 (12 failed first) |
+| Dialog-based departures in-app | **Demonstrated** in-app (sample) | `planets-travel` 25/0. Shift+Enter Straight there three levels down: run 0.38 s to Long Way Down's pad, wind-up, warp from it (take-off 1.03 s after the command; before: 0.38–0.62 s, from where you stood). Ctrl+L to the same place: Toward, take-off 1.15 s. Backspace from there, after the trip and after the warp: WayOut, run 0.60 s, take-off 1.01–1.05 s |
+| Esc on a dialog's departure (PLANET-121) | **Demonstrated** (Core, in-app) | `DepartureRevertTests` 3/0. `planets-travel`: Ctrl+L, Esc in the run: still at the Starter Sky's top, history as before, marks `depart-run cancel` |
+| Quick and continuous (PLANET-122) | **Demonstrated** in-app | Pad Space 0.39 s (unchanged). U 0.97–1.23 s, G far 1.20 s, the list 1.61 s, as in AD-74. 17 of 17 landings feet first (tilt 0°, foot 0.00 m, head 0.82–0.84 m). The kindle was not seen in-app: the sample's top world has no belt moon |
+| F reversible (PLANET-123) | **Demonstrated** (Core, in-app) | `FaceToggleTests` 8/0. `planets-travel`: F turned 83°, F again ended 0.0° from the start, a third F faced again |
+| Help (PLANET-124) | **Demonstrated** (text) | `SelectionActionsTests` |
+| Related journeys | see below | `planets-flows` 27/0/2: one conditional check did not run, a labels check that needs a world in view after the camera turn (instrument variability, not travel). `planets-tutorial` 36/0 |
+| Real input (`os-planets-probe.ps1 -Depart`) | see below | — |
+
+**Journey time:** `planets-travel` 63.0 → 84.0 s (15 → 25 checks: the launcher per dialog entry, Esc's revert, F).
+Nothing was trimmed. The Core tests cover the *decision*, and the journey still checks each in-app wiring path once.
+
+**Open / for DJ:** whether "up and over" through the way back reads right for a far place; whether the kindle is
+visible enough; F's window (20 s, 2.5 m, 20°). The overview's "Zoom to (F)" is not reversible (stream 2's camera).
+
 ## Fifth playtest follow-up (2026-11-19)
 
 ### The final candidate (`70b6ffc7ebb6`, staged, not installed)
