@@ -36,8 +36,8 @@ passed (the entry points that already had a pad, plus the pad-less, sky and cap 
 | Quick and continuous (PLANET-122) | **Demonstrated** in-app | Pad Space 0.39 s (unchanged). U 0.97–1.23 s, G far 1.20 s, the list 1.61 s, as in AD-74. 17 of 17 landings feet first (tilt 0°, foot 0.00 m, head 0.82–0.84 m). The kindle was not seen in-app: the sample's top world has no belt moon |
 | F reversible (PLANET-123) | **Demonstrated** (Core, in-app) | `FaceToggleTests` 8/0. `planets-travel`: F turned 83°, F again ended 0.0° from the start, a third F faced again |
 | Help (PLANET-124) | **Demonstrated** (text) | `SelectionActionsTests` |
-| Related journeys | see below | `planets-flows` 27/0/2: one conditional check did not run, a labels check that needs a world in view after the camera turn (instrument variability, not travel). `planets-tutorial` 36/0 |
-| Real input (`os-planets-probe.ps1 -Depart`) | see below | — |
+| Related journeys | **Demonstrated** in-app (staged `2ee076c` + the state fields) | `planets-selection-actions` 44/0, `planets-tutorial` 36/0, `planets-navigation` 47/0, `planets-hazard` 84/0/3, `planets-flows` 27/0/2: one conditional labels check did not run (it needs a world in view after the camera turn: instrument variability, not travel) |
+| Real input (`os-planets-probe.ps1 -Depart`, staged `d26735866914`, Guard on every input) | **Demonstrated** | 5/0. J, "old bridge", Shift+Enter: Departing › WindUp › Warping › Walking, Toward, run 0.6 s, landed on Old Bridge. Backspace: WayOut. A real Esc in the run: still home, history as before, no take-off. A real click on a world: F turned 178°, F again ended 0.0° from the start (`%LOCALAPPDATA%\FileScape\evidence\2026-11-20-stream4\depart-2`) |
 
 **Journey time:** `planets-travel` 63.0 → 84.0 s (15 → 25 checks: the launcher per dialog entry, Esc's revert, F).
 Nothing was trimmed. The Core tests cover the *decision*, and the journey still checks each in-app wiring path once.
