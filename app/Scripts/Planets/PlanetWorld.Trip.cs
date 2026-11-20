@@ -99,6 +99,14 @@ public partial class PlanetWorld
     {
         var tree = _s.Tree;
         if (tree == null || _current == null || Busy) return;
+        if (_universe != null)
+        {
+            // From the overview a destination is landed on directly (PLANET-83): a trip's hops run on the surface, which the
+            // overview does not tick, so a trip started here wound up and never left (the overview stayed, silent).
+            LandFromOverview(target);
+            return;
+        }
+
         var hops = TripPlan.Hops(tree, _current.FolderId, target);
         if (hops == null)
         {

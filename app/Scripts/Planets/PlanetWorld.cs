@@ -102,6 +102,9 @@ public partial class PlanetWorld : Node3D
     /// <summary>True while a launch (wind-up, flight or landing) is in progress: one place change at a time.</summary>
     public bool Busy => _phase != Phase.Walking || _trip != null; // a trip (PlanetWorld.Trip) is busy between its hops too
 
+    /// <summary>Times the safety net closed the overview over a travel that had begun under it (probes: 0 when every path lands through the overview).</summary>
+    public int TravelUnderOverviewClosed { get; private set; }
+
     public SphereWalker Walker => _walker;
     public PlanetComposition? Composition => _current?.Comp;
     public Camera3D Camera => _camera;
@@ -253,6 +256,16 @@ public partial class PlanetWorld : Node3D
         }
 
         if (blockedKeys || _universe != null || _phase != Phase.Walking || _hop != null) _keyLook = 0; // no turning on after the keys stop being read
+        if (_universe != null && (_phase != Phase.Walking || _hop != null))
+        {
+            // PLANET-83 safety net: travel on the surface never runs under the overview (nothing ticks it), so one that has
+            // begun anyway is shown, not left waiting under the map (the overview glides back down; the travel goes on).
+            GD.PrintErr($"[planets] travel ({_phase}) began under the overview: closing it so the travel runs");
+            CloseUniverse(returnToSurface: true);
+            _s.Hud.SetPlanetsOverview(false);
+            TravelUnderOverviewClosed++;
+        }
+
         if (_universe != null)
         {
             UpdateUniverse(tree, dt, blockedKeys);

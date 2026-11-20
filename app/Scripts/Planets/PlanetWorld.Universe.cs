@@ -207,6 +207,12 @@ public partial class PlanetWorld
         // Start close to where you stand and pull back: the zoom out is the transition.
         var here = _uniIndex.TryGetValue(_current.FolderId, out var hi) ? _uniBodies[hi] : _uniBodies[0];
         _uniSelected = here.Body.NodeId;
+        // PLANET-83: the selection is shared — a world chosen in the list or the sky before opening is the one Enter lands
+        // on (before, Enter here acted on "you are here" and glided back down while the card showed the chosen world).
+        // The opening still pulls back from where you stand.
+        var shared = _s.Selection.Selected;
+        if (shared >= 0 && shared != _current.FolderId && _uniIndex.ContainsKey(shared)) _uniSelected = shared;
+        _uniSharedSeen = shared;
         _uniFocus = _uniFocusTarget = here.At;
         _uniDistance = here.Body.Radius * OpenStartRadii;
         _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
@@ -573,6 +579,15 @@ public partial class PlanetWorld
 
     private void UpdateUniverse(FsTree tree, float dt, bool blockedKeys)
     {
+        // A selection made elsewhere while the overview is open (a row of the Destinations list) is the overview's too
+        // (PLANET-83), so Enter lands where the card says.
+        var shared = _s.Selection.Selected;
+        if (shared != _uniSharedSeen)
+        {
+            _uniSharedSeen = shared;
+            if (shared >= 0 && shared != _uniSelected && _uniLanding == null && _uniIndex.ContainsKey(shared)) SelectInUniverse(shared);
+        }
+
         if (_uniLanding is { } landing)
         {
             // Flying into the chosen world before landing on it.
@@ -738,10 +753,26 @@ public partial class PlanetWorld
         _uniFrame = (id, SelectFrameSystems, SelectMinMetres, SelectMaxMetres);
     }
 
-    /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it.</summary>
+    /// <summary>The shared selection as the overview last saw it (a change made elsewhere is followed, PLANET-83).</summary>
+    private int _uniSharedSeen = -1;
+
+    /// <summary>Enter: fly into the chosen world (≈ 0.75 s), then land on it. An Enter that cannot start says why (PLANET-83).</summary>
     public void BeginUniverseLanding(int id)
     {
-        if (_universe == null || id < 0 || _uniLanding != null || !_uniIndex.TryGetValue(id, out var i)) return;
+        if (_universe == null || _uniLanding != null) return;
+        if (id < 0)
+        {
+            _s.Toast("Click a world first, then Enter to land there.");
+            return;
+        }
+
+        if (!_uniIndex.TryGetValue(id, out var i))
+        {
+            // Not drawn (beyond the overview's budget, or hidden): the navigator still goes there, out of the light.
+            if (!_s.TravelInto(id)) RefuseLanding(id);
+            return;
+        }
+
         if (id == _current?.FolderId)
         {
             CloseUniverse(returnToSurface: true);
@@ -765,6 +796,7 @@ public partial class PlanetWorld
         CloseUniverse(returnToSurface: false);
         _arriveFromSky = true;
         _warpFlash = 1f;
+        var toastBefore = _s.Hud.ToastText;
         var ok = _s.TravelInto(id);
         if (!ok || _phase == Phase.Walking && _transfer == null)
         {
@@ -775,9 +807,27 @@ public partial class PlanetWorld
                 _warpFlash = 0;
                 _audio.Deny();
                 SnapCamera();
+                if (_s.Hud.ToastText == toastBefore) RefuseLanding(id); // the session did not say why: say it here
             }
         }
     }
+
+    /// <summary>An accepted landing that could not go: says so, with the world's name and why (PLANET-83: never silence).</summary>
+    private void RefuseLanding(int id)
+    {
+        var tree = _s.Tree;
+        var name = tree != null && tree.Contains(id) ? tree.DisplayName(id) : "That world";
+        var why = tree == null || !tree.Contains(id) ? "it is no longer in the tree"
+            : !tree[id].IsDirectory && tree[id].Kind != Core.Model.NodeKind.Link ? "it is a file, not a world"
+            : Busy ? "another journey is still under way"
+            : "it can't be reached from here";
+        _audio.Deny();
+        _s.Toast($"Can't land on {name}: {why}.");
+        LandingRefusals++;
+    }
+
+    /// <summary>Landings from the overview refused with a message (probes).</summary>
+    public int LandingRefusals { get; private set; }
 
     // Overview input from Main._Input (drag and wheel), so the GUI never sees them first.
     private bool UniverseInput(InputEvent e)

@@ -108,6 +108,24 @@ public partial class PlanetsProbe
         await Seconds(0.8);
         App.Select(far.TargetId); // [direct] the selection (a click on its world does the same)
         await Frames(2);
+        // Esc during the run to the pad stops it (PLANET-82): you land on the pad and stay.
+        {
+            var from = P.LaunchLog.Count;
+            await Key(Godot.Key.G);
+            await Until(() => P.PhaseName == "Departing", 1);
+            var running = P.PhaseName == "Departing";
+            await Key(Godot.Key.Escape);
+            await Until(() => !P.Busy && !P.Hopping, 3);
+            await Seconds(0.6);
+            var log = P.LaunchLog.Skip(from).Select(l => l.Phase).ToList();
+            var off = P.AngleFromWalker(far.Direction) * comp.Shape.Radius;
+            Check(running && App.Navigator.Current == root && !log.Contains("flight") && log.Contains("cancel") && P.Walker.Grounded && off < far.PadRadius + 0.5f,
+                F($"Esc during the run to the pad stops it: still here, standing {off:0.0} m from the pad's centre (marks {string.Join(" ", log)})"));
+            await Key(Godot.Key.Home); // back to the meadow for the timed G below
+            await Until(() => !P.Hopping, 3);
+            await Seconds(0.6);
+        }
+
         Log(F($"G from {P.AngleFromWalker(far.Direction) * comp.Shape.Radius:0.0} m along the ground to the far pad"));
         await Timed("G (selected world, far pad)", () => Key(Godot.Key.G), far.TargetId);
         await Seconds(0.8);
@@ -321,7 +339,8 @@ public partial class PlanetsProbe
             }
         }
 
-        Log($"overview Enter: {failed} of {variants.Length * OverviewEnterRepeats + deepTries} attempts did not land");
+        Log($"overview Enter: {failed} of {(deepOnly ? 0 : variants.Length * OverviewEnterRepeats) + deepTries} attempts did not land");
+        Check(P.TravelUnderOverviewClosed == 0, $"no travel began under the overview (the safety net closed it {P.TravelUnderOverviewClosed} times)");
     }
 
     /// <summary>Each variant of the route is tried this many times (the failure DJ saw was intermittent).</summary>

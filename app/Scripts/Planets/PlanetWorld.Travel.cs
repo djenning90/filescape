@@ -145,6 +145,12 @@ public partial class PlanetWorld
     {
         // One transfer at a time; during a trip only the trip launches (its hop is marked InHop just before).
         if (_phase != Phase.Walking || _trip is { InHop: false } || _current == null || _s.Tree == null) return;
+        if (_universe != null)
+        {
+            LandFromOverview(targetId); // PLANET-83: the overview lands; a launch on the surface would never run under it
+            return;
+        }
+
         _hop = null;
         if (!fromPad)
         {

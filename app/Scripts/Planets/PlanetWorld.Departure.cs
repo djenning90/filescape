@@ -159,6 +159,16 @@ public partial class PlanetWorld
         return true;
     }
 
+    /// <summary>
+    /// A destination chosen while the overview is open (the list's Enter, a trip, G): the overview's own landing when the
+    /// world is drawn, else the navigator goes there and the overview comes down onto it (OnNavChanged); a refusal says why.
+    /// </summary>
+    private void LandFromOverview(int target)
+    {
+        if (_uniIndex.ContainsKey(target)) BeginUniverseLanding(target);
+        else if (!_s.TravelInto(target)) RefuseLanding(target);
+    }
+
     /// <summary>U on a world: to the parent through its pad (the navigator moves at the release). False when there is no
     /// parent or something is in the way; the shared command then runs (it says when this is the top).</summary>
     public bool LaunchUp()
