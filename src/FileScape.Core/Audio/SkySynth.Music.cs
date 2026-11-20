@@ -1718,8 +1718,8 @@ public sealed partial class SkySynth
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), false,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
             0.6f, 1f, 0.3f, 2, Arrangement.Score, HalfTime: true, Level: OverlookLevel),
-        // AD-79: the overview's star chart, 96 BPM, Ionian (Dorian from a minor place: OverviewDorianProfiles).
-        new(MusicIdentity.Overview, (float)ModeSketches.StarChartBpm, 0f, Major, [0, 3, 4, 0], "ionian (the overview)", Lead.Bell, 1f,
+        // AD-79/AD-85: the overview's star chart, 96 BPM, Dorian from every place (the deck takes OverviewDorianProfiles).
+        new(MusicIdentity.Overview, (float)ModeSketches.StarChartBpm, 0f, Dorian, [0, 3, 6, 0], "dorian (the overview)", Lead.Bell, 1f,
             Hits(Silent), SnareKind.None, Hits(Silent), Hits(Silent), Hits(Silent), false,
             PercKind.None, Hits(Silent), 1, Silent, BassKind.Sub, ArpKind.None, Rungs(Silent),
             0.6f, 1f, 0.3f, 2, Arrangement.Score, Level: OverviewLevel),

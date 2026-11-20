@@ -7,15 +7,17 @@ using NVector3 = System.Numerics.Vector3;
 namespace FileScape.App;
 
 /// <summary>
-/// <c>--automate=planets-music --root=sample --vis=planets --test-shell=record</c> (AD-79, PLANET-97/98): which music plays
-/// where, in the app. Arriving on the Starter Sky, the world plays its character's arrangement as before (the identity
-/// <see cref="SkySynth.IdentityOf"/> gives, in its key). Up to the telescope (E at the foot of the stones): the Lydian
-/// overlook, in the world's key, from its intro, first variation; E at the telescope keeps it; off the overlook the world's
-/// music returns. T: the star chart in the mode the scheme picks for this place; T again: the world's music. A second climb
-/// resumes the overlook at a section. Quick hops (G to a child and Backspace back, as fast as the app allows): the music
-/// changes only after the playing music has sounded the minimum dwell, and ends on the world you stand on. Throughout: no
-/// audio underruns after the first sound, the voice pool never full. With FILESCAPE_AUDIO_RECORD (and
-/// FILESCAPE_AUDIO_RECORD_SECONDS ≥ 330) the output is captured and each phase's start is logged as "MARK name at s".
+/// <c>--automate=planets-music --root=sample --vis=planets --test-shell=record</c> (AD-79, AD-85): which music plays where,
+/// in the app — the wiring and the playback, not the choices (those are Core's: MusicActivityTests for activity → piece,
+/// the overlook's hysteresis, travel and visits; SkySynthTests.Experience for keys, variations, returns at a section and the
+/// minimum dwell through quick hops). Arriving on the Starter Sky, the world plays its own arrangement. Walking up to the
+/// overlook it plays on; E up beside the telescope: the Lydian overlook in the world's key, from its intro; E again looks
+/// through the telescope and the overlook plays on; Enter departs to the framed world (the flight's music is the world's)
+/// and it lands to that world's music; Backspace back. T: Star Chart Dorian on the Starter Sky's root (a major place);
+/// Esc: the world's music again. Throughout: no audio underruns after the first sound, the voice pool never full. With
+/// FILESCAPE_AUDIO_RECORD the output is captured, the listening waits run long (≈ 2 min in all, set
+/// FILESCAPE_AUDIO_RECORD_SECONDS ≥ 150) and each phase's start is logged as "MARK name at s" for cutting the samples.
+/// AD-85 trimmed it from 164 s: the second climb's resume and the quick hops' dwell are Core tests now.
 /// </summary>
 public partial class PlanetsProbe
 {
@@ -49,11 +51,17 @@ public partial class PlanetsProbe
     /// <summary>Waits until the music sounding is <paramref name="id"/>, at most <paramref name="seconds"/>.</summary>
     private Task UntilPlaying(MusicIdentity id, double seconds) => Until(() => P.Audio.MusicState().Playing == id, seconds);
 
+    /// <summary>Recording for listening (FILESCAPE_AUDIO_RECORD set): the listening waits run long; otherwise they are only settle times.</summary>
+    private static bool RecordingAudio => !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("FILESCAPE_AUDIO_RECORD"));
+
+    /// <summary>A wait that is long when recording for a listener (<paramref name="listenSeconds"/>) and short otherwise (<paramref name="checkSeconds"/>).</summary>
+    private Task Listen(double listenSeconds, double checkSeconds) => Seconds(RecordingAudio ? listenSeconds : checkSeconds);
+
     private async Task MusicRun()
     {
         await Until(() => App.Tree is { Count: > 1 } && App.Experience == Experience.Planets && P.Composition != null, 30);
         await WaitSettled();
-        await Seconds(2);
+        await Seconds(1);
         var skips0 = P.Audio.AudibleSkips;
         _trackMusic = true;
         var root = App.Navigator.Current;
@@ -62,88 +70,70 @@ public partial class PlanetsProbe
         var placeId = SkySynth.IdentityOf(character);
         var key = SkySynth.KeyFor(theme, character);
         var m = P.Audio.MusicState();
-        Log($"the Starter Sky: {theme}, {character}, its music {placeId} ({key.Mode}, root {key.RootMidiNote})");
+        Log($"the Starter Sky: {theme}, {character}, its music {placeId} ({key.Mode}, root {key.RootMidiNote}); recording for listening: {RecordingAudio}");
         Check(m.Experience == MusicExperience.World && m.Playing == placeId && m.Root == key.RootMidiNote, $"on arrival the world plays its own arrangement as before: {m.Playing} in {m.Mode} on {m.Root}");
+        Check(P.Audio.MinimumDwellSeconds == SkySynth.GameMinimumDwell.TotalSeconds, F($"the game's minimum dwell is set ({P.Audio.MinimumDwellSeconds:0.0} s; its behaviour through quick hops is Core's MusicActivityTests and SkySynthTests)"));
         Mark("world-arrival");
-        await Seconds(8);
+        await Listen(6, 0.5);
 
-        // ---- the overlook and its telescope
-        Mark("overlook-climb");
-        await ClimbToOverlook();
+        // ---- the telescope: the approach on foot, up, the view, a departure (AD-85)
+        Mark("telescope-approach");
+        await ApproachOverlookOnFoot();
+        Check(P.MusicExperience == MusicExperience.World && P.Audio.MusicState().Playing == placeId, "walking up to the overlook the world's music plays on");
+        await Key(Godot.Key.E); // up beside the telescope
+        await Until(() => P.OnOverlook && P.Walker.Grounded, 4);
         await UntilPlaying(MusicIdentity.Overlook, 3);
         m = P.Audio.MusicState();
         Check(m.Playing == MusicIdentity.Overlook && m.Root == key.RootMidiNote && m.Mode.StartsWith("lydian", StringComparison.Ordinal) && m.Variation == 0 && m.Bar <= 1,
             $"on the overlook: the Lydian overlook in the world's key ({m.Mode}, root {m.Root}), first variation, from its intro (bar {m.Bar})");
-        Mark("overlook");
-        await Seconds(6);
+        Mark("telescope-up");
+        await Listen(5, 0.3);
         await Key(Godot.Key.E);
-        await Until(() => P.ListOpen, 3);
-        Check(P.ListOpen && P.Audio.MusicState().Playing == MusicIdentity.Overlook, "E at the telescope opens the list and the overlook plays on");
-        await Seconds(40); // the rest of its 46 s cycle, for the capture
-        await Key(Godot.Key.Escape);
-        await Frames(4);
-        Mark("overlook-leave");
-        LeaveOverlook();
-        await UntilPlaying(placeId, 4);
-        m = P.Audio.MusicState();
-        Check(m.Playing == placeId && m.Root == key.RootMidiNote && P.MusicExperience == MusicExperience.World, $"off the overlook the world's music returns: {m.Playing} ({m.Mode}, bar {m.Bar})");
-        await Seconds(6);
+        await Until(() => P.TelescopeViewOpen, 2);
+        Mark("telescope-view");
+        await Listen(8, 1.2);
+        Check(P.TelescopeViewOpen && P.Audio.MusicState().Playing == MusicIdentity.Overlook, "E looks through the telescope and the overlook plays on");
+        if (P.TelescopeTargetCount > 1)
+        {
+            await Key(Godot.Key.Right);
+            await Listen(6, 0.5);
+            await Key(Godot.Key.Right);
+            await Listen(6, 0.5);
+        }
 
-        // ---- the overview
-        Mark("overview");
+        var go = P.TelescopeTargetId;
+        Mark("telescope-depart");
+        await Key(Godot.Key.Enter);
+        await Until(() => P.Busy, 2);
+        await Until(() => P.MusicExperience == MusicExperience.World, 2);
+        Check(P.MusicExperience == MusicExperience.World, "the departure ends the overlook at once: the flight's music is the world's build and drop");
+        await Until(() => !P.Busy && App.Navigator.Current == go, 12);
+        var goId = SkySynth.IdentityOf(P.Character);
+        await UntilPlaying(goId, 8);
+        Check(App.Navigator.Current == go && P.Audio.MusicState().Playing == goId, $"landed on {Tree.DisplayName(go)}: its own music ({goId})");
+        Mark("telescope-landed");
+        await Listen(8, 0.5);
+        await Key(Godot.Key.Backspace);
+        await Until(() => !P.Busy && App.Navigator.Current == root, 12);
+        await UntilPlaying(placeId, 8);
+        await Listen(4, 0.5);
+
+        // ---- the overview: Star Chart Dorian from the Starter Sky (a major place), then back (AD-85)
+        Mark("overview-enter");
         await Key(Godot.Key.T);
         await Until(() => P.UniverseOpen, 3);
         await UntilPlaying(MusicIdentity.Overview, 3);
         m = P.Audio.MusicState();
-        var mode = SkySynth.ExperienceModeFor(MusicIdentity.Overview, theme, character);
-        Check(m.Playing == MusicIdentity.Overview && m.Root == key.RootMidiNote && m.Mode.StartsWith(mode.ToString().ToLowerInvariant(), StringComparison.Ordinal) && m.Variation == 0,
-            $"in the overview: the star chart, {m.Mode} on {m.Root} (the scheme's mode here: {mode})");
-        await Seconds(41);
-        Mark("overview-close");
-        await Key(Godot.Key.T);
+        Check(m.Playing == MusicIdentity.Overview && m.Root == key.RootMidiNote && m.Mode.StartsWith("dorian", StringComparison.Ordinal) && m.Variation == 0,
+            $"in the overview: Star Chart Dorian, {m.Mode} on {m.Root} (the Starter Sky's root; the place itself is {key.Mode})");
+        await Listen(24, 1);
+        Mark("overview-leave");
+        await Key(Godot.Key.Escape);
         await Until(() => !P.UniverseOpen, 3);
         await UntilPlaying(placeId, 4);
-        Check(P.Audio.MusicState().Playing == placeId, "closing the overview brings the world's music back");
-        await Seconds(5);
-
-        // ---- the overlook again: a return resumes it at a section
-        Mark("overlook-again");
-        await ClimbToOverlook();
-        await UntilPlaying(MusicIdentity.Overlook, 3);
-        await Seconds(0.3);
-        m = P.Audio.MusicState();
-        Check(m.Playing == MusicIdentity.Overlook && m.Bar is 2 or 3 or 10 or 11 or 14 or 15, $"a second climb picks the overlook up at a section, not its intro (bar {m.Bar}, variation {m.Variation})");
-        await Seconds(10);
-        LeaveOverlook();
-        await UntilPlaying(placeId, 4);
-        await Seconds(4);
-
-        // ---- quick hops: the minimum dwell
-        Mark("hops");
-        var kids = P.Composition!.Launchers.Where(l => !l.IsParent && Tree.Contains(l.TargetId)).Select(l => l.TargetId).Take(3).ToList();
-        var changes0 = _musicChanges.Count;
-        var arrivals = new List<double>();
-        foreach (var k in kids)
-        {
-            App.Selection.Select(k); // [direct] as a click on its world
-            await Frames(2);
-            await Key(Godot.Key.G);
-            await Until(() => App.Navigator.Current == k && !P.Busy, 15);
-            arrivals.Add(P.Audio.RecordSeconds);
-            await Key(Godot.Key.Backspace);
-            await Until(() => App.Navigator.Current == root && !P.Busy, 15);
-            arrivals.Add(P.Audio.RecordSeconds);
-        }
-
-        Log("  arrivals " + string.Join(", ", arrivals.Select((a, i) => F($"{(i == 0 ? 0 : a - arrivals[i - 1]):0.00}"))) + " s apart");
-        await Seconds(10);
-        Mark("hops-end");
-        var hops = _musicChanges.Skip(changes0).ToList();
-        var held = hops.Where(c => !SkySynth.IsExperience(c.FromId) && !SkySynth.IsExperience(c.ToId) && c.FromId != MusicIdentity.Hazard && c.ToId != MusicIdentity.Hazard).ToList();
-        Check(held.Count >= 1 && held.All(c => c.Played >= SkySynth.GameMinimumDwell.TotalSeconds - 0.06),
-            F($"through {arrivals.Count} quick arrivals the music changed {held.Count} times, each after the playing music had sounded ≥ {SkySynth.GameMinimumDwell.TotalSeconds} s ({string.Join(", ", held.Select(c => $"{c.Played:0.0}"))} s)"));
-        m = P.Audio.MusicState();
-        Check(App.Navigator.Current == root && m.Playing == placeId && m.Root == key.RootMidiNote && !m.Held, $"and it ends on the world you stand on: {m.Playing} on {m.Root}");
+        Check(P.Audio.MusicState().Playing == placeId, "leaving the overview brings the world's music back");
+        await Listen(10, 0.5);
+        Mark("end");
 
         _trackMusic = false;
         Check(P.Audio.AudibleSkips == skips0, $"no audio gaps in the whole journey ({P.Audio.AudibleSkips - skips0} underruns; {P.Audio.Skips} counted since playback began)");
@@ -151,29 +141,27 @@ public partial class PlanetsProbe
         Log($"music changes: {_musicChanges.Count}; audio {P.Audio.DiagnosticsJson()}");
     }
 
-    /// <summary>[direct] to the foot of the overlook's stones, facing them; then E lifts you up beside the telescope (PLANET-73).</summary>
-    private async Task ClimbToOverlook()
+    /// <summary>[direct] 6 m out from the foot of the overlook's stones, facing them; then W walks up to the foot (a [direct] step to it if the walk is blocked).</summary>
+    private async Task ApproachOverlookOnFoot()
     {
         var c = P.Composition!;
         var ov = c.Overlook;
         var r = c.Shape.Radius;
         var outward = ov.StepFoot - ov.Direction * NVector3.Dot(ov.StepFoot, ov.Direction);
-        var foot = PlanetFrame.Move(ov.StepFoot, NVector3.Normalize(outward - ov.StepFoot * NVector3.Dot(outward, ov.StepFoot)), ov.Steps[0].Radius + 1.2f, r);
-        P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot);
-        P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - foot * NVector3.Dot(ov.StepFoot, foot)));
-        await Seconds(0.8);
-        await Key(Godot.Key.E);
-        await Until(() => P.OnOverlook && P.Walker.Grounded, 4);
-        Check(P.OnOverlook, "E at the foot of the stones: up on the overlook");
-    }
+        var away = NVector3.Normalize(outward - ov.StepFoot * NVector3.Dot(outward, ov.StepFoot));
+        var start = PlanetFrame.Move(ov.StepFoot, away, ov.Steps[0].Radius + 6f, r);
+        P.Walker.Teleport(c.Surface, start, ov.StepFoot - start);
+        P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - start * NVector3.Dot(ov.StepFoot, start)));
+        await Seconds(0.5);
+        await WalkToward(ov.StepFoot, ov.Steps[0].Radius + 1.2f, 6);
+        if (P.PromptText != PlanetWorld.TelescopeFootPrompt)
+        {
+            var foot = PlanetFrame.Move(ov.StepFoot, away, ov.Steps[0].Radius + 1.2f, r);
+            P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot); // [direct] the walk was blocked: to the foot
+            Log("  (the walk up was blocked: placed at the foot of the stones)");
+            await Seconds(0.5);
+        }
 
-    /// <summary>[direct] 14 m out from the overlook, on the arrival's side (as walking off it and away).</summary>
-    private void LeaveOverlook()
-    {
-        var c = P.Composition!;
-        var ov = c.Overlook;
-        var away = NVector3.UnitY - ov.Direction * NVector3.Dot(NVector3.UnitY, ov.Direction);
-        var start = PlanetFrame.Move(ov.Direction, NVector3.Normalize(away), ov.Radius + 14f, c.Shape.Radius);
-        P.Walker.Teleport(c.Surface, start, ov.Direction - start);
+        await Frames(4);
     }
 }

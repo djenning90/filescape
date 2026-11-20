@@ -1,5 +1,30 @@
 # Architecture (prototype)
 
+## Design tenets
+
+Durable design commitments: a change that weakens one needs DJ's agreement and a decision (AD) saying why.
+
+**The traveller's little light (AD-85).** The traveller carries a small warm lantern on a swaying antenna over its head
+(`app/Scripts/Planets/AvatarRig.cs`: `LanternColor` (1.0, 0.8, 0.42), the glowing core `_lanternCore` with its halo,
+and a soft `OmniLight3D`, energy 0.7 and range 2.8 m, that brightens with a launcher's wind-up and in flight; the antenna is
+a spring that lags behind starts and swings on stops). DJ (2026-11-20): "the character's little light [is a particular
+success]. Several people independently called out that light as adorable … It represents the warm, playful aesthetic I
+want." It is the project's clearest statement of how FileScape should feel: small, warm, alive and a little funny, a
+companion's light carried through a large and possibly cold space (your filesystem).
+
+- *Why it matters:* it is what people remember and like; it makes a technical tool feel friendly; it gives every scene,
+  however dark (a Hazard World, the deep sky of the overview), one warm point that is you. It reads at a glance from the
+  chase camera, so it also says where you are.
+- *What future work must preserve:* the lantern stays on the traveller, warm (amber, never a cold or neutral white),
+  small and soft (a glow and a halo, not a beam or a spotlight), alive (it sways with the body's motion and answers what
+  the traveller does: brighter winding up and flying); it is not hidden or replaced by effects, outfits or UI except
+  where the camera is the traveller's own eye (the telescope's view) and it returns the moment the camera does.
+- *The same care elsewhere:* new things should carry the same character — small, warm, responsive details that answer
+  the player (the bell's swing, scenery that answers a twirl, the telescope's flare), rather than generic chrome. When a
+  new feature has a choice between a neutral control and a warm, playful one that is just as clear, choose the warm one.
+  Clarity still comes first: playfulness never hides what a key does.
+
+
 ```
 FileScape.Core (net8.0, no engine reference)            app/ (Godot 4.7 .NET)
 ┌───────────────────────────────────────────┐          ┌──────────────────────────────────────────┐

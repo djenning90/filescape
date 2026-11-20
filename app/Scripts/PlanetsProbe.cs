@@ -27,7 +27,7 @@ namespace FileScape.App;
 /// Other modes: planets-discover, planets-flows (the three flows from DJ's 2026-11-11 playtest), planets-route and
 /// planets-route-hub (PLANET-27..30, world characters), planets-landmarks (PLANET-45, the root landmarks' terminal,
 /// path and places panel; <c>PlanetsProbe.Landmarks.cs</c>), planets-lookouts (PLANET-55/56, PLANET-73..75: the telescope from its approach, scenery that answers, the
-/// bell tower and the lighthouse; <c>PlanetsProbe.Lookouts.cs</c>), planets-music (AD-79: which music plays where, the overlook's and the overview's pieces, the minimum dwell;
+/// bell tower and the lighthouse; <c>PlanetsProbe.Lookouts.cs</c>), planets-music (AD-79, AD-85: which music plays where — the overlook, the telescope and its departure, the overview — and its playback;
 /// <c>PlanetsProbe.Music.cs</c>), planets-reel (a short recording) and planets-camera-trace (a
 /// frame-by-frame trace of the overview camera for comparing a refactor). Timing: waits use <see cref="ProbeBase"/>'s
 /// clock, which is simulated time while a movie is written, so the same thresholds hold for a recording; frame times

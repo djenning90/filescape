@@ -86,9 +86,10 @@ public sealed class ExperiencePiece
 }
 
 /// <summary>
-/// The pieces the game plays for experiences (AD-79): the overlook (and the telescope on it) has the Lydian overlook DJ
-/// heard in the mode sketches; the overview has the star chart, Ionian, or Dorian when you look out from a minor place.
-/// <see cref="SkySynth.SetExperience"/> chooses between them; <see cref="SkySynth"/> plays them on a deck like any world.
+/// The pieces the game plays for experiences (AD-79, AD-85): the overlook (and the telescope on it) has the Lydian overlook
+/// DJ heard in the mode sketches; the overview has Star Chart Dorian from every place (<see cref="Overview"/>). The Ionian
+/// star chart and its "second" variation are kept as <see cref="Reserved"/> arrangements. <see cref="MusicActivity"/> decides
+/// the activity, <see cref="SkySynth.SetExperience"/> plays its piece on a deck like any world.
 /// </summary>
 public static class ExperiencePieces
 {
@@ -102,6 +103,33 @@ public static class ExperiencePieces
     private static readonly ExperiencePiece StarChartDorian = new("star-chart-dorian", ModeSketches.StarChartBpm, DiatonicMode.Dorian,
         [ModeSketches.StarChart(DiatonicMode.Dorian, 0), ModeSketches.StarChart(DiatonicMode.Dorian, 1)], [0, 32, 96, 160, 224]);
 
-    /// <summary>The overview's star chart in <paramref name="mode"/> (Dorian, or Ionian for any other mode).</summary>
+    /// <summary>
+    /// The overview's piece (AD-85, DJ 2026-11-20: "Star Chart Dorian … the primary musical identity for Overview"): the
+    /// Dorian star chart as DJ heard it, then "the deep sky" (the same notes deepened with the aurora voices) on the later
+    /// cycles and a forgotten revisit; from every place, in the place's key.
+    /// </summary>
+    public static ExperiencePiece Overview { get; } = new("star-chart-dorian", ModeSketches.StarChartBpm, DiatonicMode.Dorian,
+        [ModeSketches.StarChart(DiatonicMode.Dorian, 0), ModeSketches.StarChart(DiatonicMode.Dorian, ModeSketches.DeepSkyVariation)], [0, 32, 96, 160, 224]);
+
+    /// <summary>An arrangement kept, note for note, for another use (AD-85): the piece and where it is meant to go.</summary>
+    public sealed record ReservedPiece(ExperiencePiece Piece, string Use);
+
+    /// <summary>
+    /// The arrangements AD-85 took out of the overview (DJ: "a more nursery-rhyme quality than I want for this experience …
+    /// preserve those arrangements for other suitable uses"), kept note for note and playable by any deck, with the use each
+    /// is reserved for. Nothing in the game plays them yet: each use is a light, brief moment that DJ should confirm by ear
+    /// before it is wired (AD-85).
+    /// </summary>
+    public static IReadOnlyList<ReservedPiece> Reserved { get; } =
+    [
+        new(StarChartIonian, "the tutorial's welcome (the first-run card on the Starter Sky, before the first lesson): a bright, singable "
+            + "statement of the theme for someone meeting FileScape, in the hub's major key"),
+        new(new ExperiencePiece("star-chart-second", ModeSketches.StarChartBpm, DiatonicMode.Ionian,
+            [ModeSketches.StarChart(DiatonicMode.Ionian, 1), ModeSketches.StarChart(DiatonicMode.Dorian, 1)], [0, 32, 96, 160, 224]),
+            "the Music Box and toy-like playthings (a tune wound up by a twirl), and the tutorial's closing card: the short theme on the "
+            + "aurora lead as a small reward"),
+    ];
+
+    /// <summary>The star chart as AD-79 built it in <paramref name="mode"/> (Dorian, or Ionian for any other mode), for offline renders and tests; the game's overview plays <see cref="Overview"/>.</summary>
     public static ExperiencePiece StarChart(DiatonicMode mode) => mode == DiatonicMode.Dorian ? StarChartDorian : StarChartIonian;
 }

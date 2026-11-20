@@ -581,6 +581,14 @@ public static class ModeSketches
 
     // ---------------------------------------------------------------- the overview's star chart (AD-79)
 
+    /// <summary>The star chart's variation number for "the deep sky" (AD-85), the overview's later cycle.</summary>
+    public const int DeepSkyVariation = 2;
+
+    // ---- the deep sky's aurora layer (AD-85; by ear, not yet DJ's): velocities 0–1. The pad under the short theme a little
+    // below the plain pad's 0.9 (the aurora pad's filter opens with velocity, so it glows rather than swells); the held bass
+    // well under the round bass's 0.6–0.9 so the pulse still leads; the counter-line quiet under the bell's 0.75.
+    private const float DeepPadVelocity = 0.8f, DeepBassVelocity = 0.45f, DeepCounterVelocity = 0.4f;
+
     /// <summary>The star chart's tempo, beats per minute: between the overlook's float (84) and the reel's walk (112); 16 bars last 40 s.</summary>
     public const double StarChartBpm = 96;
 
@@ -612,12 +620,18 @@ public static class ModeSketches
     /// short theme follows on the bell over the reel's chords (bars 2–5: the reel's Ionian version, the one DJ liked best);
     /// then the theme's answer and raised motif on the aurora lead with the bell an octave above (6–9); the constellation,
     /// glass stars over the pad (10–13); and the cadence, the characteristic degree ringing on the glass (14–15).
-    /// <paramref name="variation"/> 1 (a revisit, every other time round) gives the short theme to the aurora lead and the
-    /// answer to the bell. Soft offbeat hats and a kick every second bar from bar 6 give it a slow pulse.
+    /// <paramref name="variation"/> 1 (AD-79's revisit, kept by AD-85 as a reserved arrangement) gives the short theme to
+    /// the aurora lead and the answer to the bell. <paramref name="variation"/> 2, "the deep sky" (AD-85: the overview's
+    /// later cycle), keeps every note of 0 — the bell's short theme and the aurora lead's answer DJ chose in Dorian — and
+    /// deepens it with the aurora voices only: the aurora pad instead of the plain pad under the short theme and the
+    /// cadence, an aurora bass held under the round bass, and a slow aurora counter-line (each chord's third, an octave
+    /// down) under the constellation. Soft offbeat hats and a kick every second bar from bar 6 give it a slow pulse.
+    /// <para>What a change must preserve: variations 0 and 1 note for note (MusicActivityTests pins their fingerprints).</para>
     /// </summary>
     public static SketchScore StarChart(DiatonicMode mode, int variation = 0)
     {
         var swap = variation % 2 == 1;
+        var deep = variation == DeepSkyVariation;
         var w = new SketchWriter(StarChartBpm, mode, TonicMidi);
         var shortChords = ShortThemeChords(mode);
         w.Mark("intro: the mode, the sky opening");
@@ -634,8 +648,9 @@ public static class ModeSketches
         for (var bar = 0; bar < 4; bar++)
         {
             var at = 16 * bar;
-            Triad(w, SketchInstrument.Pad, at, 16, shortChords[bar], -1, 0.9f);
+            Triad(w, deep ? SketchInstrument.AuroraPad : SketchInstrument.Pad, at, 16, shortChords[bar], -1, deep ? DeepPadVelocity : 0.9f);
             BassBar(w, at, shortChords[bar]);
+            if (deep) w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, at, 16, Low(shortChords[bar]), -2, DeepBassVelocity);
             Arpeggio(w, at, shortChords[bar], -1, 0.55f);
             Hats(w, at, 0.25f);
         }
@@ -675,6 +690,7 @@ public static class ModeSketches
             Hats(w, at, 0.22f);
             if (bar % 2 == 0) w.Hit(SketchInstrument.Kick, at, 0.4f);
             foreach (var (start, degree, length) in Constellation[bar]) w.Degree(M, swap ? SketchInstrument.Glass : SketchInstrument.Bell, at + start, length, degree, 0, 0.75f, -0.1f);
+            if (deep) w.Degree(SketchPart.Counter, SketchInstrument.AuroraLead, at, 16, Ladder(stars[bar], 1), -1, DeepCounterVelocity, 0.3f);
         }
 
         w.AdvanceBars(4);
@@ -684,9 +700,10 @@ public static class ModeSketches
         {
             var at = 16 * bar;
             var root = shortChords[2 + bar];
-            Triad(w, SketchInstrument.Pad, at, 16, root, -1, 0.9f);
+            Triad(w, deep ? SketchInstrument.AuroraPad : SketchInstrument.Pad, at, 16, root, -1, deep ? DeepPadVelocity : 0.9f);
             Triad(w, SketchInstrument.AuroraPad, at, 16, root, -1, 0.6f);
             BassBar(w, at, root);
+            if (deep) w.Degree(SketchPart.Bass, SketchInstrument.AuroraBass, at, 16, Low(root), -2, DeepBassVelocity);
             if (bar == 0) Arpeggio(w, at, root, -1, 0.5f);
             Hats(w, at, 0.2f);
         }
@@ -694,7 +711,7 @@ public static class ModeSketches
         foreach (var n in ShortTheme.Where(n => n.StartSixteenths >= 32)) w.Degree(M, SketchInstrument.Bell, n.StartSixteenths - 32, n.LengthSixteenths, n.Degree, 0, 0.85f, -0.05f);
         w.Degree(SketchPart.Colour, SketchInstrument.Glass, 16 + 8, 8, Modes.CharacteristicDegree(mode), 1, 0.5f, 0.3f);
         w.AdvanceBars(2);
-        return w.Build("star-chart-" + Modes.Name(mode).ToLowerInvariant() + (swap ? "-second" : ""), RingSeconds + 1);
+        return w.Build("star-chart-" + Modes.Name(mode).ToLowerInvariant() + (swap ? "-second" : deep ? "-deep-sky" : ""), RingSeconds + 1);
     }
 
     /// <summary>
