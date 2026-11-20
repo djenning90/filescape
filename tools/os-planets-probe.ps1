@@ -409,12 +409,14 @@ try {
       Key-Down 'W'
       try {
         $sw = [Diagnostics.Stopwatch]::StartNew(); $seq = -1
-        while ($sw.ElapsedMilliseconds -lt 2000) { $q = State; if ([int]$q.seq -ne $seq) { $seq = [int]$q.seq; $samples.Add([double]$q.planets.viewPitch) }; Start-Sleep -Milliseconds 5 }
+        $seqs = New-Object System.Collections.Generic.List[int]
+        while ($sw.ElapsedMilliseconds -lt 2000) { $q = State; if ([int]$q.seq -ne $seq) { $seq = [int]$q.seq; $samples.Add([double]$q.planets.viewPitch); $seqs.Add($seq) }; Start-Sleep -Milliseconds 5 }
         $s2 = State
       } finally { Key-Up 'W' }
-      $maxStep = 0.0; for ($k = 1; $k -lt $samples.Count; $k++) { $maxStep = [Math]::Max($maxStep, [Math]::Abs($samples[$k] - $samples[$k - 1])) }
+      # A step per state write (one a frame with -StateIntervalMs 0): the poll can miss a write, so a gap of n writes counts as n steps.
+      $maxStep = 0.0; for ($k = 1; $k -lt $samples.Count; $k++) { $n = [Math]::Max(1, $seqs[$k] - $seqs[$k - 1]); $maxStep = [Math]::Max($maxStep, [Math]::Abs($samples[$k] - $samples[$k - 1]) / $n) }
       $c2 = [double]$s2.planets.camPitch; $v3 = [double]$s2.planets.viewPitch; $turn = Turned-By $y1 ([double]$s2.planets.camYaw)
-      Check ([Math]::Abs($c2 - 18) -le 1.0 -and [Math]::Abs($v3 - $usual) -le 2.0 -and $maxStep -le 3.0 -and $turn -le 3.0) ("look: after the sharp look {0}, 2 s of W bring the camera back smoothly: chosen {1:0.0} -> {2:0.0} (usual 18), view {3:0.0} -> {4:0.0} (usual walking {5:0.0}), largest step {6:0.00} deg between {7} snapshots, heading turned {8:0.0} deg" -f $d[0], $c1, $c2, $v2, $v3, $usual, $maxStep, $samples.Count, $turn)
+      Check ([Math]::Abs($c2 - 18) -le 1.0 -and [Math]::Abs($v3 - $usual) -le 2.0 -and $maxStep -le 3.0 -and $turn -le 3.0) ("look: after the sharp look {0}, 2 s of W bring the camera back smoothly: chosen {1:0.0} -> {2:0.0} (usual 18), view {3:0.0} -> {4:0.0} (usual walking {5:0.0}), largest step {6:0.00} deg a frame over {7} snapshots, heading turned {8:0.0} deg" -f $d[0], $c1, $c2, $v2, $v3, $usual, $maxStep, $samples.Count, $turn)
       Start-Sleep -Milliseconds 1000
     }
     # A right-drag held down while walking: the drag owns the camera until it is let go, then the walk brings it back.
