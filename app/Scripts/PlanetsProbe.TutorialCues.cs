@@ -277,20 +277,20 @@ public partial class PlanetsProbe
     /// <summary>Turns the camera with an arrow key (as a player would) until <paramref name="done"/> holds for the bearing to a spot.</summary>
     private async Task TurnUntil(NVector3 dir, Func<float, bool> done, Godot.Key preferred, double timeoutSeconds = 8)
     {
-        var start = Time.GetTicksMsec();
+        var timedOut = Deadline(timeoutSeconds); // game time and wall clock (AD-91)
         // The camera's turn eases on after a key is let go, so a stop inside the window can drift out of it: wait for it
         // to settle and aim again (up to three passes; full-tier run 2026-11-17 overshot from −99° to past +60°).
         for (var pass = 0; pass < 3; pass++)
         {
-            await TurnPass(dir, done, preferred, start, timeoutSeconds);
+            await TurnPass(dir, done, preferred, timedOut);
             await Frames(20);
             if (done(P.CameraTurnTo(dir))) break;
         }
     }
 
-    private async Task TurnPass(NVector3 dir, Func<float, bool> done, Godot.Key preferred, ulong start, double timeoutSeconds)
+    private async Task TurnPass(NVector3 dir, Func<float, bool> done, Godot.Key preferred, Func<bool> timedOut)
     {
-        while (!done(P.CameraTurnTo(dir)) && (Time.GetTicksMsec() - start) / 1000.0 < timeoutSeconds)
+        while (!done(P.CameraTurnTo(dir)) && !timedOut())
         {
             var b = P.CameraTurnTo(dir);
             // Fine aim: towards the bearing; otherwise keep turning the preferred way.
@@ -310,8 +310,8 @@ public partial class PlanetsProbe
     /// <summary>Walks towards a spot (turning to face it first) until <paramref name="stop"/> holds or the timeout passes.</summary>
     private async Task WalkUntil(NVector3 dir, Func<bool> stop, double timeoutSeconds)
     {
-        var start = Time.GetTicksMsec();
-        while (!stop() && (Time.GetTicksMsec() - start) / 1000.0 < timeoutSeconds)
+        var timedOut = Deadline(timeoutSeconds);
+        while (!stop() && !timedOut())
         {
             var b = P.CameraTurnTo(dir);
             if (MathF.Abs(b) > 10f)

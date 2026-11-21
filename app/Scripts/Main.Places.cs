@@ -77,7 +77,7 @@ public partial class Main
     private PlaceTransition? _transition;
     private Label3D _hereLabel = null!;
     private MeshInstance3D _hereRing = null!;
-    /// <summary>The app clock (time since start) for this frame.</summary>
+    /// <summary>The app's wall clock for this frame: refresh throttles and diagnostics. Gate cooldowns and the upward settle use the game clock (AD-91).</summary>
     private TimeSpan _now, _lastSignUpdate;
     private int _transitions;
     private int _lastHudKey;
@@ -396,7 +396,7 @@ public partial class Main
         InstanceCount = _placeWorld.InstanceCount;
         Perf.MarkRelayout(LastComposeMs + LastPlaceBuildMs);
         if (rebuildOnly) _threshold.Follow(_place, _rig.CameraPosition.ToNumerics());
-        else _threshold.Reset(_place, _rig.CameraPosition.ToNumerics(), _now);
+        else _threshold.Reset(_place, _rig.CameraPosition.ToNumerics(), _gameClock.Now); // game time (AD-91)
         _placeWorld.UpdateSigns(_rig.Camera, _hud.BlockingRects.ToList());
         UpdatePlaceHud();
         UpdateInspector(); // listing states change under the selection too (found: a drive stayed "not listed yet" after failing)
@@ -407,7 +407,7 @@ public partial class Main
     {
         if (snap) PlaceUserAt(pose);
         else StartGuide(pose, Locomotion.Walking);
-        if (_place != null) _threshold.Reset(_place, pose.Eye, _now);
+        if (_place != null) _threshold.Reset(_place, pose.Eye, _gameClock.Now);
     }
 
     // ------------------------------------------------------------------ travel (PLACE-06..08)
@@ -611,7 +611,7 @@ public partial class Main
             _hud.SetTransition(0, null);
             ArriveAt(tr.Arrival, snap: true);
             _transitions++;
-            _upwardSettle = tr.Change.Move == PlaceMove.Up ? (tr.Change, _now) : null;
+            _upwardSettle = tr.Change.Move == PlaceMove.Up ? (tr.Change, _gameClock.Now) : null;
             if (_landAfterArrival)
             {
                 _landAfterArrival = false;
@@ -704,7 +704,7 @@ public partial class Main
     private void SettleUpwardArrival()
     {
         if (_upwardSettle is not { } u || _place == null) return;
-        if (_now - u.At > UpwardSettleWindow || LastUpwardRoute is not { } before)
+        if (_gameClock.Now - u.At > UpwardSettleWindow || LastUpwardRoute is not { } before)
         {
             _upwardSettle = null;
             return;
@@ -716,7 +716,7 @@ public partial class Main
         if (System.Numerics.Vector3.Distance(pose.Eye, before.Pose.Eye) > UpwardSettleMinShiftMetres)
         {
             PlaceUserAt(pose);
-            _threshold.Reset(_place, pose.Eye, _now);
+            _threshold.Reset(_place, pose.Eye, _gameClock.Now);
             UpwardResettles++;
             GD.Print("[route] the listing changed the layout just after arrival: placed on the new route");
         }
@@ -736,7 +736,7 @@ public partial class Main
     private void CheckThresholds()
     {
         if (_place == null || _transition != null) return;
-        var crossed = _threshold.Update(_rig.CameraPosition.ToNumerics(), _now, CameraMath.HorizontalForward(_rig.Yaw));
+        var crossed = _threshold.Update(_rig.CameraPosition.ToNumerics(), _gameClock.Now, CameraMath.HorizontalForward(_rig.Yaw));
         if (crossed == null) return;
         if (crossed.IsParent) TravelUp();
         else TravelInto(crossed.TargetId);

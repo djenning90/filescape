@@ -79,8 +79,8 @@ public partial class PlanetsProbe
         var hi = float.MinValue;
         var frames = 0;
         HoldKey(Godot.Key.W, true);
-        var t0 = Time.GetTicksMsec();
-        while (Time.GetTicksMsec() - t0 < ReliefWalkSeconds * 1000)
+        var t0 = ClockSeconds; // game time under --sim-clock (AD-91)
+        while (ClockSeconds - t0 < ReliefWalkSeconds)
         {
             await Frames(1);
             var ahead = top - P.Walker.Up * System.Numerics.Vector3.Dot(top, P.Walker.Up);

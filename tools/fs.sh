@@ -369,11 +369,12 @@ case "$cmd" in
     [[ -f "$log" ]] || { echo "fs.sh timing: no log yet ($log)"; exit 0; }
     awk -F'\t' -v s="$sess" -v rows=$rows '
       s != "" && $2 != s { next }
+      $3 == "desktop" { d += $6; dn++; if (rows) printf "%s  %-6s %-28s %-8s %8.1f s  (desktop occupancy)\n", $1, $3, $4, $5, $6; next }
       { n++; a += $6; w += $7; if ($8 == 1) { r++; rs += $6; why[$4] = why[$4] (why[$4] ? "; " : "") $9 }; if ($3 == "timed") { tn++; ts += $6 }
         if (rows) printf "%s  %-6s %-28s %-8s %8.1f s  wait %6.1f s%s\n", $1, $3, $4, $5, $6, $7, ($8 == 1 ? "  rerun: " $9 : "") }
       END {
         printf "session %s: %d rows (%d ad-hoc, %.1f s)\n", (s == "" ? "(all)" : s), n, tn, ts
-        printf "  active    %9.1f s\n  lock-wait %9.1f s\n  reruns    %9.1f s in %d row(s)\n", a, w, rs, r
+        printf "  active    %9.1f s\n  lock-wait %9.1f s\n  reruns    %9.1f s in %d row(s)\n  desktop   %9.1f s in %d check(s) (app windows open)\n", a, w, rs, r, d, dn
         for (k in why) printf "    rerun %s: %s\n", k, why[k]
       }' "$log" ;;
   builds)

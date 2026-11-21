@@ -276,12 +276,12 @@ public partial class WalkProbe
         var y0 = W.Feet.Y;
         var apex = 0f;
         Key1(Godot.Key.Space, true);
-        var start = Time.GetTicksMsec();
+        var start = ClockSeconds; // game time under --sim-clock (AD-91)
         var released = false;
         // At most 120 frames (≈ 2 s); landing is only looked for after 10 frames, so the take-off frame is not taken for it.
         for (var i = 0; i < 120; i++)
         {
-            if (!released && (Time.GetTicksMsec() - start) / 1000.0 >= holdSeconds)
+            if (!released && ClockSeconds - start >= holdSeconds)
             {
                 Key1(Godot.Key.Space, false);
                 released = true;
