@@ -121,6 +121,35 @@ public class LiteralTextTests
         BbcodeReading.Read(ReaderText.CutNote).Tags.Should().OnlyContain(t => t == "color" || t == "b");
     }
 
+    [Fact]
+    public void The_markup_names_fixture_scans_and_every_real_name_renders_literally()
+    {
+        // The planets-text journey's fixture, written and scanned for real (NTFS on Windows, ext4 on Linux).
+        var parent = Path.Combine(Path.GetTempPath(), "FileScape-fixtures", "markup-test-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var root = FileScape.Core.Samples.MarkupNamesSample.Create(parent);
+            var (tree, _) = ScanRunner.Run(new FileScape.Core.Scanning.DirectoryScanner(root));
+            var names = FileScape.Core.Samples.MarkupNamesSample.Folders.Concat(FileScape.Core.Samples.MarkupNamesSample.Files.Select(f => f.Name)).ToList();
+            foreach (var name in names)
+            {
+                var node = tree.Find(name);
+                BbcodeReading.Shown(InspectorText.Describe(node, tree, SizeScale.Classic)).Should().Contain(tree.FullPath(node.Id));
+                UiText.Plain($"{{E}} · look closer at {UiText.Lit(name)}").Should().Be($"E · look closer at {name}");
+                BbcodeReading.Shown(UiText.ToBbcode($"{{Space}} · fly to {UiText.Lit(name)}", UiTextStyle.Prompt)).Should().EndWith($"fly to {name}");
+            }
+
+            foreach (var (name, text) in FileScape.Core.Samples.MarkupNamesSample.Files.Where(f => f.Name.EndsWith(".txt", StringComparison.Ordinal)))
+            {
+                BbcodeReading.Shown(MarkdownText.PlainToBbcode(File.ReadAllText(Path.Combine(root, name)))).Should().Be(text, "a plain file is shown as written");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(parent)) Directory.Delete(parent, recursive: true);
+        }
+    }
+
     /// <summary>The tags MarkdownText writes itself.</summary>
     private static readonly HashSet<string> MarkdownTags = ["b", "i", "s", "u", "code", "color", "font_size", "indent", "table", "cell", "url"];
 }
