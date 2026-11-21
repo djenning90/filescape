@@ -67,6 +67,7 @@ public partial class PlanetsProbe : ProbeBase
     {
         base._Process(delta); // simulated time for recordings
         TrackFrameGap(); // PlanetsProbe.Audio.cs
+        TrackStallFrame(); // PlanetsProbe.Stalls.cs
         TrackDiscoveryFrame(delta); // PlanetsProbe.Discovery.cs
         TrackMusic(); // PlanetsProbe.Music.cs
         TrackTravelFrame(); // PlanetsProbe.Travel.cs
@@ -143,6 +144,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-overview-enter") await OverviewEnterRun(); // PlanetsProbe.Travel.cs (PLANET-83)
         else if (Mode == "planets-selection-actions") await SelectionActionsRun(); // PlanetsProbe.SelectionActions.cs (PLANET-87)
         else if (Mode == "planets-text") await TextRun(); // PlanetsProbe.Text.cs (PLANET-152..156)
+        else if (Mode == "planets-stalls") await StallsRun(); // PlanetsProbe.Stalls.cs (PLANET-178..180, AD-96)
         else await Journey(reel: Mode == "planets-reel");
         ReportPerf();
     }

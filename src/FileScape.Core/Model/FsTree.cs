@@ -25,7 +25,10 @@ public sealed record DataSourceInfo(DataOrigin Origin, string RootDisplayPath, s
 /// <summary>
 /// The node store for one scan. Nodes arrive in <see cref="ScanBatch"/>es in strictly increasing id order and
 /// are applied on the consuming thread only (the Godot main thread in the app). The type is not thread-safe
-/// by design: the scanner never touches it (AD-04).
+/// by design: the scanner never touches it (AD-04). One exception, explicit: a worker may read it while it holds a
+/// <see cref="BeginBackgroundRead"/> lease (PLANET-176, AD-96: planets composed off the main thread), and
+/// <see cref="Apply"/> refuses to change the tree while any lease is held, so the consumer must defer batches then
+/// (<see cref="BackgroundReaders"/>).
 /// <para>
 /// Nodes are only ever appended, never removed or renumbered, so an id stays valid for the tree's lifetime and parents
 /// always have smaller ids than their children. Aggregates (sizes, counts, unsettled directories) are updated up the
@@ -55,6 +58,31 @@ public sealed class FsTree
 
     public FsNode this[int id] => _nodes[id];
 
+    private int _backgroundReaders;
+
+    /// <summary>Workers reading the tree now (leases from <see cref="BeginBackgroundRead"/>); while above 0, <see cref="Apply"/> throws.</summary>
+    public int BackgroundReaders => Volatile.Read(ref _backgroundReaders);
+
+    /// <summary>
+    /// A lease for reading the tree on another thread (taken on the consuming thread before the worker starts, ended
+    /// by disposing it, from any thread, once). While held, the tree does not change: <see cref="Apply"/> throws.
+    /// </summary>
+    public IDisposable BeginBackgroundRead()
+    {
+        Interlocked.Increment(ref _backgroundReaders);
+        return new ReadLease(this);
+    }
+
+    private sealed class ReadLease(FsTree tree) : IDisposable
+    {
+        private int _ended;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _ended, 1) == 0) Interlocked.Decrement(ref tree._backgroundReaders);
+        }
+    }
+
     public bool Contains(int id) => id >= 0 && id < _nodes.Count;
 
     /// <summary>
@@ -63,6 +91,7 @@ public sealed class FsTree
     /// </summary>
     public void Apply(ScanBatch batch)
     {
+        if (BackgroundReaders > 0) throw new InvalidOperationException("The tree is being read on a worker (BeginBackgroundRead); apply batches after the lease ends.");
         foreach (var record in batch.NewNodes)
         {
             if (record.Id != _nodes.Count)

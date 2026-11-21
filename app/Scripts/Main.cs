@@ -189,6 +189,7 @@ public partial class Main : Node3D
 
         _stateFile = args.StateFile;
         _stateWriteInterval = args.StateIntervalMs is { } sim ? TimeSpan.FromMilliseconds(Math.Max(0, sim)) : DefaultStateWriteInterval;
+        if (args.DiagFrames is { } diagPath) StartFrameDiag(diagPath); // PLANET-179 (Main.FrameDiag.cs)
         // An isolated scene: nothing of FileScape is built or scanned. (The planetoid prototype, PLANET-02, was retired
         // on 2026-11-20 once the planets superseded it: docs/planetoid-feasibility.md keeps its account.)
         if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
@@ -349,6 +350,7 @@ public partial class Main : Node3D
     {
         if (_closing) return;
         _closing = true;
+        FrameDiag.Stop(); // PLANET-179: the per-frame CSV is complete up to here
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var progress = _session?.Snapshot();
         _session?.Dispose();
@@ -631,7 +633,10 @@ public partial class Main : Node3D
     {
         if (_closing) return; // SHUT-01: no new work once closing has begun
         if (_experimentOnly) return;
+        FrameDiag.FrameStart(GetViewport()); // PLANET-179: no-op unless --diag-frames
+        var diagT = FrameDiag.Now;
         RefreshCardOnViewChange();
+        diagT = FrameDiag.Lap(FrameSection.RefreshCard, diagT);
         Perf.BeginFrame(delta, _session is { IsFinished: false } && !(_explorer != null && _session.Snapshot().Idle));
         var now = _clock.Elapsed; // the app clock (time since start)
         if (_now > TimeSpan.Zero && (now - _now).TotalMilliseconds > HitchThresholdMs)
@@ -643,13 +648,16 @@ public partial class Main : Node3D
 
         _now = _clock.Elapsed;
         DrainBatches();
+        diagT = FrameDiag.Lap(FrameSection.Drain, diagT);
         if (_experience == Experience.Planets)
         {
             // The planetary world (AD-39) owns its camera, movement and signs; the session, HUD and state file stay shared.
             var pointerBlocked = !_windowFocused || ModalOpen;
             var blockedKeys = pointerBlocked || GetViewport().GuiGetFocusOwner() != null || KeyboardPanel != KeyPanel.None; // AD-68
             _planets.Tick(delta, blockedKeys, pointerBlocked);
+            diagT = FrameDiag.Lap(FrameSection.PlanetsTick, diagT);
             TickTutorial((float)delta);
+            diagT = FrameDiag.Lap(FrameSection.Tutorial, diagT);
             // The breadcrumb and counts follow the listing (found 2026-11-11: opening the planets on a fresh root left
             // "You are in" empty, because the HUD was set before the root was listed). At most twice a second.
             if (_tree is { Count: > 0 } && _tree.Version != _planetHudTreeVersion && _now - _planetHudAt >= PlanetHudRefreshInterval)
@@ -659,7 +667,10 @@ public partial class Main : Node3D
                 UpdatePlaceHud();
             }
 
+            diagT = FrameDiag.Lap(FrameSection.PlaceHud, diagT);
             FinishFrame(now);
+            FrameDiag.Lap(FrameSection.Finish, diagT);
+            FrameDiag.ProcessEnd();
             return;
         }
 
@@ -726,7 +737,9 @@ public partial class Main : Node3D
         if (_stateFile != null && now - _lastStateWrite > _stateWriteInterval)
         {
             _lastStateWrite = now;
+            var diagState = FrameDiag.Now;
             WriteState();
+            FrameDiag.Lap(FrameSection.StateWrite, diagState);
         }
 
         if (now - _lastStatsRefresh > StatsRefreshInterval)

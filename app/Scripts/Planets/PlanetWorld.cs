@@ -292,10 +292,13 @@ public partial class PlanetWorld : Node3D
         if (!_active) return;
         _pointerBlocked = pointerBlocked;
         var dt = (float)delta;
+        var diagT = FrameDiag.Now; // PLANET-179: section timings (no-op unless --diag-frames)
         // PlanetWorld.Sky: the slow turn and the occasional shooting star, every frame (also while a flight waits for its
         // destination's listing, and in the overview, which shows no shooting star).
         UpdateSky(dt);
+        diagT = FrameDiag.Lap(FrameSection.Sky, diagT);
         RunDeliveries();
+        diagT = FrameDiag.Lap(FrameSection.Deliveries, diagT);
         _overlay.Visible = true;
         var tree = _s.Tree;
         if (tree == null || tree.Count == 0 || _s.AwaitingArrival)
@@ -346,33 +349,49 @@ public partial class PlanetWorld : Node3D
         {
             UpdateUniverse(tree, dt, blockedKeys);
             FadeTitle(dt); // the arrival title makes way for the map (PlanetWorld.Overlay)
+            FrameDiag.Lap(FrameSection.Universe, diagT);
             return;
         }
 
+        diagT = FrameDiag.Lap(FrameSection.Walk, diagT); // the bookkeeping above counts with walking
         StepPlayDiscovery(tree); // PlanetWorld.Discovery.cs (PLANET-90): background discovery at the play pace
+        diagT = FrameDiag.Lap(FrameSection.Discovery, diagT);
+        PumpNeighbourhood(tree); // PlanetWorld.Neighbourhood.cs (AD-96): background compositions in, sliced builds
+        diagT = FrameDiag.Lap(FrameSection.Neighbourhood, diagT);
         MaybeRecompose(tree);
+        diagT = FrameDiag.Lap(FrameSection.Recompose, diagT);
         ApplyPendingRecompose(tree);
+        diagT = FrameDiag.Lap(FrameSection.ApplyRecompose, diagT);
         switch (_phase)
         {
             case Phase.Walking when _scope != null:
                 UpdateTelescopeView(dt, blockedKeys); // AD-85 (PlanetWorld.Telescope.cs): the traveller stands still
+                diagT = FrameDiag.Lap(FrameSection.Walk, diagT);
                 break;
             case Phase.Walking:
                 UpdateWalking(dt, blockedKeys);
+                diagT = FrameDiag.Lap(FrameSection.Walk, diagT);
                 break;
             default:
                 UpdateTravel(dt, blockedKeys);
+                diagT = FrameDiag.Lap(FrameSection.Travel, diagT);
                 break;
         }
 
         UpdateOverlay(dt);
+        diagT = FrameDiag.Lap(FrameSection.Overlay, diagT);
         UpdateTrip(dt); // PlanetWorld.Trip
+        diagT = FrameDiag.Lap(FrameSection.Trip, diagT);
         UpdateDestinationsPanel(); // PlanetWorld.Destinations
+        diagT = FrameDiag.Lap(FrameSection.DestPanel, diagT);
         UpdateHazardScreen(dt);
         UpdateSigns(tree);
+        diagT = FrameDiag.Lap(FrameSection.Signs, diagT);
         UpdateThumbnails(dt);
+        diagT = FrameDiag.Lap(FrameSection.Thumbs, diagT);
         AnimateBeacon(dt);
         AnimateScene(dt);
+        FrameDiag.Lap(FrameSection.Animate, diagT);
     }
 
     /// <summary>The tree everything built here belongs to (compared by reference: a rescan is a new tree).</summary>
@@ -490,11 +509,21 @@ public partial class PlanetWorld : Node3D
 
     private PlanetParams? _composeParams;
 
-    private PlanetComposition Compose(FsTree tree, int folderId) =>
-        PlanetComposer.Compose(tree, folderId, ComposeParams, _s.IsVisible,
-            // A probe's root look on the current folder stands that root's landmark too (PLANET-45).
-            rootMarkKind: ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind
-            : ProbeRootLook is { } look && folderId == _s.Navigator.Root ? look : null);
+    /// <summary>Composes on the main thread (timed in the frame log: PLANET-179).</summary>
+    private PlanetComposition Compose(FsTree tree, int folderId)
+    {
+        var t0 = FrameDiag.Now;
+        var comp = PlanetComposer.Compose(tree, folderId, ComposeParams, _s.IsVisible, rootMarkKind: RootMarkFor(folderId));
+        var t1 = FrameDiag.Lap(FrameSection.Compose, t0);
+        FrameDiag.Note(FormattableString.Invariant($"compose #{folderId} {FrameDiag.Ms(t0, t1):0.0}ms"));
+        return comp;
+    }
+
+    /// <summary>A probe's root look on the current folder stands that root's landmark too (PLANET-45); otherwise none.
+    /// Read on the main thread (a background compose captures it when asked, AD-96).</summary>
+    private WorldKind? RootMarkFor(int folderId) =>
+        ProbeCharacter is { Kind: WorldKind.WindowsRoot or WorldKind.WslRoot } forced && folderId == _current?.FolderId ? forced.Kind
+        : ProbeRootLook is { } look && folderId == _s.Navigator.Root ? look : null;
 
     /// <summary>
     /// Makes <paramref name="folderId"/> the current planet at the origin with its children and parent around it.
@@ -503,6 +532,17 @@ public partial class PlanetWorld : Node3D
     /// the planet you left, kept in full as the new parent or child (its placement is the same transform it already has).
     /// </summary>
     private void BuildCurrent(FsTree tree, int folderId, int arriveFrom, Body? reuse = null, Body? keep = null, PlanetComposition? comp = null)
+    {
+        var diagT = FrameDiag.Now;
+        try { BuildCurrentNow(tree, folderId, arriveFrom, reuse, keep, comp); }
+        finally
+        {
+            var t1 = FrameDiag.Lap(FrameSection.BuildCurrent, diagT);
+            FrameDiag.Note(FormattableString.Invariant($"build #{folderId} from {arriveFrom} {FrameDiag.Ms(diagT, t1):0.0}ms"));
+        }
+    }
+
+    private void BuildCurrentNow(FsTree tree, int folderId, int arriveFrom, Body? reuse, Body? keep, PlanetComposition? comp)
     {
         comp ??= reuse?.Comp ?? Compose(tree, folderId);
         _pendingRecompose = null;
@@ -531,7 +571,9 @@ public partial class PlanetWorld : Node3D
         }
 
         _current.Node.Transform = Transform3D.Identity;
+        var diagN = FrameDiag.Now;
         BuildNeighbours(tree, keep);
+        FrameDiag.Note(FormattableString.Invariant($"neighbours {_children.Count} {FrameDiag.Ms(diagN, FrameDiag.Now):0.0}ms"));
         UpdateRouteBeads();
         var character = CharacterOf(folderId);
         ApplyAtmosphere(comp.Theme, character);

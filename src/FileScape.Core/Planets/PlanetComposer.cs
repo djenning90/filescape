@@ -276,7 +276,20 @@ public static class PlanetComposer
     /// state, entry counts and file count (its theme and size), link resolution, and the parent's. The app recomposes
     /// the planet only when it changes.
     /// </summary>
-    public static string Signature(FsTree tree, int folderId)
+    public static string Signature(FsTree tree, int folderId) => Fingerprint(tree, folderId, includeParent: true);
+
+    /// <summary>
+    /// The part of <see cref="Signature"/> a world seen from outside depends on (PLANET-174, AD-96): everything but the
+    /// parent's state. A preview in the sky shows the world's ground (shape, relief, flat spots), theme, landmark and
+    /// Hazard shell, which come from the folder and its own entries; the parent only sizes and labels the parent's world
+    /// and pad on its surface, seen once you stand there. Without this, every listing anywhere below a parent changed all
+    /// its children's signatures (each mixes the parent's subtree count), so discovery below the Ubuntu root marked all 21
+    /// worlds in its sky stale every time. Keep it a subset of what the preview shows: a change that a preview would show
+    /// must change it (NeighbourhoodSchedulingTests checks the look is unchanged when only this stays unchanged).
+    /// </summary>
+    public static string PreviewSignature(FsTree tree, int folderId) => Fingerprint(tree, folderId, includeParent: false);
+
+    private static string Fingerprint(FsTree tree, int folderId, bool includeParent)
     {
         var f = tree[folderId];
         unchecked
@@ -315,7 +328,7 @@ public static class PlanetComposer
                 }
             }
 
-            if (!f.IsRoot)
+            if (includeParent && !f.IsRoot)
             {
                 var parent = tree[f.ParentId];
                 Mix(parent.Children.Count);
@@ -875,6 +888,7 @@ public static class PlanetComposer
             Counts = counts,
             TreeVersion = tree.Version,
             Signature = Signature(tree, folderId),
+            PreviewSignature = PreviewSignature(tree, folderId),
             Media = media,
         };
     }
