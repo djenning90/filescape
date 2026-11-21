@@ -90,8 +90,12 @@ timing_log_append() {
 # `tools/fs.sh timing` sums apart from the active seconds (TEST-16).
 timing_log_desktop() { timing_log_append desktop "$1" ok "$2" 0 > /dev/null; }
 
-# secs_since START: seconds since START (a `date +%s.%N` value), one decimal.
-secs_since() { printf '%.1f' "$(echo "$(date +%s.%N) - $1" | bc)"; }
+# mono_s: a monotonic time stamp in seconds (/proc/uptime, 0.01 s). Durations never use the wall clock: WSL steps the
+# wall clock to keep it in time with Windows, by about a second at a time (measured −0.8 s and −1.4 s within 20 s on
+# 2026-11-20), which made a lock wait come out at −0.9 s in the harness self-test.
+mono_s() { local u _; read -r u _ < /proc/uptime; echo "$u"; }
+# secs_since START: seconds since START (a mono_s value), one decimal.
+secs_since() { printf '%.1f' "$(echo "$(mono_s) - $1" | bc)"; }
 
 # timing_table TITLE TOTAL_SECONDS: the end-of-run table: one line per step, then the counts and the total.
 # Its last three lines are the accounting (TEST-06): active (the sum of the steps' own seconds; the WSL tests run beside
@@ -138,7 +142,7 @@ run_cmd() {
   local lfd="" w0
   LOCK_NOTE=""
   if [[ "$lock" == 1 && -n "${FS_LAUNCH_LOCK:-}" ]]; then
-    w0=$(date +%s.%N)
+    w0=$(mono_s)
     exec {lfd}>>"$FS_LAUNCH_LOCK"
     flock "$lfd"
     local waited; waited="$(secs_since "$w0")"
@@ -146,7 +150,7 @@ run_cmd() {
     # FS_LOCK_WAIT_FILE (set by fs.sh timed): each wait is appended, so a timed command's nested waits are summed (TEST-06).
     [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
   fi
-  CUR_NAME="$name"; CUR_START=$(date +%s.%N)
+  CUR_NAME="$name"; CUR_START=$(mono_s)
   # In the background and waited for, so Ctrl+C reaches the caller's trap at once (a foreground child would be waited
   # for first, up to its whole timeout).
   if [[ -n "$lfd" ]]; then timeout "$to" "$@" > "$outf" 2>&1 {lfd}>&- &
@@ -195,10 +199,10 @@ pool_run() {
   local lfd="" w0 waited="" t0 i=0 running=0 pid idx code secs name to f label note cmd first=1 batch_lock=0
   (( par > 1 )) && batch_lock=1
   if [[ $batch_lock == 1 && -n "${FS_LAUNCH_LOCK:-}" ]]; then
-    w0=$(date +%s.%N); exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"; waited="$(secs_since "$w0")"
+    w0=$(mono_s); exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"; waited="$(secs_since "$w0")"
     [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
   fi
-  t0=$(date +%s.%N)
+  t0=$(mono_s)
   while (( i < ${#jobs[@]} || running > 0 )); do
     while (( i < ${#jobs[@]} && running < par )); do
       IFS=$'\x1f' read -r name to f label note cmd <<<"${jobs[$i]}"
@@ -211,9 +215,9 @@ pool_run() {
       fi
       rm -f "$OUT/$name.code"
       ( [[ -n "$lfd" ]] && exec {lfd}>&-
-        s=$(date +%s.%N); eval "timeout $to $cmd" > "$OUT/$name.out" 2>&1; c=$?
+        s=$(mono_s); eval "timeout $to $cmd" > "$OUT/$name.out" 2>&1; c=$?
         echo "$c $(secs_since "$s")" > "$OUT/$name.code" ) &
-      POOL_RUNNING[$!]=$i; POOL_NAME[$!]="$name"; POOL_T0[$!]=$(date +%s.%N)
+      POOL_RUNNING[$!]=$i; POOL_NAME[$!]="$name"; POOL_T0[$!]=$(mono_s)
       running=$((running + 1)); i=$((i + 1))
       if (( stagger > 0 && i < ${#jobs[@]} && running < par )); then sleep "$stagger"; fi
     done

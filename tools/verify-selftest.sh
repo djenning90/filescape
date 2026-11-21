@@ -92,7 +92,7 @@ bash -c '
   trap "interrupt_current; timing_table interrupted-run 9.9; exit 143" TERM
   probe_step long 30 "$2/long.txt" probe sleep 20
 ' _ "$REPO" "$INT_OUT" > "$INT_OUT/table.txt" 2>&1 & runner=$!
-sleep 0.5; t=$(date +%s.%N); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
+sleep 0.5; t=$(mono_s); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
 if grep -qE '^long +interrupted' "$INT_OUT/table.txt" && grep -q '^TOTAL .*1 interrupted' "$INT_OUT/table.txt" && (( $(echo "$took < 3" | bc) )); then
   echo "ok    interrupted                stopped in $took s, row and table printed"
 else echo "WRONG interrupted (took $took s):"; sed 's/^/      /' "$INT_OUT/table.txt"; BAD=$((BAD + 1)); fi
@@ -128,7 +128,7 @@ else echo "WRONG timed --lock: wait '$twait', active '$tsecs'"; BAD=$((BAD + 1))
 # once: a holder's 1 s is waited for once, in the first row's note.
 flock "$LOCK" sleep 1.0 & holder=$!
 sleep 0.2
-before=$FAILS; t=$(date +%s.%N)
+before=$FAILS; t=$(mono_s)
 for n in 1 2 3; do
   content="$P2"; [[ $n == 2 ]] && content='PASS a\nFAIL b\n'
   pool_add sim "par-$n" 10 "$R/par-$n.txt" journey "sim clock" bash -c "sleep 1; double '$R/par-$n.txt' '$content' 0"
@@ -157,7 +157,7 @@ bash -c '
   pool_add sim p-long-1 30 "$2/a.txt" journey "" sleep 21; pool_add sim p-long-2 30 "$2/b.txt" journey "" sleep 21
   pool_run sim 2 0
 ' _ "$REPO" "$PINT" > "$PINT/table.txt" 2>&1 & runner=$!
-sleep 0.7; t=$(date +%s.%N); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
+sleep 0.7; t=$(mono_s); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
 if [[ "$(grep -cE '^p-long-[12] +interrupted' "$PINT/table.txt")" -eq 2 ]] && (( $(echo "$took < 3" | bc) )); then
   echo "ok    parallel interrupted       both launches stopped in $took s and recorded"
 else echo "WRONG parallel interrupted (took $took s):"; sed 's/^/      /' "$PINT/table.txt"; BAD=$((BAD + 1)); fi

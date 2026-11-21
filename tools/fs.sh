@@ -132,11 +132,13 @@ reusable_stage() {
 # launch CMD...: runs an app launch, holding FS_LAUNCH_LOCK if it is set; the lock's descriptor is closed in the command,
 # so nothing it starts keeps the lock. Sets LAUNCH_WAIT (seconds spent waiting for the lock, one decimal).
 LAUNCH_WAIT=0
+# fs_mono_s: a monotonic stamp in seconds (as verify-lib.sh's mono_s: WSL steps its wall clock).
+fs_mono_s() { local u _; read -r u _ < /proc/uptime; echo "$u"; }
 launch() {
   [[ -n "${FS_LAUNCH_LOCK:-}" ]] || { "$@"; return; }
-  local t c=0 lfd; t=$(date +%s.%N)
+  local t c=0 lfd; t=$(fs_mono_s)
   exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"
-  LAUNCH_WAIT="$(printf '%.1f' "$(echo "$(date +%s.%N) - $t" | bc)")"
+  LAUNCH_WAIT="$(printf '%.1f' "$(echo "$(fs_mono_s) - $t" | bc)")"
   [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$LAUNCH_WAIT" >> "$FS_LOCK_WAIT_FILE"   # fs.sh timed sums nested waits (TEST-06)
   "$@" {lfd}>&- || c=$?
   exec {lfd}>&-
@@ -351,7 +353,7 @@ case "$cmd" in
     # Every lock wait inside CMD (its own with --lock, and nested ones: fs.sh stage's smoke launch, fs.sh run) is written to
     # FS_LOCK_WAIT_FILE and taken out of the active seconds. Not for `fs.sh check`, which logs its own steps.
     c=0; export FS_LOCK_WAIT_FILE; FS_LOCK_WAIT_FILE="$(mktemp)"
-    t0=$(date +%s.%N)
+    t0=$(fs_mono_s)
     if [[ $lock == 1 ]]; then launch "$@" || c=$?; else "$@" || c=$?; fi
     all="$(secs_since "$t0")"
     waited="$(printf '%.1f' "$(awk '{ s += $1 } END { print s + 0 }' "$FS_LOCK_WAIT_FILE")")"; rm -f "$FS_LOCK_WAIT_FILE"

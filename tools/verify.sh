@@ -72,7 +72,7 @@ else
 fi
 SUM="$OUT/summary.txt"; : > "$SUM"
 FAILS=0
-T0=$(date +%s.%N)
+T0=$(mono_s)
 EXIT_NOTE=""
 log() { echo "$*" | tee -a "$SUM"; }
 
@@ -143,8 +143,8 @@ step() {
 # timing checks of its own that the steps beside it could disturb: the WSL Core tests); bg_wait NAME records it.
 bg_step() {
   local name="$1" to="$2"; shift 2
-  BG_START[$name]=$(date +%s.%N)
-  ( s=$(date +%s.%N); timeout "$to" "$@" > "$OUT/$name.out" 2>&1; c=$?; echo "$c $(secs_since "$s")" > "$OUT/$name.code" ) &
+  BG_START[$name]=$(mono_s)
+  ( s=$(mono_s); timeout "$to" "$@" > "$OUT/$name.out" 2>&1; c=$?; echo "$c $(secs_since "$s")" > "$OUT/$name.code" ) &
   BG_PID[$name]=$!
   printf '%-28s %8s  started in the background\n' "$name" "" | tee -a "$SUM"
 }
