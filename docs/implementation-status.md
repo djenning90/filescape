@@ -4,6 +4,42 @@ Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Seventh pass (2026-11-20)
+
+### Stream G: the gallery as one browsing experience; a sideways step for arrow-key players (PLANET-159..168, AD-94)
+
+Branch `worktree-agent-ae4500bf39202cf49` from main `ae32129`. No desktop use in this stream (the coordinator owns it):
+everything below that needs the running app is **provisional** until the journeys and probes listed run.
+
+**Found first (code reading):** the gestures on a picture disagreed — a click selected an easel while an open preview
+went on showing another picture; a double-click on a picture launched Windows' Photos while R inspected in-game; only E
+or walking off closed the preview; the viewer had two step buttons and no outside click. ← → turn on foot, A D strafe,
+and a held A or D lets the chase camera swing in behind the sideways run after 1.2 s, turning a sidestep into a slow
+turn (from the code, not yet observed).
+
+| Area | Status | Evidence |
+|---|---|---|
+| One browsing rule in Core (`GalleryBrowse`): look, view large, Windows only on Open, the preview shows the selection, Esc one level, travel, browse by walking (PLANET-159..161, 167) | **Demonstrated** in Core; **provisional** in-app | `GalleryBrowseTests` (written with the rule, not seen failing first: new behaviour; the defect it replaces — the stale preview — is one of its cases) |
+| The viewer's mouse zones (`ViewerPointer`) and keys: ‹ › edges, backdrop click, mouse back / forward, Home / End, Page Up / Down, Space inert (PLANET-162..163) | **Demonstrated** in Core; **provisional** in-app | `GalleryBrowseTests` zones and steps; `planets-gallery` steps written, not run |
+| "Open with Windows ↗" one look (`Ui.LeaveButton`) in the viewer, the preview and the reader (PLANET-164) | **Provisional** (built, not seen) | screenshots to take: `gallery-preview`, `gallery-viewer-dawn`, `browse-viewer-next-edge` |
+| Ctrl + ← → sidestep in Planets and Places; a pure sidestep keeps the view (PLANET-165) | **Demonstrated** in Core; **provisional** in-app and with real keys | `ArrowSidestep` tests; `planets-gallery` Ctrl + → 1.8 s; `os-planets-probe -Gallery` |
+| Cues: prompts, arrival card, viewer key line, Help (PLANET-166) | **Provisional** | the prompt checks in `planets-gallery` |
+| Bounded loading unchanged; mixed folders read nothing by themselves (PLANET-168) | **Provisional** (code paths unchanged) | `planets-gallery` bounds and the Desk step, unchanged |
+| Core suite | 911 passed, 29 skipped, 10 failed — all ten are timing bounds (`SkySynthTests …_is_cheap` ×9, `WorldLayoutTests.Layout_is_deterministic_and_fast…`) in code this stream did not touch, at load average ≈ 27 with the other streams' runs (**environment**, as stream 6 saw) | `tools/fs.sh test-wsl` (457 s). Focused: `tools/fs.sh test-wsl --filter "FullyQualifiedName~GalleryBrowseTests"` (21/21, ≈ 60 s with the build); with `GalleryTests`, `MediaWorldTests`, `GoldenBehaviour` 36/36 after the sample README change |
+
+**To run (coordinator):** `tools/fs.sh check journeys planets-gallery planets-gallery-fixture` (the fixture run has the
+stress cases and the crowds; both now include the browsing steps, PlanetsProbe.GalleryBrowse.cs), then
+`tools/os-planets-probe.ps1 -Exe <staged FileScape.exe> -Out <dir> -Gallery` (real input on the gallery fixture; needs
+`FileScape.Fixtures create-gallery`). Also affected and worth one run: `planets-actions` (its .sln double-click must still
+open; the click trace's wording for pictures changed), `planets-reader` (the reader's Open button is relabelled),
+`planets-dialog-keys` / `os-planets-probe -Dialogs` (Ctrl is now a movement modifier on foot: Ctrl+L, Ctrl+O unchanged).
+
+**How to play:** in a gallery, click a picture (or E beside it) to look; click another and the preview moves; walk on
+and it follows the easel in front of you; Ctrl + ← → (or A D) slide sideways along the easels with the view kept;
+double-click a picture (or R, or click the preview's picture) to view it large; ← → or the ‹ › edges step, the wheel
+zooms; Esc or a click outside the picture brings you back where you stood; Enter or "Open with Windows ↗" opens the
+original in Windows' app.
+
 ## Sixth pass (2026-11-20)
 
 ### The final candidate (`5ba12f91daa3`, staged, not installed)

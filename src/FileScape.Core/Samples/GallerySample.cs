@@ -22,8 +22,9 @@ public static class GallerySample
     /// <summary>The gallery folder's name under the parent directory.</summary>
     public const string RootName = "Picture Gallery";
 
-    /// <summary>The content version in the marker; bump it when the generated content changes (2: the Desk folder, PLANET-130).</summary>
-    public const int Version = 2;
+    /// <summary>The content version in the marker; bump it when the generated content changes (2: the Desk folder, PLANET-130;
+    /// 3: the README's browsing words, AD-94).</summary>
+    public const int Version = 3;
 
     /// <summary>A subfolder that is an ordinary mixed folder (one sketch among four notes: not a gallery, even inside one).</summary>
     public const string DeskName = "Desk";
@@ -170,12 +171,16 @@ public static class GallerySample
         ## How to look at the pictures
 
         - Walk among the easels: the pictures appear on them as you come near.
-        - Walk up to one and press **E** to look at it.
-        - Press **R** (or ⤢) to view it large. **← →** step through the pictures here, the **wheel** zooms, drag to look
-          around a zoomed picture, **0** fits it again, and **Esc** brings you back to where you stood.
+        - **Click** a picture (or walk up to it and press **E**) to look at it. Click another and the look moves there;
+          walk on and it follows the easel in front of you. **Ctrl + ← →** (or **A D**) step sideways along the easels.
+        - **Double-click** a picture (or press **R**, or click the picture in the look) to view it large. **← →** or a
+          click on the **‹ ›** edges step through the pictures here, the **wheel** zooms, drag to look around a zoomed
+          picture, **0** fits it again, and **Esc** or a click outside the picture brings you back to where you stood.
+        - **Enter** or **Open with Windows ↗** opens the original in the app Windows uses for pictures.
 
         The file `.filescape-gallery` is what makes this folder a gallery. Put an empty file with that name in a folder of
-        your own and FileScape shows its pictures as you walk; without it, a picture is read only when you press E.
+        your own and FileScape shows its pictures as you walk; without it (and in a folder that is not mostly pictures), a
+        picture is read only when you look at it (a click or E).
         """;
 
     // ---------------------------------------------------------------- painting helpers
