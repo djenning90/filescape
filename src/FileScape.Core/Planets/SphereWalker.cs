@@ -38,6 +38,17 @@ public sealed record SphereWalkParams
     /// <summary>While airborne, a top up to this far above the feet can still be moved onto (a forgiving landing).</summary>
     public Meters AirLedgeTolerance { get; init; } = Meters.Of(0.3f);
 
+    /// <summary>
+    /// Pressed into a solid on the ground, the walker slides along it at the full speed asked for while the input is within
+    /// this of along the solid's edge, degrees; from there to head-on the slide slows to a stop (AD-97, PLANET-185). The
+    /// plain slide (the speed × cos of the angle) let a curved wall — the overlook's, beside its stepping stones — turn the
+    /// walker's heading slower than the keyboard turned the view, so the input swung head-on into the wall and the walker
+    /// stopped there facing it. 60°: walking up the stones with ↑ and the turn key held (110°/s) the wall guides the walker
+    /// up, and a push more than 60° into a wall still slows it (a head-on push stops). Smaller is the old feel; 90° slides
+    /// at full speed whatever the angle.
+    /// </summary>
+    public float WallSlideFullDegrees { get; init; } = 60f;
+
     /// <summary>How fast the body turns to face its motion: 720°/s turns about in a quarter second.</summary>
     public DegreesPerSecond FacingTurnRate { get; init; } = DegreesPerSecond.Of(720f);
 
@@ -83,6 +94,7 @@ public sealed record SphereWalkParams
         NonNegative(StepHeight.Value, nameof(StepHeight));
         NonNegative(SnapDown.Value, nameof(SnapDown));
         NonNegative(AirLedgeTolerance.Value, nameof(AirLedgeTolerance));
+        if (!float.IsFinite(WallSlideFullDegrees) || WallSlideFullDegrees < 0 || WallSlideFullDegrees >= 90) throw new ArgumentOutOfRangeException(nameof(WallSlideFullDegrees), WallSlideFullDegrees, "must be at least 0° and under 90°");
         if (MaxFrame <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(MaxFrame));
         Jump.Validate();
         Hazard.Validate();
@@ -439,6 +451,9 @@ public sealed class SphereWalker
 
     private readonly float _recoveryWindowSeconds;
 
+    /// <summary>The edge of the solid pushed out of in the last step (a unit tangent pointing away from it), or zero: <see cref="AlongWall"/>.</summary>
+    private Vector3 _wallAway;
+
     /// <summary>Footfalls: one every <see cref="SphereWalkParams.Stride"/> walked on the ground (for footstep sounds).</summary>
     public int Footsteps { get; private set; }
 
@@ -484,6 +499,7 @@ public sealed class SphereWalker
         _lastGroundUp = Up;
         _leaving = Leaving.Slip;
         _jumpHeading = Vector3.Zero;
+        _wallAway = Vector3.Zero;
     }
 
     /// <summary>Integrates one frame of <paramref name="frame"/> length in fixed sub-steps.</summary>
@@ -524,8 +540,10 @@ public sealed class SphereWalker
         var grounded = _jump.Grounded;
         var response = grounded ? _p.GroundResponse : _p.AirResponse;
         if (!grounded && wish.LengthSquared() < 1e-8f) response = _p.AirCoast;
+        var target = wish * speedMetersPerSecond;
+        if (grounded) target = AlongWall(target, up);
         // The recovery's carry holds its course: steering on (W still held from the walk off) would take it back out.
-        if (!_carrying) velocity = Vector3.Lerp(velocity, wish * speedMetersPerSecond, response.SmoothingFactor(dtSeconds));
+        if (!_carrying) velocity = Vector3.Lerp(velocity, target, response.SmoothingFactor(dtSeconds));
         if (grounded && wish.LengthSquared() < 1e-8f && velocity.LengthSquared() < RestSpeedSquared) velocity = Vector3.Zero;
 
         // Jump along the local up; airborne, the one boost (with the twirl's small lean along the input).
@@ -590,6 +608,7 @@ public sealed class SphereWalker
         // stepped (grounded) or reached (airborne) onto.
         // Each pass resolves only the deepest overlap and then looks again, so several overlapping solids are settled one
         // by one.
+        var touched = Vector3.Zero;
         for (var iter = 0; iter < PushOutIterations; iter++)
         {
             var bestOverlapMeters = 0f;
@@ -607,12 +626,15 @@ public sealed class SphereWalker
             }
 
             if (bestOverlapMeters <= 0) break;
+            touched = bestAway;
             var into = Vector3.Dot(velocity, bestAway);
             if (into < 0) velocity -= bestAway * into; // slide: drop the component into the obstacle
             var pushFeetRadiusMeters = shape.GroundRadius(up) + heightMeters;
             Transport(ref up, ref velocity, ref facing, Vector3.Normalize(Vector3.Cross(up, bestAway)), bestOverlapMeters / shape.Radius);
             heightMeters = pushFeetRadiusMeters - shape.GroundRadius(up);
         }
+
+        _wallAway = touched;
 
         // Vertical: support, staying on the ground (hills, steps down), walking off, the arc and landing.
         var supportMeters = surface.SupportAt(up, bodyRadiusMeters, heightMeters, allowanceMeters);
@@ -896,6 +918,28 @@ public sealed class SphereWalker
         }
 
         return t;
+    }
+
+    /// <summary>
+    /// The velocity to steer towards while pressed against a solid (<see cref="SphereWalkParams.WallSlideFullDegrees"/>,
+    /// AD-97): the part of <paramref name="target"/> along the solid's edge keeps the full speed asked for within that angle
+    /// of along it, slowing from there to nothing head-on; the part into the solid is kept, so the walker stays against
+    /// it (the push-out then drops it, and the next step finds the contact again). Unchanged away from solids or pulling away.
+    /// </summary>
+    private Vector3 AlongWall(Vector3 target, Vector3 up)
+    {
+        var away = _wallAway - up * Vector3.Dot(_wallAway, up);
+        if (away.LengthSquared() < 1e-8f) return target;
+        away = Vector3.Normalize(away);
+        var into = Vector3.Dot(target, away);
+        var speed = target.Length();
+        if (into >= 0 || speed < 1e-6f) return target;
+        var along = target - away * into;
+        var alongLength = along.Length();
+        if (alongLength < 1e-6f) return target; // head-on: no side to slide to
+        var cosine = alongLength / speed; // of the angle between the input and the edge
+        var slide = speed * MathF.Min(1, cosine / MathF.Cos(Degrees.Of(_p.WallSlideFullDegrees).ToRadians()));
+        return along / alongLength * slide + away * into;
     }
 
     /// <summary>Rotates the walker's frame (position direction, velocity, facing) about a unit axis through the centre.</summary>
