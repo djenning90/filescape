@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using FileScape.App.Visual;
 using Godot;
 
@@ -10,6 +11,9 @@ namespace FileScape.App.Ui;
 /// <param name="FixedAnchor">Pinned straight above its anchor with a stem (planets); only ever raised straight up on a longer stem (one slot, or just over the signs in its way), and sized by nearness.</param>
 /// <param name="Frame">A frame round the sign in this colour (null: none). The planets' way back (PLANET-95) is the one
 /// sign that wears one, so it stands out among ordinary destinations; a focused sign keeps its gold focus frame.</param>
+/// <param name="Around">Placed round its anchor (the body's centre) by Core's <see cref="LabelPlacement"/>, with a short
+/// leader from a dot on the body's rim (the overview, PLANET-193); <paramref name="AnchorPixels"/> is the body's drawn
+/// radius on screen and <paramref name="Tier"/> its priority (0 the selection, 1 hovered, 2 "you are here", then the rest).</param>
 public readonly record struct SignCandidate(
     int Id,
     Vector3 Anchor,
@@ -20,7 +24,10 @@ public readonly record struct SignCandidate(
     bool Focus,
     float Boost = 0f,
     bool FixedAnchor = false, // pinned straight above its anchor with a stem (planets); only ever raised straight up
-    Color? Frame = null);
+    Color? Frame = null,
+    bool Around = false,
+    float AnchorPixels = 0f,
+    int Tier = 5);
 
 /// <summary>
 /// Glanceable destination names (LABEL-01, AD-25): screen-space signs for every gate (or aerial place) in view, so a
@@ -32,6 +39,11 @@ public readonly record struct SignCandidate(
 /// slots (with a thin leader line to its gate) before it is dropped. Signs never cover HUD panels or each other. The
 /// full name stays in the gate chip, the inspector, Destinations and the eye-level plates.
 /// </para>
+/// <para>Three placements: free signs (Places, the aerial world) take the first free slot round their gate; pinned signs
+/// (planets' pads and worlds) stand straight above their anchor on a stem; signs placed <i>around</i> their world (the
+/// overview, PLANET-193) are laid out by Core's <see cref="LabelPlacement"/>, which owns their positions and guarantees
+/// no overlaps and no crossing leaders; this layer measures, converts and draws them. What a change must preserve: each
+/// placement's own rules, and that signs never cover HUD panels or each other.</para>
 /// Drawn in <see cref="_Draw"/> each frame (no node per sign): positions follow the camera smoothly.
 /// </summary>
 public partial class SignLayer : Control
@@ -115,7 +127,23 @@ public partial class SignLayer : Control
     /// needs a leader line, its draw scale (a pinned name's fractional size: drawn at the whole <c>FontSize</c> scaled by
     /// this, within ±3 %), its nearness (0 far … 1 near) and its camera distance (world units: far signs are drawn first).
     /// </summary>
-    private readonly record struct Placed(SignCandidate C, Rect2 Rect, Vector2 AnchorScreen, string Name, string Detail, int FontSize, bool Leader, float Scale, float Near, float Distance);
+    private readonly record struct Placed(SignCandidate C, Rect2 Rect, Vector2 AnchorScreen, string Name, string Detail, int FontSize, bool Leader, float Scale, float Near, float Distance,
+        Vector2 LeaderFrom = default, Vector2 LeaderTo = default);
+
+    /// <summary>
+    /// At most this many names placed round their worlds at once (the overview, PLANET-193): DJ counted about ten as many
+    /// as read among hundreds of worlds; the selection, the hovered world and "you are here" always come first.
+    /// </summary>
+    public const int MaxAroundLabels = 12;
+
+    /// <summary>The dot on a world's rim where its name's leader starts, pixels of radius (the pinned signs' far dot).</summary>
+    private const float AroundDotPx = PinnedDotMinPx;
+
+    /// <summary>The last placement round worlds (Core's layout, probes check it has no faults).</summary>
+    public IReadOnlyList<PlacedLabel> AroundPlaced { get; private set; } = [];
+
+    /// <summary>Each name's slot last frame (<see cref="PlacedLabel.Slot"/>), by id.</summary>
+    private readonly Dictionary<int, int> _aroundSlots = [];
 
     /// <summary>A focused (approached, selected or hovered) sign's size, pixels at UI scale 1.</summary>
     private const int FocusPx = 18;
@@ -211,9 +239,12 @@ public partial class SignLayer : Control
         InView = ordered.Count;
         // Focused first (approached, selected, hovered), then nearest; a boost brings important ones forward (visited, large).
         ordered.Sort((a, b) => a.C.Focus != b.C.Focus ? (a.C.Focus ? -1 : 1) : (a.D - a.C.Boost).CompareTo(b.D - b.C.Boost));
+        AroundPlaced = [];
+        if (ordered.Any(o => o.C.Around)) LayoutAround(ordered.Where(o => o.C.Around).ToList(), vp);
         var rank = 0;
         foreach (var (c, d, s) in ordered)
         {
+            if (c.Around) continue; // placed by LayoutAround
             if (_placed.Count >= MaxSigns) break;
             var detailed = c.Focus || rank < DetailCount;
             // Nearer and focused signs are larger and carry more of the name; far ones are short (a glance, not a read).
@@ -247,10 +278,48 @@ public partial class SignLayer : Control
     }
 
     /// <summary>
-    /// Tries the slots round <paramref name="anchor"/> (screen) for one sign of this font size and length; the first slot
-    /// inside the window and clear of HUD panels and earlier signs wins and is recorded. False if none is free.
+    /// Names placed round their worlds (PLANET-193, AD-98): each measured at its size (a focused name 18 px with its detail
+    /// line, the others 14 px, the nearest <see cref="DetailCount"/> with theirs), then placed by Core's
+    /// <see cref="LabelPlacement"/> (near the body, no overlaps, no crossing leaders, by priority) inside the window and
+    /// clear of the HUD. Before, the overview's names were pinned straight above their worlds and stacked on long stems.
     /// </summary>
-    private bool TryPlace(SignCandidate c, Vector2 anchor, int size, float scale, int maxChars, bool detailed, Rect2 vp, float near, float distance)
+    private void LayoutAround(List<(SignCandidate C, float D, Vector2 S)> around, Rect2 vp)
+    {
+        var requests = new List<LabelRequest>(around.Count);
+        var texts = new Dictionary<int, (SignCandidate C, string Name, string Detail, int Size, float D, Vector2 S)>();
+        var rank = 0;
+        foreach (var (c, d, s) in around)
+        {
+            if (texts.ContainsKey(c.Id)) continue;
+            var size = c.Focus ? FocusPx : (int)PinnedMinPx;
+            var (name, detail, w, h) = Measure(c, size, 1f, c.Focus ? 40 : PinnedCharsFar, c.Focus || rank < DetailCount);
+            requests.Add(new LabelRequest(c.Id, new System.Numerics.Vector2(s.X, s.Y), MathF.Max(1f, c.AnchorPixels), new System.Numerics.Vector2(w, h), c.Tier, d, _aroundSlots.GetValueOrDefault(c.Id, -1)));
+            texts[c.Id] = (c, name, detail, size, d, s);
+            rank++;
+        }
+
+        var blocked = _occupied.Select(r => new LabelRect(r.Position.X, r.Position.Y, r.Size.X, r.Size.Y)).ToList();
+        var placed = LabelPlacement.Place(requests, new LabelRect(vp.Position.X, vp.Position.Y, vp.Size.X, vp.Size.Y), blocked, new LabelPlacement.Options { MaxLabels = MaxAroundLabels });
+        AroundPlaced = placed;
+        _aroundSlots.Clear();
+        foreach (var p in placed)
+        {
+            _aroundSlots[p.Id] = p.Slot; // tried first next frame: a name keeps its side of its world while the view moves
+            var (c, name, detail, size, d, s) = texts[p.Id];
+            var r = new Rect2(p.Rect.X, p.Rect.Y, p.Rect.W, p.Rect.H);
+            _occupied.Add(r.Grow(2));
+            _placed.Add(new Placed(c, r, s, name, detail, size, p.HasLeader, 1f, 0f, d, new Vector2(p.LeaderFrom.X, p.LeaderFrom.Y), new Vector2(p.LeaderTo.X, p.LeaderTo.Y)));
+            ShownIds.Add(c.Id);
+            ShownRects.Add(r);
+            ShownText[c.Id] = name;
+            ShownAnchors[c.Id] = s;
+            ShownRectById[c.Id] = r;
+            ShownSizePx[c.Id] = size;
+        }
+    }
+
+    /// <summary>One sign's text as shortened and its box's size (viewport units) at this font size and scale.</summary>
+    private (string Name, string Detail, float W, float H) Measure(SignCandidate c, int size, float scale, int maxChars, bool detailed)
     {
         var name = Fit(c.Name, maxChars);
         var detail = detailed && c.Detail.Length > 0 ? Fit(c.Detail, DetailMaxChars) : "";
@@ -259,6 +328,16 @@ public partial class SignLayer : Control
         var icon = size + 2;
         var w = (Mathf.Max(nameSize.X + icon + 6, detailSize.X) + 12) * scale;
         var h = (nameSize.Y + (detail.Length > 0 ? detailSize.Y : 0) + 4) * scale;
+        return (name, detail, w, h);
+    }
+
+    /// <summary>
+    /// Tries the slots round <paramref name="anchor"/> (screen) for one sign of this font size and length; the first slot
+    /// inside the window and clear of HUD panels and earlier signs wins and is recorded. False if none is free.
+    /// </summary>
+    private bool TryPlace(SignCandidate c, Vector2 anchor, int size, float scale, int maxChars, bool detailed, Rect2 vp, float near, float distance)
+    {
+        var (name, detail, w, h) = Measure(c, size, scale, maxChars, detailed);
         // Slots: right above the anchor, then stacked higher (a leader line keeps it attached), then nudged sideways.
         // When the space above is taken (often by the top HUD panels close to a gate), the sign drops onto the gate's face.
         Span<Vector2> offsets =
@@ -394,7 +473,14 @@ public partial class SignLayer : Control
             var p = order[i];
             var r = p.Rect;
             DrawSetTransform(Vector2.Zero, 0, Vector2.One);
-            if (p.C.FixedAnchor)
+            if (p.C.Around)
+            {
+                // PLANET-193: a short leader from a dot on the world's rim to the name's nearest edge (Core placed it so that
+                // no leader crosses another or runs under a name); the dot says which world, even where worlds crowd.
+                if (p.Leader) DrawLine(p.LeaderFrom, p.LeaderTo, p.C.Color with { A = 0.85f }, PinnedStemMinPx, true);
+                DrawCircle(p.LeaderFrom, AroundDotPx, p.C.Color);
+            }
+            else if (p.C.FixedAnchor)
             {
                 // A pinned sign (planets, 2026-11-11): a short stem and a dot on the very thing it names, so it is plain
                 // which pad or world it belongs to, wherever the camera turns. Both grow a little with nearness (PLANET-58).
