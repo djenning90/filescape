@@ -6,6 +6,43 @@ Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** 
 
 ## Seventh pass (2026-11-20)
 
+### Stream S6: airborne intent on Hazard Worlds; the overlook's curved steps (PLANET-181..187, AD-97)
+
+Branch `worktree-agent-a1467708450261a63` from main `681f51d`, main `8e2e18e` merged. No desktop use (the coordinator owns
+it): everything that needs the running app is **provisional** until the probes below run.
+
+**Found first (Core, failing tests):** a forward jump's second Space arriving ≈ 0.53 s after take-off (falling past
+`LateSpeed`, still above the rim) was the catch; with nothing within 1.5 m ahead it aimed back at the take-off ledge
+(within 3.2 m), carried the walker there and turned the body 180° to face it (4.5–7.4 m gaps, ↑ or nothing held: the
+desktop owner's suspect, confirmed). Presses after the twirl while still rising did nothing. On the overlook's curved
+stones, ↑ and the turn key held (walking, 110°/s) pinned the walker against the platform's wall on the fourth stone,
+facing it, and it never got up (the plain slide's speed × cos of the angle let the wish swing head-on into the curve).
+
+| Area | Status | Evidence |
+|---|---|---|
+| A jump's catch only towards the player's intent; the ledge left only by steering back; a slip as before (PLANET-181..182) | **Demonstrated** in Core; real keys **provisional** | `HazardAirIntentTests` (failing first, 10 of 18); every HazardRecoveryTimingTests / HazardSampleReplayTests / HazardMovementTests case unchanged |
+| The body keeps its facing through the carry unless steered (PLANET-183) | **Demonstrated** in Core; on screen **provisional** | the same table (≤ 90°, was 180°); `-AirIntent` reads `leapFacing` |
+| `AirPhase`: one boost, then every press over open sky a last effort (PLANET-184) | **Demonstrated** in Core | `At_most_one_boost_per_airtime_and_then_each_press_is_an_effort` (failing first) |
+| Sliding along a wall at the speed asked for (PLANET-185) | **Demonstrated** in Core | `OverlookStepsTests`; behaviour baseline byte-identical |
+| ↑ and the turn key up the curved stones (PLANET-186) | **Demonstrated** in Core (walking up in ≈ 1.55 s at 30/60/144 fps, nothing pinned in 144 combinations on three worlds); real keys **provisional** | `OverlookStepsTests` (the trap failing first, kept as the comparison) |
+| Real-input modes (PLANET-187) | **Unknown** (written, parsed, built, not run) | `os-planets-probe.ps1 -AirIntent`, `-Steps` |
+| Core areas `hazard,walking,baseline` | 194 passed | `tools/fs.sh test-wsl-area hazard,walking,baseline` (31 s with the build) |
+
+**To run (coordinator):** `tools/os-planets-probe.ps1 -Exe <staged FileScape.exe> -Out <dir> -AirIntent` (Debris Field's
+leap with real arrow keys: the forward crossing across and facing ahead; a late second Space never back on the ledge left
+nor turned to it; Down and Space at 0.6 s caught back onto the take-off side), `… -Steps` (Up and the turn key held
+up the Starter Sky's stones: on the platform, never pinned; running reported), `… -Hazard -Recovery` (unchanged moves:
+the three rim catches, the effort and the fall, the long jump and the plain jump that falls short). Journeys:
+`planets-hazard` (its catches and leaps), `planets-lookouts` (it walks up the stones from their foot with W, stone by
+stone: it must still reach the platform with the new slide), `planets-relief` (walking over relief among solids: the brisker wall slide).
+
+**How to play:** a long jump keeps going where you aimed; a second Space too late is a flail, not a catch back. To get
+back onto the ledge you left, steer back (↓, or turn round and ↑) and press Space as you drop. Walking up the
+telescope's curved steps, hold ↑ and the turn key: the wall guides you up.
+
+**Open / for DJ:** the late press's harsher outcome on a forward jump; running up the stones with Shift (now glides to
+the top stone and runs off its end); the brisker slide along every wall.
+
 ### Stream G: the gallery as one browsing experience; a sideways step for arrow-key players (PLANET-159..168, AD-94)
 
 Branch `worktree-agent-ae4500bf39202cf49` from main `ae32129`. No desktop use in this stream (the coordinator owns it):

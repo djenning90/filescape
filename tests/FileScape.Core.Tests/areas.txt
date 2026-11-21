@@ -5,7 +5,7 @@
 # Format: "area: Prefix Prefix ..." ; '#' starts a comment.
 music: SkySynth MusicActivity SoundPreference
 hazard: Hazard SphereWalker JumpModel
-walking: SphereWalker JumpModel Walk LookLeveling NavigationAndConsistency UsabilityPass Horizon
+walking: SphereWalker JumpModel Walk OverlookSteps LookLeveling NavigationAndConsistency UsabilityPass Horizon
 overview: Overview UniverseLayout TelescopeSurvey
 gallery: Gallery MediaWorld ThumbnailPlan ShellThumbnail
 places: Place PlanetComposer PlanetRelief ArrivalComposition ConnectedPlace RootMark ProminenceAndProject ProjectBench WorldCharacter WorldLayout LayoutAndInteraction SampleSky

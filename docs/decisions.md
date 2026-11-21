@@ -2387,3 +2387,47 @@ as FileScape while naming remains open.
 - **Unknown / DJ by ear:** which piece; whether Homecoming reads as sentimental; whether This computer should keep the
   classic while the Starter Sky changes (today both follow the one setting). **Revisit if:** DJ picks another default
   (change `GameDefault`), wants per-place choices, or wants the reserved star-chart arrangements wired.
+
+## AD-97 A jump's intent decides its catch; one airborne state machine; the walker slides along walls at the speed asked for (2026-11-20, seventh pass, stream S6, PLANET-181..187; amends AD-65, AD-69)
+
+- **Context:** DJ (item 6): in a long jump the character sometimes turned towards the ledge it had left. Reproduced in
+  Core first (`HazardAirIntentTests`, 60 fps, the measured 2-frame input lag): a second Space arriving ≈ 0.53 s after
+  take-off — falling faster than `LateSpeed` while still above the rim — was the catch; with no ground within `Reach`
+  (1.5 m) ahead, `CatchAim` fell back to the rim last stood on within `ReturnReach` (3.2 m), carried the walker there and
+  the body, facing its velocity at 720°/s, turned 180° to face the ledge (4.5–7.4 m gaps, ↑ held or nothing held). That
+  is the desktop owner's suspect (SphereWalker.cs:657, :695–698, :674, :584). A press after the twirl while still rising
+  did nothing. Separately, DJ was trapped against the side wall walking up the overlook's curved stones with forward and a
+  turn held: with the plain slide (speed × cos of the angle into the wall) the platform's curved wall turned the walker's
+  heading slower than the key (110°/s) turned the view; the input swung head-on into the wall and the walker stopped
+  against it on the fourth stone, facing it (`OverlookStepsTests`, the old rule kept as the comparison).
+- **Decision:**
+  - **Intent.** The walker records how an airtime began: a deliberate **jump** (a coyote jump too), with its heading at
+    take-off (none below `IntentMinSpeed`, 1 m/s), or a **slip** (walked off). After a jump the catch reaches only for
+    ground within `IntentConeDegrees` (75°) of the steering input, or of the jump's heading when nothing is steered
+    (`BrokenShell.NearestGround`'s `minCosine`); the rim left is caught back only when steering back towards it. A slip
+    keeps AD-69's catch of any ground in reach, the rim slipped off included (W held or let go).
+  - **One state machine** (`AirPhase`): Grounded → TakeOff (coyote time: the jump; over open sky the catch when the jump
+    would only drop into the sky; off a leap's board the long jump, PLANET-85) → Airborne (the boost: the twirl, the
+    apex twirl over open sky) → Recovery (falling past `LateSpeed` or below the rim within `Window`/`MaxDepth`: the catch
+    towards the intent, else a last effort) → Carried (the catch's lift and carry) or Spent (boost used or window passed:
+    every press over open sky a last effort, rising too) → Committed (`FallCommitted`: the app's fall and its efforts).
+    One boost per airtime, as before; no press over open sky is silent.
+  - **Facing.** During the carry the body turns only towards the steering input, and with nothing held keeps its facing.
+  - **Walls.** Grounded and pressed into a solid, the walker steers along its edge at the full speed asked for while the
+    input is within `WallSlideFullDegrees` (60°) of along it, slowing to nothing head-on; the part into the solid is kept
+    so the contact persists (`SphereWalker.AlongWall`). Every planet solid gets it (items, trunks, the landmark, pads'
+    sides, the bell tower, the root marks), not only the overlook. The stones' geometry is unchanged.
+- **Evidence:** `HazardAirIntentTests` (18 cases, 10 failed first), `OverlookStepsTests` (3 facts; the trap failed first
+  and is kept as the comparison), every existing hazard, walker, planet and golden test green; the behaviour baseline
+  (`FILESCAPE_BASELINE_OUT`) byte-identical before/after each slice (its walks touch neither a shell nor a wall).
+- **Alternatives:** keep the catch back but stop the facing turn (the walker would still be carried backwards from a
+  forward jump); make a late press falling above the rim the twirl instead of the catch (it would extend the tuned leap
+  envelope, AD-69's `LateSpeed`); widen the stones' ring to match the key's turn at walking pace (moves the whole complex,
+  every layout and keep-out zone, and running would still need the wall); a steering assist on stones only (special-cased).
+- **Consequences / for DJ by feel:** a forward jump whose second Space comes a little late (≈ 0.5 s, falling, with no far
+  rim in reach yet) is now a last effort and a fall where it used to be a forgiving catch back to the ledge (with the turn
+  DJ disliked); steering back (↓) gives the catch back. Ctrl + ← → (a pure sidestep, AD-94) mid-air steers sideways, so a
+  catch then reaches only sideways ground. Running up the stones with Shift and the turn key held now glides to the top
+  stone and runs off its end (the old slide's slowdown happened to make that curve); walking up is the fixed case.
+  Sliding along any wall is brisker. **Revisit if:** DJ wants a late press to be the twirl, a wider or narrower intent
+  cone, or the stones re-laid for a running climb.
