@@ -139,11 +139,10 @@ written by Windows' `tar.exe` with forward-slash entry names (Linux/macOS `unzip
 
 ## .NET version
 
-.NET 8's support ended on 2026-11-10; the app and Core still target `net8.0` (tests and the Windows SDK are .NET 10).
-Verified 2026-11-17 in a scratch worktree (not merged): `app/FileScape.App.csproj` and `src/FileScape.Core/FileScape.Core.csproj`
-set to `net10.0` with Godot 4.7.2 .NET build with 0 errors, export with the .NET **10.0.15** runtime
-(`runtimeconfig.json` `tfm net10.0`), smoke launch OK; smoke tier on that export: 12 journeys with 0 failed checks (3 were first reported "no result file" by a verify.sh naming defect, fixed in `b335249`; their probe logs showed 0 failures), Core tests 538 passed (with `FileScape.Fixtures` also on `net10.0`: it references Core; one run under heavy load had one failure that did not recur, the known intermittent timing test). To adopt it: change the three
-`TargetFramework`s (app, Core, Fixtures), run the full tier, and note it in a decision.
+.NET 8's support ended on 2026-11-10. **Adopted 2026-11-20 (seventh pass, AD-89):** the app, Core and Fixtures
+target `net10.0` (the tests already did), so the export carries the .NET 10 runtime. The seventh pass's candidate is
+verified on it (`check full`, real input, ZIP, fresh clone: see docs/implementation-status.md). The 2026-11-17 trial
+in the `net10-check` worktree (the same three `TargetFramework` lines) is superseded by this change.
 
 ## Decisions for DJ (before publishing)
 
@@ -160,11 +159,8 @@ Short list (2026-11-19):
    public repo), (b) publish as is, or (c) a squashed snapshot (loses the history). For the **private backup**, the
    original history can be pushed as is unless GitHub's "Block command line pushes that expose my email" is on.
 4. **The public Windows release.** Source only, or also a GitHub pre-release with the ZIP (e.g. `v0.1.0-playtest`);
-   it is unsigned (SmartScreen warns) and targets .NET 8.
-5. **.NET 10.** Trial: app, Core and Fixtures on `net10.0` built, exported with the .NET 10.0.15 runtime, smoke-launched
-   and passed the smoke tier and the Core tests (2026-11-17, scratch worktree, not merged). To make it the release
-   target: change the three `TargetFramework`s, run `fs.sh check full` and the real-input probes on the export, update
-   the README's "targets .NET 8" line, and record it as a decision. .NET 8's support ended 2026-11-10.
+   it is unsigned (SmartScreen warns) and targets .NET 10.
+5. **.NET 10.** Done 2026-11-20 (AD-89): the app, Core and Fixtures target `net10.0`.
 6. **Visibility.** Private first (backup); public only after you have reviewed the candidate from a fresh clone.
    Optional drops from history: the 2026-11-03 NuGet scans, `docs/galaxy-research.md` (long quotations).
 

@@ -2,7 +2,7 @@
   <!-- Builds and removes the on-disk Windows edge-case fixture. Library for tests, console for manual use. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>FileScape.Fixtures</RootNamespace>
     <!-- No native launcher: MSBuild intermittently gets "access denied" copying apphost.exe onto the \\wsl.localhost
          share (docs/windows-workflow.md). Run with: dotnet FileScape.Fixtures.dll -->

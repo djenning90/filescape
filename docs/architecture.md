@@ -26,7 +26,7 @@ companion's light carried through a large and possibly cold space (your filesyst
 
 
 ```
-FileScape.Core (net8.0, no engine reference)            app/ (Godot 4.7 .NET)
+FileScape.Core (net10.0, no engine reference)           app/ (Godot 4.7 .NET)
 ┌───────────────────────────────────────────┐          ┌──────────────────────────────────────────┐
 │ Scanning  IScanSource ─▶ ScanSession ──batches──▶ Main (main thread, only writer of FsTree)       │
 │   DirectoryScanner (live, metadata only)  │          │   drains batches (6 ms budget)            │

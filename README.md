@@ -41,7 +41,7 @@ is a starting point for the code, and the [design decisions](docs/decisions.md) 
 ## Build from source
 
 Open `app/project.godot` in **Godot 4.7.2 .NET** on Windows with the **.NET SDK** installed, then press **Play**.
-The app targets .NET 8 and the core tests use .NET 10. See the [Windows workflow](docs/windows-workflow.md) for builds,
+The app, Core and tests target .NET 10. See the [Windows workflow](docs/windows-workflow.md) for builds,
 tests, exports, and command-line launch options. The older flat worlds and maps are still available under
 [Legacy views](docs/legacy-views.md).
 

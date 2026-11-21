@@ -2062,3 +2062,13 @@ as FileScape while naming remains open.
 - **Before and after:** planets-hazard 88.1 s and 86.1 s → 78.6 s (84 → 78 checks). The full tier is ≈ 136 s shorter without the 1.25 repeats. See the stream 8 section of docs/implementation-status.md.
 - **Revisit when:** a journey failure appears that its Core replay did not predict. Then the replay's inputs or lag
   differ from the app's. Fix the replay first, and put the step back in the journey until they agree.
+
+## AD-89 The app, Core and Fixtures target .NET 10 (2026-11-20, seventh pass)
+- **Context:** .NET 8's support ended on 2026-11-10. The tests and the Windows SDK were already on .NET 10, and a
+  2026-11-17 trial (worktree `net10-check`) built, exported with the .NET 10.0.15 runtime and passed the smoke tier.
+- **Decision:** `app/FileScape.App.csproj`, `src/FileScape.Core/FileScape.Core.csproj` and
+  `src/FileScape.Fixtures/FileScape.Fixtures.csproj` target `net10.0`. Godot 4.7.2 .NET builds and exports them
+  unchanged. The fixture tool's path becomes `bin.win\Debug\net10.0\`.
+- **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
+  fresh-clone build on .NET 10 (docs/implementation-status.md).
+- **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.

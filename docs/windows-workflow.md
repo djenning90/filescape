@@ -45,7 +45,7 @@ Places evidence (2026-11-04):
 
 Engine arguments go before `--`, for example `--rendering-driver d3d12`.
 
-Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create|delete <dir>|delete-all`. It only creates under `%TEMP%\FileScape-fixtures` by default, and refuses to delete anything without its marker file.
+Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net10.0\FileScape.Fixtures.dll create|delete <dir>|delete-all`. It only creates under `%TEMP%\FileScape-fixtures` by default, and refuses to delete anything without its marker file.
 
 ## Verification tiers (2026-11-06, AD-29)
 

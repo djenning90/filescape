@@ -15,7 +15,7 @@ FileScape began with these experiences. They still work and live in the toolbar'
 It starts in **Places** on synthetic sample data (amber badge). Click **Open…** (Ctrl+O) and choose **⌂ This computer**, a drive, a path or Browse…, or press **Ctrl+L** and paste a path, to explore your own folders (green "LIVE" badge). Projects are marked ⚙: **R** reads the README, and the card offers your editors. Nothing is scanned wholesale: a folder is listed when you go in (and the folder you chose is listed in the background). Rebuild with `tools/fs.sh build && tools/fs.sh export`. It renders with D3D12 by default (KD-01).
 
 Test trees (deterministic, in `%TEMP%\FileScape-fixtures`, safe to delete with `… delete <dir>`):
-- `dotnet src\FileScape.Fixtures\bin.win\Debug\net8.0\FileScape.Fixtures.dll create-walk` → **Wayfarer**: a software project, junctions (outside the root, a loop, two routes, a broken one), a denied folder, hidden/system folders, a Unicode name.
+- `dotnet src\FileScape.Fixtures\bin.win\Debug\net10.0\FileScape.Fixtures.dll create-walk` → **Wayfarer**: a software project, junctions (outside the root, a loop, two routes, a broken one), a denied folder, hidden/system folders, a Unicode name.
 - `… create-places` → **Atlas Studio**: wide, deep, empty, many-files cases.
 - `tools/make-wsl-fixture.sh` (in WSL) prints a `\\wsl.localhost\…` path with case pairs, Linux symlinks, a FIFO and a small project.
 
