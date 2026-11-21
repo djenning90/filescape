@@ -2072,3 +2072,44 @@ as FileScape while naming remains open.
 - **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
+
+## AD-91 Journeys on a simulated clock, several at once; the desktop's cost in every check (2026-11-21, seventh pass, stream V2)
+- **Context:** the in-app journeys were ≈ 1,950 s of a 42.9-minute `check full`, run one at a time because they share
+  the screen, focus and GPU and their timing checks must not contend. Under load they failed intermittently
+  (walk-ui1.0's W+D speed, near-far-sample; on 2026-11-21 planets-look's "largest step a frame" in the baseline run),
+  because the probes measured the wall clock while the game moved by measured frame deltas.
+- **Decision:**
+  - *The game clock.* The world's `IWorldSession.Now`, the HUD's toasts, hint and fly highlight, and the walking
+    world's gate cooldown and upward settle run on `FrameClock` (Core): the frames' deltas summed. In play this is
+    the wall clock; under Godot's `--fixed-fps` it is the fixed step. Per-frame work budgets, refresh throttles,
+    hitch diagnostics and the state file's `appMs` stay on the Stopwatch.
+  - *The simulated clock for journeys.* `tools/verify.sh` launches a window-only journey with the engine arguments
+    `--fixed-fps 60 --disable-vsync` and the app argument `--sim-clock`. Each frame is then exactly 1/60 s of game
+    time however long it takes to draw, so load cannot change walk distances, jump timing or easing. ProbeBase's
+    `Seconds` and `Hold` count game time. `Until`'s timeout passes only when both clocks reach it
+    (`JourneyWait.TimedOut`), so a slow simulation still gives the game its game time and a fast one still gives
+    real background work its real-time budget. A run whose first 30 frames are not the fixed step fails (the launch
+    lacked `--fixed-fps`). The probes' own timing loops use `ClockSeconds` or `Deadline`.
+  - *Real-time journeys stay serial.* `REALTIME_JOURNEYS` keep the wall clock and run one at a time after the others.
+    These are audio (audio-gaps, sound, music), real background work timed in wall seconds (overview-discovery,
+    play-discovery, places-scan, and the `--test-list-delay-ms` instrument of planets-navigation and
+    planets-overview-enter), probes not built on ProbeBase (navigation, map-journey, the places journeys) and
+    walk-perf. `--measure`, the release tier, the real-input probes and the recordings are serial and on the wall
+    clock as before.
+  - *Several at once.* The simulated-clock journeys run `--parallel=N` at a time (default 3, started 2 s apart). The
+    batch holds `FS_LAUNCH_LOCK` once. Each launch has its own output, result file and `godot.log`, and is judged
+    exactly as before. Under automation, injected input reaches an unfocused window (KD-31) and Godot renders it.
+    A simulated journey's hang timeout is 3× its real-time one.
+  - *3D at half resolution.* `--render-scale=0.5` (app `--sim-render-scale`) draws the 3D scene at half the window's
+    resolution in simulated-clock journeys; the UI stays sharp and no assertion reads 3D pixels. On the Radeon 890M
+    the GPU was ≈ 19–29 ms of a frame at 1600×900, so this, not the clock, is what lets frames outrun real time.
+  - *Accounting.* Every check's table keeps its columns and adds `desktop` (seconds with this run's windows open, the
+    lock held) and `parallel` (summed step seconds against the batches' wall time). The session log gets a `desktop`
+    row per check. Every probe logs its pace: frames, game and wall seconds, and render CPU and GPU per frame.
+- **Measured:** see the stream V2 section of docs/implementation-status.md (baseline against the new modes, the
+  representative set, the projection for `check full`).
+- **Preserve:** a journey's assertions are the same on either clock. A real-time journey never runs beside another
+  launch. A parallel batch never holds the launch lock between batches.
+- **Revisit when:** a journey fails only on the simulated clock (find the wall-clock wait it depends on: move it to
+  `Until` on the real condition, or list the journey in `REALTIME_JOURNEYS`); when the machine's GPU changes (then
+  re-measure N and the render scale); when real-input probes can run beside window-only journeys (they take focus).
