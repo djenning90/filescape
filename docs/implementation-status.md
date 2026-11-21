@@ -4,6 +4,93 @@ Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+## Seventh pass (2026-11-20)
+
+### Stream V1: Core-suite speed (TEST-10..13, AD-90)
+
+Branch `worktree-agent-a3b00fa56f8434b6f` from `ae32129`. Tests and tools only; no product code changed (the
+behaviour baseline is identical, Debug and Release).
+
+**Why Windows Core went from 186 s to 330 s (demonstrated).** Mostly the machine, multiplied by one serial class:
+- The 114 tests added between `70b6ffc` and `5ba12f9` cost ≈ 48 s of ≈ 708 s of test time (WSL, one process; 24 s of
+  it OverviewAttentionTests); the SkySynth tests barely changed. The old commit's tests, built and run on the same
+  machine today, take as long as the new ones (WSL, one process: 335 s at `70b6ffc`, 310 s at `ae32129`).
+- The 330 s run (`full-20261120-195816`) was a slow machine: its build took 40 s (19 s in the 186 s run) and its stage
+  49 s (28 s); the same 818 tests took 186 s and 237 s in two full runs an hour apart.
+- What turned any slowdown into wall time: SkySynthTests was one partial class over nine files, so one xUnit collection
+  of ≈ 200 tests run one after another on one core. In the integrator's 412 s TRX every other class had finished at
+  166 s (HazardMovementTests, whose envelope sweep alone took 111 s) and most by 43 s; the rest of the run was
+  SkySynthTests alone. Process start, fixture setup (writing the Starter Sky: 2 classes) and concurrency settings
+  (xunit's default, one thread per core) were not the cause.
+- Timing bounds inside the parallel run failed under load and passed alone: the throttled-scan cancel (309 ms vs
+  250 ms, Windows), `Rendering_a_revisit_with_the_second_theme_is_cheap` for Outskirts and Underglow (61.5 / 60.1 ms vs
+  60 ms, WSL) in the sixth pass's full run; earlier `…six_effects_is_cheap` and the 150 ms layout bound. All of them are
+  `Kind=Perf` now.
+
+**What changed** (commits `426d768`, `7b09bb9`, `2d6ca01`, docs):
+- SkySynthTests is 14 classes (each section of SkySynthTests.cs and each SkySynthTests.*.cs file), sharing
+  `SkySynthKit`; HazardMovementTests' world audits are HazardGapWorldTests and HazardLeapWorldTests. Files kept their
+  names; helpers moved to `SkySynthTests.Kit.cs`.
+- One `dotnet test` process per host (the WSL shards are gone), Release, tiered compilation off in the test host.
+- `TestKinds`: 8 Perf methods, 14 cases (wall-clock bounds; three split from their correctness halves), 2 Report tests (the
+  tightening candidates, the running envelope), 43 Slow methods. The ordinary run leaves out Perf/Report; `--fast`
+  Slow too; `fs.sh test-perf` runs Perf/Report one at a time (Debug); `check full`/`release` run it as `tests-perf`
+  after the parallel tests and the stage, before the first journey.
+- Same assertions, less work: the envelope searched from the widest gap down in parallel batches (same widths 5.1 /
+  6.6 / 10.1 / 10.1 m, 9.1 / 13.8 m); Every_variation and the loudness check computed side by side; pairwise
+  FluentAssertions calls only where violated (PlaceTests, PlanetComposerTests, UniverseLayout, WorldLayout,
+  LayoutAndInteraction); a sorted `Equal` instead of `BeEquivalentTo` on 800 ids.
+- `fs.sh test-area` / `test-wsl-area AREA` (`areas.txt`, `TestAreaTests`), every run prints its seconds and where
+  they went (`tools/test-times.py`), `FS_TEST_TRX=path` keeps the TRX.
+
+**Before and after** (2026-11-20; other agents' test runs were on the machine throughout, load average 6–30 on WSL;
+"before" Windows is the integrator's TRX, also beside another agent):
+
+| Run | Before | After |
+|---|---|---|
+| Windows `fs.sh test` | 412 s (330 s in the sixth pass's full run) | 60 s: build 14 s + tests 46 s (span 37 s) |
+| WSL `fs.sh test-wsl` | 209 s (3 shards); 329 s one process | 39 s: build 10 s + tests 28 s (span 26 s) |
+| WSL `--fast` (718 tests) | — | 15 s |
+| WSL area sets | — | music 20 s, hazard 12 s, places 10 s, gallery 10 s, overview 5 s, navigation 5 s, the others 2–7 s |
+| Windows `fs.sh test-perf` (16 tests, serial, Debug) | inside the parallel run | 54 s (build 18 s + tests 36 s); 15/16 pass |
+| Sum of the tests' own seconds (WSL) | 709 s | 302 s (one test at a time: 130 s) |
+
+Per class, Windows (own = the class's tests summed; ends = when its last test ended, from the first test's start):
+
+| Class | tests | own before (s) | ends before (s) | own after (s) | ends after (s) |
+|---|---|---|---|---|---|
+| SkySynthTests (14 classes after) | 206 → 197 | 412.5 | 412.5 | 206.3 | 34.5 |
+| HazardMovementTests (3 classes after) | 19 → 19 | 164.9 | 166.3 | 52.9 | 29.8 |
+| HazardWorldTests | 53 → 53 | 39.3 | 39.3 | 23.2 | 26.0 |
+| PlanetComposerTests | 30 → 29 | 33.3 | 34.6 | 19.0 | 24.1 |
+| WindowsScannerTests | 11 → 10 | 31.8 | 34.0 | 22.1 | 22.5 |
+| OverviewAttentionTests | 7 → 7 | 28.2 | 28.4 | 6.2 | 6.1 |
+| PlaceTests | 25 → 25 | 27.2 | 27.9 | 1.0 | 3.8 |
+| HazardRecoveryTimingTests | 12 → 11 | 25.6 | 25.5 | 2.4 | 6.5 |
+| SampleSkyTests | 13 → 13 | 25.2 | 42.7 | 15.2 | 36.8 |
+| PlanetReliefTests | 74 → 74 | 22.9 | 23.0 | 5.3 | 7.4 |
+| OverviewDiscoveryTests | 13 → 13 | 12.9 | 12.9 | 5.0 | 4.9 |
+| GalleryTests | 7 → 7 | 7.2 | 26.6 | 5.1 | 20.5 |
+| **run** | 931 → 921 (+16 Perf/Report apart) | 876 | 413 | 411 | 37 |
+
+The same on WSL: SkySynth 334 → 175 s own, ends 310 → 25.5 s; HazardMovement 124 → 37.5 s, ends 118 → 26 s; run
+709 → 302 s own, span 310 → 26 s. Test counts: Windows 931 + 6 new (3 Perf halves, 1 Report, 2 TestAreaTests) = 921
+ordinary + 16 Perf/Report; WSL 929 + 6 = 919 + 16. Every test that passed before passes.
+
+**Test-run log** (all by this stream; WSL unless named): baseline one process Debug 329 s; `70b6ffc` rebuilt on .NET 10,
+one process 375 s (5 failures: 3 Perf-type bounds under load, the layout bound, one my copy's missing FileScape.sln);
+after the split 117 s; `fs.sh test-wsl` 173 s (load 24), Release 87 s, 142→76 s comparisons; fast 105 s (load 25, before
+tiering); perf 73 s (7/15 failed under load 25, serial confirmed); serial Release profile 127 s; thread-count and JIT
+experiments 8 × ≈ 45 s; ordinary 83, 76, 55, 49, 39 s; fast 15 s; 11 area sets 2–20 s. Windows: 4 runs (ordinary
+148 s with a first Release build, 61 s, 60 s; perf 54 s). Reruns: none for failures; repeated runs were measurements.
+
+**Open / for the integrator:**
+- `Rendering_one_second_of_music_with_six_effects_is_cheap` measured 68.8 ms (bound 60 ms) in the serial Windows perf
+  run while other agents' tests loaded the machine (it was 17–19 ms alone on 2026-11-11). Unknown whether it passes
+  on a quiet machine: the candidate's `check full` (`tests-perf`) decides; if it fails there alone, the music got
+  slower since the bound was set (a product question for stream M), not the instrument.
+- Nothing launches the app or uses the desktop; no journey or probe changed. `check harness` passes.
+
 ## Sixth pass (2026-11-20)
 
 ### The final candidate (`5ba12f91daa3`, staged, not installed)

@@ -2072,3 +2072,50 @@ as FileScape while naming remains open.
 - **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
+
+## AD-90 The Core suite runs as parallel collections in one Release process; wall-clock bounds run apart (2026-11-20, seventh pass, stream V1)
+- **Context:** Windows `fs.sh test` took 186 s on `70b6ffc` and 330 s on `d7c1ee0` (412 s on 2026-11-20 with another
+  agent on the machine). The growth was not mostly new tests: the 114 tests added in between cost ≈ 48 s of the
+  suite's ≈ 708 s of test time (WSL, one process; 24 s of it OverviewAttentionTests), and the old commit's tests take
+  as long as the new ones on the same machine (WSL, one process: 335 s at `70b6ffc`, 310 s now). What changed was the
+  machine's load: in the 330 s run the app build took 40 s instead of 19 s and the stage 49 s instead of 28 s, and the
+  same 818 tests took 186 s and 237 s in two runs an hour apart. The suite multiplied any slowdown because one class
+  was its critical path: SkySynthTests was one partial class over nine files, so xUnit ran its ≈ 200 tests as one
+  collection, one after another, on one core (412 s of the 412 s Windows run; after 166 s nothing else was running),
+  and HazardMovementTests' envelope sweep took 111 s by itself. The timing bounds inside the suite failed under that
+  load and passed alone (the throttled-scan cancel 309 ms vs 250 ms on Windows; two `…second_theme_is_cheap` 61.5 /
+  60.1 ms vs 60 ms on WSL; earlier `…six_effects_is_cheap`, the layout's 150 ms).
+- **Decision:**
+  - **Collections:** each SkySynth file and each section of SkySynthTests.cs is its own class (so its own xUnit
+    collection), sharing `SkySynthKit` through `using static`; HazardMovementTests' world audits are
+    HazardGapWorldTests and HazardLeapWorldTests. A class that grows past ≈ 30 s of work alone is split the same way.
+  - **One process, Release:** `fs.sh test` and `test-wsl` run one `dotnet test` (the WSL shards of AD-80 are removed:
+    they split SkySynthTests, and one process already uses every core), built Release as the exported game is
+    (`--export-release`), with tiered compilation off in the test host: under 24 parallel classes the background
+    promotion to optimised code kept being postponed, so hot loops ran unoptimised (WSL: Debug 1,163 CPU-s, Release
+    with tiering 430–760, without 330; one test at a time the whole run is 130 s of work). The same assertions run;
+    the behaviour baseline is identical in Debug and Release.
+  - **Kinds** (`TestKinds`, an xUnit trait): `Perf` asserts on wall-clock time; `Report` prints a measurement and
+    asserts nothing; `Slow` is a deterministic check over ≈ 3 s alone. The ordinary run leaves out Perf and Report;
+    `--fast` leaves out Slow too; `fs.sh test-perf` runs Perf and Report one test at a time in Debug (the bounds'
+    calibration), and `check full` / `release` run it as `tests-perf` after the parallel tests and the stage, before
+    the first journey. Mixed tests were split (the layout, the aurora voice, the throttled-scan cancel).
+  - **Heavy cases cheaper, same assertions:** independent cases side by side (`TestParallel.Map`, asserted afterwards
+    in order); the envelope searched from the widest gap down in batches and its twirl sweep not run twice (the same
+    widths: 5.1 / 6.6 / 10.1 / 10.1 m); per-pair assertions only where violated; a sorted `Equal` instead of
+    `BeEquivalentTo` on 800 items.
+  - **Area sets** (`tests/FileScape.Core.Tests/areas.txt`, `fs.sh test-area` / `test-wsl-area`), every class in an area
+    (`TestAreaTests`); every run prints where its time went (`tools/test-times.py`).
+- **Not done, and why:** a process-wide memo of shared renders or compositions. No two tests render the same synth to
+  the same point and only read the samples (they need the synth's state afterwards, which SkySynth cannot copy);
+  composed planets keep lazy caches (`PlanetSurface`'s shape cache, `BrokenShell`'s cosines) that were not written for
+  use from several threads; the Starter Sky fixture is rewritten in place by one of its readers. Each would need a
+  product change or a thread-safety review first.
+- **Consequences:** WSL `test-wsl` 209 s (shards) / 329 s (one process, Debug) → 39–49 s with the build (28–37 s of
+  tests); Windows `test` 412 s → 60 s with the build (46–50 s of tests); `--fast` 15 s; an area set 2–20 s;
+  `test-perf` 54 s on Windows. Measured 2026-11-20 with other agents' test runs on the machine (load 6–13): every
+  number moves together with the load, since the run is now bound by the cores, not by one class. The class that
+  finishes last now ends within ≈ 1 s of the next ones (HazardGapWorldTests, SkySynthArrangementTests ≈ 33–37 s).
+- **Revisit when:** a class's span equals the run's (it is the critical path again: split it), a Perf test fails in
+  `tests-perf` on a quiet machine (a real regression or a stale bound), or a run's "sum of tests" grows past ≈ 2× its
+  130 s of single-threaded work (the parallel run is wasting work again, as the tiering did).
