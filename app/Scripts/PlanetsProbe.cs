@@ -135,6 +135,7 @@ public partial class PlanetsProbe : ProbeBase
         else if (Mode == "planets-overview-bodies") await OverviewBodiesRun(); // PlanetsProbe.Attention.cs (PLANET-108)
         else if (Mode == "planets-look") await LookRun(); // PlanetsProbe.Look.cs (PLANET-67/68)
         else if (Mode == "planets-music") await MusicRun(); // PlanetsProbe.Music.cs (AD-79, PLANET-97/98)
+        else if (Mode == "planets-starter-music") await StarterMusicRun(); // PlanetsProbe.StarterMusic.cs (AD-95, PLANET-171)
         else if (Mode == "planets-looks") await LooksRun(); // PlanetsProbe.Looks.cs (PLANET-94/95)
         else if (Mode == "planets-gallery") await GalleryRun(); // PlanetsProbe.Gallery.cs (PLANET-96, PLANET-130..136)
         else if (Mode == "planets-gallery-real") await GalleryRealRun(); // PlanetsProbe.Gallery.cs: counts only, a real picture folder

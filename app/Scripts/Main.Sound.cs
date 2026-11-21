@@ -8,7 +8,8 @@ namespace FileScape.App;
 /// <see cref="Planets.SkyAudio"/>, the only thing in FileScape that makes sound (the legacy views are silent and do not
 /// show the button; the state carries across).
 /// A mute restored from the preferences is made obvious: the amber "Sound off" button from the first frame and a toast
-/// shortly after start. A change must keep the button, N and the saved preference one state.
+/// shortly after start. A change must keep the button, N and the saved preference one state. The Starter Sky's music
+/// (<see cref="Core.Interaction.Preferences.StarterMusic"/>, AD-95) is applied here too: it is the other sound preference.
 /// </summary>
 public partial class Main
 {
@@ -43,6 +44,7 @@ public partial class Main
     {
         if (_planets?.Audio == null) return; // before the planets exist (they are built first; see SetupSound)
         _planets.Audio.SetMuted(_prefs.SoundMuted);
+        _planets.Audio.SetHubTheme(_prefs.StarterMusic); // AD-95: heard on the next beat if the hub is playing
         _hud.SetSoundMuted(_prefs.SoundMuted);
         if (!loaded || !_prefs.SoundMuted) return;
         GetTree().CreateTimer(RestoredMuteToastDelaySeconds).Timeout += () =>

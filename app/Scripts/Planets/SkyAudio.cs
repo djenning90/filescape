@@ -494,6 +494,15 @@ public partial class SkyAudio : Node
     /// </summary>
     public void SetExperience(MusicExperience experience, int visits) { lock (_gate) _synth.SetExperience(experience, visits); }
 
+    /// <summary>
+    /// The Starter Sky's music (AD-95, PLANET-170: Settings → Music, <see cref="Core.Interaction.Preferences.StarterMusic"/>):
+    /// heard on the next beat while the hub's music plays, otherwise the next time it begins (<see cref="SkySynth.SetHubTheme"/>).
+    /// </summary>
+    public void SetHubTheme(StarterTheme theme) { lock (_gate) _synth.SetHubTheme(theme); }
+
+    /// <summary>The Starter Sky's music as chosen, and the written piece sounding now (null when generated), for probes.</summary>
+    public (StarterTheme Chosen, string? PlayingPiece) HubMusic() { lock (_gate) return (_synth.HubTheme, _synth.PlayingPieceName); }
+
     /// <summary>The synth's minimum dwell, seconds (AD-79: the game's 3.5 s), for probes.</summary>
     public double MinimumDwellSeconds { get { lock (_gate) return _synth.MinimumDwell.TotalSeconds; } }
 
@@ -508,7 +517,7 @@ public partial class SkyAudio : Node
         {
             var s = _synth;
             var key = s.Key;
-            return System.FormattableString.Invariant($"{{\"experience\":\"{s.Experience}\",\"identity\":\"{s.Identity}\",\"playing\":\"{s.PlayingIdentity}\",\"placeScore\":\"{s.Place.Score}\",\"held\":{(s.ChangeHeld ? "true" : "false")},\"playingFor\":{s.PlayingFor.TotalSeconds:0.000},\"bar\":{s.PlayingBar},\"variation\":{s.PieceVariation},\"root\":{key.RootMidiNote},\"mode\":\"{key.Mode}\",\"playingRoot\":{s.PlayingKey.RootMidiNote},\"bpm\":{s.TempoBeatsPerMinute:0.#},\"voices\":{s.ActiveVoices},\"musicVoices\":{s.ActiveMusicVoices},\"frames\":{s.FramesRendered}}}");
+            return System.FormattableString.Invariant($"{{\"experience\":\"{s.Experience}\",\"identity\":\"{s.Identity}\",\"playing\":\"{s.PlayingIdentity}\",\"placeScore\":\"{s.Place.Score}\",\"held\":{(s.ChangeHeld ? "true" : "false")},\"playingFor\":{s.PlayingFor.TotalSeconds:0.000},\"bar\":{s.PlayingBar},\"variation\":{s.PieceVariation},\"root\":{key.RootMidiNote},\"mode\":\"{key.Mode}\",\"playingRoot\":{s.PlayingKey.RootMidiNote},\"bpm\":{s.TempoBeatsPerMinute:0.#},\"voices\":{s.ActiveVoices},\"musicVoices\":{s.ActiveMusicVoices},\"frames\":{s.FramesRendered},\"hubTheme\":\"{s.HubTheme}\",\"piece\":\"{s.PlayingPieceName ?? ""}\"}}");
         }
     }
 

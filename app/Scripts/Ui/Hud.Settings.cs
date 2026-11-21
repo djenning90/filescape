@@ -1,4 +1,5 @@
 using System.Globalization;
+using FileScape.Core.Audio;
 using FileScape.Core.Interaction;
 using FileScape.Core.Units;
 using Godot;
@@ -7,7 +8,8 @@ namespace FileScape.App.Ui;
 
 /// <summary>
 /// Settings (CTRL-01..04): mouse-look direction and levelling and walking speeds, saved for next time. Opened from the ⚙ Settings
-/// button in the top bar or F4; Esc closes it.
+/// button in the top bar or F4; Esc closes it. Music (AD-95, PLANET-170): which music the Starter Sky and This computer play,
+/// a drop-down of <see cref="StarterThemes.All"/> whose choice is heard on the next beat, so it can be judged by ear in place.
 /// </summary>
 public partial class Hud
 {
@@ -19,6 +21,7 @@ public partial class Hud
     private HSlider _walkSlider = null!, _runSlider = null!;
     private Label _walkValue = null!, _runValue = null!, _settingsNote = null!;
     private Button _settingsButton = null!;
+    private OptionButton _starterMusic = null!;
     /// <summary>The preferences as last shown: edits start from them, so fields this panel does not show (pins) are kept.</summary>
     private Preferences _shownPrefs = Preferences.Default;
 
@@ -37,6 +40,8 @@ public partial class Hud
     public Rect2 LevelViewRect => _levelView.GetGlobalRect();
     public Rect2 FlyGazeRect => _flyGaze.GetGlobalRect();
     public string WalkSpeedText => _walkValue.Text;
+    public Rect2 StarterMusicRect => _starterMusic.GetGlobalRect();
+    public string StarterMusicText => _starterMusic.Text;
 
     /// <summary>Adds the ⚙ button to the top bar (after Key) and builds the centred, initially hidden panel; it also adopts the Quality button.</summary>
     private void BuildSettings(HBoxContainer topRow)
@@ -126,6 +131,21 @@ public partial class Hud
         qrow.AddChild(qnote);
         v.AddChild(qrow);
 
+        Section("Music");
+        var mrow = new HBoxContainer();
+        mrow.AddThemeConstantOverride("separation", 10);
+        mrow.AddChild(new Label { Text = "Starter Sky and This computer", CustomMinimumSize = new Vector2(150, 0) });
+        _starterMusic = new OptionButton { FocusMode = Control.FocusModeEnum.All, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        foreach (var t in StarterThemes.All) _starterMusic.AddItem(StarterThemes.Title(t) + (t == StarterThemes.GameDefault ? " (default)" : ""));
+        for (var i = 0; i < StarterThemes.All.Count; i++) _starterMusic.SetItemTooltip(i, StarterThemes.Description(StarterThemes.All[i]));
+        _starterMusic.ItemSelected += _ => EmitPreferences();
+        mrow.AddChild(_starterMusic);
+        v.AddChild(mrow);
+        var mnote = new Label { Text = "A change is heard on the next beat while the Starter Sky's music plays. The overview keeps Star Chart Dorian.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        mnote.AddThemeFontSizeOverride("font_size", 12);
+        mnote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        v.AddChild(mnote);
+
         _settingsNote = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _settingsNote.AddThemeFontSizeOverride("font_size", 12);
         _settingsNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
@@ -152,6 +172,8 @@ public partial class Hud
         _runSlider.Value = p.RunSpeed.Value;
         _walkValue.Text = string.Create(CultureInfo.InvariantCulture, $"{p.WalkSpeed.Value:0.0} m/s");
         _runValue.Text = string.Create(CultureInfo.InvariantCulture, $"{p.RunSpeed.Value:0.0} m/s");
+        _starterMusic.Selected = Math.Max(0, StarterThemes.All.ToList().IndexOf(p.StarterMusic));
+        _starterMusic.TooltipText = StarterThemes.Description(p.StarterMusic);
         _settingsNote.Text = savedTo != null ? $"Saved automatically to {savedTo}" : "Not saved: this is a test run (--prefs not given).";
         _settingsSync = false;
     }
@@ -168,6 +190,7 @@ public partial class Hud
             FlyAlongGaze = _flyGaze.ButtonPressed,
             WalkSpeed = MetersPerSecond.Of((float)_walkSlider.Value),
             RunSpeed = MetersPerSecond.Of((float)_runSlider.Value),
+            StarterMusic = StarterThemes.All[Math.Clamp(_starterMusic.Selected, 0, StarterThemes.All.Count - 1)],
         });
     }
 
