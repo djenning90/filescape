@@ -87,6 +87,13 @@ public partial class PlanetWorld
 
     private TelescopeSurvey? _scope;
     private float _scopeT, _scopeFov, _scopeZoom = 1f;
+
+    /// <summary>The angle that frames the current world whole, degrees (before the lens's limits), updated each frame.</summary>
+    private float _scopeFramingDegrees = ScopeMaxFovDegrees;
+
+    /// <summary>The zoom times <paramref name="factor"/>, kept where it still changes the lens for this framing (Core <see cref="TelescopeLens"/>).</summary>
+    private float ScopeZoomStep(float factor) =>
+        TelescopeLens.Step(_scopeZoom, factor, _scopeFramingDegrees, ScopeMinFovDegrees, ScopeMaxFovDegrees, ScopeMinZoom, ScopeMaxZoom);
     private Transform3D _scopeFrom;
     private Vector3 _scopeLook;
     private Vector2 _scopeLookOffset; // degrees: yaw (+ right), pitch (+ up), from a drag
@@ -345,7 +352,7 @@ public partial class PlanetWorld
         if (!blockedKeys)
         {
             var zoomKeys = (Godot.Input.IsPhysicalKeyPressed(Key.S) || Godot.Input.IsPhysicalKeyPressed(Key.Down) ? 1 : 0) - (Godot.Input.IsPhysicalKeyPressed(Key.W) || Godot.Input.IsPhysicalKeyPressed(Key.Up) ? 1 : 0);
-            if (zoomKeys != 0) _scopeZoom = Mathf.Clamp(_scopeZoom * MathF.Pow(ScopeKeyZoomPerSecond, zoomKeys * dt), ScopeMinZoom, ScopeMaxZoom);
+            if (zoomKeys != 0) _scopeZoom = ScopeZoomStep(MathF.Pow(ScopeKeyZoomPerSecond, zoomKeys * dt));
         }
 
         var up = Gd(_walker.Up);
@@ -355,7 +362,8 @@ public partial class PlanetWorld
         if (_scope.Current is { } t && TargetPoint(t.World) is { } p)
         {
             var dist = MathF.Max(0.5f, (p - eye).Length());
-            fovTarget = Mathf.Clamp(Mathf.RadToDeg(2 * MathF.Atan(t.World.Radius / (dist * ScopeFrameShare))) * _scopeZoom, ScopeMinFovDegrees, ScopeMaxFovDegrees);
+            _scopeFramingDegrees = Mathf.RadToDeg(2 * MathF.Atan(t.World.Radius / (dist * ScopeFrameShare)));
+            fovTarget = TelescopeLens.Fov(_scopeFramingDegrees, _scopeZoom, ScopeMinFovDegrees, ScopeMaxFovDegrees); // the zoom acts on the lens's own range
             var dir = (p - eye).Normalized();
             // A drag looks round the framed world: yaw about up, pitch about the view's right.
             var right = dir.Cross(up);
@@ -437,7 +445,7 @@ public partial class PlanetWorld
         switch (e)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown, Pressed: true } w when !OverHud(w.Position):
-                _scopeZoom = Mathf.Clamp(_scopeZoom * (w.ButtonIndex == MouseButton.WheelUp ? ScopeWheelIn : ScopeWheelOut), ScopeMinZoom, ScopeMaxZoom);
+                _scopeZoom = ScopeZoomStep(w.ButtonIndex == MouseButton.WheelUp ? ScopeWheelIn : ScopeWheelOut);
                 return true;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left or MouseButton.Right, Pressed: true } press when !_pointerBlocked && !OverHud(press.Position):
                 GetViewport().GuiReleaseFocus();
