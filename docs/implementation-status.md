@@ -149,6 +149,38 @@ Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.
 
 ## Seventh pass (2026-11-21)
 
+### Stream S5: gameplay stalls removed (PLANET-174..180, AD-96)
+
+Measured with `--automate=planets-stalls --diag-frames=…` on staged builds (injected input, never real OS input), the
+same routes before (a7a528a: the instrument only, 5ba12f9's behaviour) and after (5a56183 / 8c05b98). Evidence:
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-21-p7-stalls\{before,after1,after2}\<route>\` (probe log, frames.csv; counts
+and ids only). Frame = wall-clock gap between frames (vsync on, 60 Hz).
+
+| Route | Before p50 / p95 / p99 / max (ms); >33/>100/>300 | After |
+|---|---|---|
+| Ubuntu root, walk 60 s, 1600×900 | 16.6 / 18.3 / 24.3 / 716; 20 / 13 / 13 | 16.6 / 18.4 / 24.0 / 62; 11 / 0 / 0 |
+| Ubuntu root, 6 landings, 1600×900 | 16.6 / 17.9 / 29.5 / 776; 14 / 8 / 6 | 16.6 / 18.5 / 28.2 / 43; 9 / 0 / 0 |
+| Ubuntu root, walk 60 s, fullscreen 3840×2160 | 19.6 / 28.8 / 47.9 / 769; 86 / 16 / 13 | 16.6 / 18.8 / 26.3 / 51; 15 / 0 / 0 |
+| Ubuntu root, 6 landings, fullscreen | — | 16.6 / 18.4 / 29.0 / 49; 13 / 0 / 0 |
+| Vast Reach (`--test-broad`), walk 30 s | 16.6 / 20.0 / 28.2 / 188; 15 / 8 / 0 | 16.6 / 18.8 / 23.5 / 74; 5 / 0 / 0 |
+| Vast Reach, 6 landings | 16.6 / 19.3 / 50.0 / 165; 18 / 8 / 0 | 16.6 / 17.9 / 22.6 / 40; 5 / 0 / 0 |
+| Vast Reach, overview open 4 s | 16.6 / 23.6 / 49.9 / 131; 4 / 2 / 0 | 16.6 / 19.8 / 23.9 / 72; 2 / 0 / 0 |
+| Gallery fixture, walk 20 s + 4 landings | max 144 (walk), 66 (landings) | max 35, 39 |
+| Saved Pictures, walk 20 s | max 131 | max 35 |
+
+- Worst before: the recompose swap while walking (buildCurrent 610–760 ms, composes of three large children 40–200 ms
+  each, GC 16–22 ms of 190–250 MB allocated); landing back on the root (555–773 ms). After: the worst walking frame is a
+  launcher's full world built while its new ground was still being made (56 ms); 0 neighbours composed on the main
+  thread; 70–74 background composes in 27–28 jobs per minute, longest 38 ms.
+- GPU at 3840×2160 standing on the root: as shipped 18.2 ms; MSAA off 10.8, glow off 15.5, shadows off 17.5, sky shader
+  off 14.3, scale 0.75 11.4, 0.5 6.8. After AD-96's automatic scale (0.67, FSR 1): 11.4 ms; full scale 19.9; MSAA 2× 11.0.
+- Not changed: the session's first arrival (≈ 0.9–1.0 s at the Ubuntu root, 0.4–0.5 s on a gallery; composes its sky and
+  waits for its ground behind the arrival title). DJ's 402 ms frame opening the overview on Vast Reach: not reproduced
+  (131–174 ms before, 72 ms after). DJ's 45–55 ms fullscreen GPU frames at 2560×1440: not reproduced. Windowed GPU p50
+  was 4 ms in the after2 runs and 7–9 ms in the before and after1 runs at the same 1600×900 scale 1: unexplained
+  (machine state; the render scale stayed 1, no "[render]" line).
+- Tests: NeighbourhoodSchedulingTests (12, area `stalls`); the stall guard journey `planets-stalls` (functional tier).
+
 ### Stream S8: telescope travel and selection, Overview reach and names, discovery verified (PLANET-188..197, AD-98)
 
 DJ's item 8 (and 2, 11). No desktop use by this stream: Core tests and journey/probe code; the coordinator runs the

@@ -25,6 +25,9 @@ public partial class PlanetVisual : Node3D
     private readonly PlanetComposition _comp;
     private readonly PlanetPalette _pal;
     private readonly bool _full;
+
+    /// <summary>Built in full (objects, launchers, signs) rather than as a preview seen in the sky (the visual cache keeps the kinds apart, AD-96).</summary>
+    public bool IsFull => _full;
     private readonly WorldCharacter _character;
     private MeshInstance3D? _cursor; // the terminal monolith's blinking cursor (WSL roots only)
     private static readonly Dictionary<string, ArrayMesh> CharacterMeshes = [];

@@ -224,6 +224,24 @@ Lookouts (20 s). When you replace one of them with `Until(condition, timeout)`, 
 following check needs (for example `P.CameraSettled` before a framing screenshot), and the journey must keep the same
 PASS lines.
 
+## Measuring frame times and stalls (PLANET-179, AD-96)
+
+Frame-time distributions are a measurement (real time, one launch at a time, the launch lock held), not a functional
+check. On a staged build (`tools/fs.sh stage --reuse` first; never inside `fs.sh timed --lock`):
+
+```
+FS_LAUNCH_LOCK=… tools/fs.sh timed NAME --lock -- "$EXE" -- --automate=planets-stalls --root=… \
+  --stalls-route=walk,land,overview,gallery,gpu --stalls-walk-seconds=60 [--stalls-fullscreen] [--counts-only] \
+  --diag-frames='C:\…\frames.csv' --out='C:\…' --window=1600x900
+tools/frame-diag-summary.py /mnt/c/…/frames.csv --worst 8
+```
+
+The probe log has each route's p50/p95/p99/max and counts over 33/100/300 ms; the CSV attributes each long frame
+(sections, GC, allocation, render CPU/GPU, notes such as `compose #id 12.3ms`, `visual #id preview 2.1ms`). Use
+`--counts-only` on a real root (no names are logged either way; the app's own stdout may print folder names: keep it out
+of reports). `--tier=functional` turns the walk into the stall guard (no frame over `--stalls-limit-ms`, default 250, and
+no world in the sky composed on the main thread); `check journeys planets-stalls` runs that on the vast fixture.
+
 ## Launching and closing (AD-28, AD-76)
 
 - **`FileScape.exe`** is a window program: cmd and PowerShell return to their prompt at once. Since AD-76 it writes nothing into a terminal that did not wait for it (Godot attaches to the terminal in native start-up; FileScape lets go at once, and the engine header is off), so the prompt stays the last line and is usable while FileScape runs and after X. Its log is in `%APPDATA%\Godot\app_userdata\FileScape\logs`.

@@ -296,6 +296,9 @@ public sealed class PlanetComposition
     /// <summary>See <see cref="PlanetComposer.Signature"/>.</summary>
     public required string Signature { get; init; }
 
+    /// <summary>See <see cref="PlanetComposer.PreviewSignature"/>: what this world's look from outside was made from.</summary>
+    public string PreviewSignature { get; init; } = "";
+
     public PlanetLauncher? ParentLauncher => Launchers.FirstOrDefault(l => l.IsParent);
 
     /// <summary>The launcher for a child folder or link (or, through a resolved link, for the folder it leads to).</summary>
