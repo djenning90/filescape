@@ -871,6 +871,15 @@ Found by the journeys run on the merged seventh pass (planets-text, planets-look
 |---|---|---|---|
 | PLANET-198 | The object you just looked at closer (a hop from the list, E) stays the focus while it is in reach and you have not walked on (0.5 m) and its preview still shows it, so the prompt and the preview's "Close (E / Esc)" speak of the same file; the telescope's zoom acts on the lens's own range (a near world framed at the widest lens narrows at the first notch in); the planets' preview keeps inside a short window. | `IntegrationFixTests` (Core `ObjectFocus`, `TelescopeLens`, `PanelFit.BottomGap`; failed first: missing); planets-text (the prompt names the hopped-to file; the prompt and preview fit at 1280×720 UI 1.5), planets-lookouts (the wheel: 50° → in 19.5°) | **Demonstrated** (Core; journeys passed twice) |
 
+## Real input matches the replays: steering by the heading, a head-on push at a solid (PLANET-199, 2026-11-21, seventh pass stream R)
+
+Found by the real-input probes on the candidate e1088c6 (os -AirIntent, -Steps, -Route), each traced and replayed in Core
+(AD-99).
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-199 | Walking goes where the camera is heading (the heading ← → and a drag turn), not where the easing view still points, so ↑ with a turn key held climbs the overlook's curved stones to the platform; a push within 15° of head-on into a solid slides along it no faster than the plain slide and the body keeps facing the input, so a jump onto the workbench from touching its rim lands on the deck; the -AirIntent probe judges the body's turn from its facing at take-off. | `OverlookStepsTests.Steering_by_the_rendered_camera_lagged_…` (reproduces the app: not up, highest 2.1 m) and the climb tests; `BenchJumpTests` (failed first: off the deck from 4° off the centre); os -Steps (up in 1.9 s), -Route (3 runs), -AirIntent (turned 0°) | **Demonstrated** (Core; real input on the staged build) |
+
 ## Later (not in this prototype)
 
 Search, watchers/live refresh, persistent scan caches, bookmarks, split views, mutations (copy/move/rename/delete), shell context menus, multi-select, rich previews, warp mode and other historical-fidelity features, themes as data packages, sound/weather, installers, signing, marketplaces.
