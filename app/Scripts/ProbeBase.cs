@@ -47,6 +47,7 @@ public abstract partial class ProbeBase : Node
             Check(false, $"probe threw {ex}");
         }
 
+        RestoreClipboard();
         ProbeTier.WaitForSaves();
         Log($"done failures={Failures}");
         System.IO.File.WriteAllText(System.IO.Path.Combine(Out, $"{Mode}.log"), LogText.ToString());
@@ -262,9 +263,59 @@ public abstract partial class ProbeBase : Node
         return ok;
     }
 
+    /// <summary>
+    /// The text a probe's Ctrl+V pastes (2026-11-20, the clipboard-log incident: a paste into Destinations' filter put
+    /// the user's real clipboard into a probe log). Before the first paste the probe puts this text on the clipboard and
+    /// keeps what was there, unlogged, to put back when it finishes (<see cref="RestoreClipboard"/>).
+    /// </summary>
+    protected const string ClipboardFixtureText = "fs-probe-paste-fixture";
+
+    private enum ClipboardUse { Untouched, Fixture, Skip }
+    private ClipboardUse _clipboardUse;
+    private string? _clipboardSaved;
+
+    /// <summary>
+    /// Makes the clipboard hold <see cref="ClipboardFixtureText"/> before a probe pastes; false when the clipboard holds
+    /// something other than text (an image), which a probe could not put back, so the caller skips the paste and the
+    /// clipboard is left alone. What a change must preserve: the user's text is never logged, and it is restored.
+    /// </summary>
+    protected bool UseFixtureClipboard()
+    {
+        if (_clipboardUse == ClipboardUse.Untouched)
+        {
+            if (DisplayServer.ClipboardHasImage())
+            {
+                _clipboardUse = ClipboardUse.Skip;
+                Log("clipboard holds an image: pastes are skipped and the clipboard is left untouched");
+            }
+            else
+            {
+                _clipboardSaved = DisplayServer.ClipboardGet();
+                DisplayServer.ClipboardSet(ClipboardFixtureText);
+                _clipboardUse = ClipboardUse.Fixture;
+                Log("clipboard: fixture text set for pastes (the previous text is restored at the end and never logged)");
+            }
+        }
+
+        return _clipboardUse == ClipboardUse.Fixture;
+    }
+
+    /// <summary>Puts the user's clipboard text back after <see cref="UseFixtureClipboard"/>, unless something else was copied since.</summary>
+    private void RestoreClipboard()
+    {
+        if (_clipboardUse != ClipboardUse.Fixture) return;
+        if (DisplayServer.ClipboardGet() == ClipboardFixtureText) DisplayServer.ClipboardSet(_clipboardSaved ?? "");
+        Log("clipboard restored");
+        _clipboardSaved = null;
+        _clipboardUse = ClipboardUse.Untouched;
+    }
+
     /// <summary>A time-stamped line to the console (tagged with the mode) and to the probe's log file.</summary>
     protected void Log(string line)
     {
+        // A safety net for the rule above: the saved clipboard text never reaches a log, whatever pasted it.
+        if (_clipboardSaved is { Length: >= 4 } saved && line.Contains(saved, StringComparison.Ordinal))
+            line = line.Replace(saved, "[clipboard text removed]", StringComparison.Ordinal);
         var stamped = $"[{DateTime.Now:HH:mm:ss.fff}] {line}";
         GD.Print($"[{Mode}] " + stamped);
         LogText.AppendLine(stamped);

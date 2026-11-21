@@ -76,16 +76,16 @@ public partial class PlanetsProbe
         return s;
     }
 
-    /// <summary>Ctrl+V strokes not sent because a text field held the focus (it would paste the real clipboard).</summary>
+    /// <summary>Ctrl+V strokes not sent because the clipboard held an image the probe could not put back.</summary>
     private int PasteSkips;
 
     /// <summary>Presses and releases one stroke as a keyboard sends it (modifier keys down first, up last).</summary>
     private async Task Strike(Stroke s)
     {
-        // Privacy (2026-11-20): Ctrl+V into a text field pastes DJ's real clipboard (into the filter and so into the log).
-        // A text field always takes Ctrl+V itself (Godot's own paste, not FileScape's ownership rule), so the stroke is
-        // skipped there; elsewhere it is still sent and must not reach the game.
-        if (s.Ctrl && s.Key == Godot.Key.V && App.GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit)
+        // Privacy (2026-11-20): a Ctrl+V into a text field pastes the clipboard (into the filter and so into the log), so
+        // the clipboard holds fixture text first and the user's text is put back when the probe ends (ProbeBase). If the
+        // clipboard holds an image it is left alone and the stroke is skipped. Elsewhere the stroke must not reach the game.
+        if (s.Ctrl && s.Key == Godot.Key.V && !UseFixtureClipboard())
         {
             PasteSkips++;
             return;

@@ -212,6 +212,34 @@ function Steer-To-Target([double]$stop, [int]$tries = 90) {
   return State
 }
 function Wait-Step([int]$step, [int]$ms = 6000) { for ($i = 0; $i -lt $ms / 150; $i++) { $s = State; if ($s.tutorialStep -ge $step -or $s.tutorialTitle -eq 'done') { return $s }; Start-Sleep -Milliseconds 150 }; return State }
+# Clipboard (2026-11-20, the clipboard-log incident): a real Ctrl+V into a text field pastes whatever the clipboard
+# holds, and the filter's text reaches the state file and the log. Before the first Ctrl+V the probe puts fixture text on
+# the clipboard and keeps the user's text (never logged) to put back at the end, unless something else was copied
+# meanwhile. A clipboard holding anything but text (an image, files) is left alone and Ctrl+V is skipped.
+$script:ClipFixture = 'fs-probe-paste-fixture'; $script:ClipSaved = $null; $script:ClipState = 'untouched'
+function Use-Fixture-Clipboard {
+  if ($script:ClipState -ne 'untouched') { return ($script:ClipState -eq 'fixture') }
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    $d = [System.Windows.Forms.Clipboard]::GetDataObject()
+    $other = @(if ($d) { $d.GetFormats() | Where-Object { $_ -notmatch '^(System\.String|UnicodeText|Text|OEMText|Locale)$' } })
+    if ($other.Count -gt 0) { $script:ClipState = 'skip'; Log "clipboard holds non-text data: Ctrl+V is skipped and the clipboard left untouched"; return $false }
+    $script:ClipSaved = [System.Windows.Forms.Clipboard]::GetText()
+    [System.Windows.Forms.Clipboard]::SetText($script:ClipFixture)
+    $script:ClipState = 'fixture'; Log "clipboard: fixture text set for Ctrl+V (the previous text is restored at the end, never logged)"
+  } catch { $script:ClipState = 'skip'; Log "clipboard unavailable ($($_.Exception.GetType().Name)): Ctrl+V is skipped" }
+  return ($script:ClipState -eq 'fixture')
+}
+function Restore-Clipboard {
+  if ($script:ClipState -ne 'fixture') { return }
+  try {
+    if ([System.Windows.Forms.Clipboard]::GetText() -eq $script:ClipFixture) {
+      if ([string]::IsNullOrEmpty($script:ClipSaved)) { [System.Windows.Forms.Clipboard]::Clear() } else { [System.Windows.Forms.Clipboard]::SetText($script:ClipSaved) }
+    }
+    Log "clipboard restored"
+  } catch { $script:fails++; Log "FAIL OS the clipboard could not be restored ($($_.Exception.GetType().Name))" }
+  $script:ClipSaved = $null; $script:ClipState = 'untouched'
+}
 if ($Discovery) {
   if (-not $DiscoveryRoot) { throw "-Discovery needs -DiscoveryRoot <the deep fixture's Deep Atlas folder>" }
   $script:LaunchRoot = $DiscoveryRoot
@@ -563,6 +591,7 @@ try {
     function In { (State).input }
     # One stroke by name ('a', '7', 'Shift+Q', 'Ctrl+V', 'PageDown'): modifiers down first, up last, at a typist's pace.
     function Strike($name) {
+      if ($name -eq 'Ctrl+V' -and -not (Use-Fixture-Clipboard)) { return }
       $parts = @($name -split '\+'); $key = $parts[-1]; $mods = @($parts | Select-Object -SkipLast 1)
       if ($key.Length -eq 1) { $key = $key.ToUpperInvariant() }
       foreach ($m in $mods) { Key-Down $m }
@@ -1726,6 +1755,7 @@ catch {
 }
 finally {
   Release-All-Held
+  Restore-Clipboard
   if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(5000)) { Stop-Process -Id $p.Id } }
   $log | Set-Content (Join-Path $Out 'os-planets.log')
   Log "OS planets probe: $fails failure(s)"
