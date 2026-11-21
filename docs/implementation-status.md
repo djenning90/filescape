@@ -21,6 +21,10 @@ Branch `worktree-agent-abde1989b13d5dc12` from `ae32129`; not staged (the coordi
 | Wheel over Help and the reader (PLANET-157) | reader **demonstrated** (planets-reader); Help **unknown** | `planets-text` |
 | Plain controls stay plain (PLANET-158) | **Demonstrated** (audit) | AD-93 |
 
+**Whole Core suite once (WSL, 3 shards, 398 s with the build):** 1,092 passed, 9 failed, 29 skipped of 1,130. The 9 are
+timing bounds only (eight `SkySynthTests …_is_cheap`, `WorldLayoutTests.Layout_is_deterministic_and_fast…`), run while the
+other streams loaded the machine (load average ≈ 20); all 11 cases pass alone (41 s). None touches text.
+
 **Fast loop for this area** (≈ 25–40 s on Linux): `tools/fs.sh test-wsl --filter "FullyQualifiedName~UiTextTests|FullyQualifiedName~LiteralTextTests|FullyQualifiedName~PanelFitTests|FullyQualifiedName~LessonTextTests|FullyQualifiedName~MarkdownText"`.
 On screen: `planets-text` (above) after `FileScape.Fixtures create-markup`.
 
