@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09: the overview follows attention at any depth, Overview controls and the way back down, every panel's keyboard and mouse ownership, every departure from a launcher and a reversible F, the telescope survey, Star Chart Dorian, a real picture gallery and the yellow cube, Open vs Show in folder, the planetoid prototype retired, test-time accounting and the first unit-test migration; final candidate `5ba12f91daa3`); before that 2026-11-20, the fifth playtest follow-up (PLANET-81..99, TEST-05: departures and landings, the walking camera's return, the long jump with real keys, the selection card, Command Prompt after X, discovery in play and the overview's detail, the way back, a picture gallery, music by place and activity; final candidate `70b6ffc7ebb6`); before that 2026-11-19, the fourth playtest follow-up (PLANET-67..80: camera look, keyboard ownership, Hazard moves, landmarks and scenery, Overview discovery, musical modes; final candidate `cfee25d2b709`); before that 2026-11-17 (night), after the third playtest follow-up (PLANET-49..66); before that 2026-11-17, the second playtest iteration (PLANET-38..48); before that 2026-11-15, the first public playtest preparation; before that 2026-11-14 (later), the documentation pass; before that 2026-11-14, the third planets iteration (controls, world characters with their music and look, the repository workbench; commits `b4e1eec`…HEAD); before that 2026-11-11 (later), the second planets iteration from DJ's playtest (commits `1ba70a7`…`3ffe1bb`); before that the planetary world (commits `4d7ea48`…`a98fdb4`); before that 2026-11-06, the correctness follow-up on `8c18e8e3f107` (commits `bef9dee`…HEAD); before that the reliability/compact-places iteration (commits `3c838d7`…`4519f18`); before that the exploration pass (commits `91df1c2`…`77849d5`); before that view levelling (CTRL-04, commits `3efd3a3`…`1f61ff1`) and the usability pass (commits `dd0c639`…HEAD); before that the correction and units pass (commits `dbf2bc1`…HEAD) and the walking-world pass (commits `75deacf`…HEAD); the Places pass is 2026-11-04 (`2eabd73`…`bdc0a73`); earlier sections describe 2026-11-03 (commits `ee39c8f`…`5379de4`). Hardware: Lenovo 21RX, Ryzen AI 9 HX PRO 370, **Radeon 890M iGPU** (driver 32.0.22024.19001, 8 GiB UMA carve-out), 87.6 GiB RAM, Windows 11 Pro 26200, on AC power. Evidence files: `docs/evidence/2026-11-03/`. The full raw runs are in `%LOCALAPPDATA%\FileScape\evidence\` on DJ's machine and are not in the repo.
+Last updated: 2026-11-21, the seventh pass (PLANET-141..199, TEST-10..17, AD-89..99): faster verification (Core 412 → 51–64 s, `check full` 42.9 → 16.3 min, journeys on a simulated clock three at a time), legacy views by the menu only, keys per context, coherent text, stalls removed, airborne intent and the curved steps, the gallery as one experience, the telescope's travel and the overview's names, every travel route through a launcher, the Starter Sky's new music, .NET 10. Final candidate `e229fa313504` (staged, not installed); see "Seventh pass".
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
@@ -29,7 +29,7 @@ load-sensitive timing (walk speed under load, Core timing bounds beside the buil
 | `check full` wall | 42.9 min | **17.1 min** (1,023 s; final candidate run `full-20261121-050509`) |
 | Desktop occupied in `check full` | ≈ 2,600 s (every journey serial) | 939 s (38 journeys three at a time ×2.80, the real-time ones serial) |
 | Load-sensitive flakes | walk W+D speed, Core timing bounds | the simulated clock makes in-game outcomes load-independent; timing bounds only in `tests-perf` |
-| Whole pass: active / lock-wait / reruns / desktop | sixth pass ≈ 11,000 / 18,500 / — / — s | ≈ 12,000 / 2,100 / 4,800 / 4,200 s (`fs.sh timing --all` less the earlier rows) |
+| Whole pass: active / lock-wait / reruns / desktop | sixth pass ≈ 11,000 / 18,500 / — / — s | ≈ 16,800 / 2,100 / 6,000 / 6,600 s logged (`fs.sh timing --all` less the earlier rows), plus ≈ 6,100 s of real-input probes run outside the log (the early reproduction 1,676 s, R ≈ 1,300 s, the two candidate sets 1,620 s and 1,652 s) |
 
 Reruns this pass were nearly all deliberate (diagnosis, a second pass after a fix); the reasons are in the timing log.
 The harness itself had a defect found here: WSL steps its wall clock by ≈ 1 s, which gave negative lock waits; every
@@ -41,8 +41,25 @@ touches (simulated clock, three at a time); `check full` on an integrated candid
 probes before a hand-over. Desktop work goes through one owner at a time (this pass: the early reproduction agent,
 then S5's measurements, F's journeys, R's real input; the integrator's `check full` runs between).
 
-**Candidate verification** (main `e1088c6`; the final candidate is named in "Final candidate" below once R's fixes
-are merged):
+**Final candidate: `e229fa313504`** (commit `e229fa3`; staged at
+`%LOCALAPPDATA%\FileScape\staging-20261121-070625-3123921\FileScape.exe`, not installed; ZIP
+`%LOCALAPPDATA%\FileScape\FileScape-e229fa313504-win-x64.zip`, 77,423,829 bytes, 204 entries, sha256
+`6492d37c13d2641605d6215756398b7409a0c62cd42683b2e2e2a6b910bc7759`, no backslashes, no logs; a clean extraction
+smoke-launched with 0 failures; a fresh clone staged and smoke-launched the same build by itself in 407 s, 198 files,
+the same names; the exe, build-info, the two app DLLs (72 bytes of build identity, no machine paths) and their PDBs differ).
+- `check full` (`full-20261121-070509`): **16.3 min**, 55 of 56 steps: build 30 s, Windows Core 50 s (1,216 passed),
+  WSL Core 33 s (1,217 passed), `tests-perf` 33 s (16 of 16), stage 23 s, 38 journeys three at a time (×2.80), the
+  real-time ones serial; desktop occupied 924 s. **One failure, intermittent:** explore-ui1.0's held jump measured
+  2.17 m once (bound 1.35 m); it passed in 2 of 2 reruns. Probably an injected key pressed again after a focus change
+  (an instrument cause, provisional).
+- Real input (`2026-11-21-os-final`, 1,652 s active): -Dialogs 106/0, -OverviewEnter 11/0, -Depart 5/0, -Hazard
+  -Recovery 21/0, -AirIntent 5/0, -Steps 4/0, -Gallery 14/0, -Look 23/0, -Tutorial 30/0, -Landmarks 27/0, -Play 15/0,
+  -Route 10/0, -InputFocus 14/0, -Audio 8/0: **14 of 14 modes, 348 checks, 0 failed**. No input spill.
+- **Unexplained, kept visible:** planets-hazard and planets-look each failed once in a ten-journey batch on `bc95ad4`+
+  (a route walk short of Iron Comet; the camera's return after a look; "heading turned 180°" in the overlook view) and
+  passed 2 of 2 reruns; under investigation next pass.
+
+**Earlier candidates this pass:**
 - `check full` on `cb384c19`: 55 of 56 steps passed in 17.1 min; `planets-overview-enter` failed 3 of 3 runs (a
   "you are here" name lay over home's world disc, so the click focused the root): fixed in `e1088c6`, and the six
   overview journeys then passed.
@@ -69,9 +86,9 @@ are merged):
 | 3 | Legacy round trip restores world, place, camera; unsafe place → safe nearby | K: SurfaceResume.Place, SafeStanding | overview-controls 18/0; Core | complete (feel: DJ) |
 | 4 | Coherent rich text; literal filenames; scroll/clip/wheel; sizes and scales | T: UiText, HelpSheet, PanelFit (AD-93); F: short windows | planets-text 77/0 (12 size/scale pairs) | partial: at 1280×720 UI 1.5 the prompt runs under the preview's edge and the toolbar is cut at the right |
 | 5 | Stalls found and removed; distributions; fullscreen | S5 (AD-96) | S5 table: worst walking frame 716 → 62 ms, landings 776 → 43 ms | complete (DJ's 1440p GPU figure not reproduced; first arrival ≈ 1 s remains) |
-| 6 | Airborne intent, bounded boosts, effort, recovery | S6 (AD-97) | Core; -AirIntent | see R |
+| 6 | Airborne intent, bounded boosts, effort, recovery | S6 (AD-97); R (the probe's reference) | Core; -AirIntent 5/0, -Hazard -Recovery 21/0 | complete |
 | 6 | Sideways movement for arrow users | G: Ctrl + ← → (AD-94), Help, cues | -Gallery 14/0 | complete |
-| 6 | Telescope steps: trapped against the wall | S6: wall slide | Core; -Steps | see R |
+| 6 | Telescope steps: trapped against the wall | S6: wall slide; R: steer by the heading while turning, near-head-on slide (AD-99); integrator: only while ← → turn | Core; -Steps 4/0 (↑ and → reach the platform; ← walks off by geometry, never pinned); -Route 10/0 | complete |
 | 7 | Gallery as one browsing experience | G (AD-94); F probe fix | gallery 64/0, gallery-fixture 80/0, -Gallery 14/0 | complete (cloud pictures on DJ's folders: S5's Saved Pictures run, loading only) |
 | 8 | Telescope double-click, wheel, arrows, sparse | S8; F (lens) | lookouts 80/0 | complete |
 | 8 | Telescope opened a terminal at /boot | S8: selection given back; folders open with the explicit "open" verb | Core; -Landmarks 27/0 | complete in code; the original report's cause is provisional (not reproduced) |
@@ -92,7 +109,45 @@ three journeys shared the desktop; WSL wall-clock steps in the harness; a galler
 the picture viewer passed shortcuts to panels beneath it; a Windows-impossible test name; Complete before the
 children's listings arrived; Discover could not hurry a queued folder; the telescope's framed selection outlived the
 view; a name over another world's disc took its click; the telescope lens zoom was a no-op; the looked-at file lost the
-focus to a nearer neighbour; the legacy drawer's Esc. **Open:** the 1280×720 UI 1.5 overlap; the first arrival's ≈ 1 s.
+focus to a nearer neighbour; the legacy drawer's Esc; walking steered by the easing picture while turning (the steps); the near-head-on slide carried the walker off the workbench; steering by the heading at other times walked the tutorial away (bisected, fixed). **Open:** the 1280×720 UI 1.5 overlap; the first arrival's ≈ 1 s.
+
+### Remaining work after the seventh pass (reconciled with handoffs, publishing notes, branches and worktrees)
+
+Every open item recorded in earlier handoffs, this file, docs/publishing.md and the branches was checked against the
+code and git (an audit at the start of the pass, updated at its end). Items completed or superseded are marked in
+place in their own sections (KD-09, KD-27, KD-33, FILE-01, PLANET-72, PLANET-94, the Gallery in next-worlds.md, the
+GitHub backup). What is still open:
+
+| Item | Why it is open | Next action |
+|---|---|---|
+| Licence and copyright holder | DJ's decision; the ZIP and repository have no LICENSE | DJ names the licence (MIT proposed) and holder; then add `LICENSE` (`fs.sh package` includes it) |
+| Author email in history before going public | DJ's decision; the private origin already holds the original history | Choose: rewrite (publish the rewritten candidate as a new repository or force-push) or publish as is |
+| Public release / tags / visibility / optional history drops | DJ's decisions (publishing.md) | DJ |
+| Install the candidate | DJ's FileScape may be open; agents never replace a running build | Close FileScape, then `tools/fs.sh promote <staging dir>` |
+| 1280×720 at UI 1.5: the prompt runs under the preview's edge; the toolbar is cut at the right | Found by stream F's `planets-text`; not fixed this pass | Fit the toolbar (overflow menu or smaller buttons) and offset the prompt from the preview at narrow widths; add the check to `planets-text` |
+| First arrival of a session ≈ 0.9–1.0 s at the Ubuntu root (0.4–0.5 s on a gallery), behind the title | S5 left it: making it asynchronous delays the sky appearing | Compose the arrival's sky on the worker behind the establishing shot; check `planets-ui1.0`'s establishing-shot checks |
+| Unexplained 60–140 ms frames with ≈ 1 ms main-thread work | Seen in S5's before runs, rarely after | Capture with `--diag-frames` and the GPU timings; likely the driver or shader compilation |
+| DJ's 45–55 ms fullscreen frames at 2560×1440 | Not reproduced (this machine is 4K; at 4K the new automatic scale gives 11.4 ms) | DJ tries fullscreen on the candidate; if slow, `--render-scale=0.8` and report the quality line |
+| The overview's constraint DJ felt at the Ubuntu root | Not reproduced (that system is far inside the zoom limit) | DJ says what felt constraining (wheel pace? minimum drawn size?) |
+| The telescope's /boot terminal: the exact original cause | Not reproduced; the likely route (a stale selection + a verb-less folder Open) is fixed twice over | Watch for a recurrence |
+| Names can still cover an unnamed world (clicks now go to the world) | The placement keeps clear of named worlds only | Treat drawn worlds near the pointer's paths as soft obstacles in LabelPlacement |
+| Running up the curved steps with Shift stops at 2.1 m | Reported by R (as before AD-99); walking up works | DJ's feel: whether a run should make the curve |
+| Journey steps migrated to Core and trimmed | No step-level trims this pass (V2's clock and parallelism cut desktop time instead); candidates listed in windows-workflow.md | Migrate selection-actions' label matrix and dialog-keys' per-key matrix into Core tables, then trim |
+| `tests-perf`: the six-effects render bound (68.8 vs 60 ms once under load) | Not re-measured on a quiet machine | Read the final `check full`'s tests-perf row; if it fails quietly, rebase the bound or profile the synth |
+| Direct (no-job) Open route; Command Prompt shutdown under Windows Terminal | Need DJ's double-click / terminal | DJ double-clicks the staged exe once and opens a file with Enter; runs it from Windows Terminal and presses X |
+| Open in editor (DEV-03) never launched | Would open DJ's editor | With DJ present |
+| The .exe icon is Godot's | Needs rcedit in the export | Release polish |
+| Overview budget above 6,000 worlds | Needs layout off the main thread (AD-81) | When a bigger budget is wanted |
+| Arrivals Port (Downloads), Reading Room | Proposals (AD-61); DJ chose the Gallery first | DJ chooses the next world |
+| The larger nature-world reinvention of the legacy views; the project's name | Kept for later by DJ's brief (AD-73 holds the naming note) | A later assignment |
+| Legacy-view KDs (KD-02/03/06/07/08/11/12/13/19/21–26) | The legacy views are kept, not developed (AD-51, AD-92) | Leave; revisit with the nature-world reinvention |
+
+**Trial code outside main:** one branch, `archive/p7-desktop-repro` (5 commits, labelled DIAGNOSTIC, pushed to the
+private origin for reference): the early reproduction's one-off probe modes (`planets-p7-telescope`,
+`planets-p7-leap`) and `tools/p7-repro-probe.ps1`. Its frame diagnostic was taken into main by stream S5
+(`--diag-frames`). No worktrees remain besides the main checkout; no stashes. The 2026-11-17 .NET 10 trial worktree is
+superseded by AD-89 and removed. `refs/codex/turn-diffs/…` (a tree object Codex left on 2026-11-04, never pushed)
+is left for DJ to delete (`git update-ref -d`).
 
 
 ### Stream S6: airborne intent on Hazard Worlds; the overlook's curved steps (PLANET-181..187, AD-97)

@@ -12,6 +12,8 @@ refresh); nothing has been published.
 | Off-machine backup (GitHub, private) | **in use**: `origin` = github.com/djenning90/filescape (private, Git Credential Manager). DJ pushed the sixth pass (`e03ab2e`, 2026-11-20 17:04). From the seventh pass, DJ asked agents to push completed, verified milestones of `main`; the pushed commit is named in docs/implementation-status.md |
 | Owner and repository | settled in practice: `djenning90/filescape` (private). The public name stays parked (AD-73) |
 | .NET | **.NET 10** (AD-89) |
+| Windows ZIP | **`e229fa313504`**, 77.4 MB, 204 entries, checked from a clean extraction; a fresh clone staged it by itself |
+| Trial code outside main | `archive/p7-desktop-repro` only (diagnostic, pushed for reference); no other branches, worktrees or stashes |
 | Decisions | [Decisions for DJ](#decisions-for-dj-before-publishing): licence first. Note on item 3: the private origin already holds the original-email history, so a rewritten public history needs a new repository or a force-push, not a visibility switch |
 
 ## 2026-11-20 (evening) refresh at a glance
