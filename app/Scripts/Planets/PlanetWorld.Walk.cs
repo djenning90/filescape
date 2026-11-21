@@ -266,13 +266,14 @@ public partial class PlanetWorld
         // ground here. Not the rendered camera's look (stream R, seventh pass): its eye eases after the heading (≈ 0.13 s),
         // so with ↑ and a turn key held the walk trailed the view by ≈ 17° and spiralled off the overlook's curved stones
         // short of the platform (os -Steps; Core's OverlookStepsTests replays both, wish = the heading).
-        // Only while the heading is near the rendered look (the easing lag while turning): where the camera deliberately
-        // looks elsewhere (a landing's or an arrival's framing, a look-at), the view on screen is what forward means
-        // (the seventh pass's final check full: steering by the heading after a landing walked the tutorial 54 m away).
+        // Only while a turn key turns the heading and it is near the rendered look (the easing lag): otherwise the view on
+        // screen is what forward means (the seventh pass's final check full: steering by the heading at other times walked
+        // planets-tutorial 54 m away from the workbench after a landing; steering by the look passes it).
         var heading = _camFwd - up * _camFwd.Dot(up);
         var seen = -_camera.GlobalBasis.Z;
         seen -= up * seen.Dot(up);
-        var camF = heading.LengthSquared() >= 1e-4f && (seen.LengthSquared() < 1e-4f || heading.Normalized().AngleTo(seen.Normalized()) <= Mathf.DegToRad(SteerByHeadingWithinDegrees)) ? heading
+        var turning = MathF.Abs(_keyLook) >= 1e-3f; // ← or → held (or easing out): the lag case; otherwise the screen is forward
+        var camF = turning && heading.LengthSquared() >= 1e-4f && (seen.LengthSquared() < 1e-4f || heading.Normalized().AngleTo(seen.Normalized()) <= Mathf.DegToRad(SteerByHeadingWithinDegrees)) ? heading
             : seen.LengthSquared() >= 1e-4f ? seen : Gd(_walker.Facing);
         camF = camF.Normalized();
         var camR = camF.Cross(up).Normalized();
@@ -371,8 +372,8 @@ public partial class PlanetWorld
     private const float KeyLookFastFactor = 1.6f;
 
     /// <summary>
-    /// Walking steers by the camera's heading while it is within this of the rendered look, degrees (the eye eases ≈ 0.13 s
-    /// behind a turn: ≈ 17° with ↑ and a turn key held, AD-99); beyond it the rendered look is forward.
+    /// While ← or → turns the view, walking steers by the camera's heading if it is within this of the rendered look,
+    /// degrees (the eye eases ≈ 0.13 s behind a turn: ≈ 17° with ↑ and a turn key held, AD-99); otherwise by the look.
     /// </summary>
     private const float SteerByHeadingWithinDegrees = 35f;
 
