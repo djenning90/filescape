@@ -192,7 +192,7 @@ public partial class PlanetWorld
         _previewPanel = new PanelContainer { Visible = false };
         _previewPanel.AddThemeStyleboxOverride("panel", PanelStyle());
         _previewPanel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
-        _previewPanel.OffsetLeft = 12; _previewPanel.OffsetRight = 392; _previewPanel.OffsetTop = 150; _previewPanel.OffsetBottom = -180;
+        _previewPanel.OffsetLeft = 12; _previewPanel.OffsetRight = 392; _previewPanel.OffsetTop = PreviewTopUnits; _previewPanel.OffsetBottom = -PreviewBottomGapUnits;
         root.AddChild(_previewPanel);
         var v = new VBoxContainer();
         v.AddThemeConstantOverride("separation", 6);
@@ -201,7 +201,7 @@ public partial class PlanetWorld
         _previewMeta = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _previewMeta.AddThemeFontSizeOverride("font_size", 13);
         _previewMeta.AddThemeColorOverride("font_color", new Color(0.78f, 0.82f, 0.95f));
-        _previewImage = new TextureRect { ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, CustomMinimumSize = new Vector2(340, 240), Visible = false };
+        _previewImage = new TextureRect { ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, CustomMinimumSize = new Vector2(PreviewContentWidthUnits, PreviewImageMinUnits), Visible = false };
         // AD-94: the picture itself is a way into the large viewer (as a thumbnail is in any photo app).
         _previewImage.MouseFilter = Control.MouseFilterEnum.Stop;
         _previewImage.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
@@ -210,7 +210,7 @@ public partial class PlanetWorld
         {
             if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } && OpenViewer()) _previewImage.AcceptEvent();
         };
-        _previewText = new RichTextLabel { BbcodeEnabled = false, ScrollActive = true, SelectionEnabled = true, SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false, CustomMinimumSize = new Vector2(340, 200) };
+        _previewText = new RichTextLabel { BbcodeEnabled = false, ScrollActive = true, SelectionEnabled = true, SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false, CustomMinimumSize = new Vector2(PreviewContentWidthUnits, PreviewTextMinUnits) };
         _previewText.AddThemeFontSizeOverride("normal_font_size", 13);
         var close = new Button { Text = "Close (E / Esc)", FocusMode = Control.FocusModeEnum.None };
         close.Pressed += ClosePreview;
@@ -289,7 +289,22 @@ public partial class PlanetWorld
         var titleHalf = PanelFit.Width(2 * TitleHalfWidth, w, ScreenTextMargin) / 2;
         _titleBox.OffsetLeft = -titleHalf;
         _titleBox.OffsetRight = titleHalf;
+        // The preview: its designed gap above the bottom where the window has room; in a short window (1280 × 720 at UI
+        // 1.5 is 480 units tall) the gap shrinks and its picture and text take less room, so it ends inside the window.
+        var h = GetViewport().GetVisibleRect().Size.Y;
+        _previewPanel.OffsetBottom = -PanelFit.BottomGap(PreviewTopUnits, PreviewBottomGapUnits, PreviewMinHeightUnits, h, ScreenTextMargin);
+        var compact = h - PreviewTopUnits - PreviewBottomGapUnits < PreviewMinHeightUnits;
+        _previewText.CustomMinimumSize = new Vector2(PreviewContentWidthUnits, compact ? PreviewTextMinCompactUnits : PreviewTextMinUnits);
+        _previewImage.CustomMinimumSize = new Vector2(PreviewContentWidthUnits, compact ? PreviewImageMinCompactUnits : PreviewImageMinUnits);
     }
+
+    /// <summary>The preview panel's top (below the place bar) and its designed gap above the window's bottom (room for the
+    /// prompt), viewport units; it keeps at least <see cref="PreviewMinHeightUnits"/> by giving up the gap in a short window.</summary>
+    private const float PreviewTopUnits = 150f, PreviewBottomGapUnits = 180f, PreviewMinHeightUnits = 300f;
+
+    /// <summary>The preview's text and picture: their width and least heights, viewport units, as designed and in a short
+    /// window (compact: the text scrolls, the picture is smaller).</summary>
+    private const float PreviewContentWidthUnits = 340f, PreviewTextMinUnits = 200f, PreviewTextMinCompactUnits = 60f, PreviewImageMinUnits = 240f, PreviewImageMinCompactUnits = 110f;
 
     /// <summary>
     /// The arrival title counts down and fades. Also called in the overview (whose frames skip <see cref="UpdateOverlay"/>):

@@ -168,7 +168,7 @@ public static class PanelOwnership
         new(PanelId.LocationActions, true, false, OutsideClick.DismissOnClick, "the first action", true, false,
             "An action panel opened at a root landmark (E, or jump + twirl): ↑ ↓ choose, Enter or a number runs, E/Esc close."),
         new(PanelId.TextField, true, false, OutsideClick.Ignore, "the field", true, false,
-            "A text field with the keyboard and no panel of its own: typing, Enter, the arrows and Page keys edit it; Esc lets go; a click on the world takes the focus back."),
+            "A text field with the keyboard and no panel of its own: typing, Enter, the arrows and Page keys edit it; Esc lets go (the legacy Places drawer's filter: Esc closes its drawer); a click on the world takes the focus back."),
         new(PanelId.Help, false, false, OutsideClick.DismissOnPress, "nothing (the game keeps the keys)", true, false,
             "A sheet to read while you try the keys it lists; a click on the world puts it away."),
         new(PanelId.LegacyMenu, false, false, OutsideClick.DismissOnPress, "nothing", true, false,

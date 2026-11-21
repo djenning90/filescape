@@ -103,10 +103,11 @@ public partial class PlanetsProbe
         P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - foot * NVector3.Dot(ov.StepFoot, foot)));
         await Seconds(0.8);
         Check(!P.OnOverlook && P.PromptText == UiText.Plain(PlanetWorld.TelescopeFootPrompt), $"back at the foot: \"{P.PromptText}\"");
+        var climbsBeforeStones = P.TelescopeClimbs; // the visit above climbs again on other worlds (E at their overlooks)
         foreach (var step in ov.Steps) await WalkToward(step.Direction, step.Radius * 0.6f, 6);
         await WalkToward(ov.Direction, ov.Radius * 0.5f, 6);
         await Until(() => P.OnOverlook, 3);
-        Check(P.OnOverlook && P.TelescopeClimbs == climbs0 + 1, F($"walking up the stones still reaches the platform (support {P.Walker.Support.Value:0.00} m; E not used)"));
+        Check(P.OnOverlook && P.TelescopeClimbs == climbsBeforeStones, F($"walking up the stones still reaches the platform (support {P.Walker.Support.Value:0.00} m; E not used: {P.TelescopeClimbs - climbsBeforeStones} climbs)"));
 
         // A file within the telescope's reach keeps E (its own prompt), if this world has one there.
         var fileNear = c.Items.Where(i => i.NodeId >= 0 && i.Kind != PlanetItemKind.Pile && PlanetShape.Angle(i.Direction, ov.Direction) * r - ov.Radius is > 1.5f and < 5.5f)
