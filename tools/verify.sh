@@ -12,8 +12,12 @@
 #                                        staged build (reused) and no Core tests; real-OS-input steps (os-*) only when
 #                                        named exactly. --measure keeps measurement segments; --list prints the names.
 # Options: --exe=<staged FileScape.exe (Windows path)> reuses a build instead of staging one; --fresh-stage always
-# exports a new one; --out=<Windows dir>. FS_LAUNCH_LOCK=/path takes that flock for each app launch only (shared desktop).
-# Journeys run one at a time: they share the screen, focus and GPU, and their timing checks must not contend.
+# exports a new one; --out=<Windows dir>. FS_LAUNCH_LOCK=/path takes that flock for each app launch, or for each
+# parallel batch as a whole (shared desktop). --parallel=N (FS_JOURNEY_PARALLEL, default 3) runs up to N simulated-clock
+# journeys at once; --real-time (FS_JOURNEY_CLOCK=real) runs every journey on the wall clock, one at a time, as before.
+# Journeys (AD-91): window-only journeys run on a simulated clock (--fixed-fps 60, uncapped frames; load cannot change
+# what happens in the game) N at a time; those that time real background work, audio or frames (REALTIME_JOURNEYS)
+# run after them on the wall clock, one at a time; --measure, the release tier and real-OS-input probes stay serial.
 # Every run ends with a timing table (each step's result and seconds, and the total), also on a failure, a timeout, an
 # early exit or Ctrl+C; it is printed last and written to <out>\timing.txt (TEST-05, AD-80). A step fails on a non-zero
 # exit or timeout, a missing/empty result file or one without assertions, or any FAIL (tools/verify-lib.sh).
@@ -23,12 +27,15 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=tools/verify-lib.sh
 source "$REPO/tools/verify-lib.sh"
 TIER="${1:-}"; shift || true
-case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,19p' "$0"; exit 2 ;; esac
+case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,23p' "$0"; exit 2 ;; esac
 EXEW=""; OUTW=""; FRESH=0; MEASURE=0; LIST=0; PATTERNS=()
+# AD-91: how many simulated-clock journeys run at once, and whether journeys use the simulated clock at all.
+PAR="${FS_JOURNEY_PARALLEL:-3}"; SIM=1; [[ "${FS_JOURNEY_CLOCK:-sim}" == real ]] && SIM=0
 for a in "$@"; do
   case "$a" in
     --exe=*) EXEW="${a#--exe=}" ;; --out=*) OUTW="${a#--out=}" ;; --fresh-stage) FRESH=1 ;;
     --measure) MEASURE=1 ;; --list) LIST=1 ;;
+    --parallel=*) PAR="${a#--parallel=}" ;; --real-time) SIM=0 ;;
     -*) echo "verify: unknown option $a" >&2; exit 2 ;;
     *) PATTERNS+=("$a") ;;
   esac
@@ -74,6 +81,7 @@ finish() {
   trap - EXIT INT TERM
   [[ $LIST == 1 ]] && { rm -rf "$OUT"; exit "$code"; }
   interrupt_current
+  pool_interrupt
   local n
   for n in "${!BG_PID[@]}"; do
     pkill -TERM -P "${BG_PID[$n]}" 2>/dev/null; kill -TERM "${BG_PID[$n]}" 2>/dev/null; wait "${BG_PID[$n]}" 2>/dev/null
@@ -85,6 +93,7 @@ finish() {
   {
     echo
     timing_table "check $TIER, exit $code, failing steps $FAILS${EXIT_NOTE:+; $EXIT_NOTE}" "$(secs_since "$T0")"
+    timing_log_desktop "check-$TIER" "$(printf %.1f "$DESKTOP_S")"
   } | tee "$OUT/timing.txt" | tee -a "$SUM"
   echo "timing: $OUTW\\timing.txt   summary: $OUTW\\summary.txt   session totals: tools/fs.sh timing ($(timing_log_path))"
   exit "$code"
@@ -155,9 +164,34 @@ test_counts() {
 
 # journey NAME LOGNAME TIMEOUT ARGS...: launch the staged build on one probe; judged by tools/verify-lib.sh (exit code
 # or timeout, and a non-empty result file with assertions and no FAIL).
+# AD-91: every journey is queued; run_queued runs the simulated-clock ones side by side, then the real-time ones one at a
+# time. A simulated-clock launch gets the engine arguments --fixed-fps 60 --disable-vsync (every frame 1/60 s of game
+# time, frames as fast as the machine draws them) and the app argument --sim-clock (the probe's waits count game time,
+# its timeouts need the wall clock too, and it fails if the step is not fixed). Every launch logs to its own
+# <out>\NAME\godot.log (the default Godot log is one file shared by every instance).
+# REALTIME_JOURNEYS keep the wall clock and run alone, because what they check runs on the wall clock: audio playback
+# and its gaps (audio-gaps, sound, music), real background work timed in wall seconds (overview-discovery's levels at
+# 0/10/30 s, play-discovery's walk while listing, the synthetic scan rate of places-scan) and probes that are not built
+# on ProbeBase and time themselves by the wall clock (navigation, map-journey and the places journeys); walk-perf
+# measures frames. A journey moves out of this list once it passes on the simulated clock twice (docs/windows-workflow.md).
+REALTIME_JOURNEYS=" planets-audio-gaps planets-sound planets-music planets-overview-discovery planets-play-discovery places-connected places-tree places-scan places-ui1.25 navigation map-journey walk-perf "
 journey() {
   local name="$1" logname="$2" to="$3"; shift 3
-  probe_step "$name" "$to" "$OUT/$name/$logname" "journey" "$EXE" -- "$@" "--out=$OUTW\\$name" --window=1600x900
+  [[ $LIST == 1 ]] || mkdir -p "$OUT/$name"
+  local tail=("$@" "--out=$OUTW\\$name" --window=1600x900)
+  if [[ $SIM == 1 && "$REALTIME_JOURNEYS" != *" $name "* ]]; then
+    pool_add sim "$name" "$to" "$OUT/$name/$logname" journey "sim clock" \
+      "$EXE" --fixed-fps 60 --disable-vsync --log-file "$OUTW\\$name\\godot.log" -- "${tail[@]}" --sim-clock
+  else
+    pool_add rt "$name" "$to" "$OUT/$name/$logname" journey "" "$EXE" --log-file "$OUTW\\$name\\godot.log" -- "${tail[@]}"
+  fi
+}
+
+# run_queued: the queued journeys: the simulated-clock ones PAR at a time (2 s apart), then the real-time ones alone.
+JOURNEY_STAGGER_S=2   # seconds between parallel launches: their start-ups (.NET, shaders, the first listing) do not coincide
+run_queued() {
+  pool_run sim "$PAR" "$JOURNEY_STAGGER_S"
+  pool_run rt 1
 }
 
 [[ $LIST == 1 ]] || log "FileScape check $TIER${PATTERNS[*]:+ ${PATTERNS[*]}}  $(date -u +%FT%TZ)  commit $(git -C "$REPO" rev-parse --short=12 HEAD)$( [[ -n "$(git -C "$REPO" status --porcelain)" ]] && echo ' (uncommitted changes)')${FS_LAUNCH_LOCK:+  launch lock $FS_LAUNCH_LOCK}"
@@ -195,6 +229,9 @@ if [[ "$LEVEL" != fast ]]; then
   BG_NOTE="ran beside build, tests-windows and stage"; bg_wait tests-wsl
   F=(--tier=functional)
   [[ "$LEVEL" == release && ( "$TIER" == release || $MEASURE == 1 ) ]] && F=()
+  # Measurements need the wall clock and an uncontended machine: no simulated clock and nothing side by side (AD-91).
+  [[ ${#F[@]} -eq 0 ]] && { SIM=0; PAR=1; }
+  [[ $LIST == 1 ]] || log "journeys: $( [[ $SIM == 1 ]] && echo "simulated clock, up to $PAR at once; real-time ones alone after them" || echo "wall clock, one at a time")"
 
   journey explore-ui1.0 walk-explore.log 300 --automate=walk-explore "--root=$W" --ui-scale=1 "${F[@]}"
   journey project-ui1.0 walk-project.log 300 --automate=walk-project --root=hub "--project-root=$W\\Projects" --ui-scale=1 "${F[@]}"
@@ -332,7 +369,9 @@ if [[ "$LEVEL" == release ]]; then
   journey places-ui1.25 places.log 300 --automate=places "--root=$R" --ui-scale=1.25 --tier=functional
   journey planets-ui1.25 planets-journey.log 300 --automate=planets-journey --root=sample --vis=planets --test-shell=record --ui-scale=1.25 --tier=functional
   journey walk-ui1.25 walk.log 420 --automate=walk "--root=$W" --ui-scale=1.25 --tier=functional
+  run_queued   # the journeys so far (AD-91), before the measurement and the real-input probes
   journey walk-perf walk-perf.log 200 --automate=walk-perf "--root=$W" --ui-scale=1
+  run_queued   # walk-perf (real-time) runs alone, after the queued journeys; its lines are read next
   grep -h 'perf ' "$OUT/walk-perf/walk-perf.log" 2>/dev/null | sed 's/^/    /' | tee -a "$SUM"
   TOOLS_W="$OUTW\\tools"; mkdir -p "$OUT/tools"; cp "$REPO"/tools/os-walk-probe.ps1 "$REPO"/tools/os-input-probe.ps1 "$REPO"/tools/os-righthold-repeat.ps1 "$REPO"/tools/os-planets-probe.ps1 "$OUT/tools/"
   for sc in 1 1.25; do
@@ -352,6 +391,7 @@ if [[ "$LEVEL" == release ]]; then
     "$EXE" --write-movie "$OUTW\\explore-recording.avi" --fixed-fps 30 -- --automate=walk-explore "--root=$W" "--out=$OUTW\\recording" --window=1280x720 --ui-scale=1
 fi
 
+run_queued   # the smoke and full tiers' journeys (AD-91; the release tier ran its own above)
 BG_NOTE="ran beside build and tests-windows"; bg_wait tests-wsl   # the fast tier (the others waited before the journeys)
 APPDATA_W="$(cd /mnt/c && cmd.exe /d /c "echo %APPDATA%" 2>/dev/null | tr -d '\r')"
 [[ $LIST == 0 && -n "$APPDATA_W" && -d "$(wslpath "$APPDATA_W")/FileScape" ]] && log "note: %APPDATA%\\FileScape exists (your preferences; probes never read or write it)"
