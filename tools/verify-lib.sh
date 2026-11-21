@@ -13,13 +13,16 @@
 # prints them with the total. Results are pass, fail, timeout, skipped and interrupted (a step cut short by Ctrl+C or a
 # kill). A step's seconds are its own run only: time spent waiting for the shared launch lock (FS_LAUNCH_LOCK) is
 # reported separately in the note, so a step's duration does not depend on what other people run on the desktop.
-# What a change must preserve: one row per step that ran or was skipped, in run order, and a table that the callers can
-# print from an EXIT trap (it uses only shell state, never the step's files).
+# What a change must preserve: one row per step that ran or was skipped, in run order (a parallel batch's rows in the
+# order its launches finished, AD-91), and a table that the callers can print from an EXIT trap (it uses only shell
+# state, never the step's files).
 #
-# Accounting (TEST-06, AD-88): the table ends with three separate totals: active time (the steps' own seconds), lock-wait
-# time (waiting for the shared desktop) and reruns. Every row that ran is also appended to the session timing log
-# (timing_log_append), which `tools/fs.sh timed NAME -- CMD` (ad-hoc launches) and `tools/fs.sh timing` (the session's
-# totals) share. A rerun is a step whose name the same session has already logged; FS_RERUN_WHY says why.
+# Accounting (TEST-06, AD-88; TEST-16, AD-91): the table ends with separate totals: active time (the steps' own seconds),
+# lock-wait time (waiting for the shared desktop), reruns, desktop occupancy (seconds with this run's app windows open)
+# and, when journeys ran side by side, parallelism (their summed seconds against the batches' wall time). Every row that
+# ran is also appended to the session timing log (timing_log_append), which `tools/fs.sh timed NAME -- CMD` (ad-hoc
+# launches) and `tools/fs.sh timing` (the session's totals) share; a check also appends one `desktop` row with its
+# occupancy (timing_log_desktop). A rerun is a step whose name the same session has already logged; FS_RERUN_WHY says why.
 
 # counts FILE: sets P, X, K (PASS, FAIL, SKIP lines) and WHY (why the file itself is unusable, or empty).
 counts() {
@@ -59,7 +62,7 @@ timing_record() {
 }
 
 # ---- the session timing log (TEST-06, AD-88)
-# One tab-separated line per step or timed command: UTC time, session, kind (check|timed), name, result, active seconds,
+# One tab-separated line per step or timed command: UTC time, session, kind (check|timed|desktop), name, result, active seconds,
 # lock-wait seconds, rerun (0|1), why (FS_RERUN_WHY), commit. FS_TIMING_LOG chooses the file (default
 # ~/.local/state/filescape/timing.tsv; "off" logs nothing); FS_TIMING_SESSION names the session (default: the git
 # branch, so each worktree's agent has its own totals). Each append is one short line (O_APPEND), safe beside other
@@ -76,15 +79,23 @@ timing_log_append() {
   if [[ "$log" == off ]]; then echo 0; return; fi
   session="$(timing_session)"
   mkdir -p "$(dirname "$log")" 2>/dev/null
-  if [[ -f "$log" ]] && awk -F'\t' -v s="$session" -v n="$2" '$2 == s && $4 == n { f = 1 } END { exit !f }' "$log"; then rerun=1; fi
+  if [[ "$1" != desktop && -f "$log" ]] && awk -F'\t' -v s="$session" -v n="$2" '$2 == s && $4 == n { f = 1 } END { exit !f }' "$log"; then rerun=1; fi
   [[ $rerun == 1 ]] && why="${FS_RERUN_WHY:-(no reason given)}"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$session" "$1" "$2" "$3" "$4" "$5" "$rerun" "${why//$'\t'/ }" \
     "$(git -C "${REPO:-.}" rev-parse --short=12 HEAD 2>/dev/null)" >> "$log" 2>/dev/null
   echo "$rerun"
 }
 
-# secs_since START: seconds since START (a `date +%s.%N` value), one decimal.
-secs_since() { printf '%.1f' "$(echo "$(date +%s.%N) - $1" | bc)"; }
+# timing_log_desktop NAME SECONDS: one `desktop` row (kind desktop, never a rerun): a check's desktop occupancy, which
+# `tools/fs.sh timing` sums apart from the active seconds (TEST-16).
+timing_log_desktop() { timing_log_append desktop "$1" ok "$2" 0 > /dev/null; }
+
+# mono_s: a monotonic time stamp in seconds (/proc/uptime, 0.01 s). Durations never use the wall clock: WSL steps the
+# wall clock to keep it in time with Windows, by about a second at a time (measured −0.8 s and −1.4 s within 20 s on
+# 2026-11-20), which made a lock wait come out at −0.9 s in the harness self-test.
+mono_s() { local u _; read -r u _ < /proc/uptime; echo "$u"; }
+# secs_since START: seconds since START (a mono_s value), one decimal.
+secs_since() { printf '%.1f' "$(echo "$(mono_s) - $1" | bc)"; }
 
 # timing_table TITLE TOTAL_SECONDS: the end-of-run table: one line per step, then the counts and the total.
 # Its last three lines are the accounting (TEST-06): active (the sum of the steps' own seconds; the WSL tests run beside
@@ -112,6 +123,12 @@ timing_table() {
   printf '%-28s %-11s %8s  %s\n' active "" "$(printf '%.1f' "$active")" "the steps' own seconds"
   printf '%-28s %-11s %8s  %s\n' lock-wait "" "$(printf '%.1f' "$waited")" "waiting for the shared desktop (FS_LAUNCH_LOCK)"
   printf '%-28s %-11s %8s  %s\n' reruns "" "$(printf '%.1f' "$rerun_s")" "${#reruns[@]} step(s) already run in session $(timing_session)${reruns[*]:+: ${reruns[*]}}"
+  # TEST-16 (AD-91): how long this run had the desktop (at least one of its app windows open: journeys, real-input
+  # probes, recordings; the stage's smoke launch is in the stage row), and what running journeys side by side saved.
+  printf '%-28s %-11s %8s  %s\n' desktop "" "$(printf '%.1f' "${DESKTOP_S:-0}")" "seconds with this run's app windows open (the launch lock held)"
+  if [[ "${PAR_STEPS:-0}" -gt 0 ]]; then
+    printf '%-28s %-11s %8s  %s\n' parallel "" "$(printf '%.1f' "$PAR_WALL_S")" "$PAR_STEPS journeys, $(printf '%.1f' "$PAR_STEPS_S") s of steps in $(printf '%.1f' "$PAR_WALL_S") s, up to $PAR_MAX at once (×$(echo "scale=2; $PAR_STEPS_S / ($PAR_WALL_S + 0.001)" | bc | sed 's/^\./0./'))"
+  fi
 }
 
 # ---- running a command (TEST-05): timed, under a timeout, interruptible, optionally holding the launch lock.
@@ -125,7 +142,7 @@ run_cmd() {
   local lfd="" w0
   LOCK_NOTE=""
   if [[ "$lock" == 1 && -n "${FS_LAUNCH_LOCK:-}" ]]; then
-    w0=$(date +%s.%N)
+    w0=$(mono_s)
     exec {lfd}>>"$FS_LAUNCH_LOCK"
     flock "$lfd"
     local waited; waited="$(secs_since "$w0")"
@@ -133,7 +150,7 @@ run_cmd() {
     # FS_LOCK_WAIT_FILE (set by fs.sh timed): each wait is appended, so a timed command's nested waits are summed (TEST-06).
     [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
   fi
-  CUR_NAME="$name"; CUR_START=$(date +%s.%N)
+  CUR_NAME="$name"; CUR_START=$(mono_s)
   # In the background and waited for, so Ctrl+C reaches the caller's trap at once (a foreground child would be waited
   # for first, up to its whole timeout).
   if [[ -n "$lfd" ]]; then timeout "$to" "$@" > "$outf" 2>&1 {lfd}>&- &
@@ -144,7 +161,96 @@ run_cmd() {
   CHILD=""
   RUN_SECS="$(secs_since "$CUR_START")"; CUR_NAME=""
   if [[ -n "$lfd" ]]; then flock -u "$lfd"; exec {lfd}>&-; fi
+  # An app launch (lock 1) has a window on the desktop for its whole run (TEST-16).
+  [[ "$lock" == 1 ]] && DESKTOP_S="$(echo "$DESKTOP_S + $RUN_SECS" | bc)"
   return 0
+}
+
+# ---- journeys side by side (TEST-15, AD-91)
+# A queue holds launches to run later: `sim` for window-only journeys on the simulated clock (run several at once),
+# `rt` for those that keep the wall clock (run one at a time, after the parallel ones, so nothing contends with their
+# real-time checks). pool_run runs a queue, at most N at once, and judges each launch as it ends, so a parallel batch's
+# rows are in the order the launches finished. A batch of more than one at once holds FS_LAUNCH_LOCK for the whole
+# batch (its wait is in the first row's note); one at a time holds it per launch, as before. Each launch has its own
+# output file ($OUT/NAME.out) and result file, and its exit code goes through a file, so the judging is unchanged.
+# What a change must preserve: every queued step gets exactly one row (pass, fail, timeout, or interrupted from the
+# trap); a launch never inherits the lock's descriptor; pool_interrupt stops only processes this harness started.
+declare -ga POOL_sim=() POOL_rt=()
+declare -gA POOL_RUNNING=() POOL_NAME=() POOL_T0=()
+DESKTOP_S=0            # seconds with at least one of this run's app windows open (journeys, probes, recordings)
+PAR_STEPS=0 PAR_STEPS_S=0 PAR_WALL_S=0 PAR_MAX=1   # parallel batches: steps, their summed seconds, wall, widest
+
+# pool_add QUEUE NAME TIMEOUT RESULTFILE LABEL NOTE CMD...: queues a launch (left out, without a row, if not wanted).
+pool_add() {
+  local q="$1" name="$2" to="$3" f="$4" label="$5" note="$6"; shift 6
+  wanted "$name" || return 0
+  local cmd; printf -v cmd '%q ' "$@"
+  local -n queue="POOL_$q"
+  queue+=("$name"$'\x1f'"$to"$'\x1f'"$f"$'\x1f'"$label"$'\x1f'"$note"$'\x1f'"$cmd")
+}
+
+# pool_run QUEUE N [STAGGER_S]: runs and empties the queue, at most N launches at once, starting them STAGGER_S apart
+# (so N processes do not load .NET and compile shaders in the same second).
+pool_run() {
+  local q="$1" par="$2" stagger="${3:-0}"
+  local -n queue="POOL_$q"
+  (( ${#queue[@]} )) || return 0
+  local -a jobs=("${queue[@]}"); queue=()
+  local lfd="" w0 waited="" t0 i=0 running=0 pid idx code secs name to f label note cmd first=1 batch_lock=0
+  (( par > 1 )) && batch_lock=1
+  if [[ $batch_lock == 1 && -n "${FS_LAUNCH_LOCK:-}" ]]; then
+    w0=$(mono_s); exec {lfd}>>"$FS_LAUNCH_LOCK"; flock "$lfd"; waited="$(secs_since "$w0")"
+    [[ -n "${FS_LOCK_WAIT_FILE:-}" ]] && echo "$waited" >> "$FS_LOCK_WAIT_FILE"
+  fi
+  t0=$(mono_s)
+  while (( i < ${#jobs[@]} || running > 0 )); do
+    while (( i < ${#jobs[@]} && running < par )); do
+      IFS=$'\x1f' read -r name to f label note cmd <<<"${jobs[$i]}"
+      if [[ $batch_lock == 0 ]]; then
+        # One at a time: exactly the serial path (lock per launch, timed, interruptible).
+        eval "local -a argv=($cmd)"
+        run_cmd "$name" "$to" 1 "$OUT/$name.out" "${argv[@]}"
+        judge "$name" "$RUN_CODE" "$RUN_SECS" "$f" "$label" "${note:+$note; }$LOCK_NOTE"
+        i=$((i + 1)); continue
+      fi
+      rm -f "$OUT/$name.code"
+      ( [[ -n "$lfd" ]] && exec {lfd}>&-
+        s=$(mono_s); eval "timeout $to $cmd" > "$OUT/$name.out" 2>&1; c=$?
+        echo "$c $(secs_since "$s")" > "$OUT/$name.code" ) &
+      POOL_RUNNING[$!]=$i; POOL_NAME[$!]="$name"; POOL_T0[$!]=$(mono_s)
+      running=$((running + 1)); i=$((i + 1))
+      if (( stagger > 0 && i < ${#jobs[@]} && running < par )); then sleep "$stagger"; fi
+    done
+    (( running > 0 )) || continue
+    pid=""; wait -n -p pid "${!POOL_RUNNING[@]}" 2>/dev/null
+    [[ -n "$pid" && -n "${POOL_RUNNING[$pid]:-}" ]] || continue
+    idx=${POOL_RUNNING[$pid]}; unset "POOL_RUNNING[$pid]" "POOL_NAME[$pid]" "POOL_T0[$pid]"; running=$((running - 1))
+    IFS=$'\x1f' read -r name to f label note cmd <<<"${jobs[$idx]}"
+    read -r code secs < "$OUT/$name.code" 2>/dev/null || { code=1; secs=0.0; }
+    note="${note:+$note; }parallel ×$par"
+    if [[ $first == 1 && -n "$waited" ]]; then note+="; lock wait $waited s"; fi
+    first=0
+    judge "$name" "$code" "$secs" "$f" "$label" "$note"
+    PAR_STEPS=$((PAR_STEPS + 1)); PAR_STEPS_S="$(echo "$PAR_STEPS_S + $secs" | bc)"
+  done
+  if [[ $batch_lock == 1 ]]; then
+    local wall; wall="$(secs_since "$t0")"
+    DESKTOP_S="$(echo "$DESKTOP_S + $wall" | bc)"; PAR_WALL_S="$(echo "$PAR_WALL_S + $wall" | bc)"
+    (( par > PAR_MAX )) && PAR_MAX=$par
+  fi
+  if [[ -n "$lfd" ]]; then flock -u "$lfd"; exec {lfd}>&-; fi
+  return 0
+}
+
+# pool_interrupt: for a signal trap: stops the parallel launches in flight (only processes this harness started) and
+# records each as interrupted.
+pool_interrupt() {
+  local pid
+  for pid in "${!POOL_RUNNING[@]}"; do
+    pkill -TERM -P "$pid" 2>/dev/null; kill -TERM "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    timing_record "${POOL_NAME[$pid]}" interrupted "$(secs_since "${POOL_T0[$pid]}")" "parallel"
+    unset "POOL_RUNNING[$pid]"
+  done
 }
 
 # interrupt_current: for a signal trap: stops the running step's command (only the process this harness started) and

@@ -126,7 +126,7 @@ public class PlaceTests
         {
             for (var j = i + 1; j < solids.Count; j++)
             {
-                solids[i].Box.Overlaps(solids[j].Box).Should().BeFalse($"{solids[i].What} #{solids[i].Id} overlaps {solids[j].What} #{solids[j].Id}");
+                if (solids[i].Box.Overlaps(solids[j].Box)) solids[i].Box.Overlaps(solids[j].Box).Should().BeFalse($"{solids[i].What} #{solids[i].Id} overlaps {solids[j].What} #{solids[j].Id}"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }
@@ -181,13 +181,15 @@ public class PlaceTests
         c.Vistas.Should().BeEmpty("tiers omit vistas; that is stated in the HUD");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Files_are_placed_once_in_type_quarters_and_keep_the_route_home_clear()
     {
         var tree = new Spec("parent").Dir(Spec.WithFiles("many", 800).Dir(new Spec("one")).Dir(new Spec("two"))).Build();
         var many = tree.Find("many").Id;
         var c = PlaceComposer.Compose(tree, many);
-        c.Files.Select(f => f.Id).Should().BeEquivalentTo(tree[many].Children.Where(id => tree[id].Kind == NodeKind.File));
+        // The same multiset check as BeEquivalentTo, sorted: FluentAssertions' equivalency matches 800 × 800 items (TEST-12).
+        c.Files.Select(f => f.Id).Order().Should().Equal(tree[many].Children.Where(id => tree[id].Kind == NodeKind.File).Order());
         c.Quarters.Sum(q => q.Count).Should().Be(800);
         c.Quarters.Select(q => q.Category).Should().OnlyHaveUniqueItems();
         foreach (var f in c.Files)
@@ -312,7 +314,8 @@ public class PlaceTests
         {
             for (var j = i + 1; j < c.Vistas.Count; j++)
             {
-                Vector3.Distance(c.Vistas[i].Center, c.Vistas[j].Center).Should().BeGreaterThanOrEqualTo(c.Vistas[i].Radius + c.Vistas[j].Radius);
+                var d = Vector3.Distance(c.Vistas[i].Center, c.Vistas[j].Center);
+                if (d < c.Vistas[i].Radius + c.Vistas[j].Radius) d.Should().BeGreaterThanOrEqualTo(c.Vistas[i].Radius + c.Vistas[j].Radius); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }

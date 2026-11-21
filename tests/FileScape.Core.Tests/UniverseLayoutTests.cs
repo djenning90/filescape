@@ -50,7 +50,8 @@ public class UniverseLayoutTests
         {
             for (var j = i + 1; j < bodies.Count; j++)
             {
-                Vector3.Distance(bodies[i].Position, bodies[j].Position).Should().BeGreaterThan(bodies[i].Radius + bodies[j].Radius, $"{tree[bodies[i].NodeId].Name} and {tree[bodies[j].NodeId].Name} do not overlap");
+                var d = Vector3.Distance(bodies[i].Position, bodies[j].Position);
+                if (!(d > bodies[i].Radius + bodies[j].Radius)) d.Should().BeGreaterThan(bodies[i].Radius + bodies[j].Radius, $"{tree[bodies[i].NodeId].Name} and {tree[bodies[j].NodeId].Name} do not overlap"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
 
@@ -114,7 +115,8 @@ public class UniverseLayoutTests
         {
             for (var j = i + 1; j < bodies.Count; j++)
             {
-                Vector3.Distance(bodies[i].Position, bodies[j].Position).Should().BeGreaterThan(bodies[i].Radius + bodies[j].Radius);
+                var d = Vector3.Distance(bodies[i].Position, bodies[j].Position);
+                if (!(d > bodies[i].Radius + bodies[j].Radius)) d.Should().BeGreaterThan(bodies[i].Radius + bodies[j].Radius); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }

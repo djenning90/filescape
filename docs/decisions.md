@@ -2073,6 +2073,94 @@ as FileScape while naming remains open.
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
 
+## AD-90 The Core suite runs as parallel collections in one Release process; wall-clock bounds run apart (2026-11-20, seventh pass, stream V1)
+- **Context:** Windows `fs.sh test` took 186 s on `70b6ffc` and 330 s on `d7c1ee0` (412 s on 2026-11-20 with another
+  agent on the machine). The growth was not mostly new tests: the 114 tests added in between cost ≈ 48 s of the
+  suite's ≈ 708 s of test time (WSL, one process; 24 s of it OverviewAttentionTests), and the old commit's tests take
+  as long as the new ones on the same machine (WSL, one process: 335 s at `70b6ffc`, 310 s now). What changed was the
+  machine's load: in the 330 s run the app build took 40 s instead of 19 s and the stage 49 s instead of 28 s, and the
+  same 818 tests took 186 s and 237 s in two runs an hour apart. The suite multiplied any slowdown because one class
+  was its critical path: SkySynthTests was one partial class over nine files, so xUnit ran its ≈ 200 tests as one
+  collection, one after another, on one core (412 s of the 412 s Windows run; after 166 s nothing else was running),
+  and HazardMovementTests' envelope sweep took 111 s by itself. The timing bounds inside the suite failed under that
+  load and passed alone (the throttled-scan cancel 309 ms vs 250 ms on Windows; two `…second_theme_is_cheap` 61.5 /
+  60.1 ms vs 60 ms on WSL; earlier `…six_effects_is_cheap`, the layout's 150 ms).
+- **Decision:**
+  - **Collections:** each SkySynth file and each section of SkySynthTests.cs is its own class (so its own xUnit
+    collection), sharing `SkySynthKit` through `using static`; HazardMovementTests' world audits are
+    HazardGapWorldTests and HazardLeapWorldTests. A class that grows past ≈ 30 s of work alone is split the same way.
+  - **One process, Release:** `fs.sh test` and `test-wsl` run one `dotnet test` (the WSL shards of AD-80 are removed:
+    they split SkySynthTests, and one process already uses every core), built Release as the exported game is
+    (`--export-release`), with tiered compilation off in the test host: under 24 parallel classes the background
+    promotion to optimised code kept being postponed, so hot loops ran unoptimised (WSL: Debug 1,163 CPU-s, Release
+    with tiering 430–760, without 330; one test at a time the whole run is 130 s of work). The same assertions run;
+    the behaviour baseline is identical in Debug and Release.
+  - **Kinds** (`TestKinds`, an xUnit trait): `Perf` asserts on wall-clock time; `Report` prints a measurement and
+    asserts nothing; `Slow` is a deterministic check over ≈ 3 s alone. The ordinary run leaves out Perf and Report;
+    `--fast` leaves out Slow too; `fs.sh test-perf` runs Perf and Report one test at a time in Debug (the bounds'
+    calibration), and `check full` / `release` run it as `tests-perf` after the parallel tests and the stage, before
+    the first journey. Mixed tests were split (the layout, the aurora voice, the throttled-scan cancel).
+  - **Heavy cases cheaper, same assertions:** independent cases side by side (`TestParallel.Map`, asserted afterwards
+    in order); the envelope searched from the widest gap down in batches and its twirl sweep not run twice (the same
+    widths: 5.1 / 6.6 / 10.1 / 10.1 m); per-pair assertions only where violated; a sorted `Equal` instead of
+    `BeEquivalentTo` on 800 items.
+  - **Area sets** (`tests/FileScape.Core.Tests/areas.txt`, `fs.sh test-area` / `test-wsl-area`), every class in an area
+    (`TestAreaTests`); every run prints where its time went (`tools/test-times.py`).
+- **Not done, and why:** a process-wide memo of shared renders or compositions. No two tests render the same synth to
+  the same point and only read the samples (they need the synth's state afterwards, which SkySynth cannot copy);
+  composed planets keep lazy caches (`PlanetSurface`'s shape cache, `BrokenShell`'s cosines) that were not written for
+  use from several threads; the Starter Sky fixture is rewritten in place by one of its readers. Each would need a
+  product change or a thread-safety review first.
+- **Consequences:** WSL `test-wsl` 209 s (shards) / 329 s (one process, Debug) → 39–49 s with the build (28–37 s of
+  tests); Windows `test` 412 s → 60 s with the build (46–50 s of tests); `--fast` 15 s; an area set 2–20 s;
+  `test-perf` 54 s on Windows. Measured 2026-11-20 with other agents' test runs on the machine (load 6–13): every
+  number moves together with the load, since the run is now bound by the cores, not by one class. The class that
+  finishes last now ends within ≈ 1 s of the next ones (HazardGapWorldTests, SkySynthArrangementTests ≈ 33–37 s).
+- **Revisit when:** a class's span equals the run's (it is the critical path again: split it), a Perf test fails in
+  `tests-perf` on a quiet machine (a real regression or a stale bound), or a run's "sum of tests" grows past ≈ 2× its
+  130 s of single-threaded work (the parallel run is wasting work again, as the tiering did).
+
+## AD-91 Journeys on a simulated clock, several at once; the desktop's cost in every check (2026-11-21, seventh pass, stream V2)
+- **Context:** the in-app journeys were ≈ 1,950 s of a 42.9-minute `check full`, run one at a time because they share
+  the screen, focus and GPU and their timing checks must not contend. Under load they failed intermittently
+  (walk-ui1.0's W+D speed, near-far-sample; on 2026-11-21 planets-look's "largest step a frame" in the baseline run),
+  because the probes measured the wall clock while the game moved by measured frame deltas.
+- **Decision:**
+  - *The game clock.* The world's `IWorldSession.Now`, the HUD's toasts, hint and fly highlight, and the walking
+    world's gate cooldown and upward settle run on `FrameClock` (Core): the frames' deltas summed. In play this is
+    the wall clock; under Godot's `--fixed-fps` it is the fixed step. Per-frame work budgets, refresh throttles,
+    hitch diagnostics and the state file's `appMs` stay on the Stopwatch.
+  - *The simulated clock for journeys.* `tools/verify.sh` launches a window-only journey with the engine arguments
+    `--fixed-fps 60 --disable-vsync` and the app argument `--sim-clock`. Each frame is then exactly 1/60 s of game
+    time however long it takes to draw, so load cannot change walk distances, jump timing or easing. ProbeBase's
+    `Seconds` and `Hold` count game time. `Until`'s timeout passes only when both clocks reach it
+    (`JourneyWait.TimedOut`), so a slow simulation still gives the game its game time and a fast one still gives
+    real background work its real-time budget. A run whose first 30 frames are not the fixed step fails (the launch
+    lacked `--fixed-fps`). The probes' own timing loops use `ClockSeconds` or `Deadline`.
+  - *Real-time journeys stay serial.* `REALTIME_JOURNEYS` keep the wall clock and run one at a time after the others.
+    These are audio (audio-gaps, sound, music), real background work timed in wall seconds (overview-discovery,
+    play-discovery, places-scan, and the `--test-list-delay-ms` instrument of planets-navigation and
+    planets-overview-enter), probes not built on ProbeBase (navigation, map-journey, the places journeys) and
+    walk-perf. `--measure`, the release tier, the real-input probes and the recordings are serial and on the wall
+    clock as before.
+  - *Several at once.* The simulated-clock journeys run `--parallel=N` at a time (default 3, started 2 s apart). The
+    batch holds `FS_LAUNCH_LOCK` once. Each launch has its own output, result file and `godot.log`, and is judged
+    exactly as before. Under automation, injected input reaches an unfocused window (KD-31) and Godot renders it.
+    A simulated journey's hang timeout is 3× its real-time one.
+  - *3D at half resolution.* `--render-scale=0.5` (app `--sim-render-scale`) draws the 3D scene at half the window's
+    resolution in simulated-clock journeys; the UI stays sharp and no assertion reads 3D pixels. On the Radeon 890M
+    the GPU was ≈ 19–29 ms of a frame at 1600×900, so this, not the clock, is what lets frames outrun real time.
+  - *Accounting.* Every check's table keeps its columns and adds `desktop` (seconds with this run's windows open, the
+    lock held) and `parallel` (summed step seconds against the batches' wall time). The session log gets a `desktop`
+    row per check. Every probe logs its pace: frames, game and wall seconds, and render CPU and GPU per frame.
+- **Measured:** see the stream V2 section of docs/implementation-status.md (baseline against the new modes, the
+  representative set, the projection for `check full`).
+- **Preserve:** a journey's assertions are the same on either clock. A real-time journey never runs beside another
+  launch. A parallel batch never holds the launch lock between batches.
+- **Revisit when:** a journey fails only on the simulated clock (find the wall-clock wait it depends on: move it to
+  `Until` on the real condition, or list the journey in `REALTIME_JOURNEYS`); when the machine's GPU changes (then
+  re-measure N and the render scale); when real-input probes can run beside window-only journeys (they take focus).
+
 ## AD-92 Legacy views only by the menu; every command answers per play context; the way back from a legacy view lands on safe ground; every travel route is inventoried and tagged; a ▾ to Destinations beside the path (2026-11-20, seventh pass stream K, PLANET-141..150; extends AD-82, AD-83, AD-84)
 
 - **Problem (DJ, seventh pass, items 3 and 9):** legacy views were reached by accident from the overview, panels and

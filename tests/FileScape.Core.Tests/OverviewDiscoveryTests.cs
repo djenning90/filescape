@@ -283,6 +283,7 @@ public sealed class OverviewDiscoveryTests
     /// PLANET-77: the overview pins every world it draws when it lays out again, so discovery only ever adds worlds, even
     /// when the budget (1,500) fills: a newly listed shallow folder does not push out deeper worlds already shown.
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Relaying_out_with_what_is_drawn_pinned_only_adds_worlds()
     {
