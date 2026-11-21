@@ -262,13 +262,16 @@ public partial class PlanetWorld
         var jump = _jumpQueued && !blockedKeys;
         _jumpQueued = false;
         var up = Gd(_walker.Up);
-        // Camera-relative: forward is where the camera looks, flattened onto the ground here.
-        var camF = (-_camera.GlobalBasis.Z);
-        camF = (camF - up * camF.Dot(up));
-        if (camF.LengthSquared() < 1e-4f) camF = _camFwd;
+        // Camera-relative: forward is the camera's heading (_camFwd, which ← → and a drag turn at once), flattened onto the
+        // ground here. Not the rendered camera's look (stream R, seventh pass): its eye eases after the heading (≈ 0.13 s),
+        // so with ↑ and a turn key held the walk trailed the view by ≈ 17° and spiralled off the overlook's curved stones
+        // short of the platform (os -Steps; Core's OverlookStepsTests replays both, wish = the heading).
+        var camF = _camFwd - up * _camFwd.Dot(up);
+        if (camF.LengthSquared() < 1e-4f) camF = Gd(_walker.Facing);
         camF = camF.Normalized();
         var camR = camF.Cross(up).Normalized();
         var wish = camF * fwd + camR * strafe;
+        _wishForward = camF;
 
         // Space on a launcher pad launches (the pad is the button); elsewhere it jumps, and again in the air it twirls higher.
         var pressBefore = jump && Shell != null ? ReadPressBefore() : default; // the press log (PlanetWorld.Hazard)
@@ -360,6 +363,9 @@ public partial class PlanetWorld
 
     /// <summary>Shift turns this much faster (AD-47).</summary>
     private const float KeyLookFastFactor = 1.6f;
+
+    /// <summary>The ground heading forward meant in the last walking frame: the camera's heading, flattened (the state file's "wishYaw").</summary>
+    private Godot.Vector3 _wishForward;
 
     /// <summary>
     /// ← → turn the camera (AD-47, as they turn the view in Places): standing still they look around; with W/S held the
