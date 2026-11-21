@@ -554,7 +554,7 @@ public partial class Main : Node3D
         _needsInitialFrame = true;
         _scanFinishedReported = false;
         _selection.Reset();
-        _nav.Reset(0);
+        _nav.Reset(0); // travel: SessionArrival
         _place = null;
         _transition = null;
         _hud.SetTransition(0, null);
@@ -1393,7 +1393,9 @@ public partial class Main : Node3D
 
     /// <summary>
     /// One-shot key commands, by action (never raw keycodes). While a place change or a planet launch is in progress only
-    /// Help works, so travel happens one step at a time. On the planets some keys mean something else first
+    /// Help works, so travel happens one step at a time. What a command does in the current play context is Core's
+    /// <see cref="PlayCommands"/> (AD-92): in the planets V, Tab and M do nothing (the Legacy views menu is the deliberate
+    /// way there; the first press says so). On the planets some keys mean something else first
     /// (<see cref="HandlePlanetCommand"/>).
     /// </summary>
     private void HandleCommand(InputEventKey key)
@@ -1403,10 +1405,11 @@ public partial class Main : Node3D
         var places = _experience == Experience.Places || planets;
         if (_transition != null && !key.IsAction(InputBindings.Help)) return; // travel in progress: one place change at a time
         if (planets && _planets.Busy && !key.IsAction(InputBindings.Help)) return; // a launch in progress: one at a time
+        if (InputBindings.CommandOf(key) is { } command && !CommandActs(PlayContextNow, command)) return;
         if (key.IsAction(InputBindings.WorldToggle)) { ToggleWorld(); return; }
         if (planets && HandlePlanetCommand(key)) return;
         if (key.IsAction(InputBindings.Open)) RequestOpen();
-        else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); }
+        else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); } // travel: HistoryBack
         else if (key.IsAction(InputBindings.Parent)) HandleEscape();
         else if (key.IsAction(InputBindings.RootPlace)) { if (places) TravelRoot(); else ResetView(); }
         else if (key.IsAction(InputBindings.Home)) ResetView();
@@ -1430,6 +1433,43 @@ public partial class Main : Node3D
         else if (key.IsAction(InputBindings.GoToPath)) ShowGoToPath();
         else if (key.IsAction(InputBindings.Locations)) ShowLocations();
     }
+
+    /// <summary>Where play is now, as <see cref="PlayCommands"/> names it (the planets' world, overview or telescope; Places; a map).</summary>
+    public PlayContext PlayContextNow =>
+        _experience == Experience.Planets ? (_planets.UniverseOpen ? PlayContext.Overview : _planets.TelescopeViewOpen ? PlayContext.Telescope : PlayContext.PlanetWorld)
+        : _experience == Experience.Places ? PlayContext.Places : PlayContext.Map;
+
+    /// <summary>
+    /// Whether <paramref name="command"/> acts in <paramref name="context"/> (Core's <see cref="PlayCommands.Answer"/>); a
+    /// legacy-view switch pressed in the planets is consumed and, the first time in a session, says where the views went.
+    /// </summary>
+    public bool CommandActs(PlayContext context, GameCommand command)
+    {
+        switch (PlayCommands.Answer(context, command))
+        {
+            case CommandAnswer.IgnoreLegacySwitch:
+                IgnoredLegacySwitches++;
+                if (!_legacyHintShown)
+                {
+                    _legacyHintShown = true;
+                    _hud.Toast(PlayCommands.LegacyHint, null, LegacyHintSeconds);
+                }
+
+                return false;
+            case CommandAnswer.Ignore:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    /// <summary>How long the once-a-session "V, Tab and M no longer leave the planets" toast stays, seconds (long enough to read twice).</summary>
+    private const float LegacyHintSeconds = 7f;
+
+    private bool _legacyHintShown;
+
+    /// <summary>Legacy-view switches pressed in the planets and consumed (probes: V, Tab and M must never change the view there).</summary>
+    public int IgnoredLegacySwitches { get; private set; }
 
     /// <summary>Escape peels back one layer at a time: help overlay, then parent directory. Flight is handled in _Input.</summary>
     private void HandleEscape()

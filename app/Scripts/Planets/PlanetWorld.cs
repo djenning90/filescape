@@ -156,15 +156,16 @@ public partial class PlanetWorld : Node3D
                 // Rebuilt where you stand (−2: not an arrival, so no arrival count, chord or caution), then put back.
                 BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -2);
                 Resume(r);
-            }
-            else
-            {
-                BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
-                var beside = ArriveBesideSelection(tree);
-                SnapCamera();
-                if (!beside) PlayEstablishingShot();
+                ShowTitleCard(tree, _s.Navigator.Current, frame ? "Planets" : null);
+                if (r.InOverview) OpenUniverse(); // you chose the legacy view from the overview: it opens again over where you stood (AD-92)
+                _resume = null;
+                return;
             }
 
+            BuildCurrent(tree, _s.Navigator.Current, arriveFrom: -1);
+            var beside = ArriveBesideSelection(tree);
+            SnapCamera();
+            if (!beside) PlayEstablishingShot();
             ShowTitleCard(tree, _s.Navigator.Current, frame ? "Planets" : null);
         }
 
@@ -179,26 +180,41 @@ public partial class PlanetWorld : Node3D
     public SurfaceResumeDecision LastResume { get; private set; } = SurfaceResumeDecision.NothingSaved;
 
     /// <summary>
-    /// Keeps where you stand and how the camera looks (PLANET-112), when the moment allows: walking on the ground, nothing
-    /// travelling, not on a Hazard World (its route and caution are set up by an arrival; resuming one is not attempted).
+    /// Keeps where you stand and how the camera looks (PLANET-112; PLANET-144, AD-92), unless you are on your way somewhere
+    /// (a departure, a hop, a trip, the overview's dive). In the air, mid-fall off a Hazard World's rim, on a Hazard World
+    /// and under the overview it is kept: <see cref="Resume"/> puts you on safe ground (Core's <see cref="SurfaceResume.Place"/>).
+    /// A Hazard World resumed is rebuilt without an arrival (no caution card again; the route and its beads are the world's own).
     /// </summary>
     private void CaptureResume()
     {
         _resume = null;
-        if (_current == null || _s.Tree is not { } tree || _current.Comp.Hazard != null) return;
-        if (!SurfaceResume.MayCapture(_phase == Phase.Walking, _walker.Grounded, Busy || _hop != null || _transfer != null)) return;
+        if (_current == null || _s.Tree is not { } tree) return;
+        var travelling = _phase is not (Phase.Walking or Phase.Falling) || _trip != null || _hop != null || _transfer != null || _uniLanding != null;
+        if (!SurfaceResume.MayCapture(travelling)) return;
         _resume = new SurfaceResume(tree, _current.FolderId, _s.Selection.Selected, _walker.Up, _walker.Facing, Nv(_camFwd), _camPitchDegrees, _camDistance)
         {
             ArrivalFraming = _arrival01,
             ArrivalReleased = _arrivalReleased,
+            SupportMetres = _walker.Support.Value,
+            InOverview = _universe != null && _uniReturn == null, // on the way back down it counts as on the surface
         };
     }
 
-    /// <summary>Stands the traveller where <paramref name="r"/> says and puts the camera back as it was (no establishing shot).</summary>
+    /// <summary>Where the last resume stood you (Core's <see cref="ResumePlacement"/>: as saved, nearby, the arrival), for probes and the log.</summary>
+    public ResumePlacement LastResumePlacement { get; private set; }
+
+    /// <summary>
+    /// Stands the traveller where <paramref name="r"/> says, or on the nearest safe ground if that spot is no longer safe
+    /// (<see cref="SurfaceResume.Place"/>: over a gap, at a rim, where something now stands), and puts the camera back as it
+    /// was (no establishing shot).
+    /// </summary>
     private void Resume(SurfaceResume r)
     {
         if (_current == null) return;
-        _walker.Teleport(_current.Comp.Surface, r.Up, r.Facing);
+        var place = SurfaceResume.Place(r, _current.Comp.Surface, _current.Comp.Arrival.Up, _walker.Params.BodyRadius.Value);
+        LastResumePlacement = place;
+        if (place.Stand != ResumeStand.AsSaved) GD.Print($"[planets] resumed {place.Stand} ({place.Why}): moved {place.MovedMetres:0.0} m");
+        _walker.Teleport(_current.Comp.Surface, place.Up, place.Stand == ResumeStand.Arrival ? _current.Comp.Arrival.Facing : r.Facing);
         _camPitchDegrees = r.CameraPitchDegrees;
         _camDistance = r.CameraDistanceMetres;
         _arrival01 = r.ArrivalFraming;

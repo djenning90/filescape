@@ -117,7 +117,7 @@ public partial class PlanetWorld
     {
         if (_universe != null)
         {
-            LandFromOverview(target);
+            LandFromOverview(target); // travel: OverviewLanding
             return true;
         }
 
@@ -125,7 +125,7 @@ public partial class PlanetWorld
         if (target == _current.FolderId) { _s.Toast("You are already here."); return false; }
         if (!tree[target].IsDirectory && tree[target].Kind != NodeKind.Link) return false;
         _hop = null;
-        Depart(target, null, ReleaseAction.Into, entry); // the release goes up for the parent (IsParentTarget)
+        Depart(target, null, ReleaseAction.Into, entry); // the release goes up for the parent (IsParentTarget) // travel: relay
         return true;
     }
 
@@ -199,7 +199,7 @@ public partial class PlanetWorld
         }
 
         // Back where you stood: told as a Back change, which OnNavChanged recognises as here (no travel).
-        if (tr.Change != null) _s.Navigator.Revert(tr.Change);
+        if (tr.Change != null) _s.Navigator.Revert(tr.Change); // travel: DepartureRevert
     }
 
     /// <summary>Whether Esc can stop the departure in progress (see the class summary).</summary>
@@ -221,8 +221,8 @@ public partial class PlanetWorld
     /// </summary>
     private void LandFromOverview(int target)
     {
-        if (_uniIndex.ContainsKey(target)) BeginUniverseLanding(target);
-        else if (!_s.TravelInto(target)) RefuseLanding(target);
+        if (_uniIndex.ContainsKey(target)) BeginUniverseLanding(target); // travel: OverviewLanding
+        else if (!_s.TravelInto(target)) RefuseLanding(target); // travel: OverviewLanding
     }
 
     /// <summary>U on a world: to the parent through its pad (the navigator moves at the release). False when there is no
@@ -232,7 +232,7 @@ public partial class PlanetWorld
         if (_universe != null || Busy || _current == null || _s.Tree is not { } tree || !tree.Contains(_current.FolderId) || tree[_current.FolderId].IsRoot) return false;
         var parent = tree[_current.FolderId].ParentId;
         if (!tree.Contains(parent)) return false;
-        Depart(parent, null, ReleaseAction.Into, DepartureEntry.Parent); // the release goes up (IsParentTarget)
+        Depart(parent, null, ReleaseAction.Into, DepartureEntry.Parent); // the release goes up (IsParentTarget) // travel: ParentKey
         return true;
     }
 
@@ -245,7 +245,7 @@ public partial class PlanetWorld
         if (history.Count == 0) return false;
         var to = history[^1];
         if (!tree.Contains(to) || to == _current.FolderId) return false;
-        Depart(to, null, ReleaseAction.Back, DepartureEntry.HistoryBack);
+        Depart(to, null, ReleaseAction.Back, DepartureEntry.HistoryBack); // travel: HistoryBack
         return true;
     }
 }

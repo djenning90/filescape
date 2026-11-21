@@ -104,21 +104,21 @@ public partial class PlanetWorld
         {
             // From the overview a destination is landed on directly (PLANET-83; the rule is Core's OverviewEnter): a trip's hops run on the surface, which the
             // overview does not tick, so a trip started here wound up and never left (the overview stayed, silent).
-            LandFromOverview(target);
+            LandFromOverview(target); // travel: OverviewLanding
             return;
         }
 
         var hops = TripPlan.Hops(tree, _current.FolderId, target);
         if (hops == null)
         {
-            _s.TravelInto(target);
+            _s.TravelInto(target); // travel: DestinationsStraightThere
             return;
         }
 
         if (hops.Count == 1)
         {
             _s.Select(target);
-            LaunchToSelection();
+            LaunchToSelection(); // travel: DestinationsTrip
             return;
         }
 
@@ -215,7 +215,7 @@ public partial class PlanetWorld
 
         _s.Select(next);
         t.InHop = true;
-        BeginLaunch(next, DepartureEntry.TripHop);
+        BeginLaunch(next, DepartureEntry.TripHop); // travel: DestinationsTrip
         if (_phase is not (Phase.Departing or Phase.WindUp))
         {
             t.InHop = false;

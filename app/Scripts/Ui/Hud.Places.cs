@@ -3,7 +3,8 @@ using Godot;
 namespace FileScape.App.Ui;
 
 /// <summary>
-/// The Places parts of the HUD (PLACE-02, 04, 06, 07, 10): the "You are in" breadcrumb with Up and Root, the
+/// The Places parts of the HUD (PLACE-02, 04, 06, 07, 10): the "You are in" breadcrumb (with its ▾ drop-down to
+/// Destinations, PLANET-149) with Up and Root, the
 /// destination list (every child folder, so none is out of reach), the ascent chip that explains what ascent
 /// shows, and the threshold transition (fade and caption). Main fills them; the left-column stacking is in
 /// <see cref="Hud._Process"/>.
@@ -174,6 +175,15 @@ public partial class Hud
             _crumbs.AddChild(b);
         }
 
+        // PLANET-149 (AD-92): a drop-down beside the current folder opens Destinations from here, with the filter focused,
+        // as J and ☰ do (DJ: "a discoverable dropdown affordance beside the current path"). Rebuilt with the crumbs; the
+        // crumbs scroll is kept at its end, so it stays beside the current folder however long the path.
+        _crumbDrop = new Button { Text = CrumbDropText, Flat = true, ToggleMode = true, FocusMode = Control.FocusModeEnum.None, TooltipText = CrumbDropTooltip };
+        _crumbDrop.AddThemeColorOverride("font_color", new Color(0.7f, 0.85f, 1f));
+        _crumbDrop.SetPressedNoSignal(_planetsMode ? _planetsListShown : _destOpen);
+        _crumbDrop.Pressed += () => ToggleDestinations(focusFilter: true);
+        _crumbs.AddChild(_crumbDrop);
+
         _placeSummary.Text = summary.Replace("\n", "  ·  ");
         _placeSummary.TooltipText = summary;
         _upButton.Disabled = !canUp;
@@ -181,6 +191,21 @@ public partial class Hud
     }
 
     private Button _destButton = null!;
+
+    /// <summary>The breadcrumb's drop-down beside the current folder (PLANET-149): opens Destinations from here.</summary>
+    private Button? _crumbDrop;
+
+    /// <summary>The drop-down's face: a small caret, read with the current folder's name before it.</summary>
+    public const string CrumbDropText = "▾";
+
+    /// <summary>What the drop-down does, for its tooltip (and probes).</summary>
+    public const string CrumbDropTooltip = "Destinations from here (J): every world below, the way back, favourites and repositories. Type to filter, ↑ ↓ Enter, Esc closes.";
+
+    /// <summary>The planets' list is open (its pressed look on ☰ and ▾ follows it).</summary>
+    private bool _planetsListShown;
+
+    /// <summary>The breadcrumb drop-down's rectangle (viewport units; empty before the first place), for probes.</summary>
+    public Rect2 CrumbDropdownRect => _crumbDrop is { } d && IsInstanceValid(d) && d.IsVisibleInTree() ? d.GetGlobalRect() : new Rect2();
     private LineEdit _destFilter = null!;
     private bool _destOpen;
     private IReadOnlyList<(int Id, string Text, Color Color, string Tooltip, Texture2D? Icon)> _destItems = [];
@@ -201,7 +226,10 @@ public partial class Hud
     /// <summary>The ☰ button's pressed look follows the planet's list while Planets shows it.</summary>
     public void SetDestinationsButton(bool open)
     {
-        if (_planetsMode) _destButton.SetPressedNoSignal(open);
+        if (!_planetsMode) return;
+        _planetsListShown = open;
+        _destButton.SetPressedNoSignal(open);
+        if (_crumbDrop is { } d && IsInstanceValid(d)) d.SetPressedNoSignal(open);
     }
 
     /// <summary>Opens or closes the Destinations drawer (J, the ☰ button). Contents, filter and scroll are kept while closed.</summary>
@@ -216,6 +244,7 @@ public partial class Hud
         _destOpen = !_destOpen;
         _destPanel.Visible = _placesMode && _destOpen;
         _destButton.SetPressedNoSignal(_destOpen);
+        if (_crumbDrop is { } d && IsInstanceValid(d)) d.SetPressedNoSignal(_destOpen);
         if (_destOpen && focusFilter) _destFilter.GrabFocus();
         if (!_destOpen) _destFilter.ReleaseFocus();
         if (_destOpen) DismissHint();

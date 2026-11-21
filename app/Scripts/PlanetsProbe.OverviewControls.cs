@@ -138,9 +138,36 @@ public partial class PlanetsProbe
         await Until(() => P.CameraSettled, 4);
         await Shot("return-4-settled");
 
-        // ---- the legacy round trip (PLANET-112)
-        await LegacyRoundTrip(Godot.Key.V, "V to Places and V back");
-        await LegacyRoundTrip(Godot.Key.M, "M to a map and V back");
+        // ---- the legacy round trip (PLANET-112), from the Legacy views menu (V, Tab and M do nothing here: AD-92)
+        await LegacyRoundTrip(0, "Legacy views › Places and V back");
+        await LegacyRoundTrip(1, "Legacy views › Classic FSN and V back");
+        await OverviewLegacyRoundTrip();
+    }
+
+    /// <summary>
+    /// PLANET-142/145 (AD-92): in the overview V, Tab and M do nothing; a legacy view chosen from the menu while the overview
+    /// is open, then V, comes back to the overview, standing where you stood under it.
+    /// </summary>
+    private async Task OverviewLegacyRoundTrip()
+    {
+        await Until(() => !P.Busy && !P.UniverseOpen && P.CameraSettled, 10);
+        var feet = P.Walker.Feet;
+        var folder = App.Navigator.Current;
+        await Key(Godot.Key.T);
+        await Until(() => P.UniverseOpen && P.UniverseSettled, 10);
+        await LegacyKeysInert("in the overview");
+        Check(P.UniverseOpen, "the overview is still open after V, Tab and M");
+        await OpenLegacyView(0);
+        await Until(() => App.Experience == Experience.Places, 5);
+        await Seconds(0.8);
+        await Key(Godot.Key.V);
+        await Until(() => App.Experience == Experience.Planets && P.Composition != null, 10);
+        await Until(() => P.UniverseOpen, 3);
+        var moved = (P.Walker.Feet - feet).Length();
+        Check(P.LastResume == SurfaceResumeDecision.Resume && App.Navigator.Current == folder && P.UniverseOpen && moved < 0.05f,
+            F($"Legacy views › Places from the overview, then V: the overview again over where you stood (decision {P.LastResume}, overview {(P.UniverseOpen ? "open" : "closed")}, moved {moved:0.00} m)"));
+        await Key(Godot.Key.Escape);
+        await Until(() => !P.UniverseOpen && P.CameraSettled, 8);
     }
 
     /// <summary>Holds D (and Shift if <paramref name="fast"/>) for 0.6 s in the overview: the focus's travel per second, in camera distances.</summary>
@@ -195,8 +222,9 @@ public partial class PlanetsProbe
         return trace;
     }
 
-    /// <summary>Walks a little, turns the camera, leaves the planets with <paramref name="leave"/> and comes back with V.</summary>
-    private async Task LegacyRoundTrip(Godot.Key leave, string how)
+    /// <summary>Walks a little, turns the camera, leaves the planets for legacy view <paramref name="view"/> (0 Places, 1
+    /// Classic FSN, 2 District) from the menu and comes back with V.</summary>
+    private async Task LegacyRoundTrip(int view, string how)
     {
         await Until(() => !P.Busy && !P.UniverseOpen && P.CameraSettled, 10);
         await Hold(0.8, Godot.Key.W);
@@ -209,7 +237,7 @@ public partial class PlanetsProbe
         var pitch = P.ChosenPitchDegrees;
         var shots = P.EstablishingShots;
         var folder = App.Navigator.Current;
-        await Key(leave);
+        await OpenLegacyView(view);
         await Until(() => App.Experience != Experience.Planets, 5);
         await Seconds(1.0);
         var legacy = App.Experience;
@@ -223,5 +251,30 @@ public partial class PlanetsProbe
         Log(F($"{how} ({legacy}): decision {P.LastResume}; moved {moved:0.000} m, facing {turned:0.0}°, camera heading {heading:0.0}° → {headingNow:0.0}°, chosen pitch {pitch:0.0}° → {P.ChosenPitchDegrees:0.0}°, establishing shots {shots} → {P.EstablishingShots}"));
         Check(P.LastResume == SurfaceResumeDecision.Resume && App.Navigator.Current == folder && moved < 0.05f && turned < 1f && dh < 1f && MathF.Abs(P.ChosenPitchDegrees - pitch) < 0.5f && P.EstablishingShots == shots,
             F($"{how}: back where you stood, facing and looking as before (moved {moved:0.00} m, heading {dh:0.0}° off)"));
+    }
+    /// <summary>Opens the toolbar's Legacy views menu and clicks view <paramref name="view"/> (0 Places, 1 Classic FSN, 2 District): the deliberate way (AD-92).</summary>
+    private async Task OpenLegacyView(int view)
+    {
+        await Click(App.Hud.LegacyMenuButtonRect.GetCenter());
+        await Until(() => App.Hud.LegacyMenuOpen, 2);
+        await Click(App.Hud.VisualizationButtonRect(view - 1).GetCenter());
+    }
+
+    /// <summary>PLANET-141 (AD-92): V, Shift+V, Tab, M and Ctrl+V do nothing in the planets (no view change), and the first says once where the views went.</summary>
+    private async Task LegacyKeysInert(string where)
+    {
+        var views = App.ExperienceChangeCount;
+        var ignored = App.IgnoredLegacySwitches;
+        var (folder, overview) = (App.Navigator.Current, P.UniverseOpen);
+        foreach (var k in new[] { Godot.Key.V, Godot.Key.Tab, Godot.Key.M })
+        {
+            await Key(k);
+            await Frames(3);
+        }
+
+        Key1(Godot.Key.V, true, ctrl: true); await Frames(2); Key1(Godot.Key.V, false, ctrl: true);
+        await Frames(5);
+        Check(App.Experience == Experience.Planets && App.ExperienceChangeCount == views && App.IgnoredLegacySwitches - ignored == 4 && App.Navigator.Current == folder && P.UniverseOpen == overview,
+            $"{where}: V, Tab, M and Ctrl+V leave the view alone ({App.Experience}, {App.ExperienceChangeCount - views} view changes, {App.IgnoredLegacySwitches - ignored} consumed; toast “{App.Hud.ShownToast}”)");
     }
 }

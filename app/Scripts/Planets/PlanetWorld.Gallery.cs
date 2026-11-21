@@ -186,7 +186,7 @@ public partial class PlanetWorld
                     OpenFile(id); // the session's one Open path, with its confirmations
                     break;
                 case BrowseEffect.GoThere:
-                    LaunchToSelection();
+                    LaunchToSelection(); // travel: WorldDoubleClick
                     break;
             }
         }

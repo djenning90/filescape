@@ -753,12 +753,12 @@ public partial class PlanetWorld
         {
             case DestinationRowKind.WayBack:
                 CommitAndClose();
-                _s.TravelUp();
+                _s.TravelUp(); // travel: DestinationsWayBack
                 return;
             case DestinationRowKind.Favourite:
                 CommitAndClose();
-                if (r.Id >= 0 && tree.Contains(r.Id)) _s.TravelInto(r.Id);
-                else if (r.Path != null) _s.GoToPath(r.Path);
+                if (r.Id >= 0 && tree.Contains(r.Id)) _s.TravelInto(r.Id); // travel: FavouriteOrRepository
+                else if (r.Path != null) _s.GoToPath(r.Path); // travel: FavouriteOrRepository
                 return;
             case DestinationRowKind.File:
                 CommitAndClose();
@@ -768,19 +768,19 @@ public partial class PlanetWorld
             case DestinationRowKind.Link:
                 CommitAndClose();
                 _s.Select(r.Id);
-                if (r.Depth == 0) LaunchToSelection();
-                else _s.TravelInto(r.Id);
+                if (r.Depth == 0) LaunchToSelection(); // travel: ListHere
+                else _s.TravelInto(r.Id); // travel: DestinationsLink
                 return;
             case DestinationRowKind.Folder when r.Depth == 0:
                 CommitAndClose();
                 _s.Select(r.Id);
-                LaunchToSelection();
+                LaunchToSelection(); // travel: ListHere
                 return;
             case DestinationRowKind.Folder:
                 CommitAndClose();
                 _s.Select(r.Id);
-                if (direct) _s.TravelInto(r.Id);
-                else StartTrip(r.Id);
+                if (direct) _s.TravelInto(r.Id); // travel: DestinationsStraightThere
+                else StartTrip(r.Id); // travel: DestinationsTrip
                 return;
         }
     }

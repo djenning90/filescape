@@ -25,7 +25,7 @@ public static class HelpSheet
         "## Looking and going\n" +
         "- {E} look closer (preview) · {Enter} open with Windows · {Backspace} back · {U} up · {G} fly to the selected world\n" +
         "- *Pictures*: click or {E} to look · double-click, {R} or a click on the preview's picture: view it large ~({←} {→} or the ‹ › edges step, wheel zoom, drag; {Esc} or a click outside comes back)~ · {Enter} or *Open with Windows ↗* opens the original in Windows' app\n" +
-        "- {J} this world's list (every folder and file; type to filter) · {Ctrl+L} go to a path · {N} sound\n" +
+        "- {J} this world's list (every folder and file; type to filter; also ☰ and the ▾ beside \"You are in\") · {Ctrl+L} go to a path · {N} sound\n" +
         "- Every journey leaves from a launcher: you hop to the pad that leads there (toward a deeper folder, or the way back for somewhere else; with no pad, a ring of light at your feet), then take off · {Esc} before take-off stays\n" +
         "\n" +
         "## The overview ({T})\n" +
@@ -40,7 +40,7 @@ public static class HelpSheet
     /// <summary>The legacy views' part: the earlier experiences, kept working (AD-15, AD-51).</summary>
     public const string Legacy =
         "# Legacy views\n" +
-        "The toolbar's *Legacy views* menu (or {V} and {Tab}): the earlier experiences, kept working.\n" +
+        "Choose them in the toolbar's *Legacy views ▾* menu: the earlier experiences, kept working. In the planets {V}, {Tab} and {M} do nothing; inside a legacy view {V} returns to Planets, back where you stood, and {Tab} and {M} switch between the legacy views.\n" +
         "\n" +
         "## Places ~(the flat world: you are inside a folder, on foot)~\n" +
         "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a *gate*, named above it; *walk through a gate* to go in; the *▲ Up* gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +

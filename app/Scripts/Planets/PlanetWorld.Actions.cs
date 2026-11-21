@@ -59,7 +59,7 @@ public partial class PlanetWorld
         var n = tree[id];
         if (sky || n.IsDirectory || n.Kind == NodeKind.Link)
         {
-            LaunchToSelection();
+            LaunchToSelection(); // travel: WorldDoubleClick
             return;
         }
 

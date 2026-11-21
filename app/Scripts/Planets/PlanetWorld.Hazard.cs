@@ -553,7 +553,7 @@ public partial class PlanetWorld
         f.Asked = true;
         _fallFlash = 1;
         Mark("fall-up");
-        if (_s.Tree is not { } tree || tree[f.FolderId].ParentId < 0 || !_s.TravelUp())
+        if (_s.Tree is not { } tree || tree[f.FolderId].ParentId < 0 || !_s.TravelUp()) // travel: HazardFall
         {
             SetDownAfterFall(null);
         }
@@ -572,7 +572,7 @@ public partial class PlanetWorld
         _fallFlash = 1;
         _fallLines = 0;
         _flightTrail.End();
-        _arriveFromSky = true; // OnNavChanged's warp branch: built at once, a descent out of the light
+        _arriveFromSky = true; // OnNavChanged's warp branch: built at once, a descent out of the light // travel: HazardFall
         _warpFlash = 1f;
         _camera.Fov = WalkingFovDegrees;
         Mark("fall-return");

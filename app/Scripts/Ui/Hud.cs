@@ -410,12 +410,14 @@ public partial class Hud : CanvasLayer
         var col = new VBoxContainer();
         col.AddThemeConstantOverride("separation", 4);
         _legacyPanel.AddChild(col);
-        string[] names = ["Places — walk through folder doors (V)", "Classic FSN map (Tab)", "District map (Tab)"];
+        // AD-92: chosen here, deliberately. V, Tab and M do nothing in the planets; inside a legacy view V returns to
+        // Planets and Tab / M move between the legacy views.
+        string[] names = ["Places — walk through folder doors", "Classic FSN map", "District map"];
         string[] tips =
         [
-            "Places: be inside a folder — files around you, child folders as gates you can walk through. V switches between Planets and Places.",
-            "Classic FSN: whole-tree reference map, FSN-inspired (Tab cycles the maps). The selection is preserved.",
-            "District: whole-tree reference map, futuristic city (Tab cycles the maps). The selection is preserved.",
+            "Places: be inside a folder — files around you, child folders as gates you can walk through. In Places, V returns to Planets (where you stood).",
+            "Classic FSN: whole-tree reference map, FSN-inspired (in the legacy views Tab cycles them). The selection is preserved; V returns to Planets.",
+            "District: whole-tree reference map, futuristic city (in the legacy views Tab cycles them). The selection is preserved; V returns to Planets.",
         ];
         for (var i = 0; i < 3; i++)
         {

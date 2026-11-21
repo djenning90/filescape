@@ -108,8 +108,9 @@
   list closes, the overview stays), Enter (the row's world is the shared selection). Each must land (state: current,
   phase Walking, overview closed) or show a toast, within 15 s; Backspace returns home between them. Then Shift with real
   keys in the overview (Left held 600 ms with and without Shift: the orbit's yaw, ratio about 1.6; a real wheel notch out
-  with and without Shift: the zoom, about 1.18 and 1.39), and a real Esc: the overview stays drawn while the camera flies
-  home (closed no sooner than 0.7 s), then you stand where you stood.
+  with and without Shift: the zoom, about 1.18 and 1.39), real V, Tab and M (AD-92: still Planets, the overview open, no
+  view change), and a real Esc: the overview stays drawn while the camera flies home (closed no sooner than 0.7 s), then
+  you stand where you stood.
 
   -Gallery [-GalleryRoot <dir>] (PLANET-159..166, AD-94; seventh pass, stream G) on the gallery fixture (FileScape.Fixtures
   create-gallery; default the newest %TEMP%\FileScape-fixtures\gallery-*\Picture Gallery) with the recording test shell:
@@ -454,6 +455,11 @@ try {
     $z0 = [double](State).planets.uniZoom; Wheel -1; Start-Sleep -Milliseconds 1800; $z1 = [double](State).planets.uniZoom
     Key-Down 'Shift'; Start-Sleep -Milliseconds 80; Wheel -1; Start-Sleep -Milliseconds 80; Key-Up 'Shift'; Start-Sleep -Milliseconds 1800; $z2 = [double](State).planets.uniZoom
     Check ([Math]::Abs($z1 / $z0 - 1.18) -lt 0.04 -and [Math]::Abs($z2 / $z1 - 1.3924) -lt 0.06) ("a real wheel notch out: x{0:0.000}; with Shift x{1:0.000} (expected 1.18 and 1.392)" -f ($z1 / $z0), ($z2 / $z1))
+    # PLANET-141 (AD-92): real V, Tab and M in the overview leave the view alone (they switched to a legacy view by accident).
+    $v0 = (State).input.viewChanges
+    foreach ($k in @('V', 'Tab', 'M')) { Hold-Key $k 60; Start-Sleep -Milliseconds 400 }
+    Start-Sleep -Milliseconds 600; $s = State
+    Check ($s.experience -eq 'Planets' -and $s.planets.overview -and $s.input.viewChanges -eq $v0) ("real V, Tab and M in the overview: still {0}, overview {1}, {2} view change(s)" -f $s.experience, $s.planets.overview, ($s.input.viewChanges - $v0))
     Shot 'overview-before-esc' | Out-Null
     # A real Esc: the overview stays drawn while the camera flies home, then closes; you stand where you stood.
     $t0 = Get-Date

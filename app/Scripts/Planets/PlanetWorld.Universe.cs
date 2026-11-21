@@ -638,7 +638,7 @@ public partial class PlanetWorld
             if (t >= landing.Seconds)
             {
                 _audio.Launch(); // on the beat, as every launch
-                LandFromUniverse(landing.Id);
+                LandFromUniverse(landing.Id); // travel: OverviewLanding
                 return;
             }
         }
@@ -914,7 +914,7 @@ public partial class PlanetWorld
                 BeginUniverseReturn();
                 return true;
             case InputEventKey { Pressed: true, Echo: false } key when key.Keycode is Key.Enter or Key.KpEnter || key.IsAction(InputBindings.EnterFolder):
-                BeginUniverseLanding(UniverseCardSelection());
+                BeginUniverseLanding(UniverseCardSelection()); // travel: OverviewLanding
                 return true;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Home, CtrlPressed: false }:
                 if (_current != null) SelectInUniverse(_current.FolderId);
@@ -994,7 +994,7 @@ public partial class PlanetWorld
                 return;
             case OverviewEnterAction.TravelOutOfLight:
                 // Not drawn (beyond the overview's budget, or hidden): the navigator still goes there, out of the light.
-                if (!_s.TravelInto(id)) RefuseLanding(id);
+                if (!_s.TravelInto(id)) RefuseLanding(id); // travel: OverviewLanding
                 return;
             case OverviewEnterAction.BackDown:
                 BeginUniverseReturn(); // where you stand: the way back down, as Esc (a second one hurries it)
@@ -1017,10 +1017,10 @@ public partial class PlanetWorld
     private void LandFromUniverse(int id)
     {
         CloseUniverse(returnToSurface: false);
-        _arriveFromSky = true;
+        _arriveFromSky = true; // travel: OverviewLanding
         _warpFlash = 1f;
         var toastBefore = _s.Hud.ToastText;
-        var ok = _s.TravelInto(id);
+        var ok = _s.TravelInto(id); // travel: OverviewLanding
         if (!ok || _phase == Phase.Walking && _transfer == null)
         {
             // Refused (a link that can't be followed) or waiting on a link: come back down where you stood.

@@ -3,7 +3,7 @@
 Launch: `C:\Users\David\AppData\Local\FileScape\staging-20261111-065057-821915\FileScape.exe -- --root=sample --vis=planets`
 (the verified build `a98fdb4696c6`; once promoted with `tools/fs.sh promote staging-20261111-065057-821915` it is
 `C:\Users\David\AppData\Local\FileScape\build\FileScape.exe`)
-(or start FileScape as usual and click **✦ Planets (V)** in the toolbar: from the sample data it opens the Starter Sky).
+(or start FileScape as usual and click **✦ Planets** in the toolbar: from the sample data it opens the Starter Sky).
 
 The Starter Sky is a small folder of real, original files that FileScape writes into its own data folder
 (`%APPDATA%\Godot\app_userdata\FileScape\samples\Starter Sky`). Nothing outside it is written.
@@ -19,8 +19,8 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
 4. **Look closer at a file.** The easels show the real pictures. Walk up to one; the prompt says **E · look closer**.
    **E** shows the picture and its details (and selects it: the card on the right has Open, Show in folder, Copy
    path). **Enter** opens it with Windows.
-5. **Compare with Places.** Press **V**: the flat Places world, in the same folder with the same picture selected.
-   **V** again: back on the planet, beside the picture.
+5. **Compare with Places.** Choose **Legacy views ▾ › Places** in the toolbar (V no longer leaves the planets, AD-92):
+   the flat Places world, in the same folder with the same picture selected. **V** there: back on the planet, beside the picture.
 6. **Go back.** **Backspace** flies you back up; you land beside the launcher of the world you left.
 7. **Take the direct route.** **J** lists every world and file on the planet you are on (type to filter; double-click
    or Enter goes there). **Ctrl+L** goes to any path: a world that is not in the sky is reached by a warp.
@@ -34,7 +34,7 @@ The Starter Sky is a small folder of real, original files that FileScape writes 
 Keys (2026-11-14): W/A/S/D or ↑ ↓ run (Shift: faster) · **drag with the left or right mouse button, or ← →, to look
 around** (also while running) · click selects (on release), double-click goes there · Space jump / twirl / launch ·
 E look closer · Enter open · Backspace back · U up · G fly to the selected world · T overview · J the planet's list ·
-L locations · Ctrl+L go to path · V Places/Planets · mouse wheel camera distance · Home back to the arrival meadow ·
+L locations · Ctrl+L go to path · Legacy views ▾ menu: Places and the maps (V back from them) · mouse wheel camera distance · Home back to the arrival meadow ·
 N sound on/off · F1 help.
 
 ## Second iteration (2026-11-11): three flows to try

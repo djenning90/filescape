@@ -215,7 +215,7 @@ public partial class PlanetWorld
             var uid = PickUniverse(at);
             if (uid < 0) return;
             SelectInUniverse(uid);
-            if (doubleClick) BeginUniverseLanding(uid);
+            if (doubleClick) BeginUniverseLanding(uid); // travel: OverviewLanding
             return;
         }
 
@@ -333,7 +333,7 @@ public partial class PlanetWorld
         var tree = _s.Tree;
         if (tree == null || !tree.Contains(id)) return;
         _s.Select(id);
-        if (sky || tree[id].IsDirectory || tree[id].Kind == NodeKind.Link) LaunchToSelection();
+        if (sky || tree[id].IsDirectory || tree[id].Kind == NodeKind.Link) LaunchToSelection(); // travel: ListHere
         else Approach(id);
     }
 

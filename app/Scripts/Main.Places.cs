@@ -144,7 +144,7 @@ public partial class Main
         };
         AddChild(_hereLabel);
 
-        _hud.BreadcrumbRequested += id => { if (_tree != null) _nav.GoTo(_tree, id); };
+        _hud.BreadcrumbRequested += id => { if (_tree != null) _nav.GoTo(_tree, id); }; // travel: Breadcrumb
         _hud.UpRequested += () => TravelUp();
         _hud.RootRequested += () => TravelRoot();
         _hud.DestinationSelected += ApproachDestination;
@@ -423,14 +423,14 @@ public partial class Main
         if (_tree[id].Kind == NodeKind.Link) return FollowLink(id); // deliberate, resolved on demand (LINK-02)
 
         if (!_tree[id].IsDirectory) return false;
-        return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id);
+        return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id); // travel: relay
     }
 
     /// <summary>▲ / U: up to the parent folder; at the top, a toast says so instead. False when nothing happens.</summary>
     public bool TravelUp()
     {
         if (_tree == null || _transition != null) return false;
-        if (!_nav.Up(_tree))
+        if (!_nav.Up(_tree)) // travel: UpButton, DestinationsWayBack, HazardFall
         {
             _hud.Toast(_tree.Root.IsHub ? $"This is {WorldExplorer.HubName}, the top: every drive and distribution is a gate here." : "This is the top of the sample data.");
             return false;
@@ -440,7 +440,7 @@ public partial class Main
     }
 
     /// <summary>Ctrl+Home: to the arrival root (not during a transition).</summary>
-    public bool TravelRoot() => _tree != null && _transition == null && _nav.GoToRoot();
+    public bool TravelRoot() => _tree != null && _transition == null && _nav.GoToRoot(); // travel: RootPlace
 
     /// <summary>G: go into the selected folder (Places through its gate; from a map straight into its place).</summary>
     public void EnterSelection()
@@ -448,7 +448,7 @@ public partial class Main
         if (_tree == null || _selection.Selected < 0) return;
         if (_experience == Experience.Planets)
         {
-            _planets.LaunchToSelection(); // the card's Go inside (G): fly there, staying on the planets
+            _planets.LaunchToSelection(); // the card's Go inside (G): fly there, staying on the planets // travel: GoInside
             return;
         }
 
@@ -458,7 +458,7 @@ public partial class Main
             var folder = _tree[id].IsDirectory ? id : _tree[id].ParentId;
             if (folder >= 0 && _tree[folder].IsDirectory)
             {
-                _nav.GoTo(_tree, folder);
+                _nav.GoTo(_tree, folder); // travel: LegacyMapEnter
                 SetExperience(Experience.Places);
             }
 

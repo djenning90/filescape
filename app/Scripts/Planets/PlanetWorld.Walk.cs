@@ -275,7 +275,7 @@ public partial class PlanetWorld
         if (jump && _walker.Grounded && FocusLauncher() is { } pad)
         {
             if (Shell != null) LogHazardPress(pressBefore, "launch");
-            BeginLaunch(pad.TargetId, DepartureEntry.PadPress);
+            BeginLaunch(pad.TargetId, DepartureEntry.PadPress); // travel: PadPress
             return;
         }
 

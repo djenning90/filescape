@@ -367,7 +367,7 @@ public partial class PlanetWorld
                 var id = t.World.NodeId;
                 CloseTelescopeView();
                 _s.Select(id);
-                LaunchToSelection(); // the same departure as G: to its pad first (PlanetWorld.Departure)
+                DepartFor(id, DepartureEntry.Telescope); // the same departure as G, from the launcher that leads there (AD-84) // travel: TelescopeEnter
                 return true;
         }
 
@@ -385,8 +385,20 @@ public partial class PlanetWorld
             return true;
         }
 
-        CloseTelescopeView(); // Backspace, U, L…: step back, then the shared command
-        return false;
+        // What the telescope's own keys left is Core's PlayCommands (AD-92): Backspace, U, L, Ctrl+L… step back first and
+        // then act; Help, Settings and the key open over the view; F, B, X and the legacy-view switches do nothing here.
+        if (InputBindings.CommandOf(k) is not { } command) return true; // an unbound key: nothing to do, and the view stays
+        if (k.Echo) return true;
+        switch (PlayCommands.Answer(PlayContext.Telescope, command))
+        {
+            case CommandAnswer.StepBackThenAct:
+                CloseTelescopeView();
+                return false; // the shared command runs (Main.HandleCommand)
+            case CommandAnswer.Act:
+                return false;
+            default:
+                return !_s.CommandActs(PlayContext.Telescope, command); // consumed (a legacy switch says once where the views went)
+        }
     }
 
     /// <summary>The mouse while the view is open (from <see cref="Input"/>): a drag looks round, a click aims at a world, the wheel zooms.</summary>

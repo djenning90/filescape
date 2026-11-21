@@ -92,6 +92,23 @@ public partial class PlanetsProbe
         await Frames(10);
         Check(hopOpen == 0 && P.FallsStarted == falls, $"Home hops back along the way back's bridge ({hopOpen} frames over open sky)");
 
+        // ---- PLANET-144 (AD-92): a legacy view chosen in mid-jump on a Hazard World, then V: back on this world, on safe
+        // ground, not at the arrival afresh (before AD-92 a Hazard World and the air were never kept).
+        var standBefore = P.Walker.Up;
+        await Key(Godot.Key.Space);
+        await Until(() => !P.Walker.Grounded, 1);
+        var airborne = !P.Walker.Grounded;
+        App.SetExperience(Experience.Places); // [direct] what the Legacy views menu does (its clicks would outlast the jump)
+        await Until(() => App.Experience == Experience.Places, 3);
+        await Seconds(0.5);
+        await Key(Godot.Key.V);
+        await Until(() => App.Experience == Experience.Planets && P.Composition != null, 8);
+        await Frames(10);
+        var resumedAt = PlanetShape.Angle(P.Walker.Up, standBefore) * r;
+        Check(airborne && P.LastResume == SurfaceResumeDecision.Resume && P.Composition!.FolderId == eh && P.LastResumePlacement.Stand != ResumeStand.Arrival
+              && P.Walker.Grounded && !P.Falling && !shell.OverHole(P.Walker.Up) && P.FallsStarted == falls,
+            F($"a legacy view from mid-jump on Event Horizon, then V: back on it where you jumped ({P.LastResume}, {P.LastResumePlacement.Stand}: {P.LastResumePlacement.Why}; {resumedAt:0.0} m away), standing, no fall"));
+
         // ---- along the ridge: a narrow bridge with drops on both sides, and its gap, cleared with a real jump
         var foot = shell.Waypoints.OrderBy(w => PlanetShape.Angle(w, comp.Overlook.Direction)).First();
         var ridgeLink = shell.Links.First(l => shell.Waypoints[l.From] == foot || shell.Waypoints[l.To] == foot);

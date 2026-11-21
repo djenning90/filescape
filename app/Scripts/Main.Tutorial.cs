@@ -300,7 +300,7 @@ public partial class Main
         {
             if (_experience != Experience.Planets) SetExperience(Experience.Planets);
             // The lessons start at the Starter Sky's top world: go there (a normal trip) if you are deeper in.
-            if (_nav.Current != _nav.Root && _tree != null) _nav.GoTo(_tree, _nav.Root);
+            if (_nav.Current != _nav.Root && _tree != null) _nav.GoTo(_tree, _nav.Root); // travel: WalkthroughStart
         }
 
         _tutorialWaiting = true;
@@ -495,7 +495,7 @@ public partial class Main
     {
         if (_lessons == null || _lesson < 0 || _tree == null) return;
         var folder = _lessons[_lesson].Folder();
-        if (_tree.Contains(folder)) _nav.GoTo(_tree, folder);
+        if (_tree.Contains(folder)) _nav.GoTo(_tree, folder); // travel: WalkthroughBack
         _lessonBack.Visible = false;
         _offRouteFor = 0;
     }

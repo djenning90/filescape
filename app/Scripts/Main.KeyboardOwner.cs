@@ -12,7 +12,7 @@ namespace FileScape.App;
 /// <para>
 /// Keys: while a keyboard panel is open — the picture viewer, a confirmation, the welcome, the reading view, Settings,
 /// Locations / Open location, the planets' Destinations list (and its pile/telescope form), a root landmark's location
-/// actions — the owner (<see cref="KeyboardPanel"/>) gets the key first through its own handler (<see cref="OwnKey"/>),
+/// actions, and since AD-92 any focused text field no panel owns — the owner (<see cref="KeyboardPanel"/>) gets the key first through its own handler (<see cref="OwnKey"/>),
 /// then the table routes what it left: Esc closes the owner (only it: never the overview or a gameplay layer behind it),
 /// the F keys, Ctrl+L and Ctrl+O pass where the table says (they open the navigation panels), J passes from Destinations
 /// and Locations (PLANET-41), and every other press, echo or chord stops here, wherever the GUI focus is, so typing and
@@ -76,6 +76,8 @@ public partial class Main
         Add(_lessonCard?.Visible == true, PanelId.TutorialCard);
         Add(planets && _planets.PreviewOpen, PanelId.Preview);
         Add(planets && _planets.BenchPanelOpen, PanelId.Bench);
+        // AD-92: a text field with the focus that no panel above owns (the legacy Places drawer's filter) owns its keys too.
+        Add(GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit && FocusPanel(GetViewport().GuiGetFocusOwner()) == PanelId.None, PanelId.TextField);
         return open;
     }
 
@@ -90,16 +92,20 @@ public partial class Main
         {
             if (_hud == null) return PanelId.None;
             var open = OpenPanels();
-            return open.Count == 0 ? PanelId.None : PanelOwnership.Owner(open, GetViewport().GuiGetFocusOwner() is { } f ? FocusPanel(f) : PanelId.None);
+            return open.Count == 0 ? PanelId.None : PanelOwnership.Owner(open, GetViewport().GuiGetFocusOwner() is { } f ? FocusHolder(f) : PanelId.None);
         }
     }
 
+    /// <summary>The registered panel holding <paramref name="f"/>, or <see cref="PanelId.None"/> (then a focused text field is <see cref="PanelId.TextField"/>).</summary>
     private PanelId FocusPanel(Control f) =>
         _hud.ReaderHolds(f) ? PanelId.Reader
         : _hud.SettingsHolds(f) ? PanelId.Settings
         : _hud.LocationsHolds(f) ? PanelId.Locations
         : _experience == Experience.Planets && _planets.ListHolds(f) ? PanelId.Destinations
         : PanelId.None;
+
+    /// <summary>The panel holding the GUI focus (a registered one, else a bare focused text field), or <see cref="PanelId.None"/>.</summary>
+    private PanelId FocusHolder(Control f) => FocusPanel(f) is var p && p != PanelId.None ? p : f is LineEdit or TextEdit ? PanelId.TextField : PanelId.None;
 
     /// <summary>A key event as the table sees it: Esc, an F key, the navigation chords and J by their exact bindings, or any other.</summary>
     private static PanelKey ToPanelKey(InputEventKey k) => new(
@@ -170,6 +176,7 @@ public partial class Main
             case PanelId.LocationActions: _planets.CloseRootMarkPanel(); break;
             case PanelId.Help: if (_hud.HelpVisible) _hud.ToggleHelp(); break;
             case PanelId.LegacyMenu or PanelId.Problems: _hud.CloseMenus(); break;
+            case PanelId.TextField: GetViewport().GuiReleaseFocus(); break; // Esc lets go of a bare field (AD-92)
         }
     }
 

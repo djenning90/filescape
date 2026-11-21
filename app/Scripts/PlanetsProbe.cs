@@ -247,13 +247,15 @@ public partial class PlanetsProbe : ProbeBase
             Check(App.LastShellMessage?.Contains(Tree.FullPath(pic.NodeId), StringComparison.Ordinal) == true, $"Enter opens it with Windows: {App.LastShellMessage}");
         }
 
-        // Switch worlds: the same folder, selection and history in Places, and back.
+        // Switch worlds: the same folder, selection and history in Places, and back. V, Tab and M do nothing on a planet
+        // (AD-92): the Legacy views menu is the deliberate way there.
         var sel = App.Selection.Selected;
         var history = App.Navigator.History.Count;
-        await Key(Godot.Key.V);
+        await LegacyKeysInert("on the world");
+        await OpenLegacyView(0);
         await Until(() => App.Experience == Experience.Places && App.Place != null && !App.InTransition, 8);
         await Seconds(0.6);
-        Check(App.Experience == Experience.Places && App.Navigator.Current == garden && App.Selection.Selected == sel && App.Navigator.History.Count == history, $"V: Places shows the same folder ({Tree[App.Navigator.Current].Name}), selection ({(sel >= 0 ? Tree[sel].Name : "-")}) and history ({App.Navigator.History.Count})");
+        Check(App.Experience == Experience.Places && App.Navigator.Current == garden && App.Selection.Selected == sel && App.Navigator.History.Count == history, $"Legacy views › Places shows the same folder ({Tree[App.Navigator.Current].Name}), selection ({(sel >= 0 ? Tree[sel].Name : "-")}) and history ({App.Navigator.History.Count})");
         await Shot("switched-to-places");
         await Key(Godot.Key.V);
         await WaitSettled();

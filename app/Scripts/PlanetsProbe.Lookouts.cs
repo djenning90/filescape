@@ -193,11 +193,23 @@ public partial class PlanetsProbe
         await Key(Godot.Key.E);
         await Until(() => P.TelescopeViewOpen, 2);
         await Seconds(1.2);
+        // PLANET-141/142 (AD-92): at the eyepiece V, Tab and M do nothing (they stepped back and switched to a legacy view),
+        // and F and B do nothing either; the view stays.
+        var viewChanges = App.ExperienceChangeCount;
+        foreach (var k in new[] { Godot.Key.V, Godot.Key.Tab, Godot.Key.M, Godot.Key.F, Godot.Key.B })
+        {
+            await Key(k);
+            await Frames(3);
+        }
+
+        Check(P.TelescopeViewOpen && App.Experience == Experience.Planets && App.ExperienceChangeCount == viewChanges,
+            $"V, Tab, M, F and B at the eyepiece leave the view open and the planets shown ({App.Experience}, {App.ExperienceChangeCount - viewChanges} view changes)");
         var go = P.TelescopeTargetId;
         var transfers = P.Transfers;
         await Key(Godot.Key.Enter);
         await Until(() => P.Busy, 2);
-        Check(!P.TelescopeViewOpen && P.Busy, $"Enter in the telescope departs for {Tree.DisplayName(go)} ({P.LastDepartureKind})");
+        Check(!P.TelescopeViewOpen && P.Busy && P.LastDepartureEntry == "Telescope",
+            $"Enter in the telescope departs for {Tree.DisplayName(go)} ({P.LastDepartureEntry}: {P.LastDepartureRole}, {P.LastDepartureKind})");
         await Until(() => !P.Busy && App.Navigator.Current == go, 12);
         Check(App.Navigator.Current == go && P.Transfers == transfers + 1 && P.Walker.Grounded, $"  and lands there on foot: {Tree.DisplayName(App.Navigator.Current)}");
         await Seconds(1.0);

@@ -52,6 +52,12 @@ public enum PanelId
 
     /// <summary>The repository workbench's list: shown while you stand at the bench.</summary>
     Bench,
+
+    /// <summary>
+    /// A text field holding the keyboard outside every panel above (the legacy Places drawer's filter today; any field a
+    /// later panel forgets to register): typing, Enter, the arrows and Page keys are the field's, never the game's (AD-92).
+    /// </summary>
+    TextField,
 }
 
 /// <summary>What a press of a mouse button on the world (not on any panel) does while a panel is open.</summary>
@@ -161,6 +167,8 @@ public static class PanelOwnership
             "A navigation list beside the world (and its pile and telescope forms): typing filters, ↓ and Tab reach the rows."),
         new(PanelId.LocationActions, true, false, OutsideClick.DismissOnClick, "the first action", true, false,
             "An action panel opened at a root landmark (E, or jump + twirl): ↑ ↓ choose, Enter or a number runs, E/Esc close."),
+        new(PanelId.TextField, true, false, OutsideClick.Ignore, "the field", true, false,
+            "A text field with the keyboard and no panel of its own: typing, Enter, the arrows and Page keys edit it; Esc lets go; a click on the world takes the focus back."),
         new(PanelId.Help, false, false, OutsideClick.DismissOnPress, "nothing (the game keeps the keys)", true, false,
             "A sheet to read while you try the keys it lists; a click on the world puts it away."),
         new(PanelId.LegacyMenu, false, false, OutsideClick.DismissOnPress, "nothing", true, false,
