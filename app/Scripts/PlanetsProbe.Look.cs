@@ -243,8 +243,8 @@ public partial class PlanetsProbe
         var maxStep = 0f;
         var frames = 0;
         HoldKey(Godot.Key.W, true);
-        var t0 = Time.GetTicksMsec();
-        while (Time.GetTicksMsec() - t0 < ReturnWalkSeconds * 1000)
+        var t0 = ClockSeconds; // game time under --sim-clock (AD-91)
+        while (ClockSeconds - t0 < ReturnWalkSeconds)
         {
             await Frames(1);
             var v = P.ViewPitchDegrees;

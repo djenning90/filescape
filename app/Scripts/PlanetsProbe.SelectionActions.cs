@@ -120,8 +120,8 @@ public partial class PlanetsProbe
     /// <summary>Waits (at most <paramref name="timeout"/> s) until the overview's distance changes by under 1 % in 0.2 s.</summary>
     private async Task UntilFramingSteady(double timeout = 5)
     {
-        var start = Time.GetTicksMsec();
-        while (Time.GetTicksMsec() - start < timeout * 1000)
+        var timedOut = Deadline(timeout);
+        while (!timedOut())
         {
             var a = P.UniverseFraming.Metres;
             await Seconds(0.2);

@@ -1,5 +1,7 @@
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -20,7 +22,7 @@ public sealed class SkySynthDramaFactAttribute : FactAttribute
 /// that stands in for listening on headphones and laptop speakers (nobody here can listen). The same script renders the
 /// "before" set on the previous build and the "after" set on this one, so the two are comparable clip for clip.
 /// </summary>
-public partial class SkySynthTests
+public class SkySynthDramaTests(ITestOutputHelper output)
 {
     /// <summary>
     /// The samples (SKYSYNTH_DRAMA_DIR): a window of each arrangement's cycle where its drama is (the festival's drop and
@@ -43,8 +45,8 @@ public partial class SkySynthTests
             r.Flight(theme, character, 1);
             var downbeat = r.T + 60.0 / SkySynth.TempoFor(id);
             r.Walk(downbeat + toBar * Bar(id) + 1.0 - r.T);
-            SaveWindow(r, Path.Combine(dir, name), downbeat + fromBar * Bar(id) - 0.5, downbeat + toBar * Bar(id) + 1.0);
-            ReportBands(r, name, downbeat, Bar(id));
+            SaveWindow(output, r, Path.Combine(dir, name), downbeat + fromBar * Bar(id) - 0.5, downbeat + toBar * Bar(id) + 1.0);
+            ReportBands(output, r, name, downbeat, Bar(id));
         }
 
         Arrangement("festival-trails.wav", PlanetTheme.Library, Band(2), 4, 17);
@@ -54,8 +56,8 @@ public partial class SkySynthTests
         void Hazard(string name, MusicIdentity? score)
         {
             var (r, start, downbeat) = HazardRoute(score);
-            SaveWindow(r, Path.Combine(dir, name), start - 0.5, r.T);
-            ReportBands(r, name, downbeat, 16 * ThemeFramesPerSixteenth(score ?? MusicIdentity.Hazard) / Rate);
+            SaveWindow(output, r, Path.Combine(dir, name), start - 0.5, r.T);
+            ReportBands(output, r, name, downbeat, 16 * ThemeFramesPerSixteenth(score ?? MusicIdentity.Hazard) / Rate);
         }
 
         Hazard("hazard-arrival-surface-fall.wav", null);
@@ -66,7 +68,7 @@ public partial class SkySynthTests
             var s = SynthFor(2026, PlanetTheme.Vault, MusicIdentity.Hazard);
             var r = new Route(s);
             r.Until(SkySynth.CycleBars * 16 * ThemeFramesPerSixteenth(MusicIdentity.Hazard) / Rate + 1.5);
-            SaveWindow(r, Path.Combine(dir, "hazard-full-cycle.wav"), 0, r.T);
+            SaveWindow(output, r, Path.Combine(dir, "hazard-full-cycle.wav"), 0, r.T);
         }
     }
 
@@ -128,74 +130,6 @@ public partial class SkySynthTests
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
         output.WriteLine($"abyss render: {hash} ({(OperatingSystem.IsWindows() ? "Windows" : "Linux")})");
         hash.Should().Be(OperatingSystem.IsWindows() ? Ad52HazardSampleSha256Windows : Ad52HazardSampleSha256);
-    }
-
-    /// <summary>Saves the samples between two route times (seconds) and logs the clip's peak, loudness and events.</summary>
-    private void SaveWindow(Route r, string path, double from, double to)
-    {
-        var a = Math.Max(0, (int)(from * Rate)) * 2;
-        var b = Math.Min(r.Samples.Count, (int)(to * Rate) * 2);
-        var clip = r.Samples.GetRange(a, b - a);
-        WriteWav(path, clip, Rate);
-        var m = Measure([.. clip]);
-        output.WriteLine($"wrote {Path.GetFileName(path)}: {clip.Count / 2 / (double)Rate:0.0} s ({from:0.0}–{to:0.0} s of the route), peak {m.Peak:0.000}, {Lufs([.. clip]):0.0} LUFS, max jump {m.MaxJump:0.000}, music voices ≤ {r.MaxMusicVoices}; {string.Join(", ", r.Events)}");
-        m.Peak.Should().BeLessThan(1f);
-    }
-
-    /// <summary>
-    /// Per bar of the route after <paramref name="downbeat"/>: the sub (30–60 Hz), the low harmonics (100–300 Hz) and what a
-    /// laptop's small speakers can play (above 200 Hz) in dBFS RMS, and the loudness: the stand-in for listening on
-    /// headphones (everything) and ordinary speakers (no sub).
-    /// </summary>
-    private void ReportBands(Route r, string name, double downbeat, double bar)
-    {
-        var all = r.Samples.ToArray();
-        var sub = Band(all, 30, 60);
-        var harm = Band(all, 100, 300);
-        var small = Band(all, 200, 16000); // what a laptop's small speakers can play (≈ nothing below 200 Hz)
-        for (var k = 0; k < 17; k++)
-        {
-            var a = (int)((downbeat + k * bar) * Rate);
-            var b = (int)((downbeat + (k + 1) * bar) * Rate);
-            if (b > sub.Length) break;
-            var seg = all[(2 * a)..(2 * b)];
-            output.WriteLine($"{name} bar {k,2}: sub 30–60 Hz {Db(Rms(sub, a, b)):0.0} dBFS, harmonics 100–300 Hz {Db(Rms(harm, a, b)):0.0} dBFS, above 200 Hz {Db(Rms(small, a, b)):0.0} dBFS, {Lufs(seg):0.0} LUFS");
-        }
-    }
-
-    private static double Rms(double[] x, int a, int b)
-    {
-        double sum = 0;
-        for (var i = a; i < b; i++) sum += x[i] * x[i];
-        return Math.Sqrt(sum / Math.Max(1, b - a));
-    }
-
-    /// <summary>The mono sum of interleaved stereo, band-passed between two frequencies (fourth-order Butterworth each side).</summary>
-    private static double[] Band(float[] stereo, double lowHz, double highHz)
-    {
-        var x = new double[stereo.Length / 2];
-        for (var i = 0; i < x.Length; i++) x[i] = 0.5 * (stereo[2 * i] + stereo[2 * i + 1]);
-        foreach (var high in new[] { true, true, false, false })
-        {
-            var f = high ? lowHz : highHz;
-            var w = 2 * Math.PI * f / Rate;
-            var alpha = Math.Sin(w) / (2 * 0.7071);
-            var c = Math.Cos(w);
-            var a0 = 1 + alpha;
-            var (b0, b1, b2) = high ? ((1 + c) / 2, -(1 + c), (1 + c) / 2) : ((1 - c) / 2, 1 - c, (1 - c) / 2);
-            double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-            for (var i = 0; i < x.Length; i++)
-            {
-                var y = (b0 * x[i] + b1 * x1 + b2 * x2 - -2 * c * y1 - (1 - alpha) * y2) / a0;
-                x2 = x1;
-                x1 = x[i];
-                y2 = y1;
-                y1 = y;
-                x[i] = y;
-            }
-        }
-
-        return x;
     }
 
     // ---------------------------------------------------------------- the drama's shape and the cues' room through it (AD-60)
@@ -277,6 +211,7 @@ public partial class SkySynthTests
     /// The edge warning held at the edge (nearness 1) through a whole cycle of the hazard score: in every bar, quiet ones and
     /// the busiest (the climb, the build), it stands ≥ 4 dB over the music it ducks (AD-52's bound, kept by AD-60).
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(HazardScores))]
     public void The_edge_warning_stands_clear_in_every_bar_of_the_hazard_score(MusicIdentity id)
@@ -325,6 +260,7 @@ public partial class SkySynthTests
     };
 
     /// <summary>The fall and the return (the return lands in any world) still stand ≥ 4 dB clear at the loudest moments of the drama.</summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(DramaPeaks))]
     public void Fall_and_return_stand_clear_at_the_drama_s_peaks(MusicIdentity id, int bar)

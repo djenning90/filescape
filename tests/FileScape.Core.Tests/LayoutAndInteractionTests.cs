@@ -36,7 +36,7 @@ public class LayoutAndInteractionTests
                 {
                     var a = Flatten(layout.SubtreeBounds[subdirs[i]]);
                     var b = Flatten(layout.SubtreeBounds[subdirs[j]]);
-                    a.Overlaps(b, 1e-3f).Should().BeFalse($"subtrees {tree[subdirs[i]].Name} and {tree[subdirs[j]].Name} under {dir.Name} must not overlap");
+                    if (a.Overlaps(b, 1e-3f)) a.Overlaps(b, 1e-3f).Should().BeFalse($"subtrees {tree[subdirs[i]].Name} and {tree[subdirs[j]].Name} under {dir.Name} must not overlap"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
                 }
 
                 // A child subtree must not overlap its parent's own pedestal either.
@@ -91,7 +91,7 @@ public class LayoutAndInteractionTests
                 {
                     for (var j = i + 1; j < Math.Min(leaves.Count, i + 50); j++)
                     {
-                        leaves[i].Overlaps(leaves[j]).Should().BeFalse();
+                        if (leaves[i].Overlaps(leaves[j])) leaves[i].Overlaps(leaves[j]).Should().BeFalse(); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
                     }
                 }
             }
@@ -278,7 +278,7 @@ public class LayoutAndInteractionTests
         {
             for (var j = i + 1; j <= 300; j++)
             {
-                layout.NodeBoxes[i].Overlaps(layout.NodeBoxes[j]).Should().BeFalse();
+                if (layout.NodeBoxes[i].Overlaps(layout.NodeBoxes[j])) layout.NodeBoxes[i].Overlaps(layout.NodeBoxes[j]).Should().BeFalse(); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }

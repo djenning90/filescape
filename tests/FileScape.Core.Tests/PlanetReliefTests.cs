@@ -67,6 +67,7 @@ public class PlanetReliefTests(ITestOutputHelper output)
         static float Scale(PlanetComposition c) => 1f + 0.6f * Math.Clamp((c.Shape.Radius - 16f) / 18f, 0f, 1f);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Worlds))]
     public void Every_slope_is_within_the_walking_limit(string size, string name)
@@ -84,6 +85,7 @@ public class PlanetReliefTests(ITestOutputHelper output)
     /// ≈ 0.033 × radius (5 subdivisions above 15 m, PlanetArt.SubdivisionsFor): between vertices the flat triangle must
     /// stay within 2 cm of the walked ground, or feet would sink into or float over what is drawn.
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Worlds))]
     public void The_drawn_ground_is_the_walked_ground(string size, string name)

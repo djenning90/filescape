@@ -166,6 +166,7 @@ public sealed class WorldExplorerTests : IDisposable
         h.Tree.Count.Should().Be(before, "no duplicate sub-worlds were created");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [PosixFact]
     public void A_broken_link_says_so()
     {

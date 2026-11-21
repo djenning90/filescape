@@ -181,6 +181,7 @@ public sealed class OverviewAttentionTests
     }
 
     /// <summary>PLANET-101: reproduced first through the old calls (it failed on the base: "found 1", the first level only).</summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void After_exploring_wide_branches_every_selected_world_down_a_deep_spine_reveals_its_children()
     {
@@ -214,6 +215,7 @@ public sealed class OverviewAttentionTests
 
     /// <summary>PLANET-103, PLANET-107: three levels unfold below the selected world and its neighbourhood says it is
     /// complete, while far branches are left for later and said to be.</summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void A_deep_neighbourhood_unfolds_three_levels_and_is_complete_while_far_branches_wait()
     {
@@ -258,6 +260,7 @@ public sealed class OverviewAttentionTests
     /// refused); its system keeps its place and room, so its worlds do not move round it; nothing learned is forgotten,
     /// and returning lays it out again at once without listing anything again.
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Distant_detail_gives_way_in_place_and_returns_without_listing_again()
     {

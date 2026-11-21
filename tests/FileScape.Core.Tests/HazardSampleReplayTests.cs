@@ -129,6 +129,7 @@ public sealed class HazardSampleReplayTests(SampleSkyFixture sky, ITestOutputHel
         return new(false, false, takeOff, twirl, w.ApexTwirls - apex0, twirlAt);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(Leap.Apex)]
     [InlineData(Leap.Late)]
@@ -212,6 +213,7 @@ public sealed class HazardSampleReplayTests(SampleSkyFixture sky, ITestOutputHel
         return (w.Recoveries == 1 && w.Grounded && !shell.OverHole(w.Up), w.Recoveries, false);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(0.03f, true, "early")]
     [InlineData(0.2f, false, "mid-window")]
