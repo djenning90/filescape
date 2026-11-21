@@ -2072,3 +2072,31 @@ as FileScape while naming remains open.
 - **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
+
+## AD-93 One formatter for interface text; filesystem text is always literal (2026-11-20, seventh pass, stream T)
+- **Context:** DJ asked for coherent text everywhere (item 4). The interface had five separate BBCode escapes (the
+  inspector, the trip panel, the reader's error, MarkdownText, LessonText), Help as one 50-line BBCode string with keys in
+  bold, prompts as plain Labels ("E · …"), and the Learn to play card's caps as the only key caps. Two places showed
+  filesystem text as markup: the legacy inspector's file extension (`photo.[b]x`) and the trip panel's Backspace
+  destination. Help was 1100 units wide at every size, so at 1280×720 and UI 1.25 or 1.5 it ran off the window; the
+  telescope's key line was trimmed at every size.
+- **Decision:**
+  - *Interface text* is written in one tiny markup (`{Key}` cap, `*strong*`, `~quiet~`, `# heading`, `## sub`, `- bullet`,
+    `\` escape) and rendered by Core `UiText` in a `UiTextStyle` (Lesson 18 px, Panel 15, Prompt 21, Small 14). Colours
+    are shared: strong and headings warm gold `#ffd873`, caps lime `#bdf26b` on `#2e4720` (the beacon's), quiet `#8fa6c8`.
+    Documents (Markdown and plain files in the reader and the preview) keep MarkdownText's own reading palette.
+  - *Literal text* — names, paths, link targets, OS messages, file contents — enters markup only through `UiText.Lit`
+    and BBCode only through `UiText.Escape` (or MarkdownText for documents). Plain controls (Label, Button, Tree,
+    LineEdit, tooltips, Label3D) never parse markup and take names as they are.
+  - Probes and the state file read the plain form (`UiText.Plain`), so they did not change when the caps came in.
+  - Help's content is Core `HelpSheet`; panels and screen text fit the window through Core `PanelFit`.
+- **Audit (where filesystem text meets rich text):** the inspector body (`InspectorText`), the trip panel (`TripText`),
+  the reader (`MarkdownText`, `ReaderText`), the planets' preview (Markdown rendered; plain text with BBCode off), the
+  project card's README (`ProjectActions` → MarkdownText), the planets' prompt, second line and caption (names through
+  `PromptName` = Lit + middle shortening at 48 characters), Help's build line. Everything else that shows a name is a
+  plain control.
+- **Consequences:** a new surface that wants caps or emphasis uses UiText; a new place that puts a name into BBCode
+  must use Lit/Escape and gets a LiteralTextTests case. Stream K's Help edits (removing legacy shortcuts) now go into
+  `HelpSheet` rather than Hud.cs.
+- **Revisit when:** the UI moves to a theme resource (then the colours move there), or a surface needs links or
+  hover text in interface markup.
