@@ -98,6 +98,7 @@ public partial class PlanetsProbe
     private async Task StallsWalk(string segment, double seconds, double? limitMs)
     {
         var asked0 = P.PlayDiscoveryRequested;
+        var mainComposes0 = P.MainThreadNeighbourComposes;
         var swaps0 = P.RecomposeSwaps;
         var from = _stallFrames.Count;
         StallSegment(segment);
@@ -116,7 +117,15 @@ public partial class PlanetsProbe
         if (limitMs is not { } limit) return;
         var worst = frames.Count > 0 ? frames.Max(f => f.Ms) : 0;
         if (asked == 0) Log(F($"SKIP the stall budget ({limit:0} ms): discovery listed nothing during the walk (nothing left to list?), so the walk did not exercise it"));
-        else Check(worst < limit, F($"no frame over {limit:0} ms while walking {seconds:0} s during discovery ({asked} listings asked): longest {worst:0.0} ms"));
+        else
+        {
+            Check(worst < limit, F($"no frame over {limit:0} ms while walking {seconds:0} s during discovery ({asked} listings asked): longest {worst:0.0} ms"));
+            // The scheduling invariant behind it (AD-96), independent of the machine's speed: walking composes no world in
+            // the sky on the main thread (they are composed on a worker and swapped in by slices).
+            var mainComposes = P.MainThreadNeighbourComposes - mainComposes0;
+            var (jobs, composed, _, longest) = P.BackgroundComposes;
+            Check(mainComposes == 0, F($"no world in the sky composed on the main thread while walking ({mainComposes}); in the background so far: {composed} in {jobs} jobs, longest {longest:0} ms; {P.NeighbourSwaps} looks swapped in"));
+        }
     }
 
     /// <summary>Up to <paramref name="worlds"/> worlds in the sky: G to each (selected), stand 1.5 s, U back, stand 1.5 s.</summary>

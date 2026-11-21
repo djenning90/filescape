@@ -763,6 +763,9 @@ public partial class Main : Node3D
             return;
         }
 
+        // AD-96: while the planets compose on a worker, the tree is held still (FsTree.BeginBackgroundRead); the batches
+        // wait in the session's queue for the next frame (a job is a few folders, ≈ 0–200 ms).
+        if (_tree.BackgroundReaders > 0) return;
         var start = _clock.Elapsed;
         while (_clock.Elapsed - start < BatchBudget && _session.TryDequeue(out var batch))
         {

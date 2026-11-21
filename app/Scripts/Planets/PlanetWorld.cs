@@ -428,6 +428,7 @@ public partial class PlanetWorld : Node3D
         _inSample.Clear();
         _flownRoutes.Clear();
         _pendingRecompose = null;
+        ResetNeighbourhood(); // PlanetWorld.Neighbourhood (AD-96): kept compositions and queued work are for the old ids
         _phase = Phase.Walking;
         _transfer = null;
         _hop = null;
@@ -464,12 +465,23 @@ public partial class PlanetWorld : Node3D
         // Background discovery at work: recompose at most every RecomposeGapWhileDiscovering (see there).
         if (PlayDiscoveryEnabled && _discovery.State == OverviewDiscoveryState.Discovering && _lastRecomposeSwap is { } lastSwap && now - lastSwap < RecomposeGapWhileDiscovering) return;
         _lastSignatureCheck = now;
+        // AD-96: a world in the sky is composed again only when its look from outside changed, off the main thread, and
+        // swapped in by a slice (PlanetWorld.Neighbourhood); the others keep their bodies and visuals.
+        foreach (var id in Neighbourhood.Stale(tree, NeighboursShown())) RequestCompose(id);
         var sig = PlanetComposer.Signature(tree, _current.FolderId);
         if (sig == _signature) return;
-        // The new planet's ground is made on a worker; the swap happens when it is ready (no hitch while you walk).
         _signature = sig;
-        var comp = Compose(tree, _current.FolderId);
-        _pendingRecompose = (comp, GroundAsync(comp, full: true));
+        if (VariantOf(_current.FolderId).Length > 0)
+        {
+            // A probe's forced look: composed here, with it, as before AD-96.
+            var comp = Compose(tree, _current.FolderId);
+            _pendingRecompose = (comp, GroundAsync(comp, full: true));
+            return;
+        }
+
+        // The world you stand on is composed on a worker, ahead of anything else waiting; its ground too; the swap
+        // happens when both are ready (OnComposed, then ApplyPendingRecompose: no hitch while you walk).
+        RequestCompose(_current.FolderId, first: true);
     }
 
     /// <summary>A recomposition waiting for its ground mesh (made on a worker); swapped in by <see cref="ApplyPendingRecompose"/>.</summary>
@@ -480,6 +492,10 @@ public partial class PlanetWorld : Node3D
     {
         _signature = "";
         _lastSignatureCheck = TimeSpan.Zero;
+        // Kept compositions and cached looks were made under the old rule (the signatures do not see it): dropped.
+        ResetNeighbourhood();
+        foreach (var (_, v) in _visualCache) v.QueueFree();
+        _visualCache.Clear();
     }
 
     /// <summary>
@@ -544,18 +560,19 @@ public partial class PlanetWorld : Node3D
 
     private void BuildCurrentNow(FsTree tree, int folderId, int arriveFrom, Body? reuse, Body? keep, PlanetComposition? comp)
     {
-        comp ??= reuse?.Comp ?? Compose(tree, folderId);
+        comp ??= reuse?.Comp ?? CurrentComposition(tree, folderId);
         _pendingRecompose = null;
         _signature = comp.Signature; // what is shown (a body composed at launch may be older than the tree at landing)
-        var old = new List<Body>();
-        if (_current != null) old.Add(_current);
-        if (_parent != null) old.Add(_parent);
-        old.AddRange(_children.Values);
-        foreach (var b in old.Distinct())
+        // AD-96: the worlds already in the sky are offered to the new neighbourhood as they are (a recompose keeps all of
+        // them; a landing keeps the ones it shares); BuildNeighbours frees whatever it does not take.
+        var reusable = new Dictionary<int, Body>();
+        foreach (var b in _children.Values.Append(_parent).OfType<Body>())
         {
-            if (b != reuse && b != keep) FreeBody(b);
+            if (b != reuse && b != keep && b.FolderId != folderId) reusable.TryAdd(b.FolderId, b);
+            else if (b != reuse && b != keep) FreeBody(b);
         }
 
+        if (_current != null && _current != reuse && _current != keep && !reusable.ContainsValue(_current)) FreeBody(_current);
         _children.Clear();
         _parent = null;
         if (reuse is { Full: true })
@@ -572,7 +589,7 @@ public partial class PlanetWorld : Node3D
 
         _current.Node.Transform = Transform3D.Identity;
         var diagN = FrameDiag.Now;
-        BuildNeighbours(tree, keep);
+        BuildNeighbours(tree, keep, reusable);
         FrameDiag.Note(FormattableString.Invariant($"neighbours {_children.Count} {FrameDiag.Ms(diagN, FrameDiag.Now):0.0}ms"));
         UpdateRouteBeads();
         var character = CharacterOf(folderId);
@@ -593,8 +610,13 @@ public partial class PlanetWorld : Node3D
     /// <summary>Built planet visuals kept for a while after you leave (going back and forth reuses them; LRU, keyed by what they show).</summary>
     private readonly List<(string Key, PlanetVisual Visual)> _visualCache = [];
 
-    /// <summary>Detached visuals kept at most; the oldest is freed first (rationale for 10 not recorded).</summary>
-    private const int VisualCacheSize = 10;
+    /// <summary>
+    /// Detached visuals kept at most, by kind; the oldest of a kind is freed first (AD-96). Previews (worlds in the sky)
+    /// are small (a level-3 icosphere and an atmosphere shell): enough for two neighbourhoods of the Ubuntu root's size
+    /// (21 children and a parent), so going down and back up rebuilds none. Full worlds (objects, launchers, signs) are
+    /// large: the last few stood on. (Before AD-96: 10 of either kind, fewer than one root's sky.)
+    /// </summary>
+    private const int PreviewCacheSize = 48, FullCacheSize = 6;
 
     /// <summary>Main-thread time of the last visual build that was not a cache hit, milliseconds (probes, the build log).</summary>
     public double LastBuildMs { get; private set; }
@@ -603,12 +625,18 @@ public partial class PlanetWorld : Node3D
     private const int PreviewSubdivisions = 3;
 
     /// <summary>Prefetched ground meshes kept at most, oldest dropped first (a dropped one is simply made again when
-    /// needed; rationale for 40 not recorded).</summary>
-    private const int GroundTaskCacheSize = 40;
+    /// needed). Every world in the sky prefetches its full ground and its preview's (AD-96), so this covers two
+    /// neighbourhoods of the Ubuntu root's size (≈ 2 × 22 × 2), not one (40 before).</summary>
+    private const int GroundTaskCacheSize = 96;
 
     /// <summary>A visual's identity: the folder, what it shows (its signature), full or preview, and its character, so a
     /// cached visual is reused only if it would look exactly the same.</summary>
-    private string VisualKey(Body b, bool full) => $"{b.FolderId}:{b.Comp.Signature}:{(full ? 1 : 0)}:{CharacterOf(b.FolderId)}";
+    private string VisualKey(Body b, bool full) => VisualKeyOf(b.FolderId, b.Comp, full);
+
+    /// <summary>A preview is keyed by its look from outside (<see cref="PlanetComposition.PreviewSignature"/>, AD-96), a
+    /// full world by everything it shows.</summary>
+    private string VisualKeyOf(int folderId, PlanetComposition comp, bool full) =>
+        $"{folderId}:{(full ? comp.Signature : comp.PreviewSignature)}:{(full ? 1 : 0)}:{CharacterOf(folderId)}";
 
     /// <summary>The character of a folder's world (PLANET-27): what kind of place it is, from the tree and where you started.</summary>
     public WorldCharacter CharacterOf(int folderId) =>
@@ -629,26 +657,35 @@ public partial class PlanetWorld : Node3D
     /// A visual for <paramref name="body"/>: from the cache if one shows exactly this, else built now on the main thread
     /// (a full build waits for its ground mesh if the worker has not finished; the log says whether it waited).
     /// </summary>
-    private PlanetVisual TakeOrBuild(FsTree tree, Body body, bool full)
+    private PlanetVisual TakeOrBuild(FsTree tree, Body body, bool full) =>
+        TakeCachedVisual(body, full) ?? BuildVisual(tree, body.FolderId, body.Comp, full);
+
+    /// <summary>The cached visual that shows exactly this body, taken out of the cache, or null.</summary>
+    private PlanetVisual? TakeCachedVisual(Body body, bool full)
     {
         var key = VisualKey(body, full);
         var i = _visualCache.FindIndex(e => e.Key == key);
-        if (i >= 0)
-        {
-            var v = _visualCache[i].Visual;
-            _visualCache.RemoveAt(i);
-            return v;
-        }
+        if (i < 0) return null;
+        var v = _visualCache[i].Visual;
+        _visualCache.RemoveAt(i);
+        return v;
+    }
 
+    /// <summary>
+    /// Builds a visual on the main thread from ground made on a worker (<see cref="GroundAsync"/>; waited for if not ready:
+    /// the sliced callers wait for it first, AD-96). Previews used to make their ground right here (≈ 6–9 ms each).
+    /// </summary>
+    private PlanetVisual BuildVisual(FsTree tree, int folderId, PlanetComposition comp, bool full)
+    {
+        var key = VisualKeyOf(folderId, comp, full);
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        // A preview's ground is small (subdivision 3): made right here rather than queued behind full-size prefetches.
-        var ground = full ? GroundAsync(body.Comp, full) : null;
-        var waited = ground == null ? "inline" : ground.IsCompleted ? "ready" : "waited";
-        var arrays = ground?.Result ?? PlanetArt.PlanetMeshArrays(body.Comp.Shape, PlanetArt.Palette(body.Comp.Theme),
-            body.Comp.Surface.Shell != null ? PlanetArt.HazardPreviewSubdivisions : PreviewSubdivisions, body.Comp.Surface.Shell);
-        var built = new PlanetVisual(tree, body.Comp, _quality, full, arrays, CharacterOf(body.FolderId)) { Name = key, CacheKey = key };
+        var ground = GroundAsync(comp, full);
+        var waited = ground.IsCompleted ? "ready" : "waited";
+        var arrays = ground.Result;
+        var built = new PlanetVisual(tree, comp, _quality, full, arrays, CharacterOf(folderId)) { Name = key, CacheKey = key };
         LastBuildMs = sw.Elapsed.TotalMilliseconds;
-        if (full) GD.Print($"[planets] built {tree.DisplayName(body.FolderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes}){(built.HazardStats.Length > 0 ? $"; Hazard World ground {arrays.Indices.Length / 3} triangles, {built.HazardStats}" : "")}");
+        FrameDiag.Note(FormattableString.Invariant($"visual #{folderId} {(full ? "full" : "preview")} {LastBuildMs:0.0}ms ground {waited}"));
+        if (full) GD.Print($"[planets] built {tree.DisplayName(folderId)} in full: {LastBuildMs:0.0} ms on the main thread (ground {waited}; {built.BuildTimes}){(built.HazardStats.Length > 0 ? $"; Hazard World ground {arrays.Indices.Length / 3} triangles, {built.HazardStats}" : "")}");
         return built;
     }
 
@@ -662,7 +699,9 @@ public partial class PlanetWorld : Node3D
     /// </summary>
     private Task<PlanetArt.GroundArrays> GroundAsync(PlanetComposition comp, bool full)
     {
-        var key = $"{comp.FolderId}:{comp.Signature}:{(full ? 1 : 0)}";
+        // A preview's ground depends only on its look from outside (AD-96): keyed by that, it is reused across listings
+        // that only changed the parent.
+        var key = $"{comp.FolderId}:{(full ? comp.Signature : comp.PreviewSignature)}:{(full ? 1 : 0)}";
         if (_groundTasks.TryGetValue(key, out var task)) return task;
         var shape = comp.Shape;
         var palette = PlanetArt.Palette(comp.Theme);
@@ -701,14 +740,22 @@ public partial class PlanetWorld : Node3D
     {
         if (b.Visual == null || !GodotObject.IsInstanceValid(b.Visual)) return;
         b.Visual.GetParent()?.RemoveChild(b.Visual);
-        _visualCache.Add((b.Visual.CacheKey.Length > 0 ? b.Visual.CacheKey : VisualKey(b, b.Full), b.Visual));
-        while (_visualCache.Count > VisualCacheSize)
-        {
-            _visualCache[0].Visual.QueueFree();
-            _visualCache.RemoveAt(0);
-        }
-
+        CacheVisual(b.Visual.CacheKey.Length > 0 ? b.Visual.CacheKey : VisualKey(b, b.Full), b.Visual);
         b.Visual = null;
+    }
+
+    /// <summary>Keeps a detached visual for reuse, freeing the oldest of its kind beyond <see cref="PreviewCacheSize"/> / <see cref="FullCacheSize"/>.</summary>
+    private void CacheVisual(string key, PlanetVisual visual)
+    {
+        _visualCache.Add((key, visual));
+        var full = visual.IsFull;
+        var limit = full ? FullCacheSize : PreviewCacheSize;
+        while (_visualCache.Count(e => e.Visual.IsFull == full) > limit)
+        {
+            var oldest = _visualCache.FindIndex(e => e.Visual.IsFull == full);
+            _visualCache[oldest].Visual.QueueFree();
+            _visualCache.RemoveAt(oldest);
+        }
     }
 
     /// <summary>Removes a body from the scene; its visual goes to the cache first.</summary>
@@ -745,31 +792,27 @@ public partial class PlanetWorld : Node3D
     private void Prepare(int targetId)
     {
         if (_s.Tree is not { } tree) return;
+        PrefetchNeighbourhood(tree, targetId); // AD-96: its sky composed in the background before you land
         if (_children.TryGetValue(targetId, out var b) && !b.Full) BuildFull(tree, b);
         else if (_parent != null && _parent.FolderId == targetId && !_parent.Full) BuildFull(tree, _parent);
     }
 
-    /// <summary>Children as previews at their sky placements; the parent at the inverse of this planet's placement in it.</summary>
-    private void BuildNeighbours(FsTree tree, Body? keep)
+    /// <summary>
+    /// Children as previews at their sky placements; the parent at the inverse of this planet's placement in it. A world
+    /// in <paramref name="reusable"/> (already in the sky) is kept as it is and only placed again; a new one takes its
+    /// kept composition and cached look, or has them made in the background and built in a slice (AD-96,
+    /// PlanetWorld.Neighbourhood); whatever of <paramref name="reusable"/> is not a neighbour any more is freed.
+    /// </summary>
+    private void BuildNeighbours(FsTree tree, Body? keep, Dictionary<int, Body> reusable)
     {
         if (_current == null) return;
         foreach (var sky in _current.Comp.SkyBodies)
         {
             if (sky.InBelt || sky.IsParent || sky.TargetId < 0 || !tree.Contains(sky.TargetId)) continue;
             if (!tree[sky.TargetId].IsDirectory) continue;
-            Body body;
-            if (keep != null && keep.FolderId == sky.TargetId)
-            {
-                body = keep; // the planet you came up from, still in full detail, where it already is
-            }
-            else
-            {
-                body = new Body { FolderId = sky.TargetId, Comp = Compose(tree, sky.TargetId), Node = new Node3D { Name = $"Child-{sky.TargetId}" } };
-                AddChild(body.Node);
-                GroundAsync(body.Comp, full: true); // prefetched: ready by the time you stand on its launcher
-                BuildPreview(tree, body);
-            }
-
+            var body = keep != null && keep.FolderId == sky.TargetId ? keep // the planet you came up from, still in full detail, where it already is
+                : reusable.Remove(sky.TargetId, out var shown) ? shown
+                : NewNeighbour(tree, sky.TargetId, $"Child-{sky.TargetId}");
             body.Node.Transform = ChildPlacement(_current.Comp, sky, body.Comp);
             _children[sky.TargetId] = body;
         }
@@ -777,27 +820,15 @@ public partial class PlanetWorld : Node3D
         var parentId = tree[_current.FolderId].ParentId;
         if (parentId >= 0 && tree.Contains(parentId) && tree[parentId].IsDirectory)
         {
-            Body body;
-            if (keep != null && keep.FolderId == parentId)
-            {
-                body = keep; // the planet you came down from, in full detail
-            }
-            else
-            {
-                body = new Body { FolderId = parentId, Comp = Compose(tree, parentId), Node = new Node3D { Name = $"Parent-{parentId}" } };
-                AddChild(body.Node);
-                GroundAsync(body.Comp, full: true);
-                BuildPreview(tree, body);
-            }
-
-            var pcomp = body.Comp;
-            var mine = pcomp.SkyBodies.FirstOrDefault(k => k.TargetId == _current.FolderId && !k.InBelt);
-            body.Node.Transform = mine != null
-                ? ChildPlacement(pcomp, mine, _current.Comp).AffineInverse()
-                : DefaultParentPlacement(_current.Comp, pcomp);
-            _parent = body;
+            _parent = keep != null && keep.FolderId == parentId ? keep // the planet you came down from, in full detail
+                : reusable.Remove(parentId, out var shown) ? shown
+                : NewNeighbour(tree, parentId, $"Parent-{parentId}");
+            _parent.Node.Transform = PlacementOf(_parent);
         }
 
+        foreach (var gone in reusable.Values) FreeBody(gone);
+        // Kept worlds whose look changed since they were made: composed again in the background, swapped in by a slice.
+        foreach (var id in Neighbourhood.Stale(tree, NeighboursShown())) RequestCompose(id);
         BuildDistantWorlds(tree, parentId);
     }
 
