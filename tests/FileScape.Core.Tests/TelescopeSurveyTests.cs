@@ -103,4 +103,62 @@ public class TelescopeSurveyTests
         TelescopeSurvey.DetailText(At(1, "Music", 0, folders: 0, files: 0)).Should().Be("empty");
         TelescopeSurvey.DetailText(At(1, "Music", 0, folders: 0, files: 0, listed: false)).Should().Be("not listed yet: going there lists it");
     }
+
+    // ---- seventh pass, stream S8 (PLANET-188..190, AD-98)
+
+    [Fact]
+    public void A_sparse_sky_says_what_the_keys_can_do_one_world_none_or_two()
+    {
+        var none = TelescopeSurvey.Plan([], Eye, Up, Pointing);
+        none.CanStep.Should().BeFalse();
+        none.Step(1).Should().BeFalse("nothing to step to");
+        none.Counter.Should().BeEmpty();
+        none.Click(5, doubleClick: true, firstClickAimed: false).Should().Be(TelescopeClick.None, "an empty sky has nothing to travel to");
+        TelescopeSurvey.KeysMarkup(0).Should().NotContain("{←}").And.NotContain("fly there").And.Contain("{Esc} step back");
+
+        var one = TelescopeSurvey.Plan([At(3, "Up", 170, SurveyRelation.Parent)], Eye, Up, Pointing);
+        one.CanStep.Should().BeFalse();
+        one.Step(1).Should().BeFalse("← → with one world: no step, no re-aim, no sound");
+        one.Step(-1).Should().BeFalse();
+        one.Current!.World.NodeId.Should().Be(3, "and the view stays on it");
+        one.Counter.Should().Be(TelescopeSurvey.OnlyWorldText, "not \"1 of 1\", which reads as if ← → should do something");
+        TelescopeSurvey.KeysMarkup(1).Should().NotContain("{←}").And.Contain("{Enter} or double-click: fly there");
+
+        var two = TelescopeSurvey.Plan([At(1, "A", -20), At(2, "B", 30)], Eye, Up, Pointing);
+        two.CanStep.Should().BeTrue();
+        two.Current!.World.NodeId.Should().Be(1);
+        two.Step(1).Should().BeTrue();
+        two.Current!.World.NodeId.Should().Be(2);
+        two.Step(1).Should().BeTrue();
+        two.Current!.World.NodeId.Should().Be(1, "two worlds: → wraps back to the first");
+        two.Counter.Should().Be("1 of 2");
+        TelescopeSurvey.KeysMarkup(2).Should().StartWith("{←} {→} the next world");
+    }
+
+    [Fact]
+    public void A_double_click_on_the_framed_world_travels_and_a_click_on_another_aims()
+    {
+        var s = TelescopeSurvey.Plan([At(1, "A", -20), At(2, "B", 30)], Eye, Up, Pointing);
+        s.Click(1, doubleClick: false, firstClickAimed: false).Should().Be(TelescopeClick.None, "a click on the framed world changes nothing");
+        s.Click(1, doubleClick: true, firstClickAimed: false).Should().Be(TelescopeClick.Travel, "a deliberate double-click on the world you look at flies there");
+        s.Click(2, doubleClick: false, firstClickAimed: false).Should().Be(TelescopeClick.Aim);
+        s.Current!.World.NodeId.Should().Be(2, "the click aimed it");
+        s.Click(2, doubleClick: true, firstClickAimed: true).Should().Be(TelescopeClick.None,
+            "the double-click's first click swung the view to it: the second only finishes the aim, it never travels to a world not yet framed");
+        s.Click(99, doubleClick: true, firstClickAimed: false).Should().Be(TelescopeClick.None, "a world not in the survey");
+        s.Click(-1, doubleClick: true, firstClickAimed: false).Should().Be(TelescopeClick.None, "empty sky");
+        s.Current!.World.NodeId.Should().Be(2);
+    }
+
+    [Fact]
+    public void Stepping_back_gives_back_the_selection_from_before_and_only_travel_or_the_overview_keep_the_framed_world()
+    {
+        // 2026-11-21 (desktop owner): after the view closed the last framed folder stayed selected, and Enter then opened it with Windows.
+        TelescopeSurvey.SelectionAfter(TelescopeExit.StepBack, before: 7, framed: 12).Should().Be(7);
+        TelescopeSurvey.SelectionAfter(TelescopeExit.StepBack, before: -1, framed: 12).Should().Be(-1, "nothing was selected before: nothing is after");
+        TelescopeSurvey.SelectionAfter(TelescopeExit.Interrupted, before: 7, framed: 12).Should().Be(7);
+        TelescopeSurvey.SelectionAfter(TelescopeExit.Travel, before: 7, framed: 12).Should().Be(12, "Enter or a double-click goes on to it");
+        TelescopeSurvey.SelectionAfter(TelescopeExit.Overview, before: 7, framed: 12).Should().Be(12, "T opens the overview with it chosen");
+        TelescopeSurvey.SelectionAfter(TelescopeExit.Overview, before: 7, framed: -1).Should().Be(7, "an empty sky framed nothing");
+    }
 }

@@ -50,6 +50,35 @@ public sealed record SurveyCandidate(int NodeId, string Name, SurveyRelation Rel
     }
 }
 
+/// <summary>What a click at the eyepiece does (<see cref="TelescopeSurvey.Click"/>).</summary>
+public enum TelescopeClick
+{
+    /// <summary>Nothing: no world there, or a single click on the world already framed.</summary>
+    None,
+
+    /// <summary>The view swings to the clicked world (it is framed now).</summary>
+    Aim,
+
+    /// <summary>A deliberate double-click on the framed world: fly there (the same departure as Enter).</summary>
+    Travel,
+}
+
+/// <summary>How the telescope's view closed, for <see cref="TelescopeSurvey.SelectionAfter"/>.</summary>
+public enum TelescopeExit
+{
+    /// <summary>Esc, E, J or a command that steps back first: you are back where you stood.</summary>
+    StepBack,
+
+    /// <summary>Enter or a double-click: the departure for the framed world.</summary>
+    Travel,
+
+    /// <summary>T: the overview, opened with the framed world chosen.</summary>
+    Overview,
+
+    /// <summary>Closed from outside (a navigation made elsewhere, the telescope gone): as a step back.</summary>
+    Interrupted,
+}
+
 /// <summary>A framed world: the candidate and where it is seen from the eyepiece (bearing + right of where the telescope points, elevation above the horizon, degrees; distance, metres).</summary>
 public sealed record SurveyTarget(SurveyCandidate World, float BearingDegrees, float ElevationDegrees, float DistanceMetres);
 
@@ -100,8 +129,17 @@ public sealed class TelescopeSurvey
     /// <summary>Moons of the ring left out of the survey (<see cref="MaxRingMoons"/>).</summary>
     public int OmittedMoons { get; }
 
-    /// <summary>"2 of 5": where the framed world is in the sweep.</summary>
-    public string Counter => IsEmpty ? "" : $"{Index + 1} of {_targets.Count}";
+    /// <summary>
+    /// "2 of 5": where the framed world is in the sweep; with one world, that it is the only one (PLANET-189: "1 of 1"
+    /// read as if ← → should do something); with none, nothing.
+    /// </summary>
+    public string Counter => IsEmpty ? "" : _targets.Count == 1 ? OnlyWorldText : $"{Index + 1} of {_targets.Count}";
+
+    /// <summary>The counter when the sky holds one world to frame.</summary>
+    public const string OnlyWorldText = "the only world in view";
+
+    /// <summary>← → have somewhere to go: more than one world is framed (PLANET-189).</summary>
+    public bool CanStep => _targets.Count > 1;
 
     /// <summary>
     /// Plans the survey from <paramref name="eye"/> (the eyepiece), the local <paramref name="up"/> and the direction the
@@ -168,12 +206,50 @@ public sealed class TelescopeSurvey
 
     private static Vector3 Perpendicular(Vector3 v) => Vector3.Normalize(MathF.Abs(v.X) < 0.9f ? Vector3.Cross(v, Vector3.UnitX) : Vector3.Cross(v, Vector3.UnitY));
 
-    /// <summary>Frames the next world to the right (+1) or left (−1), wrapping round the sweep.</summary>
-    public void Step(int direction)
+    /// <summary>
+    /// Frames the next world to the right (+1) or left (−1), wrapping round the sweep. False, and no change, when there is
+    /// nowhere to step (no world, or one: PLANET-189), so the app neither re-aims nor plays the step's sound.
+    /// </summary>
+    public bool Step(int direction)
     {
-        if (IsEmpty) return;
+        if (!CanStep || direction == 0) return false;
         Index = ((Index + Math.Sign(direction)) % _targets.Count + _targets.Count) % _targets.Count;
+        return true;
     }
+
+    /// <summary>
+    /// What a click on <paramref name="hitId"/> (−1: no world under the pointer) does at the eyepiece (PLANET-188, AD-98):
+    /// a click on another world of the survey aims at it (and frames it now); a double-click on the world already framed
+    /// travels there, as Enter does. A double-click whose first click aimed the view (<paramref name="firstClickAimed"/>)
+    /// only aims: travel is for the world you have been looking at, never for one the view has not swung to yet.
+    /// </summary>
+    public TelescopeClick Click(int hitId, bool doubleClick, bool firstClickAimed)
+    {
+        if (hitId < 0 || Current is not { } framed) return TelescopeClick.None;
+        if (framed.World.NodeId == hitId) return doubleClick && !firstClickAimed ? TelescopeClick.Travel : TelescopeClick.None;
+        return Aim(hitId) ? TelescopeClick.Aim : TelescopeClick.None;
+    }
+
+    /// <summary>
+    /// The shared selection once the view closes (PLANET-190, AD-98). Framing a world selects it, so the card names what
+    /// the lens shows; but stepping back must not leave a far world selected for a later key to act on (2026-11-21: after
+    /// the view closed, Enter opened the last framed folder with Windows). Going on to that world (Enter, a double-click)
+    /// or to the overview (T, which opens with it chosen) keeps the framed world; every other way out (Esc, E, J, a
+    /// command that steps back first, anything that closes the view from outside) gives back the selection from before.
+    /// </summary>
+    public static int SelectionAfter(TelescopeExit exit, int before, int framed) =>
+        exit is TelescopeExit.Travel or TelescopeExit.Overview && framed >= 0 ? framed : before;
+
+    /// <summary>
+    /// The key line under the view for a sky of <paramref name="count"/> framed worlds (markup, <c>UiText</c>): ← → only
+    /// when there is another world to swing to; zoom, look and travel only when there is a world to look at (PLANET-189).
+    /// </summary>
+    public static string KeysMarkup(int count) => count switch
+    {
+        0 => "{T} the whole overview   ·   {J} the list   ·   {Esc} step back",
+        1 => "{W} {S} or wheel: zoom   ·   drag: look   ·   {Enter} or double-click: fly there   ·   {T} the whole overview   ·   {J} the list   ·   {Esc} step back",
+        _ => "{←} {→} the next world   ·   {W} {S} or wheel: zoom   ·   drag: look   ·   {Enter} or double-click: fly there   ·   {T} the whole overview   ·   {J} the list   ·   {Esc} step back",
+    };
 
     /// <summary>Frames the world <paramref name="nodeId"/> (a click on it); false, and no change, when it is not in the survey.</summary>
     public bool Aim(int nodeId)

@@ -402,6 +402,47 @@ public partial class PlanetWorld
     /// <summary>The overview's growth glide is settled (no world moving).</summary>
     public bool UniverseSettled => _uniGrowT >= UniverseGrowSeconds;
 
+    private int _censusVersion = -1;
+    private DiscoveryCensus _census, _censusHere;
+
+    /// <summary>
+    /// The tree's folders by state, everywhere and within where you stand (its own folders, one level down: the local
+    /// neighbourhood), recounted when the tree changes (PLANET-195; probes).
+    /// </summary>
+    public (DiscoveryCensus All, DiscoveryCensus Here) Census
+    {
+        get
+        {
+            if (_s.Tree is not { } tree) return default;
+            if (tree.Version != _censusVersion || _current?.FolderId is not { } here || _censusHereFolder != here)
+            {
+                var folder = _current?.FolderId ?? -1;
+                _census = OverviewDiscovery.Census(tree);
+                _censusHere = OverviewDiscovery.Census(tree, n => n.ParentId == folder);
+                _censusVersion = tree.Version;
+                _censusHereFolder = folder;
+            }
+
+            return (_census, _censusHere);
+        }
+    }
+
+    private int _censusHereFolder = -1;
+
+    /// <summary>
+    /// The census part of the probe state file, written whether or not the overview is open (PLANET-195: the desktop
+    /// owner found no discovery counts before it opened): the tree's folders by state, the local neighbourhood's, play
+    /// discovery's requests and the scheduler's counts, and the overview's drawn worlds and zoom when it is open. Counts
+    /// only, never names.
+    /// </summary>
+    private string CensusStateJson()
+    {
+        var (all, here) = Census;
+        var open = _universe != null;
+        return System.FormattableString.Invariant(
+            $"\"census\":{{\"tree\":{all.Json},\"here\":{here.Json},\"playRequested\":{PlayDiscoveryRequested},\"requested\":{_discovery.Requested},\"listed\":{_discovery.Listed},\"failed\":{_discovery.Failed},\"timedOut\":{_discovery.TimedOut},\"refused\":{_discovery.Refused},\"inFlight\":{_discovery.InFlight},\"state\":\"{_discovery.State}\",\"overviewOpen\":{(open ? "true" : "false")},\"drawn\":{(open ? _uniBodies.Count : 0)},\"zoom\":{(open ? _uniDistanceTarget : 0):0.#},\"maxZoom\":{(open ? UniverseMaxZoomMetres() : 0):0.#},\"extent\":{(open ? _uniExtent : 0):0.#}}},");
+    }
+
     /// <summary>The discovery part of the probe state file (PLANET-76; counts only, never names).</summary>
     private string DiscoveryStateJson()
     {

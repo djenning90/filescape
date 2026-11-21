@@ -38,6 +38,7 @@ public partial class PlanetsProbe
         var root = App.Navigator.Current;
         Check(Tree.DisplayName(root) == "Starter Sky", $"in the Starter Sky (started on {startedOn}; path {Tree.FullPath(root)})");
         await OverviewOpenAndLook($"from {(sample ? "a launch into the sample" : startedOn)}");
+        await OverviewNamesAndReach(root);
 
         // Land on a drawn world, come back through history.
         // Only a world inside the sample: an ancestor (the folders above it on this PC) is never landed on by a probe.
@@ -92,6 +93,52 @@ public partial class PlanetsProbe
             await Until(() => !P.UniverseOpen && !P.Busy, 10);
             await Click(App.LessonButtonRect("leave").GetCenter());
         }
+    }
+
+    /// <summary>
+    /// Seventh pass (PLANET-192..194) in the open overview: the names are placed round their worlds without faults (no
+    /// overlaps, no crossing leaders, none under a name), at most <see cref="Ui.SignLayer.MaxAroundLabels"/>, the selection
+    /// and where you stand among them; a click on a name focuses the world it names and a double-click on one never lands;
+    /// the wheel zooms out to the derived reach (<see cref="Planets.PlanetWorld.UniverseMaxZoomMetres"/>, never under 6 km).
+    /// Ends with where you stand selected again and the camera back in.
+    /// </summary>
+    private async Task OverviewNamesAndReach(int root)
+    {
+        await Frames(4);
+        var placed = App.Signs.AroundPlaced;
+        var faults = Core.Interaction.LabelPlacement.Faults(placed);
+        Log($"  names: {placed.Count} placed of {App.Signs.InView} asked in view; overlaps {faults.Overlaps}, crossing leaders {faults.Crossings}, leaders under a name {faults.UnderLabels}");
+        Check(faults == (0, 0, 0) && placed.Count <= Ui.SignLayer.MaxAroundLabels, $"the overview's names do not overlap and no leader crosses another or runs under a name ({placed.Count} names)");
+        Check(App.Signs.ShownIds.Contains(P.UniverseSelected), $"the selected world ({Tree.DisplayName(P.UniverseSelected)}) is named first");
+        await Shot("overview-names");
+        var other = placed.Where(p => p.Id != P.UniverseSelected && Tree.Contains(p.Id)).Select(p => p.Id).FirstOrDefault(-1);
+        if (other >= 0 && App.Signs.ShownRectById.TryGetValue(other, out var rect))
+        {
+            var focuses = P.UniverseLabelFocuses;
+            await Click(rect.GetCenter());
+            await Frames(10);
+            Check(P.UniverseSelected == other && P.UniverseLabelFocuses == focuses + 1 && P.UniverseOpen, $"a click on the name {Tree.DisplayName(other)} focuses that world (not one under the name)");
+            await Seconds(1.2);
+            if (App.Signs.ShownRectById.TryGetValue(other, out var again))
+            {
+                await DoubleClickAt(again.GetCenter());
+                await Frames(10);
+                Check(P.UniverseOpen && !P.Busy && P.UniverseSelected == other && P.UniverseLabelFocuses >= focuses + 2, "a double-click on its name focuses it and stays in the overview (landing is Enter or a double-click on the world)");
+            }
+        }
+        else Log("(no second name to click in this view)");
+
+        // The wheel's reach (PLANET-192): out until it stops.
+        var max = P.UniverseMaxZoomMetres();
+        var centre = P.GetViewport().GetVisibleRect().Size / 2;
+        await WheelAt(centre, down: true, 60);
+        await Seconds(1.5);
+        var reached = P.UniverseZoom.Target;
+        Log(F($"  the wheel's reach: {reached:0} m (limit {max:0} m; the universe is {P.UniverseExtentMetres:0} m from its root)"));
+        Check(reached >= max * 0.98f && max >= Core.Planets.OverviewFraming.FloorMetres, F($"the wheel zooms out to the derived reach ({reached:0} of {max:0} m, never under 6 km)"));
+        await Shot("overview-reach");
+        P.SelectInUniverse(App.Navigator.Current); // [direct] where you stand chosen again, the camera back in (as a click on it)
+        await Seconds(1.5);
     }
 
     /// <summary>T, a moment for the pull-back, then what is drawn: a count, sizes, a screenshot.</summary>

@@ -196,6 +196,9 @@ public partial class PlanetWorld
         else OrbitCamera(screenPixels);
     }
 
+    /// <summary>Clicks on an overview name that focused its world (probes, PLANET-194).</summary>
+    public int UniverseLabelFocuses { get; private set; }
+
     /// <summary>A left click released without a drag: select what is under it; a double-click goes to a folder or opens a
     /// file (the rule is in PlanetWorld.Actions). Each click's resolution is traced.</summary>
     private void Click(Vector2 at, bool doubleClick)
@@ -212,6 +215,17 @@ public partial class PlanetWorld
 
         if (_universe != null)
         {
+            // PLANET-194 (AD-98): a name acts on the world it names, not on whatever world lies under it. A click or a
+            // double-click on a name focuses its world (selects it and frames its system); landing stays Enter, or a
+            // double-click on the world itself, so a name is never a way to leave by accident.
+            if (SignTarget(at) is { } nameOf && _uniIndex.ContainsKey(nameOf))
+            {
+                SelectInUniverse(nameOf);
+                UniverseLabelFocuses++;
+                TraceClick($"{(doubleClick ? "double" : "single")} at ({at.X:0},{at.Y:0}): the overview's name of #{nameOf} → focus it");
+                return;
+            }
+
             var uid = PickUniverse(at);
             if (uid < 0) return;
             SelectInUniverse(uid);
@@ -820,7 +834,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(PromptText)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{MusicStateJson()}{DepartureStateJson()}{GalleryStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(PromptText)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{CensusStateJson()}{MusicStateJson()}{DepartureStateJson()}{GalleryStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 
