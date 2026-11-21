@@ -24,4 +24,13 @@ public static class PanelFit
     /// <summary>Both extents (see <see cref="Width"/>).</summary>
     public static (float Width, float Height) Size(float designedWidth, float designedHeight, float viewportWidth, float viewportHeight, float margin) =>
         (Width(designedWidth, viewportWidth, margin), Width(designedHeight, viewportHeight, margin));
+
+    /// <summary>
+    /// The gap to leave under a panel anchored <paramref name="top"/> units from the top and stretched down: the designed
+    /// gap where the panel still gets <paramref name="minHeight"/>, less in a short window (down to the margin), so the
+    /// panel's content fits instead of running off the bottom (the planets' preview at 1280 × 720, UI 1.5: 480 units tall,
+    /// its content ran to 551; integration of the seventh pass).
+    /// </summary>
+    public static float BottomGap(float top, float designedGap, float minHeight, float viewportHeight, float margin) =>
+        Math.Clamp(viewportHeight - top - minHeight, margin, Math.Max(margin, designedGap));
 }

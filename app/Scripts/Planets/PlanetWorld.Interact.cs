@@ -440,6 +440,18 @@ public partial class PlanetWorld
     /// over what is merely close.</summary>
     private const float FocusAheadBonusMetres = 0.8f;
 
+    /// <summary>The object you last looked at closer (−1: none) and where you stood then: it stays the focus (PLANET-198,
+    /// Core <see cref="ObjectFocus"/>) until you walk <see cref="HeldFocusWalkMetres"/> or its preview closes or moves on.</summary>
+    private int _heldFocusNode = -1;
+    private NVector3 _heldFocusFeet;
+
+    /// <summary>The objects in reach this frame (reused: the focus runs every frame).</summary>
+    private readonly List<FocusCandidate> _focusCandidates = [];
+
+    /// <summary>Walking this far from where you looked closer lets the focus go back to the nearest, metres (a step; a
+    /// gallery's browse-by-walking moves on within it).</summary>
+    private const float HeldFocusWalkMetres = 0.5f;
+
     /// <summary>
     /// Every frame on a planet: what is in focus and what the prompt says. The pad you stand on wins; otherwise the best
     /// object in reach (nearest, favouring what is ahead; something behind you only when within 1 m); otherwise the
@@ -463,22 +475,27 @@ public partial class PlanetWorld
         UpdateSceneryCue(); // PLANET-75: the nearest answering piece of scenery shimmers (PlanetWorld.Whimsy.cs)
         if (_focusLauncher == null)
         {
-            var best = FocusReachMetres;
             var r = _current.Comp.Shape.Radius;
-            foreach (var it in _current.Comp.Items)
+            var items = _current.Comp.Items;
+            // PLANET-198: what you just looked at closer stays the focus until you walk on or the preview moves on.
+            if (_heldFocusNode >= 0 && (NVector3.Distance(_walker.Feet, _heldFocusFeet) > HeldFocusWalkMetres || !_previewPanel.Visible || _previewShownId != _heldFocusNode))
+                _heldFocusNode = -1;
+            var candidates = _focusCandidates;
+            candidates.Clear();
+            var held = -1;
+            for (var i = 0; i < items.Count; i++)
             {
+                var it = items[i];
                 var dist = PlanetShape.Angle(_walker.Up, it.Direction) * r - 0.3f * it.Scale;
-                if (dist > best) continue;
+                if (dist > FocusReachMetres) continue;
                 var to = it.Direction - _walker.Up * NVector3.Dot(it.Direction, _walker.Up);
                 var ahead = to.LengthSquared() > 1e-6f ? NVector3.Dot(NVector3.Normalize(to), _walker.Facing) : 1;
-                var score = dist - ahead * FocusAheadBonusMetres;
-                if (ahead < -0.2f && dist > 1.0f) continue; // behind you (over ≈ 102° from your facing) and over 1 m away
-                if (score < best)
-                {
-                    best = score;
-                    _focusItem = it;
-                }
+                candidates.Add(new FocusCandidate(i, dist, ahead));
+                if (_heldFocusNode >= 0 && it.NodeId == _heldFocusNode) held = i;
             }
+
+            var pick = ObjectFocus.Best(candidates, FocusReachMetres, FocusAheadBonusMetres, held); // Core: nearest, favouring ahead
+            if (pick >= 0) _focusItem = items[pick];
 
             if (_focusItem == null && (OnOverlook || StandingOnBench())) _focusTelescope = true;
         }
@@ -618,6 +635,8 @@ public partial class PlanetWorld
         {
             var to = item.Direction - _walker.Up * NVector3.Dot(item.Direction, _walker.Up);
             if (to.LengthSquared() > 1e-6f) _walker.Teleport(_current.Comp.Surface, _walker.Up, NVector3.Normalize(to));
+            _heldFocusNode = id; // PLANET-198: the prompt names what the preview shows until you walk on
+            _heldFocusFeet = _walker.Feet;
         }
     }
 

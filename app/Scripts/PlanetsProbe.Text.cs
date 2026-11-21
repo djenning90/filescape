@@ -76,7 +76,7 @@ public partial class PlanetsProbe
 
         // The prompt by a file whose name looks like markup, and its plain-text preview.
         P.Approach(plain); // [direct] as Enter on its row in the list: hop there and look closer
-        await Until(() => !P.Busy && P.PreviewOpen && P.PreviewHasText, 8);
+        await Until(() => !P.Busy && P.PreviewOpen && P.PreviewShownId == plain && P.PreviewHasText, 8);
         await Seconds(0.3);
         Check(Fits(P.PromptBoxRect) && Fits(P.PreviewRect), $"{tag}: the prompt and the preview fit the window (prompt {R(P.PromptBoxRect)}; preview {R(P.PreviewRect)})");
         if (literalChecks)
@@ -89,8 +89,10 @@ public partial class PlanetsProbe
         await Shot($"text-prompt-preview-{tag}");
 
         // The Markdown preview, then the reading view; the wheel over it scrolls it, never the camera.
+        // The hop to it is not Busy, and the plain file's preview is still open and expandable while it flies: wait for
+        // the preview of this file (an instrument race seen on the first run, 2026-11-21: R opened the plain file).
         P.Approach(md);
-        await Until(() => !P.Busy && P.PreviewOpen && P.PreviewExpandable, 8);
+        await Until(() => !P.Busy && P.PreviewOpen && P.PreviewShownId == md && P.PreviewExpandable, 8);
         await Seconds(0.3);
         if (literalChecks)
         {
