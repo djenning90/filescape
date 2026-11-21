@@ -242,3 +242,25 @@ public class NeighbourhoodSchedulingTests
         runs.Should().Be(1);
     }
 }
+
+/// <summary>The automatic 3D render scale for very large windows (PLANET-180, AD-96).</summary>
+public class NeighbourhoodSchedulingRenderScaleTests
+{
+    [Theory]
+    [InlineData(1600, 900, 1f)]
+    [InlineData(1920, 1080, 1f)]
+    [InlineData(2560, 1440, 1f)]
+    [InlineData(3840, 2160, 0.6667f)]
+    [InlineData(7680, 4320, 0.6667f)]
+    public void Windows_up_to_1440p_draw_at_full_scale_and_larger_ones_come_back_to_that_budget(int w, int h, float expected) =>
+        RenderScalePolicy.ScaleFor(w, h).Should().BeApproximately(expected, 0.001f);
+
+    [Fact]
+    public void The_scale_falls_steadily_with_the_window_and_an_explicit_one_wins()
+    {
+        RenderScalePolicy.ScaleFor(3440, 1440).Should().BeApproximately(MathF.Sqrt(2560f / 3440f), 1e-4f);
+        RenderScalePolicy.ScaleFor(3000, 1700).Should().BeGreaterThan(RenderScalePolicy.ScaleFor(3840, 2160) - 1e-6f);
+        RenderScalePolicy.ScaleFor(3840, 2160, requested: 1f).Should().Be(1f);
+        RenderScalePolicy.ScaleFor(1600, 900, requested: 0.1f).Should().Be(0.25f);
+    }
+}

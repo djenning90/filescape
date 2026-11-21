@@ -190,7 +190,9 @@ public partial class PlanetsProbe
         var variants = new List<(string Name, Action On, Action Off)>
         {
             ("as shipped", () => { }, () => { }),
+            ("full scale", () => vp.Scaling3DScale = 1f, () => vp.Scaling3DScale = scale),
             ("msaa off", () => vp.Msaa3D = Viewport.Msaa.Disabled, () => vp.Msaa3D = msaa),
+            ("msaa 2x", () => vp.Msaa3D = Viewport.Msaa.Msaa2X, () => vp.Msaa3D = msaa),
             ("glow off", () => { if (env != null) env.GlowEnabled = false; }, () => { if (env != null) env.GlowEnabled = true; }),
             ("shadows off", () => { if (sun != null) sun.ShadowEnabled = false; }, () => { if (sun != null) sun.ShadowEnabled = true; }),
             ("sky shader off", () => { if (env != null) env.BackgroundMode = Godot.Environment.BGMode.Color; }, () => { if (env != null) env.BackgroundMode = Godot.Environment.BGMode.Sky; }),

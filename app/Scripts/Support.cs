@@ -104,6 +104,10 @@ public sealed record CommandLine
     /// <summary>--diag-frames=PATH: a per-frame CSV of where the main thread's time went (<see cref="FrameDiag"/>, PLANET-179).</summary>
     public string? DiagFrames { get; init; }
 
+    /// <summary>--render-scale=0.75: the 3D world's render scale, overriding the automatic one for large windows
+    /// (<see cref="FileScape.Core.Interaction.RenderScalePolicy"/>, PLANET-180); --render-scale=auto or absent: automatic.</summary>
+    public float? RenderScale { get; init; }
+
     /// <summary>
     /// Parses the user arguments (after "--"): each is <c>--key=value</c> or a bare <c>--flag</c>, keys case-insensitive,
     /// numbers in the invariant culture. Unknown keys are ignored; a malformed number throws (FormatException) rather than being ignored.
@@ -141,6 +145,7 @@ public sealed record CommandLine
             TestHold = Get("test-hold"),
             SpaciousLayout = Get("layout") == "spacious",
             DiagFrames = Get("diag-frames") is { Length: > 0 } df ? df : null,
+            RenderScale = Get("render-scale") is { Length: > 0 } rs && rs != "auto" ? float.Parse(rs, CultureInfo.InvariantCulture) : null,
             TestMaxIslands = Get("test-max-islands") is { } mi ? int.Parse(mi, CultureInfo.InvariantCulture) : null,
             TestShellRecord = Get("test-shell") == "record",
             TestListDelayMs = Get("test-list-delay-ms") is { } ld ? int.Parse(ld, CultureInfo.InvariantCulture) : null,

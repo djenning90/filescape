@@ -179,7 +179,7 @@ test_counts() {
 # --test-list-delay-ms of planets-navigation and planets-overview-enter: on a slow simulated clock the held folder
 # finished before the check, 2026-11-21) and probes that are not built on ProbeBase and time themselves by the wall clock (navigation, map-journey and the places journeys); walk-perf
 # measures frames. A journey moves out of this list once it passes on the simulated clock twice (docs/windows-workflow.md).
-REALTIME_JOURNEYS=" planets-audio-gaps planets-sound planets-music planets-overview-discovery planets-play-discovery places-connected places-tree places-scan places-ui1.25 navigation map-journey walk-perf planets-navigation planets-overview-enter "
+REALTIME_JOURNEYS=" planets-audio-gaps planets-sound planets-music planets-overview-discovery planets-play-discovery places-connected places-tree places-scan places-ui1.25 navigation map-journey walk-perf planets-navigation planets-overview-enter planets-stalls "
 # A simulated-clock journey may run slower than real time (a GPU-bound frame takes longer than 1/60 s, more so beside
 # others: 0.42–0.6× real time at 3 at once on the Radeon 890M, 2026-11-21), so its hang timeout is this many times longer.
 SIM_TIMEOUT_FACTOR=3
@@ -305,8 +305,13 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   VAST="$(ls -1d "$FIX"/vast-*/"Vast Reach" 2>/dev/null | sort | tail -1)"
   if [[ -n "$VAST" ]]; then
     journey planets-overview-attention planets-overview-attention.log 400 --automate=planets-overview-attention "--root=$(wslpath -w "$VAST")" --test-broad --test-play-discovery=off --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
+    # PLANET-178 (AD-96): the stall guard. Walking 20 s at the vast root while background discovery lists (--test-broad:
+    # nothing is listed ahead), then six landings: no frame over 250 ms, and no world in the sky composed on the main
+    # thread. Wall-clock frames, so it runs alone (REALTIME_JOURNEYS); with --measure the distributions are the record.
+    journey planets-stalls planets-stalls.log 200 --automate=planets-stalls "--root=$(wslpath -w "$VAST")" --test-broad --stalls-route=walk,land --stalls-walk-seconds=20 --vis=planets --test-shell=record --ui-scale=1 "${F[@]}"
   else
     skip_step planets-overview-attention "no vast fixture under $FIX (FileScape.Fixtures create-vast)"
+    skip_step planets-stalls "no vast fixture under $FIX (FileScape.Fixtures create-vast)"
   fi
   # Finding "home" on the WSL distribution's root from the arrival (lists only the root's own entries; never enters home;
   # --test-play-discovery=off: a real root, so nothing is listed in the background while the probe stands there).

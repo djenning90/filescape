@@ -260,7 +260,7 @@ public partial class Main
         }
 
         _hud.SetExperience((int)_experience);
-        _hud.SetQuality(_quality.ToString());
+        _hud.SetQuality(QualityLine);
         if (planets)
         {
             _planets.Activate(_world, _sun, frame);

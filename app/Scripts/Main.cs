@@ -201,6 +201,8 @@ public partial class Main : Node3D
         _stateFile = args.StateFile;
         _stateWriteInterval = args.StateIntervalMs is { } sim ? TimeSpan.FromMilliseconds(Math.Max(0, sim)) : DefaultStateWriteInterval;
         if (args.DiagFrames is { } diagPath) StartFrameDiag(diagPath); // PLANET-179 (Main.FrameDiag.cs)
+        _requestedRenderScale = args.RenderScale;
+        GetViewport().SizeChanged += ApplyRenderScale; // PLANET-180: fullscreen, maximise, resize
         // An isolated scene: nothing of FileScape is built or scanned. (The planetoid prototype, PLANET-02, was retired
         // on 2026-11-20 once the planets superseded it: docs/planetoid-feasibility.md keeps its account.)
         if (args.Experiment == "planet-gallery") { _experimentOnly = true; AddChild(new Planets.PlanetGallery(args.Automation == "planet-gallery", args.OutputDirectory ?? OS.GetUserDataDir())); return; }
@@ -858,7 +860,7 @@ public partial class Main : Node3D
         else if (_experience == Experience.Places) PlaceAtmosphere.Configure(_world, _sun, _ground, _quality);
         else ActiveVisualization.ConfigureEnvironment(_world, _sun, _ground, _quality);
         ApplyQualityToViewport();
-        _hud.SetQuality(_quality.ToString());
+        _hud.SetQuality(QualityLine);
     }
 
     /// <summary>High: 4× MSAA; Low: the cheaper FXAA post-pass instead.</summary>
@@ -867,6 +869,7 @@ public partial class Main : Node3D
         var vp = GetViewport();
         vp.Msaa3D = _quality == Quality.High ? Viewport.Msaa.Msaa4X : Viewport.Msaa.Disabled;
         vp.ScreenSpaceAA = _quality == Quality.High ? Viewport.ScreenSpaceAAEnum.Disabled : Viewport.ScreenSpaceAAEnum.Fxaa;
+        ApplyRenderScale(); // PLANET-180 (Main.RenderScale.cs): a very large window draws its 3D world at a reduced scale
     }
 
     // ---------------------------------------------------------------- camera / navigation
