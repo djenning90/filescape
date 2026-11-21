@@ -194,6 +194,50 @@ public partial class PlanetWorld
         return step.Has(BrowseEffect.Consume);
     }
 
+    // ------------------------------------------------------------------ for probes (os-planets-probe.ps1 -Gallery)
+
+    /// <summary>
+    /// A picture standing here whose pick centre is on screen, clear of the edges and the HUD, and answers a click there
+    /// (<paramref name="except"/> left out), nearest the screen's middle; null when none is. Viewport units (with
+    /// <c>--ui-scale=1</c> the window's client pixels).
+    /// </summary>
+    public (int Id, Vector2 Centre)? PictureOnScreen(int except = -1)
+    {
+        if (_current == null || _s.Tree is not { } tree) return null;
+        var size = GetViewport().GetVisibleRect().Size;
+        (int, Vector2)? best = null;
+        var bestD = float.MaxValue;
+        foreach (var it in _current.Comp.Items)
+        {
+            if (it.NodeId < 0 || it.NodeId == except || !tree.Contains(it.NodeId) || !GalleryRules.IsPicture(tree[it.NodeId].Name)) continue;
+            var c3 = Gd(_current.Comp.Surface.PointAt(it.Direction, 0.55f * it.Scale));
+            if (_camera.IsPositionBehind(c3)) continue;
+            var c = _camera.UnprojectPosition(c3);
+            // Clear of the screen's edges and the HUD bars (the same margins as ClickableWorld).
+            if (c.X < 60 || c.Y < 160 || c.X > size.X - 60 || c.Y > size.Y - 120 || OverHud(c) || Pick(c).Id != it.NodeId) continue;
+            var d = c.DistanceTo(size / 2);
+            if (d < bestD) { bestD = d; best = (it.NodeId, c); }
+        }
+
+        return best;
+    }
+
+    /// <summary>The gallery's part of the state file (os-planets-probe.ps1 -Gallery): what is shown where, and a picture to click.</summary>
+    private string GalleryStateJson()
+    {
+        var (index, count) = _viewer.Place;
+        var pic = _viewer.IsOpen ? null : PictureOnScreen(_previewShownId);
+        var back = _viewer.IsOpen ? _viewer.BackdropPoint() : null;
+        // The angle between where the camera looks and where the traveller moves, degrees on the ground (−1 standing):
+        // ≈ 90 while sidestepping with the view kept, ≈ 0 once the camera has swung in behind (PLANET-165).
+        var up = Gd(_walker.Up);
+        var vel = Gd(_walker.Velocity) - up * Gd(_walker.Velocity).Dot(up);
+        var look = _camFwd - up * _camFwd.Dot(up);
+        var camToMotion = vel.Length() > 0.8f && look.LengthSquared() > 1e-6f ? Mathf.RadToDeg(look.Normalized().AngleTo(vel.Normalized())) : -1f;
+        return System.FormattableString.Invariant(
+            $"\"gallery\":{{\"onGallery\":{(OnGallery ? "true" : "false")},\"viewer\":{(_viewer.IsOpen ? "true" : "false")},\"viewerCurrent\":{_viewer.Current},\"viewerIndex\":{index},\"viewerCount\":{count},\"hover\":\"{_viewer.HoverZone}\",\"previewShown\":{PreviewShownId},\"follows\":{PreviewFollows},\"pictureOnScreen\":{(pic is { } p ? $"[{p.Id},{p.Centre.X:0},{p.Centre.Y:0}]" : "null")},\"backdrop\":{(back is { } b ? $"[{b.X:0},{b.Y:0}]" : "null")},\"camToMotion\":{camToMotion:0.#}}},");
+    }
+
     /// <summary>Closes the viewer for a trip (no preview comes back).</summary>
     private void CloseViewerForTravel()
     {

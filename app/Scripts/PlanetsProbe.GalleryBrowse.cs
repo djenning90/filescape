@@ -13,14 +13,11 @@ namespace FileScape.App;
 /// the viewer's right edge steps and its backdrop goes back to the world, Home / End reach the ends, Space does nothing,
 /// Esc closes one level at a time, the prompt's sideways cue is there, Ctrl + → steps sideways without turning while
 /// → alone turns, and the preview always shows the selection while you walk along the easels.
-/// Instrument notes: the points clicked are found from the camera (a picture's pick centre on screen, empty ground by
+/// Instrument notes: the points clicked are found from the camera (<see cref="PlanetWorld.PictureOnScreen"/>, empty ground by
 /// <see cref="PlanetWorld.Pick"/>); when none is on screen the step is logged as skipped (instrument), not failed.
 /// </summary>
 public partial class PlanetsProbe
 {
-    /// <summary>Keep clicks this far from the window's edges, viewport pixels (the HUD's bars sit there).</summary>
-    private const float ClickMarginPixels = 90f;
-
     /// <summary>How long the sidestep is held, seconds: longer than the chase camera's swing-in delay (PlanetWorld.SwingInDelaySeconds,
     /// 1.2 s), so the check sees whether a pure sidestep keeps the view (PLANET-165).</summary>
     private const double SidestepHoldSeconds = 1.8;
@@ -36,9 +33,9 @@ public partial class PlanetsProbe
 
         // ---- a click on another easel: the preview moves to it (it used to stay on the first while the other was selected).
         var shell = App.ShellLog.Count;
-        if (OnScreenPicture(dawn) is { } other)
+        if (P.PictureOnScreen(dawn) is { } other)
         {
-            await ClickWorldAt(other.Point);
+            await ClickWorldAt(other.Centre);
             await Until(() => P.PreviewShownId == other.Id, 3);
             Log($"trace: {P.LastClickTrace}");
             Check(P.PreviewOpen && P.PreviewShownId == other.Id && App.Selection.Selected == other.Id && App.ShellLog.Count == shell,
@@ -61,10 +58,10 @@ public partial class PlanetsProbe
         else Log("[instrument] no empty ground on screen: the outside-click step is skipped");
 
         // ---- a double-click on an easel: the large viewer, in FileScape — never Windows.
-        if (OnScreenPicture(-1) is { } easel)
+        if (P.PictureOnScreen() is { } easel)
         {
             shell = App.ShellLog.Count;
-            await DoubleClickAt(easel.Point);
+            await DoubleClickAt(easel.Centre);
             await Until(() => P.ViewerOpen, 3);
             Log($"trace: {P.LastClickTrace}");
             Check(P.ViewerOpen && v.Current == easel.Id && App.ShellLog.Count == shell && !App.ModalOpen,
@@ -106,7 +103,7 @@ public partial class PlanetsProbe
         await Frames(2);
         Check(P.ViewerOpen && v.Current == before && P.Walker.Grounded, "PLANET-163: Space in the viewer does nothing (no step, no jump, still open)");
 
-        var backdrop = BackdropPoint(v, size);
+        var backdrop = v.BackdropPoint();
         var stood = P.Walker.Feet;
         var last = v.Current;
         if (backdrop is { } b)
@@ -162,25 +159,6 @@ public partial class PlanetsProbe
         Check(turned > 10f && Vector3Distance(from, P.Walker.Feet) < 0.2f, F($"→ alone still turns ({turned:0} °, moved {Vector3Distance(from, P.Walker.Feet):0.00} m)"));
     }
 
-    /// <summary>A picture standing on this world whose pick centre is on screen and answers a click there (not <paramref name="except"/>), nearest the middle of the screen.</summary>
-    private (int Id, Vector2 Point)? OnScreenPicture(int except)
-    {
-        var size = App.GetViewport().GetVisibleRect().Size;
-        var cam = P.Camera;
-        (int, Vector2)? best = null;
-        var bestD = float.MaxValue;
-        foreach (var it in P.Composition!.Items)
-        {
-            if (it.NodeId < 0 || it.NodeId == except || !GalleryRules.IsPicture(Tree[it.NodeId].Name) || P.ItemCentre(it.NodeId) is not { } c || cam.IsPositionBehind(c)) continue;
-            var pt = cam.UnprojectPosition(c);
-            if (pt.X < ClickMarginPixels || pt.Y < ClickMarginPixels * 2 || pt.X > size.X - ClickMarginPixels || pt.Y > size.Y - ClickMarginPixels * 2 || P.OverHudAt(pt) || P.Pick(pt).Id != it.NodeId) continue;
-            var d = pt.DistanceTo(size / 2);
-            if (d < bestD) { bestD = d; best = (it.NodeId, pt); }
-        }
-
-        return best;
-    }
-
     /// <summary>A point on screen over nothing pickable and no panel (the ground or sky beside the easels), or null.</summary>
     private Vector2? EmptyGroundPoint()
     {
@@ -190,19 +168,6 @@ public partial class PlanetsProbe
         {
             var pt = new Vector2(size.X * fx, size.Y * fy);
             if (!P.OverHudAt(pt) && P.Pick(pt).Id < 0) return pt;
-        }
-
-        return null;
-    }
-
-    /// <summary>A point on the viewer's backdrop (outside the picture, away from the step edges), or null when the picture fills the stage.</summary>
-    private static Vector2? BackdropPoint(PictureViewer v, Vector2 size)
-    {
-        for (var fy = 0.15f; fy < 0.9f; fy += 0.05f)
-        for (var fx = 0.15f; fx < 0.9f; fx += 0.05f)
-        {
-            var pt = new Vector2(size.X * fx, size.Y * fy);
-            if (v.ZoneAt(pt) == ViewerZone.Backdrop) return pt;
         }
 
         return null;

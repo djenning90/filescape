@@ -215,6 +215,23 @@ public partial class PictureViewer : Control
         return ViewerPointer.Zone(p.X, p.Y, stage, new ScreenRect(frame.Position.X, frame.Position.Y, frame.Size.X, frame.Size.Y), _pictures.Count > 1);
     }
 
+    /// <summary>A point on the backdrop (outside the picture, off the step edges), viewport units, or null when the
+    /// picture fills the stage (probes: a 5 % grid of the window, searched only when asked).</summary>
+    public Vector2? BackdropPoint()
+    {
+        var size = GetViewportRect().Size;
+        for (var fy = 0.15f; fy < 0.9f; fy += 0.05f)
+        {
+            for (var fx = 0.15f; fx < 0.9f; fx += 0.05f)
+            {
+                var p = new Vector2(size.X * fx, size.Y * fy);
+                if (ZoneAt(p) == ViewerZone.Backdrop) return p;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The zone the pointer was last over (probes; <see cref="ViewerZone.Chrome"/> before any motion).</summary>
     public ViewerZone HoverZone { get; private set; } = ViewerZone.Chrome;
 
