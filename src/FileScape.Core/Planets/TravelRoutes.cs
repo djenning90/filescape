@@ -72,7 +72,7 @@ public enum TravelRoute
     /// <summary>The walkthrough's "Back to the lesson".</summary>
     WalkthroughBack,
 
-    /// <summary>Enter or G at the telescope: the world it frames.</summary>
+    /// <summary>Enter or G at the telescope, or a double-click on the world it frames (PLANET-188): that world.</summary>
     TelescopeEnter,
 
     // ---- from the sky (no launcher by design)
@@ -145,7 +145,7 @@ public static class TravelRoutes
         new(TravelRoute.LinkAnswer, DepartureEntry.NavigatorChange, true, "Main.World (FollowLink when the link resolves)", "A departure already under way is retargeted; else toward the link."),
         new(TravelRoute.WalkthroughStart, DepartureEntry.NavigatorChange, true, "Main.Tutorial (start)", "A normal trip to the lessons' top world."),
         new(TravelRoute.WalkthroughBack, DepartureEntry.NavigatorChange, true, "Main.Tutorial.ReturnToLesson", "A normal trip back to the lesson's folder."),
-        new(TravelRoute.TelescopeEnter, DepartureEntry.Telescope, true, "PlanetWorld.Telescope → DepartFor", "The world in the eyepiece: from the launcher that leads there, as G (it used to be labelled GoInside)."),
+        new(TravelRoute.TelescopeEnter, DepartureEntry.Telescope, true, "PlanetWorld.Telescope → DepartFor", "The world in the eyepiece (Enter, G or a double-click on it): from the launcher that leads there, as G (it used to be labelled GoInside)."),
         new(TravelRoute.OverviewLanding, DepartureEntry.Overview, false, "PlanetWorld.Universe (BeginUniverseLanding, LandFromUniverse, LandFromOverview)", "The overview's own dive: from the sky, by design (AD-74)."),
         new(TravelRoute.OverviewNavigation, DepartureEntry.Overview, false, "PlanetWorld.OnNavChanged with the overview open", "A descent out of the light: the overview is above every launcher."),
         new(TravelRoute.HazardFall, DepartureEntry.FallWayBack, false, "PlanetWorld.Hazard (the fall's TravelUp)", "You fell: the way back is out of the light, from below."),

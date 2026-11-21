@@ -16,15 +16,19 @@ namespace FileScape.App.Planets;
 /// of this sky at a time — the worlds that hang here, a few of the ring's moons and the world above — each framed to fill
 /// a share of the view, with its name, how it relates to the world you stand on, what is known of it, and where it is in
 /// the sweep (<see cref="TelescopeSurvey"/> chooses, orders and words them). ← → (or A D) swing to the next world round
-/// the sky, ↑ ↓ (W S) or the wheel zoom, a drag looks around, a click aims at a world; Enter (or G) flies there through the
-/// same departure as G (its pad first, PlanetWorld.Departure); T opens the whole overview with that world chosen; J the
-/// list; Esc or E steps back. The traveller never moves: stepping back glides the camera down to exactly where it was.
-/// The Lydian overlook plays throughout (MusicActivity: the telescope is the overlook's music).
+/// the sky (with one world or none they do nothing, and the key line leaves them out: PLANET-189), ↑ ↓ (W S) or the wheel
+/// zoom, a drag looks around, a click aims at a world; Enter (or G) or a double-click on the framed world (PLANET-188)
+/// flies there through the same departure as G (its pad first, PlanetWorld.Departure); T opens the whole overview with
+/// that world chosen; J the list; Esc or E steps back. The traveller never moves: stepping back glides the camera down
+/// to exactly where it was. The Lydian overlook plays throughout (MusicActivity: the telescope is the overlook's music).
 /// </para>
 /// <para>What a change must preserve: the view opens only on the platform with nothing in motion and closes before anything
 /// travels (a departure, the overview, a navigation made elsewhere); the walker's place and the walking camera's own state
-/// are untouched while it is open (the way back is the landing blend from where the eye was); the selection it makes is
-/// the shared one (the card shows the framed world, and G or Enter after closing still go there).</para>
+/// are untouched while it is open (the way back is the landing blend from where the eye was); while it is open the framed
+/// world is the shared selection (the card shows it), and once it closes the selection is
+/// <see cref="TelescopeSurvey.SelectionAfter"/>'s: the framed world only when you went on to it (Enter, a double-click,
+/// T), otherwise the selection from before (PLANET-190, AD-98: a framed folder left selected was opened with Windows by a
+/// later Enter, 2026-11-21; before, this said "G or Enter after closing still go there", but Enter outside the view is Open).</para>
 /// </summary>
 public partial class PlanetWorld
 {
@@ -75,8 +79,8 @@ public partial class PlanetWorld
     /// <summary>A twirl counts as at the telescope within this distance of it along the ground, metres (the platform is ≈ 2.4 m across).</summary>
     private const float ScopeTwirlReachMetres = 1.6f;
 
-    /// <summary>The words under the view (probes check them).</summary>
-    public const string ScopeKeysText = "{←} {→} the next world   ·   {W} {S} or wheel: zoom   ·   drag: look   ·   {Enter} fly there   ·   {T} the whole overview   ·   {J} the list   ·   {Esc} step back";
+    /// <summary>The words under the view with two worlds or more (probes check them); a sparser sky's are <see cref="TelescopeSurvey.KeysMarkup"/>'s.</summary>
+    public static readonly string ScopeKeysText = TelescopeSurvey.KeysMarkup(2);
 
     /// <summary>The telescope panel's designed half width, viewport units (it narrows on a small window: <see cref="PanelFit"/>).</summary>
     private const float ScopePanelHalfWidth = 450f;
@@ -88,6 +92,13 @@ public partial class PlanetWorld
     private Vector2 _scopeLookOffset; // degrees: yaw (+ right), pitch (+ up), from a drag
     private Vector2? _scopePress;
     private bool _scopeDragged, _scopeQueuedByTwirl;
+
+    /// <summary>The press is the second of a double-click, and the click before it aimed the view (PLANET-188: a double-click travels only to a world already framed).</summary>
+    private bool _scopePressDouble, _scopeLastClickAimed;
+
+    /// <summary>The shared selection when the view opened: given back when you step back (PLANET-190).</summary>
+    private int _scopeSelectionBefore = -1;
+
     private NVector3 _scopeFeet;
     private PanelContainer _scopePanel = null!;
     private Label _scopeName = null!, _scopeRelation = null!, _scopeDetail = null!;
@@ -106,6 +117,12 @@ public partial class PlanetWorld
     /// <inheritdoc cref="TelescopeViews"/>
     public string LastTelescopeEntry { get; private set; } = "";
 
+    /// <summary>How the view last closed (probes: a step back gives back the selection, PLANET-190).</summary>
+    public TelescopeExit LastTelescopeExit { get; private set; }
+
+    /// <summary>The selection when the view last opened (probes).</summary>
+    public int TelescopeSelectionBefore => _scopeSelectionBefore;
+
     /// <summary>The framed world's folder (−1 without one), how many the survey frames, and its caption (probes).</summary>
     public int TelescopeTargetId => _scope?.Current?.World.NodeId ?? -1;
 
@@ -118,6 +135,9 @@ public partial class PlanetWorld
     /// <summary>Degrees between where the camera looks and the framed world (probes: small once it has swung there).</summary>
     public float TelescopeAimErrorDegrees => _scope?.Current is { } t && _current != null && TargetPoint(t.World) is { } p
         ? Mathf.RadToDeg((-_camera.GlobalBasis.Z).AngleTo((p - _camera.GlobalPosition).Normalized())) : -1f;
+
+    /// <summary>Where the framed world is on screen (viewport units), or null (probes double-click it, PLANET-188).</summary>
+    public Vector2? TelescopeTargetScreen => _scope?.Current is { } t && TargetPoint(t.World) is { } p && !_camera.IsPositionBehind(p) ? _camera.UnprojectPosition(p) : null;
 
     /// <summary>The traveller's distance from where it stood when the view opened, metres (probes: 0 — it never moves).</summary>
     public float TelescopeStandError => _scope != null || _scopeFeet != default ? NVector3.Distance(_walker.Feet, _scopeFeet) : 0f;
@@ -221,7 +241,10 @@ public partial class PlanetWorld
         var tree = _s.Tree!;
         var pointing = PlanetFrame.North(ov.Direction); // the telescope points over the mesh's −Z edge: the overlook's north (PlanetVisual.BuildOverlook)
         // The ground's radius under the overlook stands in for the planet's (it is the horizon the eye looks over).
+        _scopeSelectionBefore = _s.Selection.Selected;
         _scope = TelescopeSurvey.Plan(SurveyCandidates(), Nv(ToLocal(eye)), _walker.Up, pointing, _s.Selection.Selected, _current.Comp.Shape.GroundRadius(ov.Direction) * ScopeHorizonShare);
+        SetRich(_scopeKeys, TelescopeSurvey.KeysMarkup(_scope.Targets.Count), UiTextStyle.Small); // PLANET-189: only the keys that do something here
+        _scopeLastClickAimed = false;
         _scopeT = 0;
         _scopeFrom = _camera.GlobalTransform;
         _scopeLook = _camera.GlobalPosition - _camera.GlobalBasis.Z * 10f; // the view turns from where it was looking
@@ -244,12 +267,19 @@ public partial class PlanetWorld
 
     /// <summary>
     /// Steps back from the eyepiece: the camera glides down to the walking camera, which has not moved (the landing blend),
-    /// and the lens widens back (the walking camera's own field-of-view recovery).
+    /// and the lens widens back (the walking camera's own field-of-view recovery). The selection becomes what
+    /// <paramref name="exit"/> leaves (<see cref="TelescopeSurvey.SelectionAfter"/>, PLANET-190): the framed world for a
+    /// trip or the overview, the selection from before otherwise.
     /// </summary>
-    private void CloseTelescopeView(bool glide = true)
+    private void CloseTelescopeView(bool glide = true, TelescopeExit exit = TelescopeExit.StepBack)
     {
         if (_scope == null) return;
+        var framed = _scope.Current?.World.NodeId ?? -1;
         _scope = null;
+        var keep = TelescopeSurvey.SelectionAfter(exit, _scopeSelectionBefore, framed);
+        if (keep >= 0 && _s.Tree is { } tree && !tree.Contains(keep)) keep = -1; // the tree changed under it
+        if (_s.Selection.Selected != keep) _s.Selection.Select(keep, recordHistory: false); // the framing was a look, not a choice
+        LastTelescopeExit = exit;
         _scopePanel.Visible = false;
         _scopeField.Visible = false;
         _scopePress = null;
@@ -301,7 +331,7 @@ public partial class PlanetWorld
     /// <summary>One frame with the view open (instead of walking): the rise to the eyepiece, the swing to the framed world, the lens, the field.</summary>
     private void UpdateTelescopeView(float dt, bool blockedKeys)
     {
-        if (_scope == null || _current == null || Eyepiece() is not { } eye) { CloseTelescopeView(); return; }
+        if (_scope == null || _current == null || Eyepiece() is not { } eye) { CloseTelescopeView(exit: TelescopeExit.Interrupted); return; }
         var scopeHalf = PanelFit.Width(2 * ScopePanelHalfWidth, GetViewport().GetVisibleRect().Size.X, ScreenTextMargin) / 2; // PLANET-155
         _scopePanel.OffsetLeft = -scopeHalf;
         _scopePanel.OffsetRight = scopeHalf;
@@ -351,8 +381,8 @@ public partial class PlanetWorld
         switch (k.PhysicalKeycode)
         {
             case Key.Left or Key.A or Key.Right or Key.D:
-                if (_scope.IsEmpty) return true;
-                _scope.Step(k.PhysicalKeycode is Key.Right or Key.D ? 1 : -1);
+                // PLANET-189: with one world or none there is nowhere to swing; the key does nothing (no sound, no re-aim).
+                if (!_scope.Step(k.PhysicalKeycode is Key.Right or Key.D ? 1 : -1)) return true;
                 _audio.Select();
                 AimScope();
                 return true;
@@ -362,18 +392,13 @@ public partial class PlanetWorld
                 if (!k.Echo) CloseTelescopeView();
                 return true;
             case Key.Enter or Key.KpEnter or Key.G:
-                if (k.Echo) return true;
-                if (_scope.Current is not { } t) return true;
-                var id = t.World.NodeId;
-                CloseTelescopeView();
-                _s.Select(id);
-                DepartFor(id, DepartureEntry.Telescope); // the same departure as G, from the launcher that leads there (AD-84) // travel: TelescopeEnter
+                if (!k.Echo) TravelFromScope("Enter");
                 return true;
         }
 
         if (!k.Echo && k.IsAction(InputBindings.FlightToggle))
         {
-            CloseTelescopeView(glide: false); // the overview opens from the eyepiece (its zoom out is the transition)
+            CloseTelescopeView(glide: false, exit: TelescopeExit.Overview); // the overview opens from the eyepiece (its zoom out is the transition)
             ToggleUniverse(); // the framed world is the shared selection: Enter there lands on it
             return true;
         }
@@ -413,6 +438,7 @@ public partial class PlanetWorld
             case InputEventMouseButton { ButtonIndex: MouseButton.Left or MouseButton.Right, Pressed: true } press when !_pointerBlocked && !OverHud(press.Position):
                 GetViewport().GuiReleaseFocus();
                 _scopePress = press.Position;
+                _scopePressDouble = press.DoubleClick && press.ButtonIndex == MouseButton.Left;
                 _scopeDragged = false;
                 return true;
             case InputEventMouseMotion m when _scopePress is { } at:
@@ -422,16 +448,51 @@ public partial class PlanetWorld
                 return true;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left or MouseButton.Right, Pressed: false } release when _scopePress != null:
                 _scopePress = null;
-                if (!_scopeDragged && release.ButtonIndex == MouseButton.Left && Pick(release.Position) is { Id: >= 0 } hit && _scope.Aim(hit.Id))
+                if (_scopeDragged || release.ButtonIndex != MouseButton.Left)
+                {
+                    _scopeLastClickAimed = false; // a drag between two clicks makes them two clicks
+                    return true;
+                }
+
+                // PLANET-188 (TelescopeSurvey.Click): a click aims at another world; a double-click on the framed one flies there.
+                var hit = Pick(release.Position) is { Id: >= 0 } h ? h.Id : -1;
+                var action = _scope.Click(hit, _scopePressDouble, _scopeLastClickAimed);
+                _scopeLastClickAimed = action == TelescopeClick.Aim;
+                if (action == TelescopeClick.Aim)
                 {
                     _audio.Select();
                     AimScope();
+                }
+                else if (action == TelescopeClick.Travel)
+                {
+                    TravelFromScope("double-click");
                 }
 
                 return true;
         }
 
         return false;
+    }
+
+    /// <summary>Times the view started a trip, and by what (Enter or a double-click), for probes.</summary>
+    public int TelescopeTrips { get; private set; }
+
+    /// <inheritdoc cref="TelescopeTrips"/>
+    public string LastTelescopeTripBy { get; private set; } = "";
+
+    /// <summary>
+    /// Enter, G or a double-click on the framed world: step back (keeping it selected) and leave for it through the same
+    /// departure as G, from the launcher that leads there (AD-84). Nothing with an empty sky.
+    /// </summary>
+    private void TravelFromScope(string by)
+    {
+        if (_scope?.Current is not { } t) return;
+        var id = t.World.NodeId;
+        CloseTelescopeView(exit: TelescopeExit.Travel);
+        _s.Select(id);
+        TelescopeTrips++;
+        LastTelescopeTripBy = by;
+        DepartFor(id, DepartureEntry.Telescope); // travel: TelescopeEnter
     }
 
     /// <summary>A twirl (the air jump) on the platform beside the telescope: look through it once you land (true: the twirl's other uses do not act).</summary>
@@ -456,5 +517,5 @@ public partial class PlanetWorld
 
     /// <summary>The probe state's telescope-view fields (a JSON fragment ending in a comma).</summary>
     private string TelescopeViewStateJson() => System.FormattableString.Invariant(
-        $"\"scope\":{{\"open\":{(_scope != null ? "true" : "false")},\"views\":{TelescopeViews},\"entry\":\"{LastTelescopeEntry}\",\"target\":{TelescopeTargetId},\"targets\":{TelescopeTargetCount},\"aimError\":{TelescopeAimErrorDegrees:0.##},\"fov\":{(_scope != null ? _camera.Fov : 0):0.#},\"standError\":{TelescopeStandError:0.###}}},");
+        $"\"scope\":{{\"open\":{(_scope != null ? "true" : "false")},\"views\":{TelescopeViews},\"entry\":\"{LastTelescopeEntry}\",\"target\":{TelescopeTargetId},\"targets\":{TelescopeTargetCount},\"aimError\":{TelescopeAimErrorDegrees:0.##},\"fov\":{(_scope != null ? _camera.Fov : 0):0.#},\"standError\":{TelescopeStandError:0.###},\"exit\":\"{LastTelescopeExit}\",\"selectionBefore\":{_scopeSelectionBefore},\"trips\":{TelescopeTrips},\"tripBy\":\"{LastTelescopeTripBy}\",\"canStep\":{(_scope?.CanStep == true ? "true" : "false")}}},");
 }
