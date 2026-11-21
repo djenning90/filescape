@@ -1,6 +1,7 @@
 using System.Numerics;
 using FileScape.Core.Planets;
 using Xunit.Abstractions;
+using static FileScape.Core.Tests.HazardMovementTests;
 
 namespace FileScape.Core.Tests;
 
@@ -15,7 +16,9 @@ namespace FileScape.Core.Tests;
 /// </summary>
 public class HazardMovementTests(ITestOutputHelper output)
 {
-    private static readonly TimeSpan Frame = TimeSpan.FromSeconds(1.0 / 60);
+    internal static readonly TimeSpan Frame = TimeSpan.FromSeconds(1.0 / 60);
+
+    internal static string F(FormattableString s) => FormattableString.Invariant(s);
 
     /// <summary>A hazard-sized planet (the sample's Event Horizon is ≈ 20 m, the Debris Field ≈ 23 m).</summary>
     private const float R = 22f;
@@ -85,18 +88,32 @@ public class HazardMovementTests(ITestOutputHelper output)
     private static readonly float[] AnyPress = Enumerable.Range(0, 16).Select(i => i * 0.1f).ToArray();
     private static readonly float[] AnyHold = [0.08f, 0.2f, 0.3f, 2f];
 
-    /// <summary>The widest gap (to 0.1 m) any of <paramref name="attempts"/> makes.</summary>
+    /// <summary>
+    /// The widest gap (to 0.1 m) any of <paramref name="attempts"/> makes: the same gaps as the serial sweep this replaced
+    /// (float steps of 0.1 from 0.5 m), and the same answer, the widest one made even beyond a missed one. Since TEST-12
+    /// the gaps are tried from the widest down, a batch side by side (each <see cref="Try"/> builds its own walker and
+    /// surface), stopping at the first batch with a gap made: every wider gap has then been tried and missed, and the
+    /// narrower ones, most of the old sweep's work, cannot change the answer.
+    /// </summary>
     private static float Widest(IEnumerable<Attempt> attempts, float upTo = 16f)
     {
         var list = attempts.ToList();
-        var best = 0f;
-        for (var g = 0.5f; g <= upTo; g += 0.1f)
+        var gaps = new List<float>();
+        for (var g = 0.5f; g <= upTo; g += 0.1f) gaps.Add(g);
+        gaps.Reverse();
+        for (var from = 0; from < gaps.Count; from += WidestBatch)
         {
-            if (list.Any(a => Try(g, a).Made)) best = g;
+            var batch = gaps.GetRange(from, Math.Min(WidestBatch, gaps.Count - from));
+            var made = TestParallel.Map(batch, g => list.Any(a => Try(g, a).Made));
+            var i = Array.IndexOf(made, true);
+            if (i >= 0) return batch[i];
         }
 
-        return best;
+        return 0f;
     }
+
+    /// <summary>Gaps tried side by side in <see cref="Widest"/>: about one per core; a larger batch only tries more narrow gaps after the answer.</summary>
+    private const int WidestBatch = 16;
 
     private static IEnumerable<Attempt> Plain(bool run) => from p in AnyPress from h in AnyHold select new Attempt(run, p, h);
 
@@ -112,15 +129,16 @@ public class HazardMovementTests(ITestOutputHelper output)
         from p in new[] { 0.2f, 0.6f, 1.0f } from d in new[] { 0.3f, 0.45f, 0.6f, 0.75f } from k in new[] { 0f, 0.05f, 0.1f }
         select new Attempt(run, p, 2f, d, 2f, k);
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void The_envelope_at_walking_pace_sizes_the_three_kinds_of_gap()
     {
         var plain = Widest(Plain(false));
         var plainRecovery = Widest(PlainAndRecovery(false));
         var twirl = Widest(Twirls(false));
-        var everything = Widest(TwirlsAndRecovery(false).Concat(Twirls(false)));
+        // The widest over a union is the larger of the two widests, so the twirl sweep is not run twice.
+        var everything = Math.Max(twirl, Widest(TwirlsAndRecovery(false)));
         output.WriteLine(F($"walking: plain jump {plain:0.0} m at best; with a recovery twirl {plainRecovery:0.0} m; jump and twirl {twirl:0.0} m; with a recovery too {everything:0.0} m"));
-        output.WriteLine(F($"running: plain jump {Widest(Plain(true)):0.0} m at best; jump and twirl {Widest(Twirls(true).Where((_, i) => i % 7 == 0)):0.0} m (sampled)"));
 
         // A step (with its jagged ends) is well inside a plain jump; a hop too.
         (HazardTerrain.MaxJumpGapMetres + 2 * ShellSpan.GapJagMetres).Should().BeLessThan(plain - 1.5f);
@@ -130,6 +148,17 @@ public class HazardMovementTests(ITestOutputHelper output)
         HazardTerrain.LeapMinMetres.Should().BeGreaterThan(plainRecovery, "nor a plain jump saved by a recovery twirl");
         // A chasm is beyond everything at walking pace.
         HazardTerrain.SteeringMinMetres.Should().BeGreaterThan(everything, "nothing at walking pace crosses a chasm");
+    }
+
+    /// <summary>
+    /// The running envelope, for the record (2026-11-20: plain 9.1 m, jump and twirl 13.8 m sampled): no bound is sized by
+    /// it, so it asserts nothing and is a Report (TEST-11), run by <c>tools/fs.sh test-perf</c>, not in the ordinary run.
+    /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Report)]
+    [Fact]
+    public void The_envelope_when_running_is_reported()
+    {
+        output.WriteLine(F($"running: plain jump {Widest(Plain(true)):0.0} m at best; jump and twirl {Widest(Twirls(true).Where((_, i) => i % 7 == 0)):0.0} m (sampled)"));
     }
 
     [Fact]
@@ -278,11 +307,22 @@ public class HazardMovementTests(ITestOutputHelper output)
         w.BelowRimSeconds.Should().Be(-1);
     }
 
+}
+
+/// <summary>
+/// The worlds half of <see cref="HazardMovementTests"/> (PLANET-61..63, AD-65): on each composed Hazard World no gap
+/// misleads: the closest approaches and an independent ray audit (the leaps: <see cref="HazardLeapWorldTests"/>).
+/// Its own class (TEST-10, AD-90), so its own xUnit collection: the six worlds' audits are ≈ 40 s of work, and they no
+/// longer wait behind the envelope sweeps. A new test on a composed world goes here; one on the bare gap, above.
+/// </summary>
+public class HazardGapWorldTests(ITestOutputHelper output)
+{
     // ------------------------------------------------------------------ the worlds
 
     /// <summary>The ray audit's misleading rays must stay under this fraction of the count before AD-65 (measured 0.26–0.70, 2026-11-17).</summary>
     private const float RayAuditCeiling = 0.75f;
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(HazardWorldTests.Worlds), MemberType = typeof(HazardWorldTests))]
     public void No_gap_on_a_world_misleads(string kind)
@@ -306,6 +346,16 @@ public class HazardMovementTests(ITestOutputHelper output)
         audit.Misleading.Count.Should().BeLessThan((int)(before[kind] * RayAuditCeiling), $"{kind}: well under the {before[kind]} misleading rays before AD-65");
     }
 
+}
+
+/// <summary>
+/// The leaps on each composed Hazard World (PLANET-62, AD-65): the route to every launcher never needs one, and each is
+/// crossed by a twirl at the top of the jump and by no plain jump. Its own class beside <see cref="HazardGapWorldTests"/>
+/// (TEST-10, AD-90), so the two world sweeps run side by side.
+/// </summary>
+public class HazardLeapWorldTests(ITestOutputHelper output)
+{
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(HazardWorldTests.Worlds), MemberType = typeof(HazardWorldTests))]
     public void A_leap_on_a_world_takes_the_twirl_and_is_never_the_only_way(string kind)
@@ -381,7 +431,6 @@ public class HazardMovementTests(ITestOutputHelper output)
         return false;
     }
 
-    private static string F(FormattableString s) => FormattableString.Invariant(s);
 }
 
 /// <summary>
@@ -394,6 +443,7 @@ public class HazardMovementTests(ITestOutputHelper output)
 /// </summary>
 internal static class GapAudit
 {
+    /// <summary>The audit's counts: rays that end within a hop, rays into a chasm, rays across the black hole's window, and each misleading ray (its open-sky metres and the walk round).</summary>
     public sealed record Result(int Hops, int Chasms, int Window, List<(float Metres, float WalkMetres)> Misleading);
 
     private const float SpacingMetres = 0.4f;

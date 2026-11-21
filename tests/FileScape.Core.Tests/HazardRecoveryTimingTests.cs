@@ -143,6 +143,7 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
     /// <summary>Press times 0 to 0.8 s after the slip, 10 ms apart.</summary>
     private static readonly float[] PressTimes = Enumerable.Range(0, 81).Select(k => k * StepSeconds).ToArray();
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -183,6 +184,7 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
         return string.Join("; ", parts);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Report)]
     [Fact]
     public void The_tightening_candidates_measured_one_at_a_time()
     {
@@ -288,6 +290,7 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
     /// <summary>The long jump's twirl window must be at least this wide, seconds, from any board position and however long Space is held.</summary>
     private const float LongJumpWindowSeconds = 0.15f;
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void The_long_jump_twirl_window_over_a_leap()
     {

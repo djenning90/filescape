@@ -139,6 +139,7 @@ public sealed class GalleryTests(GallerySampleFixture gallery) : IClassFixture<G
         GalleryRules.IsPicture("notes.txt").Should().BeFalse();
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void A_crowd_of_pictures_is_a_gallery_by_its_contents()
     {

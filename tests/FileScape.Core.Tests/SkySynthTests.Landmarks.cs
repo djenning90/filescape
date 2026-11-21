@@ -1,5 +1,7 @@
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -7,10 +9,11 @@ namespace FileScape.Core.Tests;
 /// The lighthouse's call and the scenery's replies (PLANET-74/75, AD-70): on the music's grid, every note in the world's
 /// key, brief (gone well within 2 s, so a repeat is pleasant) and never loud.
 /// </summary>
-public partial class SkySynthTests
+public class SkySynthLandmarkTests
 {
     public static TheoryData<int> LandmarkReplies() => new(-1, 0, 1, 2); // −1: the lighthouse; 0..2: SceneryVoice
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(LandmarkReplies))]
     public void Landmark_and_scenery_replies_are_on_the_grid_in_key_and_brief(int which)

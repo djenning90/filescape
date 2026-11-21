@@ -1,13 +1,15 @@
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
 /// <summary>The bell tower's toll (PLANET-56): on the music's grid, in the world's key, a long ring that stands clear of the music, bounded when rung again and again.</summary>
-public partial class SkySynthTests
+public class SkySynthBellTests(ITestOutputHelper output)
 {
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void The_bell_toll_strikes_on_the_grid_in_the_world_s_key_and_answers_a_beat_later(MusicIdentity id)
     {
         var grid = FramesPerSixteenth(id) / 2;
@@ -44,8 +46,9 @@ public partial class SkySynthTests
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void The_bell_toll_stands_clear_of_every_world_s_music(MusicIdentity id)
     {
         foreach (var at in new[] { 4.0, 4.31 })

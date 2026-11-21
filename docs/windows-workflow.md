@@ -20,9 +20,12 @@ To remove everything: delete `C:\Users\David\tools\godot` and `%LOCALAPPDATA%\Fi
 
 ```
 tools/fs.sh build        # Windows dotnet build of app + Core (fails loudly on errors)
-tools/fs.sh test         # full test suite with Windows dotnet.exe (includes Windows-only tests), one process (FS_TEST_SHARDS=1: shards)
-tools/fs.sh test-wsl     # Linux SDK in three shards side by side; the Windows-only tests skip with a reason
-tools/fs.sh test --filter 'FullyQualifiedName~PlaceTests'   # with arguments: one plain `dotnet test` (FS_TEST_SHARDS=0 too)
+tools/fs.sh test         # Core tests with Windows dotnet.exe (includes Windows-only tests): one Release process, every class side by side, no Perf/Report
+tools/fs.sh test-wsl     # the same with the Linux SDK; the Windows-only tests skip with a reason
+tools/fs.sh test-wsl --fast           # the edit loop: also without the Slow tests
+tools/fs.sh test-wsl-area music       # one area's classes (areas: tests/FileScape.Core.Tests/areas.txt); test-area on Windows
+tools/fs.sh test-perf    # only the Perf (wall-clock) and Report tests, one at a time, Debug; run it with nothing else of ours running
+tools/fs.sh test --filter 'FullyQualifiedName~PlaceTests'   # other arguments: one plain `dotnet test` with them (Release)
 tools/fs.sh run -- --root='C:\some\folder'      # run from the project via the editor binary
 tools/fs.sh editor       # open the Godot editor on app/
 tools/fs.sh export       # standalone build → %LOCALAPPDATA%\FileScape\build\FileScape.exe (+ data_FileScape.App_windows_x86_64\)
@@ -52,9 +55,9 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net10.0\Fil
 | Command | Takes | Runs | When |
 |---|---|---|---|
 | `tools/fs.sh check harness` | ≈ 3 s | the harness's own judging, every pass/fail path with test doubles (nothing launched) | after changing `verify.sh` or `verify-lib.sh` |
-| `tools/fs.sh check fast` | ≈ 3.5 min (205 s, 2026-11-19) | app build, Core tests on Windows and WSL | every change |
+| `tools/fs.sh check fast` | ≈ 1.5 min (TEST-10..13, 2026-11-20: the Core runs ≈ 50 s WSL and ≈ 60 s Windows with their builds) | app build, Core tests on Windows and WSL (without Perf/Report) | every change |
 | `tools/fs.sh check smoke` | ≈ 10 min | fast + `fs.sh stage --reuse` + walk-explore, the hub → project journey and the planets journey on the Starter Sky (UI 1.0, functional) | before a commit that touches the app |
-| `tools/fs.sh check full` | ≈ 43 min on the wall clock (2026-11-20); projected ≈ 27–30 min with the simulated clock and 3 at once (AD-91) | smoke + walk, places (connected, tree), scan, navigation, map journey, aerial limit (budgets 24 and 8) at 1.0 (planets-sound at 1.25; the 1.25 repeats are in release, AD-88); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
+| `tools/fs.sh check full` | ≈ 43 min on the wall clock (2026-11-20); projected ≈ 27–30 min with the simulated clock and 3 at once (AD-91) and the faster Core run (AD-90) | smoke + `tests-perf` (the Perf/Report Core tests one at a time, before the first journey, AD-90) + walk, places (connected, tree), scan, navigation, map journey, aerial limit (budgets 24 and 8) at 1.0 (planets-sound at 1.25; the 1.25 repeats are in release, AD-88); the planets fixture tour (Wayfarer: links, empty room; the WSL fixture) | before handing a build over |
 | `tools/fs.sh check release` | ≈ 50 min (not re-measured) | full with measurements, the UI 1.25 repeats (explore, places, planets, walk), walk-perf, real OS input at 1.0 and 1.25 (moves the mouse, takes focus), recordings (planets journey, explore) | evidence for a report |
 | `tools/fs.sh check journeys NAME...` | the named steps | only the named journeys (shell patterns: `'planets-nav*'`), on a staged build (reused) and without Core tests; real-input steps (`os-*`) only by exact name; `--measure` keeps measurement segments; `--list` prints every step name | while working on a journey |
 
@@ -62,7 +65,7 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net10.0\Fil
 - **Timing table (TEST-05, AD-80):** every run ends with one table: each step's name, result (`pass`, `fail`, `timeout`, `skipped`, `interrupted`) and seconds, then the total and the counts. It is printed last, appended to `summary.txt` and written to `timing.txt` in the same folder. It also appears after a failure, a timeout, an early exit (no fixtures, no staged build) and Ctrl+C or SIGTERM. A signal stops the running step's command (only the process the harness started) and marks that step `interrupted`. The Core tests' rows carry their counts (`734 passed, 0 failed, 26 skipped of 760`).
 - **Shared desktop: `FS_LAUNCH_LOCK=/path`.** Each app launch (every journey, real-input probe and recording, the stage's smoke launch, `fs.sh run`) holds this flock for that launch only. The lock's descriptor is closed in the launched command. A step's seconds are its own run. Its wait for the lock is in its note (`lock wait 48.2 s`), and the TOTAL line sums the waits. Example: `FS_LAUNCH_LOCK=/tmp/claude-1000/filescape-journey.lock tools/fs.sh check full`.
 - **Accounting (TEST-06, AD-88; TEST-16, AD-91):** after TOTAL (the wall time) the table lists `active` (the steps' own seconds, which exceed the wall time when steps run side by side), `lock-wait` (waiting for the shared desktop), `reruns` (steps this session had already run, with their seconds and names), `desktop` (seconds with this run's app windows open: the time the desktop was occupied) and, when journeys ran side by side, `parallel` (their summed seconds against the batches' wall time, for example `7 journeys, 552.0 s of steps in 213.6 s, up to 3 at once (×2.58)`). A parallel step's row says `sim clock; parallel ×3`, and the rows of a batch are in the order its launches finished. Each check also logs one `desktop` row, which `fs.sh timing` sums apart. Each step that ran is also appended to the session timing log (`~/.local/state/filescape/timing.tsv`, or `FS_TIMING_LOG`; `off` disables it). A session is the git branch (`FS_TIMING_SESSION` overrides), so each worktree's agent has its own totals. A step whose name the session has already logged is a rerun; say why with `FS_RERUN_WHY="…"`. Ad-hoc launches go into the same log: `tools/fs.sh timed NAME [--lock] [--why=…] -- CMD…` runs CMD (holding `FS_LAUNCH_LOCK` with `--lock`), keeps CMD's exit code and takes nested lock waits (a stage's smoke launch) out of the active seconds. Do not wrap `fs.sh check` in it, because check logs its own steps. `tools/fs.sh timing [--rows] [--all|--session=S]` prints the three totals for the handoff.
-- **What runs side by side:** the WSL Core tests run as three `dotnet test --no-build` processes with complementary filters (SkySynthTests with "theme" in the name, SkySynthTests without, everything else). Each test runs exactly once, and a shard without a result line fails. The WSL tests run in the background beside the build, the Windows tests and the stage, because they use their own `obj/`, `bin/` and SDK. The journeys wait for them, because CPU load would slow the simulated journeys and disturb the real-time ones.
+- **What runs side by side:** each host's Core tests are one `dotnet test` process (AD-90; the three WSL shards of AD-80 are gone: they existed to split SkySynthTests, which is now several classes). A run without a result line fails. The WSL tests run in the background beside the build, the Windows tests and the stage, because they use their own `obj/`, `bin/` and SDK; none of them asserts on wall-clock time any more (those are `Kind=Perf`, run by `tests-perf` after them in full and release). The journeys wait for them, because CPU load would slow the simulated journeys and disturb the real-time ones.
 - **Upper bounds:** build 600 s, each host's tests 1,200 s, stage 1,800 s. A hang ends as a `timeout` row.
 - **Functional tier (`--tier=functional`):** keeps every assertion. It leaves out measurement-only frame recordings and logs each one as `SKIP perf …`, so a functional run is visibly not a performance run.
 - **Reusing a build:** `--exe=<staged FileScape.exe>` reuses a build, and `fs.sh stage` makes one without installing it. Since 2026-11-19 the tiers call `fs.sh stage --reuse`. It uses the newest staging folder that is complete, passed its smoke launch and has the same `source_state` in `build-info.txt`: a hash of the commit, the uncommitted diff and the untracked files that are not ignored. A clean tree also matches an older build-info by its full commit and `uncommitted_paths 0`. The stage row then says `reused staging-…`. `--fresh-stage` always exports a new one.
@@ -95,9 +98,9 @@ Fixture tool (Windows): `dotnet src\FileScape.Fixtures\bin.win\Debug\net10.0\Fil
 ## Choosing the smallest test set (TEST-06..09, AD-88)
 
 Run the cheapest check that can catch the regression you might have made. Run a broader tier only when the change
-crosses a boundary the cheap check cannot see. Typical costs (2026-11-20): one Core test class on WSL takes 10–40 s,
-including the build. `check fast` takes ≈ 3.5 min. A stage takes ≈ 30 s on a quiet machine, ≈ 150 s under load, and
-0 s when reused. One journey takes 5–260 s (see `timing.txt` of the last full run). `check full` takes ≈ 42 min. With AD-91 the journeys run on a simulated clock, three at a time, and each probe log ends with its pace.
+crosses a boundary the cheap check cannot see. Typical costs (2026-11-20): one Core test class on WSL takes 5–20 s,
+including the build; an area set 2–20 s; the whole Core run ≈ 50–60 s (below). `check fast` takes ≈ 1.5 min. A stage takes ≈ 30 s on a quiet machine, ≈ 150 s under load, and
+0 s when reused. One journey takes 5–260 s (see `timing.txt` of the last full run). `check full` took ≈ 42 min before the seventh pass. With AD-91 the journeys run on a simulated clock, three at a time, and each probe log ends with its pace.
 
 **While developing:**
 
@@ -118,6 +121,55 @@ including the build. `check fast` takes ≈ 3.5 min. A stage takes ≈ 30 s on a
    defect.
 4. **Ad-hoc launches and probes** (`fs.sh run`, `powershell.exe -File tools/os-*.ps1`, a stage) go through
    `tools/fs.sh timed NAME [--lock] -- CMD…`, so they appear in `tools/fs.sh timing` with their lock waits apart.
+
+### Core tests: the fast loop, area sets, the full run and the perf step (TEST-10..13, AD-90)
+
+Every Core run prints the build's and the tests' seconds, the classes that finished last (each class is one xUnit
+collection, run in parallel with the others; its tests run one after another) and the slowest tests, from the run's
+TRX (`tools/test-times.py`). Read those lines before blaming the change: under load from other agents every test
+slows down together.
+
+| Command | Runs | Takes (WSL, 2026-11-20) | When |
+|---|---|---|---|
+| `tools/fs.sh test-wsl --filter 'FullyQualifiedName~X'` | the class or test you are writing | 3–15 s with the build | while writing a test, and to see it fail first |
+| `tools/fs.sh test-wsl-area AREA[,AREA]` | one area's classes: `music`, `hazard`, `walking`, `overview`, `gallery`, `places`, `panels`, `input`, `navigation`, `scanning`, `baseline` (`tests/FileScape.Core.Tests/areas.txt`) | music 20 s, hazard 12 s, places 10 s, gallery 10 s, the others 2–7 s (with a no-op build) | after the change works, for its area |
+| `tools/fs.sh test-wsl --fast` | everything but `Perf`, `Report` and `Slow` (718 of 919) | ≈ 15 s | before a commit that crosses areas |
+| `tools/fs.sh test-wsl` / `test` | everything but `Perf` and `Report` (Windows adds its Windows-only tests) | WSL ≈ 40–50 s (28–37 s of tests); Windows ≈ 60 s (46–50 s of tests) | before a commit; in `check fast` |
+| `tools/fs.sh test-perf` | the `Perf` (wall-clock bounds) and `Report` (measurement tables) tests, one at a time, Debug | ≈ 55 s on Windows (36 s of tests) | only on a quiet machine; `check full`/`release` run it as `tests-perf` |
+
+- **Smallest first.** A change inside one area: its area set, then `--fast` (or the whole run) before the commit.
+  A change to something several areas share (SphereWalker, PlanetComposer, the scanner, SkySynth's core): the whole
+  run. A merge or a candidate: `check full` (which adds `tests-perf`).
+- **Kinds (`TestKinds`, `[Trait(TestKinds.Trait, TestKinds.X)]`).** `Perf`: asserts on elapsed wall-clock time (a
+  Stopwatch bound, "cancelled within 250 ms", "renders a second of audio in under 60 ms"). `Report`: prints a table
+  and asserts nothing. `Slow`: a deterministic check over ≈ 3 s alone. An ordinary test must not depend on the
+  machine's speed or load: if it needs a bound on time, split the bound into a `Perf` test (as
+  `Layout_of_thousands_of_folders_takes_under_150_ms` beside `Layout_is_deterministic_for_thousands_of_folders`); a
+  wait with a generous timeout (≥ 100× the normal time, e.g. a 2 s hang guard on something that takes milliseconds) is
+  not a bound. A `Perf` failure in a run shared with other work is not a product defect until it fails in
+  `test-perf` on a quiet machine.
+- **Where a new test goes.** Music: the SkySynth class of its area (`SkySynthTests.cs` holds the effects, worlds and
+  tempo, theme, arrangement, hazard-cue and evidence classes; `SkySynthTests.Bell.cs`, `.Drama.cs`, `.Experience.cs`,
+  `.Landmarks.cs`, `.Modes.cs`, `.SecondThemes.cs`, `.Tempo.cs`, `.Effort.cs` one class each), using the shared
+  helpers in `SkySynthKit` (`SkySynthTests.Kit.cs`). A new area of music gets a new `SkySynthTests.Area.cs` file with
+  its own class. Hazard: the bare-gap envelope and recovery in `HazardMovementTests`, composed-world audits in
+  `HazardGapWorldTests` / `HazardLeapWorldTests`, world shape in `HazardWorldTests`, timing in
+  `HazardRecoveryTimingTests`, Starter Sky replays in `HazardSampleReplayTests`. A class that grows past ≈ 30 s of
+  work alone becomes the run's critical path: split it by section into classes (a class per collection), as these
+  were. A new class must start with an area's prefix (`TestAreaTests` fails otherwise): add the prefix to
+  `areas.txt` if no area fits.
+- **Making a heavy test cheaper without weakening it** (TEST-12): independent cases computed side by side with
+  `TestParallel.Map` and asserted afterwards in order; per-pair assertions only where violated
+  (`if (overlap) …Should()…`), since a FluentAssertions call per pair costs more than the geometry; sorted `Equal`
+  instead of `BeEquivalentTo` on hundreds of items; a sweep that searches for a maximum tried from the top down.
+  Show the result is unchanged (the envelope's printed widths, the counts) when you do.
+- **Release path.** The integrator runs `check full` on the merged candidate: Core on both hosts in parallel with the
+  build and the stage, then `tests-perf` alone, then the journeys. `tests-perf` failing there is a real regression
+  candidate; rerun it alone (`tools/fs.sh test-perf`) once before calling it one.
+- **Configuration.** The ordinary runs build Release (as the exported game, `--export-release`) with tiered
+  compilation off in the test host (every method optimised at once: with 24 classes side by side the tiering kept
+  postponing it); `test-perf` builds Debug because its bounds were measured on Debug. `dotnet test` from an IDE or by hand is Debug: it runs the same
+  tests, slower.
 
 **Broader tiers:**
 
