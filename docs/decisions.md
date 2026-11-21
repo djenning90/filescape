@@ -2251,3 +2251,51 @@ as FileScape while naming remains open.
   by walking feels busy (keep the preview until E instead); Ctrl is uncomfortable on DJ's keyboard (the binding is
   `InputBindings.Sidestep`, one line); the swing-in suppression makes long sideways runs feel stuck (let it follow
   after a longer delay).
+
+## AD-95 The Starter Sky's music is a choice: three written alternatives, Homecoming by default, the classic kept; Aurora explained by ear (2026-11-20, seventh pass stream M, PLANET-169..173; extends AD-49, AD-79, AD-85)
+- **Problem:** DJ (item 10): Star Chart Dorian is the quality reference; the Starter Sky's theme is "fatiguing …
+  predictable, overly simple, and somewhat cheesy despite its charm". Develop serious alternatives on the existing synth,
+  listen through minutes and revisits, keep the current piece, explain the Aurora voice's contribution.
+- **What the classic is (measured, 4 min on the Starter Sky):** the hub identity (AD-49) plays the pentatonic FileScape
+  theme on the FM bell every 16 bars (40.9 s), over I–IV–V triads, then a seeded random-walk "music box" and three rising
+  "journeys"; 95 tune notes a minute, the tune in 87 % of bars, 92 % of bars sounding like an earlier bar (chroma
+  cosine ≥ 0.97). The Starter Sky and This computer share it (both are the hub).
+- **Decision — the pieces (`StarterThemeScores`, `StarterThemes`):** three written `ExperiencePiece`s at the hub's 94 BPM,
+  each a 16-bar cycle in four variations (2 min 43 s before any 16 bars return), sections every four bars:
+  - *The theme, revised* (Ionian): the theme kept, re-harmonised (IVmaj7, vi7, a soft dominant IV/V, an open close),
+    passed between flute, the old bell, late-phrased violins and a flute/clarinet hocket; a composed answering phrase
+    replaces the music box (a duet in thirds, a horn); half a cycle in four is a breath.
+  - *Aurora drift* (Mixolydian): two-bar chords over a held tonic closing ♭VII → I, the aurora pad and bass, a pluck
+    ostinato on 3 + 3 + 4 + 3 + 3, the theme's head as a glass call, a long-note aurora lead that changes per cycle
+    (absent, the song, a lifting close, a dissolve).
+  - *Homecoming* (Ionian with borrowed iv and ♭VI): a new melody from the theme's rising sixth for flute, clarinet,
+    violins, strings, harp, cello and horn; song, varied song, interlude (harp and glass), reprise that peaks and resolves.
+  - Written scores were checked for semitone rubs against held chord tones (a throwaway scan; the remaining ones are
+    intended major sevenths and ninths), and each has written rests (the tune in ≤ 80 % of bars).
+- **Decision — switching:** `SkySynth.SetHubTheme` (SkySynth.Starter.cs): a hub deck plays the chosen piece like the
+  star chart, in the place's root and the piece's mode (so the effects agree), at a measured deck level (Aurora drift
+  +5.2 dB, Homecoming −1.1 dB; all within 1.5 dB of the classic). Each theme has its own world key (the classic's is
+  unchanged, `StarterTheme.Classic` = 0), so a change is a world change heard on the next beat, and a return resumes the
+  theme that was left. **Core's default is the classic** (every render, test and behaviour-baseline hash unchanged); the
+  game's default is `Preferences.StarterMusic` = `StarterThemes.GameDefault` = **Homecoming**, stored by name;
+  Settings → Music lists the four, so DJ judges in place.
+- **Why Homecoming:** the analysis ranks it most varied in pitch (melody pitch-class entropy 2.94 bits vs 2.72; sound 2.77
+  vs 2.68), widest (35 semitones), with moving harmony (69 % same-sounding bars vs 92 %), more dynamic (4.8 LU vs 4.5), and
+  a long form that ends somewhere; it is Ionian, chamber-voiced and without aurora, so the overview's Dorian/aurora identity
+  stays its own. Aurora drift is the least busy (35 notes/min, the tune in 53 % of bars, 58 % same-sounding bars) and the
+  runner-up for long stays, but it is closer to the overview's deep sky and more background than identity. The revised
+  theme keeps the tune DJ called nursery-like. **By exact melody-note repetition the candidates are not lower than the
+  classic** (30–35 % vs 26 % of four-bar phrases: its random music box never repeats exactly); the audio recurrence is what
+  separates them.
+- **Aurora demonstration (PLANET-173):** `AuroraFeatures` switches the detune (and drift), the drive, the filter's motion
+  and the resonance off in offline renders only (`RenderSketch(score, AuroraFeatures)`); one phrase on the previous voices
+  and on Aurora, solo and arranged, then each feature off, loudness-matched (`…\2026-11-20-p7-music\aurora\README.txt`).
+- **Evidence:** `SkySynthStarterThemeTests` (8 cheap checks, ≈ 6 s; one skipped render fact); `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-p7-music\`
+  (comparison reel, ≥ 3.5 min renders with a revisit for each, metrics, README). The in-game recording is
+  `--automate=planets-starter-music` (to be run by the desktop coordinator).
+- **Alternatives:** replacing the classic outright (DJ: keep it; nobody has listened); a Dorian Starter Sky (would blur
+  the overview's identity); a different tempo per piece (the hub's clock, dwell and effects grid assume 94); generated
+  variations of the classic (its randomness is the aimlessness DJ heard).
+- **Unknown / DJ by ear:** which piece; whether Homecoming reads as sentimental; whether This computer should keep the
+  classic while the Starter Sky changes (today both follow the one setting). **Revisit if:** DJ picks another default
+  (change `GameDefault`), wants per-place choices, or wants the reserved star-chart arrangements wired.

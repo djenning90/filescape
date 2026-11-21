@@ -209,6 +209,9 @@ public sealed partial class SkySynth
         d.InBar = pos % 16;
     }
 
+    /// <summary>The name of the written piece sounding now (an experience's, or the hub's starter theme, AD-95), or null when the music is generated, for probes and tests.</summary>
+    public string? PlayingPieceName => ClockAt(_frame).Piece?.Name;
+
     /// <summary>The variation of the piece playing now (−1 when the music is a world's), for probes and tests.</summary>
     public int PieceVariation => ClockAt(_frame) is { Piece: { } piece } d ? d.NextStep == 0 ? piece.VariationOf(d.StepOffset / CycleSixteenths) : d.ScoreVariation : -1;
 

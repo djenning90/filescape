@@ -20,9 +20,16 @@ public sealed partial class SkySynth
     /// on SkySynth's instruments, through the game's mix chain. Deterministic for a score and seed. Each sample |x| &lt; 1
     /// (the synth's output contract). Not for the audio thread (it allocates the whole buffer).
     /// </summary>
-    public static float[] RenderSketch(SketchScore score, int sampleRateHz = DefaultSampleRateHz, int seed = 72)
+    public static float[] RenderSketch(SketchScore score, int sampleRateHz = DefaultSampleRateHz, int seed = 72) => RenderSketch(score, AuroraFeatures.None, sampleRateHz, seed);
+
+    /// <summary>
+    /// <see cref="RenderSketch(SketchScore, int, int)"/> with the aurora features in <paramref name="auroraOff"/> switched
+    /// off on every aurora note (PLANET-173, AD-95: the demonstration of what each feature contributes); every other
+    /// instrument sounds as usual.
+    /// </summary>
+    public static float[] RenderSketch(SketchScore score, AuroraFeatures auroraOff, int sampleRateHz = DefaultSampleRateHz, int seed = 72)
     {
-        var s = new SkySynth(seed, PlanetTheme.Hearth, sampleRateHz);
+        var s = new SkySynth(seed, PlanetTheme.Hearth, sampleRateHz) { _auroraOff = auroraOff };
         foreach (var d in s._decks)
         {
             d.Live = false;
@@ -140,6 +147,6 @@ public sealed partial class SkySynth
 
         // An aurora note (AD-79) at a base gain (linear, before velocity; set by measurement so it is about as loud as the
         // instrument it stands in for in the before/after comparison); velocity also opens its filter (AuroraSpec).
-        void Aurora(AuroraRole role, float baseGain) => Enqueue(at, AuroraSpec(role, hz, hold, v) with { Gain = baseGain * v, Pan = pan, Group = g });
+        void Aurora(AuroraRole role, float baseGain) => Enqueue(at, WithoutFeatures(AuroraSpec(role, hz, hold, v), _auroraOff) with { Gain = baseGain * v, Pan = pan, Group = g });
     }
 }

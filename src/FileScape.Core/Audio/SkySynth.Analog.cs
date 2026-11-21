@@ -146,6 +146,27 @@ public sealed partial class SkySynth
         },
     };
 
+    /// <summary>
+    /// The aurora features an offline render switches off (PLANET-173, AD-95: the demonstration of what each contributes;
+    /// <see cref="RenderSketch"/>). The game never sets this, so its aurora sounds are unchanged.
+    /// </summary>
+    private AuroraFeatures _auroraOff = AuroraFeatures.None;
+
+    /// <summary>
+    /// <paramref name="spec"/> with the features in <paramref name="off"/> switched off (PLANET-173): the detuned copies and
+    /// the per-note drift (one saw, in tune); the drive (at its minimum, 1: nearly clean); the filter's motion (its cutoff held
+    /// where its envelope would settle, so only the movement goes, not the brightness); the resonance (no peak at the cutoff).
+    /// </summary>
+    private static NoteSpec WithoutFeatures(NoteSpec spec, AuroraFeatures off)
+    {
+        if (off == AuroraFeatures.None) return spec;
+        if (off.HasFlag(AuroraFeatures.Detune)) spec = spec with { Unison = 1, DetuneCents = 0f, DriftCents = 0f };
+        if (off.HasFlag(AuroraFeatures.Drive)) spec = spec with { Drive = 1f };
+        if (off.HasFlag(AuroraFeatures.FilterMotion)) spec = spec with { ToneHz = spec.ToneHz * MathF.Pow(2f, spec.FilterEnvOctaves * spec.FilterSustain), FilterEnvOctaves = 0f };
+        if (off.HasFlag(AuroraFeatures.Resonance)) spec = spec with { Resonance = 0f };
+        return spec;
+    }
+
     /// <summary>What an aurora note is for (<see cref="AuroraSpec"/>).</summary>
     private enum AuroraRole
     {
@@ -153,4 +174,27 @@ public sealed partial class SkySynth
         Lead,
         Bass,
     }
+}
+
+/// <summary>
+/// The aurora voice's features (AD-79), as flags an offline render can switch off one at a time to hear what each adds
+/// (PLANET-173, AD-95; <see cref="SkySynth.RenderSketch"/>). Nothing in the game switches any off.
+/// </summary>
+[Flags]
+public enum AuroraFeatures
+{
+    /// <summary>Everything on: the aurora as the game plays it.</summary>
+    None = 0,
+
+    /// <summary>The two or three saws detuned against each other, and each note's few cents of drift: the width and slow shimmer.</summary>
+    Detune = 1,
+
+    /// <summary>The soft saturating drive before the filter: warmth and density (extra harmonics, gently rounded peaks).</summary>
+    Drive = 2,
+
+    /// <summary>The filter's own envelope: the cutoff opening and settling with each note (the "bloom" and the pad's slow sky).</summary>
+    FilterMotion = 4,
+
+    /// <summary>The filter's resonance: the peak at the cutoff that makes its movement sing.</summary>
+    Resonance = 8,
 }

@@ -2,13 +2,14 @@ using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using FileScape.Core.Audio;
 using FileScape.Core.Units;
 
 namespace FileScape.Core.Interaction;
 
 /// <summary>
 /// The user's saved preferences (CTRL-01..03): how mouse look turns in Places and how fast walking and running are, the
-/// pins, the welcome dialog and whether the sound is off (PLANET-47).
+/// pins, the welcome dialog, whether the sound is off (PLANET-47) and which music the Starter Sky plays (PLANET-170, AD-95).
 /// Immutable; the app holds the current value and saves it whenever it changes. Unknown or out-of-range values in the
 /// file are ignored or clamped, never fatal.
 /// </summary>
@@ -44,7 +45,8 @@ public sealed record Preferences
     public bool Equals(Preferences? other) =>
         other is not null && ReverseLookHorizontal == other.ReverseLookHorizontal && ReverseLookVertical == other.ReverseLookVertical
         && LevelViewOnRelease == other.LevelViewOnRelease && FlyAlongGaze == other.FlyAlongGaze && WalkSpeed == other.WalkSpeed
-        && RunSpeed == other.RunSpeed && ShowWelcome == other.ShowWelcome && SoundMuted == other.SoundMuted && Pins.SequenceEqual(other.Pins);
+        && RunSpeed == other.RunSpeed && ShowWelcome == other.ShowWelcome && SoundMuted == other.SoundMuted && StarterMusic == other.StarterMusic
+        && Pins.SequenceEqual(other.Pins);
 
     public override int GetHashCode() => HashCode.Combine(ReverseLookHorizontal, ReverseLookVertical, LevelViewOnRelease, FlyAlongGaze, WalkSpeed, RunSpeed, Pins.Count);
 
@@ -78,6 +80,13 @@ public sealed record Preferences
     /// toolbar's amber "Sound off" button and a toast at start). Off by default.
     /// </summary>
     public bool SoundMuted { get; init; }
+
+    /// <summary>
+    /// The music of the Starter Sky and This computer (the hub, PLANET-170, AD-95): Settings → Music. The default is the
+    /// seventh pass's strongest candidate (<see cref="StarterThemes.GameDefault"/>); the classic AD-49 music stays one click
+    /// away. Stored by name, so an older file (no key) gets the default and a renumbering never changes a saved choice.
+    /// </summary>
+    public StarterTheme StarterMusic { get; init; } = StarterThemes.GameDefault;
 
     /// <summary>Running speed on foot (Shift held). Never below the walking speed.</summary>
     public MetersPerSecond RunSpeed { get; init; } = Places.WalkParams.Default.RunSpeed;
@@ -130,6 +139,7 @@ public sealed record Preferences
             ["flyAlongGaze"] = FlyAlongGaze,
             ["showWelcome"] = ShowWelcome,
             ["soundMuted"] = SoundMuted,
+            ["starterMusic"] = StarterThemes.Key(StarterMusic),
             ["walkSpeedMetersPerSecond"] = Math.Round(WalkSpeed.Value, 2),
             ["runSpeedMetersPerSecond"] = Math.Round(RunSpeed.Value, 2),
             ["pins"] = new JsonArray([.. Pins.Select(x => (JsonNode)JsonValue.Create(x)!)]),
@@ -158,6 +168,7 @@ public sealed record Preferences
             if (Bool("flyAlongGaze") is { } fg) p = p with { FlyAlongGaze = fg };
             if (Bool("showWelcome") is { } sw) p = p with { ShowWelcome = sw };
             if (Bool("soundMuted") is { } sm) p = p with { SoundMuted = sm };
+            if (o["starterMusic"] is JsonValue smv && smv.TryGetValue<string>(out var smk) && StarterThemes.FromKey(smk) is { } st) p = p with { StarterMusic = st };
             if (Num("walkSpeedMetersPerSecond") is { } w) p = p with { WalkSpeed = MetersPerSecond.Of(w) };
             if (Num("runSpeedMetersPerSecond") is { } r) p = p with { RunSpeed = MetersPerSecond.Of(r) };
             if (o["pins"] is JsonArray pins)
@@ -200,5 +211,5 @@ public sealed record Preferences
 
     /// <summary>A one-line summary for the log and probes (keep its wording: probes may read it).</summary>
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned{(SoundMuted ? "; sound off" : "")}");
+        $"look H {(ReverseLookHorizontal ? "reversed" : "usual")}, V {(ReverseLookVertical ? "reversed" : "usual")}, level on release {(LevelViewOnRelease ? "on" : "off")}, fly {(FlyAlongGaze ? "along gaze" : "level")}; walk {WalkSpeed.Value:0.#} m/s, run {RunSpeed.Value:0.#} m/s; {Pins.Count} pinned{(SoundMuted ? "; sound off" : "")}{(StarterMusic != StarterThemes.GameDefault ? $"; starter music {StarterThemes.Key(StarterMusic)}" : "")}");
 }
