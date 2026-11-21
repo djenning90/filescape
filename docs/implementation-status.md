@@ -4,6 +4,23 @@ Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+### Seventh pass, stream M: the Starter Sky's music alternatives, Aurora explained (PLANET-169..173, AD-95)
+
+Branch `worktree-agent-a12cf0c0d98952ea6` from `ae32129`. No desktop use: Core tests (WSL) and `fs.sh build` only.
+Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-p7-music\` (README, metrics.txt, files.txt, aurora\README.txt).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Three written alternatives for the hub (revised theme, Aurora drift, Homecoming), four variations each, the classic kept (PLANET-169) | **Demonstrated** (Core, offline renders); by ear: DJ | `SkySynthStarterThemeTests` 8 (1 render fact skipped by default); behaviour baseline untouched (the classic's world key and stream unchanged; bit-identical test) |
+| Settings → Music, heard on the next beat, saved by name; Core default classic, game default Homecoming (PLANET-170) | **Demonstrated** (Core); **unknown** in-app (not run) | Core: preference round trip, switch on the next beat and back, nothing elsewhere changes; `fs.sh build` OK |
+| Revisits: resume at the next phrase, later visits later variations, written rests (PLANET-171) | **Demonstrated** (Core); in-app to run | Core resume/visit tests; `planets-starter-music` written, not run |
+| Multi-minute analysis, comparison reel, revisit renders (PLANET-172) | **Demonstrated** (offline) | metrics.txt: same-sounding bars classic 92 %, revised 68 %, drift 58 %, Homecoming 69 %, Dorian 79 %; all −26.5…−27.7 LUFS |
+| Aurora demonstration (PLANET-173) | **Demonstrated** (offline); by ear: DJ | `aurora\`: 6 comparison files + 10 feature-off files, loudness-matched |
+
+To run on the desktop: `planets-starter-music` with `FILESCAPE_STARTER_MUSIC=Homecoming`, `FILESCAPE_AUDIO_RECORD`
+and `FILESCAPE_AUDIO_RECORD_SECONDS=240` (the in-game recording); `planets-music` (unchanged checks; the hub now plays
+Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.25 UI scale (the new Music row).
+
 ## Sixth pass (2026-11-20)
 
 ### The final candidate (`5ba12f91daa3`, staged, not installed)

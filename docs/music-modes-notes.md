@@ -82,3 +82,11 @@ Mixolydian launcher stay offline for now.
 - **The scheme:** time of day or session length as a fourth question (later variations after long play); a "home
   stretch" variation when returning to the hub after a long trip; a per-folder seed choosing among the theme's
   variations for first visits (stable surprise) without touching which arrangement plays.
+
+## The Starter Sky's alternatives (2026-11-20, seventh pass, AD-95)
+
+DJ found the hub's classic music fatiguing. Three written pieces now sit beside it (Settings → Music): the theme revised
+(Ionian, re-harmonised and re-orchestrated), Aurora drift (Mixolydian, ♭VII → I, aurora voices) and Homecoming (Ionian with
+borrowed iv and ♭VI, the game's default). Modes as AD-72 found them: Dorian stays the overview's, Lydian the overlook's;
+Mixolydian appears for the first time in game in Aurora drift. Listening notes and measurements:
+`%LOCALAPPDATA%\FileScape\evidence\2026-11-20-p7-music\README.txt`.
