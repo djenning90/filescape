@@ -11,7 +11,7 @@ namespace FileScape.Core.Tests;
 /// crossing another or running under a name, the selection, the hovered world and "you are here" first, a bounded count;
 /// on dense synthetic layouts like the 2026-11-21 screenshots (about ten names among hundreds of worlds in a cluster).
 /// </summary>
-public sealed class LabelPlacementTests
+public sealed class OverviewLabelPlacementTests
 {
     private static readonly LabelRect Window = new(0, 0, 1600, 900);
     private static readonly LabelRect[] Hud = [new(0, 0, 1600, 60), new(500, 760, 600, 140)]; // a top bar and the prompt

@@ -180,6 +180,35 @@ public sealed class OverviewAttentionTests
         return (fs, loop);
     }
 
+    /// <summary>
+    /// PLANET-197 (seventh pass; planets-overview-attention failed on main at Region 16/Sector C/Cluster 4: "complete within
+    /// 0.2 s: 7 worlds over 3 levels, 7 listed, 0 waiting", while 1.5 s later the indicator said "54 of 79 folders listed").
+    /// The neighbourhood was judged from the laid-out worlds only: once the cluster's six folders were listed, their 36
+    /// folders were in the tree but not yet laid out (the next relayout is up to 1.5 s away), so nothing at the third level
+    /// was counted and the neighbourhood read complete. A listed world whose folders the layout has not drawn nor folded
+    /// has those folders waiting (to be laid out, then listed). Reproduced through the app's calls, a relayout behind.
+    /// </summary>
+    [Fact]
+    public void The_neighbourhood_is_not_complete_while_listed_worlds_have_folders_the_layout_has_not_caught_up_with()
+    {
+        var fs = new SimFs(p => p.Count(c => c == '/') >= 3 ? [] : Enumerable.Range(0, 6).Select(i => $"n{i}"));
+        var attention = new OverviewAttention(Small) { Current = 0 };
+        var cluster = fs.Tree[0].Children[0];
+        fs.Answer(cluster);
+        attention.Selected = cluster;
+        var bodies = attention.Layout(fs.Tree, null, 0, null, keep: false); // the cluster and its six folders, known by name
+        attention.Neighbourhood(fs.Tree, bodies, cluster, _ => true).Complete.Should().BeFalse("its six folders wait to be listed");
+        foreach (var c in fs.Tree[cluster].Children) fs.Answer(c); // discovery lists them: 36 folders reach the tree
+        var near = attention.Neighbourhood(fs.Tree, bodies, cluster, _ => true); // the relayout has not run yet
+        near.Complete.Should().BeFalse("36 folders at the next level are in the tree but neither laid out nor folded");
+        near.Waiting.Should().Be(36);
+        var relaid = attention.Layout(fs.Tree, null, 0, null, keep: true);
+        var after = attention.Neighbourhood(fs.Tree, relaid, cluster, _ => true);
+        after.Waiting.Should().Be(36, "laid out now, and still to be listed");
+        foreach (var c in fs.Tree[cluster].Children.SelectMany(c => fs.Tree[c].Children).ToList()) fs.Answer(c);
+        attention.Neighbourhood(fs.Tree, attention.Layout(fs.Tree, null, 0, null, keep: true), cluster, _ => true).Complete.Should().BeTrue("everything to the third level listed");
+    }
+
     /// <summary>PLANET-101: reproduced first through the old calls (it failed on the base: "found 1", the first level only).</summary>
     [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]

@@ -58,7 +58,7 @@ public readonly record struct PlacedLabel(int Id, LabelRect Rect, Vector2 Leader
 /// most <see cref="Options.MaxLabels"/> are placed, so the most important always win. The leader starts on the body's rim
 /// (the app draws a dot there), so it is plain which world a name belongs to.
 /// </para>
-/// <para>Engine-free and deterministic for the same input (<c>LabelPlacementTests</c>); the app measures the text, projects
+/// <para>Engine-free and deterministic for the same input (<c>OverviewLabelPlacementTests</c>); the app measures the text, projects
 /// the worlds and draws (<c>SignLayer</c>). What a change must preserve: no two placed labels overlap, no leader crosses
 /// another or runs under a label, a higher tier is never displaced by a lower one, and the selection is always tried first.</para>
 /// </summary>
