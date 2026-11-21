@@ -226,13 +226,7 @@ public partial class PlanetWorld
         if (SignTarget(at) is { } named)
         {
             TraceClick($"{how} at ({at.X:0},{at.Y:0}): the name of #{named} → {ActionWord(named, doubleClick)}");
-            if (doubleClick) DoubleClickOn(named, false);
-            else
-            {
-                _s.Select(named);
-                _audio.Select();
-            }
-
+            ClickBrowse(named, false, doubleClick);
             return;
         }
 
@@ -240,18 +234,25 @@ public partial class PlanetWorld
         if (hit.Id < 0)
         {
             var bench = ClickedBench(at);
-            TraceClick($"{how} at ({at.X:0},{at.Y:0}): nothing picked → {(bench ? "the workbench (reveal)" : "nothing")}");
+            // AD-94: a click on empty ground beside an open preview puts it away and does nothing else.
+            var dismissed = !bench && ClickBrowse(-1, false, doubleClick);
+            TraceClick($"{how} at ({at.X:0},{at.Y:0}): nothing picked → {(bench ? "the workbench (reveal)" : dismissed ? "closed the preview, nothing else" : "nothing")}");
+            if (dismissed) _lastLeftWasDrag = true; // the next press starts afresh
             return;
         }
 
         TraceClick($"{how} at ({at.X:0},{at.Y:0}): {(hit.Sky ? "world in the sky" : "object or pad")} #{hit.Id} → {ActionWord(hit.Id, doubleClick)}");
-        if (doubleClick) DoubleClickOn(hit.Id, hit.Sky); // PLANET-43: a folder goes there, a file opens (PlanetWorld.Actions)
-        else
-        {
-            _s.Select(hit.Id);
-            _audio.Select();
-        }
+        ClickBrowse(hit.Id, hit.Sky, doubleClick); // PLANET-43 / AD-94: a folder goes there, a picture is looked at, another file opens
     }
+
+    /// <summary>
+    /// A click or double-click on <paramref name="id"/> (−1: nothing), through the gallery's browsing rule (AD-94): a
+    /// picture is looked at (click) or viewed large (double-click), never opened with Windows; another file is selected,
+    /// the open preview following it, and a double-click opens it (AD-57); a folder, link or world is selected and a
+    /// double-click goes there. True when the rule used the click up (it closed the preview and does nothing else).
+    /// </summary>
+    private bool ClickBrowse(int id, bool sky, bool doubleClick) =>
+        ApplyBrowse(GalleryBrowse.On(BrowseNow, doubleClick ? BrowseGesture.DoubleClick : BrowseGesture.Click, BrowseTargetOf(id, sky), id), id);
 
     /// <summary>
     /// The folder or file named by the sign drawn topmost at a point, or null: a node's own id for a pad, object or moon,
@@ -485,8 +486,18 @@ public partial class PlanetWorld
                 var n = tree[it2.NodeId];
                 var sel = _s.Selection.Selected == n.Id;
                 // The twirl's preview is named before you do it (PLANET-43); opening stays Enter (or a double-click).
-                var picture = sel && _previewPanel.Visible && _s.IsLive && GalleryRules.IsPicture(n.Name);
-                SetPrompt(picture ? $"R · view it large   ·   Enter · open {n.Name} with Windows   ·   E · close" : sel ? $"Enter · open {n.Name} with Windows   ·   E · close" : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview", $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
+                // AD-94: a picture is looked at in FileScape first (E, a click; R or a double-click large); Windows is the
+                // marked way out (↗). In a gallery the second line teaches walking along the easels, arrows included.
+                var isPicture = BrowseTargetOf(n.Id, sky: false) == BrowseTarget.Picture;
+                var previewing = sel && _previewPanel.Visible;
+                var detail = $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}";
+                if (isPicture && OnGallery) detail += previewing ? GalleryWalkCue : GallerySideCue;
+                SetPrompt(
+                    isPicture && previewing ? "R or click the picture · view it large   ·   Enter · open with Windows ↗   ·   E · close"
+                    : isPicture ? $"E or click · look at {n.Name}   ·   double-click · view it large"
+                    : previewing ? $"Enter · open {n.Name} with Windows ↗   ·   E · close"
+                    : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview",
+                    detail);
             }
         }
         else if (_focusTelescope && OnBenchWorld)
@@ -521,12 +532,6 @@ public partial class PlanetWorld
     {
         var tree = _s.Tree;
         if (tree == null || _current == null) return;
-        if (_previewPanel.Visible && _focusItem != null && _s.Selection.Selected == _focusItem.NodeId)
-        {
-            ClosePreview();
-            return;
-        }
-
         if (_focusItem is { Kind: PlanetItemKind.Pile } pile)
         {
             OpenContents(pile.Category);
@@ -536,7 +541,10 @@ public partial class PlanetWorld
 
         if (_focusItem is { } it && it.NodeId >= 0)
         {
-            InspectNode(it.NodeId);
+            // AD-94: E looks at the file in focus, or puts its preview away when it already shows it.
+            var step = GalleryBrowse.On(BrowseNow, BrowseGesture.Inspect, BrowseTargetOf(it.NodeId, sky: false), it.NodeId);
+            if (step.Has(BrowseEffect.ShowPreview)) InspectNode(it.NodeId); // selects, previews, and turns you to it
+            else ApplyBrowse(step, it.NodeId);
             return;
         }
 
@@ -730,13 +738,26 @@ public partial class PlanetWorld
         _s.DismissNavigationDialogs();
     }
 
-    /// <summary>Walking away closes a preview of something you are no longer at (not the bench's README while you are at the bench).</summary>
+    /// <summary>
+    /// A frame in which you moved with the preview open (AD-94, <see cref="GalleryBrowse.OnWalk"/>): in a gallery the
+    /// preview moves on to the picture now in focus (browsing by walking along the easels); it stays while you walk up to
+    /// or stand by what it shows, and closes once you walk off. Not the bench's README while you are at the bench.
+    /// </summary>
     private void CloseOverlaysOnMove()
     {
         // The README the bench showed stays open while you are at the bench (a spin is a move too).
         if (_benchPreviewId >= 0 && _s.Selection.Selected == _benchPreviewId && NearBench()) return;
-        if (_previewPanel.Visible && _s.Selection.Selected >= 0 && _focusItem?.NodeId != _s.Selection.Selected) ClosePreview();
+        if (!_previewPanel.Visible || _viewer.IsOpen) return;
+        var focus = _focusItem is { Kind: not PlanetItemKind.Pile } f ? f.NodeId : -1;
+        var walk = new GalleryBrowse.Walk(focus, BrowseTargetOf(focus, sky: false) == BrowseTarget.Picture, OnGallery,
+            GroundDistanceTo(_previewShownId), _previewOpenedDistance, FocusReachMetres);
+        var step = GalleryBrowse.OnWalk(BrowseNow, walk);
+        if (step.Has(BrowseEffect.ShowPreview)) PreviewFollows = focus;
+        ApplyBrowse(step, focus >= 0 && step.Has(BrowseEffect.ShowPreview) ? focus : _previewShownId, quiet: true);
     }
+
+    /// <summary>The last picture the preview moved on to while you walked along a gallery (probes; −1 before any).</summary>
+    public int PreviewFollows { get; private set; } = -1;
 
     /// <summary>A footstep this close to a bell flower rings it, metres along the ground.</summary>
     private const float ChimeReachMetres = 1.6f;
@@ -793,7 +814,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{MusicStateJson()}{DepartureStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{MusicStateJson()}{DepartureStateJson()}{GalleryStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

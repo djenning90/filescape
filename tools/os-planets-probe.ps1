@@ -111,10 +111,17 @@
   with and without Shift: the zoom, about 1.18 and 1.39), and a real Esc: the overview stays drawn while the camera flies
   home (closed no sooner than 0.7 s), then you stand where you stood.
 
-  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -OverviewEnter | -Depart | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
+  -Gallery [-GalleryRoot <dir>] (PLANET-159..166, AD-94; seventh pass, stream G) on the gallery fixture (FileScape.Fixtures
+  create-gallery; default the newest %TEMP%\FileScape-fixtures\gallery-*\Picture Gallery) with the recording test shell:
+  a real click on an easel shows its preview, a click on another moves it, a real double-click views it large without
+  asking Windows, the real pointer at the right edge brightens the › and a click there steps, Right / End / Home step,
+  Space does nothing, a click on the backdrop returns to the preview where you stood, Esc walks again; Ctrl + Right held
+  1.8 s steps sideways with the view kept across the motion (planets.gallery.camToMotion), Right alone still turns.
+
+  .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -OverviewEnter | -Depart | -Gallery [-GalleryRoot <dir>] | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$OverviewEnter, [switch]$Depart, [int]$StateIntervalMs = -1)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$OverviewEnter, [switch]$Depart, [switch]$Gallery, [string]$GalleryRoot = '', [int]$StateIntervalMs = -1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -175,11 +182,11 @@ function Launch {
   # A person's launch for -Tutorial (no folder, no view); the sample world in Planets otherwise.
   $root = if ($script:LaunchRoot) { $script:LaunchRoot } elseif ($Audio) { $AudioRoot } else { 'sample' }
   $a = if ($Tutorial) { @('--', '--window=1600x900', '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") } else { @('--', "`"--root=$root`"", '--vis=planets', "--window=$(if ($Audio) { $AudioWindow } else { '1600x900' })", '--ui-scale=1', "`"--state-file=$state`"", "`"--prefs=$prefs`"") }
-  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or $OverviewEnter -or $Depart -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
+  if ($Play -or $Landmarks -or $Discovery -or $Dialogs -or $OverviewEnter -or $Depart -or $Gallery -or ($InputFocus -and -not $script:RealShell)) { $a += '--test-shell=record' }
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   if ($script:RootLook) { $a += "--test-root-look=$($script:RootLook)" } # PLANET-119: a fixture with a root's look, never a real root
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
-  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart) { 0 } else { -1 }
+  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart -or $Gallery) { 0 } else { -1 }
   if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
@@ -239,6 +246,12 @@ function Restore-Clipboard {
     Log "clipboard restored"
   } catch { $script:fails++; Log "FAIL OS the clipboard could not be restored ($($_.Exception.GetType().Name))" }
   $script:ClipSaved = $null; $script:ClipState = 'untouched'
+}
+if ($Gallery) {
+  # The gallery fixture only (CLAUDE.md: never a private folder): the newest one FileScape.Fixtures create-gallery made.
+  if (-not $GalleryRoot) { $GalleryRoot = Get-ChildItem -Directory (Join-Path $env:TEMP 'FileScape-fixtures') -Filter 'gallery-*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { Join-Path $_.FullName 'Picture Gallery' } }
+  if (-not $GalleryRoot -or -not (Test-Path $GalleryRoot)) { throw "-Gallery needs the gallery fixture (FileScape.Fixtures create-gallery) or -GalleryRoot <its Picture Gallery folder>" }
+  $script:LaunchRoot = $GalleryRoot
 }
 if ($Discovery) {
   if (-not $DiscoveryRoot) { throw "-Discovery needs -DiscoveryRoot <the deep fixture's Deep Atlas folder>" }
@@ -1183,6 +1196,99 @@ try {
       $s = Wait-Walking-At 'Music Box'
       Check ($s.currentName -eq 'Music Box') "landed on Music Box ($($s.currentName))"
     }
+    Log "OS planets probe: $fails failure(s)"
+    $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
+    exit $fails
+  }
+
+  if ($Gallery) {
+    # AD-94 (PLANET-159..166, seventh pass, stream G): the gallery's browsing with real input on the gallery fixture
+    # (FileScape.Fixtures create-gallery; -GalleryRoot, default the newest %TEMP%\FileScape-fixtures\gallery-*\Picture
+    # Gallery), the recording test shell launching nothing. Judged from the state file (planets.gallery.*, input.selected,
+    # nav.shellCount): a real click on an easel looks at it (its preview, selected), a click on another moves the preview,
+    # a real double-click views it large and asks nothing of Windows, the pointer at the right edge brightens the › and a
+    # click there steps, the real Right / End / Home keys step, Space does nothing, a click on the backdrop comes back to
+    # the preview where you stood, Esc walks again; held Ctrl + Right steps sideways with the view kept across the motion
+    # past the camera's swing-in delay, and Right alone still turns.
+    $script:Vk['Ctrl'] = 0x11; $script:Vk['End'] = 0x23
+    if ($script:Extended -notcontains 'End') { $script:Extended += 'End' }
+    function G { (State).planets.gallery }
+    function Shells { $n = (State).nav.shellCount; if ($null -eq $n) { return 0 } else { return [int]$n } }
+    function Wait-Gallery([scriptblock]$test, [int]$ms = 3000) { $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.ElapsedMilliseconds -lt $ms) { $g = G; if ($g -and (& $test $g)) { return $g }; Start-Sleep -Milliseconds 60 }; return G }
+    # An easel on screen (the app names one: planets.gallery.pictureOnScreen); turn with Left until one is.
+    function Find-Picture { for ($k = 0; $k -lt 10; $k++) { $pic = (G).pictureOnScreen; if ($pic) { return $pic }; Hold-Key 'Left' 220; Start-Sleep -Milliseconds 700 }; return $null }
+    Start-Sleep -Seconds 3 # the canvases fill (bounded, AD-86)
+    $g = G
+    Check ($g -and $g.onGallery) "the fixture is a gallery (planets.gallery.onGallery $($g.onGallery))"
+    $shell0 = Shells
+
+    $pic = Find-Picture
+    if ($pic) {
+      Client-Click $script:w ([int]$pic[1]) ([int]$pic[2])
+      $g = Wait-Gallery { param($g) [int]$g.previewShown -eq [int]$pic[0] }
+      Check ([int]$g.previewShown -eq [int]$pic[0] -and [int](State).input.selected -eq [int]$pic[0] -and (Shells) -eq $shell0) "a real click on an easel looks at it: its preview, selected, nothing opened (shown $($g.previewShown))"
+      Shot 'gallery-click-easel' | Out-Null
+      $other = (G).pictureOnScreen
+      if ($other -and [int]$other[0] -ne [int]$pic[0]) {
+        Client-Click $script:w ([int]$other[1]) ([int]$other[2])
+        $g = Wait-Gallery { param($g) [int]$g.previewShown -eq [int]$other[0] }
+        Check ([int]$g.previewShown -eq [int]$other[0] -and [int](State).input.selected -eq [int]$other[0]) "a real click on another easel moves the preview to it (shown $($g.previewShown))"
+      } else { Log "  [instrument] no second easel on screen: the click-another check is skipped" }
+
+      $pic = (G).pictureOnScreen
+      if (-not $pic) { $pic = Find-Picture }
+      if ($pic) {
+        Client-DoubleClick $script:w ([int]$pic[1]) ([int]$pic[2])
+        $g = Wait-Gallery { param($g) $g.viewer }
+        Check ($g.viewer -and (Shells) -eq $shell0) "a real double-click on an easel views it large in FileScape; Windows is not asked (shell +$((Shells) - $shell0))"
+        Shot 'gallery-viewer' | Out-Null
+      } else { Check $false "an easel on screen for the double-click" }
+    } else { Check $false "an easel on screen to click (planets.gallery.pictureOnScreen)" }
+
+    if ((G).viewer) {
+      $i0 = [int](G).viewerIndex; $n = [int](G).viewerCount
+      Client-Pos $script:w 1550 450; Start-Sleep -Milliseconds 300
+      Check ($n -lt 2 -or (G).hover -eq 'NextEdge') "the real pointer at the right edge is over the › ($((G).hover))"
+      Shot 'gallery-viewer-next-edge' | Out-Null
+      if ($n -ge 2) {
+        Left-Down; Start-Sleep -Milliseconds 60; Left-Up; Start-Sleep -Milliseconds 400
+        Check ([int](G).viewerIndex -eq ($i0 % $n) + 1) "a real click on the right edge steps ($i0 -> $((G).viewerIndex) of $n)"
+        $i1 = [int](G).viewerIndex
+        Hold-Key 'Right' 60; Start-Sleep -Milliseconds 400
+        Check ([int](G).viewerIndex -eq ($i1 % $n) + 1) "a real Right steps ($i1 -> $((G).viewerIndex))"
+        Hold-Key 'End' 60; Start-Sleep -Milliseconds 400
+        Check ([int](G).viewerIndex -eq $n) "a real End: the last picture ($((G).viewerIndex) of $n)"
+        Hold-Key 'Home' 60; Start-Sleep -Milliseconds 400
+        Check ([int](G).viewerIndex -eq 1) "a real Home: the first ($((G).viewerIndex))"
+      }
+      $before = [int](G).viewerCurrent; $jumps = [int](State).planets.jumps
+      Hold-Key 'Space' 60; Start-Sleep -Milliseconds 500
+      Check ((G).viewer -and [int](G).viewerCurrent -eq $before -and [int](State).planets.jumps -eq $jumps) "a real Space in the viewer does nothing (no step, no jump)"
+      $feet = (State).planets.feet
+      $last = [int](G).viewerCurrent
+      $back = (G).backdrop
+      if ($back) {
+        Client-Click $script:w ([int]$back[0]) ([int]$back[1])
+        $g = Wait-Gallery { param($g) -not $g.viewer }
+        $f2 = (State).planets.feet
+        $moved = [Math]::Sqrt([Math]::Pow($f2[0] - $feet[0], 2) + [Math]::Pow($f2[1] - $feet[1], 2) + [Math]::Pow($f2[2] - $feet[2], 2))
+        Check (-not $g.viewer -and [int]$g.previewShown -eq $last -and $moved -lt 0.05 -and (Shells) -eq $shell0) "a real click outside the picture comes back to the world where you stood, the preview on the last picture (moved $([Math]::Round($moved, 3)) m)"
+      } else { Log "  [instrument] the picture fills the stage: no backdrop to click; Esc instead"; Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400 }
+      Hold-Key 'Escape' 60; Start-Sleep -Milliseconds 400
+      Check (-not (State).planets.previewOpen -and -not (G).viewer) "a real Esc on the preview: walking again"
+    }
+
+    # Sideways for arrow-key players (PLANET-165): Ctrl held, Right held 1.8 s (past the camera's 1.2 s swing-in delay).
+    $f0 = (State).planets.feet
+    Key-Down 'Ctrl'; Key-Down 'Right'
+    try { Start-Sleep -Milliseconds 1600; $side = [double](G).camToMotion; Start-Sleep -Milliseconds 200 } finally { Key-Up 'Right'; Key-Up 'Ctrl' }
+    Start-Sleep -Milliseconds 300
+    $f1 = (State).planets.feet
+    $dist = [Math]::Sqrt([Math]::Pow($f1[0] - $f0[0], 2) + [Math]::Pow($f1[1] - $f0[1], 2) + [Math]::Pow($f1[2] - $f0[2], 2))
+    Check ($dist -gt 1.0 -and $side -gt 60) "real Ctrl + Right steps sideways ($([Math]::Round($dist, 1)) m) with the view kept across the motion after 1.6 s ($side deg between the camera and the motion; about 90 is a sidestep, about 0 a swing behind)"
+    Shot 'gallery-after-sidestep' | Out-Null
+    $y0 = Heading; Hold-Key 'Right' 400; Start-Sleep -Milliseconds 300; $y1 = Heading
+    Check ((Turned $y0 $y1) -gt 10) "a real Right alone still turns ($([int](Turned $y0 $y1)) deg)"
     Log "OS planets probe: $fails failure(s)"
     $p.CloseMainWindow() | Out-Null; [void]$p.WaitForExit(8000)
     exit $fails

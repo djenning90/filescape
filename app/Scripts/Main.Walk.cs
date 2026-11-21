@@ -1,4 +1,5 @@
 using FileScape.Core.Interaction;
+using FileScape.Core.Movement;
 using FileScape.Core.Places;
 using FileScape.Core.Units;
 using Godot;
@@ -160,8 +161,8 @@ public partial class Main
         }
 
         var fwd = blocked ? 0 : _held.Axis(InputBindings.Back, InputBindings.Forward);
-        var strafe = blocked ? 0 : _held.Axis(InputBindings.Left, InputBindings.Right);
-        var turn = blocked ? 0 : _held.Axis(InputBindings.TurnLeft, InputBindings.TurnRight);
+        // A D step sideways, ← → turn, and step sideways too while Ctrl is held (PLANET-165, AD-94: the same rule as Planets).
+        var (strafe, turn) = blocked ? (0f, 0f) : ArrowSidestep.Resolve(_held.Axis(InputBindings.Left, InputBindings.Right), _held.Axis(InputBindings.TurnLeft, InputBindings.TurnRight), _held.IsHeld(InputBindings.Sidestep));
         var run = !blocked && _held.IsHeld(InputBindings.Fast);
         var jump = !blocked && _jumpQueued;
         _jumpQueued = false;

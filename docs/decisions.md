@@ -2072,3 +2072,77 @@ as FileScape while naming remains open.
 - **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
+
+## AD-94 The gallery's browsing is one rule: a click looks, a double-click views large, Windows only on "Open with Windows ↗"; Ctrl + ← → steps sideways and a sidestep keeps the view (2026-11-20, seventh pass, stream G; PLANET-159..168; amends AD-57 for pictures, extends AD-78, AD-86)
+
+- **Problem (DJ, seventh pass, items 7 and 6):** approaching, inspecting, expanding, browsing, closing and walking on
+  did not read as one experience. Found in the code: each gesture's meaning lived in a different handler and they
+  disagreed — a click on an easel only selected it (E or a twirl previewed), and with a preview open a click on another
+  easel selected it while the preview went on showing the first picture; a double-click on a picture launched Windows'
+  Photos (AD-57's rule for files) while R inspected in FileScape; nothing but E or walking off closed the preview; the
+  viewer stepped only with ← → A D and its two buttons, and had no outside click. Sideways: A D strafe existed, but ← →
+  turn, Help listed A D only in a run-on line, and — from reading the chase camera, not yet observed — a held A or D
+  swings the camera in behind the sideways run after 1.2 s (`SwingInDelaySeconds`), so a sidestep becomes a slow turn.
+- **Decision — the gestures (Core `GalleryBrowse`, the app only carries out its effects):**
+  - **Look:** a click or E on a picture selects it and shows its small preview. E on the file the preview shows puts it
+    away. Any other file: a click selects it (the card), as before; with the preview open the preview follows it.
+  - **The preview always shows the selection:** a click on a folder, link or world selects it and closes the preview; a
+    click on empty ground beside an open preview closes it and does nothing else (AD-83's outside click; the next press
+    is not the second half of a double-click).
+  - **View large:** a double-click on a picture, R, the preview's "⤢ View large" or a click on the preview's picture
+    opens the viewer on it, stepping through its folder's pictures in natural order (wrapping round, as Photos does).
+  - **Windows:** only Enter or "Open with Windows ↗" opens a picture with Windows (the viewer stays open behind it). On
+    every other file a double-click stays the deliberate Open (AD-57 unchanged: DJ's "the character jumped and beeped
+    instead of opening the solution"). Why pictures differ: a picture has an in-game way to look at it that is the
+    gallery's point, and DJ asked that external opening never be a plain double-click when double-click means inspect;
+    code, documents and folders have no in-game "look" that a double-click would compete with (text keeps ⤢ / R).
+  - **Close, one level at a time:** Esc, R, "✕ Back to the world" or a click on the viewer's backdrop → the preview on
+    the last picture looked at, selected, where you stood; Esc again → walking. Travel closes everything.
+  - **In the viewer:** ← → A D Page Up / Down step, Home / End the ends, the mouse's back / forward buttons step, a
+    click on the ‹ › edges steps (each edge 110 px, at most a sixth of the stage, the window's margin included so a near
+    miss still steps), the wheel zooms (unchanged: the existing control, and the journeys' habit), a drag pans, a
+    double-click zooms ×2 / fits on the picture and steps again on an edge (`ViewerPointer`).
+  - **Space:** the jump on foot; in the viewer it does nothing (kept from the game by the keyboard table, AD-83), so a
+    jump pressed by habit never steps, closes or opens. Alternative considered: Space = next picture (some photo apps);
+    rejected because Space is so often pressed as the jump that it would step pictures unasked.
+  - **Arrows:** in the world ← → turn (the camera), with Ctrl held they step sideways; in the viewer they step pictures
+    (the viewer owns the keyboard, AD-83). They never step the small preview: it does not take the keyboard (its row in
+    the table, unchanged), so the arrows stay the walk's — browsing beside the world is walking (below).
+  - **Browse by walking:** in a gallery, walking on with a picture's preview open moves the preview to the picture now
+    in focus (the canvases there are already loaded, AD-86); outside a gallery a file is never read because you walked
+    by it. The preview stays while you walk up to what it shows (clicked from afar) and closes once you are 0.75 m
+    further than you were when it opened (or than the 2.8 m reach) (`PreviewKeepSlackMetres`).
+- **Decision — external opening looks like leaving (PLANET-164):** one button look, `Ui.LeaveButton`: "Open with
+  Windows ↗ (Enter)", a cool sky-blue outline and text apart from the panels' warm gold, a tooltip saying it leaves
+  FileScape — in the viewer, the small preview and the reading view (the same expectation: reading in FileScape beside
+  opening outside it). The selection card is unchanged: all of its buttons are Windows actions, with nothing in-game
+  beside them to confuse. "Open in Photos" was considered and not used: FileScape does not know which app Windows will
+  choose.
+- **Decision — the sideways step (Core `ArrowSidestep`, PLANET-165):** holding **Ctrl** makes ← → step sideways
+  instead of turning, on foot in Planets and in Places (one rule, both walkers call it). Why Ctrl: Shift is run (and
+  Shift + ← → runs while turning); **Alt + Space opens Windows' window menu**, so an Alt sidestep would steal the jump
+  (and Alt + ← is "back" in Windows apps); Ctrl + ← → ↑ ↓ and Ctrl + Space reach nothing in FileScape (its chords are
+  Ctrl+L, Ctrl+O, Ctrl+Home, untouched — Ctrl+L while sidestepping still opens Open location, accepted); the right Ctrl
+  sits beside the arrow keys. Panels that own the keyboard see Ctrl + ← → as theirs (a text field's word jump), and
+  movement is read only when none does, so stream K's ownership table is not contradicted and has no new row. **A pure
+  sidestep keeps the view:** the chase camera swings in behind a moving traveller only when there is forward or backward
+  intent (`ArrowSidestep.CameraFollows`); a diagonal run and a jump's drift swing in as before.
+- **Cues (PLANET-166):** the focus prompt beside a picture ("E or click · look at … · double-click · view it large",
+  and in a gallery a second line "Ctrl + ← → or A D · step sideways along the easels"); with its preview open ("R or
+  click the picture · view it large · Enter · open with Windows ↗ · E · close", "walk on: the next easel shows here");
+  the arrival card ("click or E on a picture to look, double-click or R to view it large"); the viewer's key line and
+  edge marks; Help ("Step sideways", "Pictures", Places' "hold Ctrl: step sideways"). Stream T owns the text styling;
+  these are plain words in the existing places.
+- **Bounded loading and frame cost (for the stalls stream):** nothing new is read by itself; the viewer and preview keep
+  AD-86's bounds. Risks named, not measured: browsing by walking shows a new preview per easel passed (a 512 px
+  thumbnail, usually from the session cache; an `ImageTexture` upload of ≈ 1 MB on the main thread and a selection-card
+  refresh per change); the state file's `planets.gallery.pictureOnScreen` runs a pick per standing picture (O(n²) sphere
+  tests) on every state write, only under `--state-file`.
+- **Where else (DJ's item 2):** the bench's cards keep AD-57 (a project's files; a picture there still opens with
+  Windows on a double-click — not changed, rarely a picture); the legacy views keep their own click rules; the J list's
+  Enter on a picture walks you to it (the list is the "where is it?" tool, unchanged); the reading view's Open button
+  takes the leaving look.
+- **Revisit if:** DJ prefers Windows on a picture's double-click after all (one line in `GalleryBrowse.On`); browsing
+  by walking feels busy (keep the preview until E instead); Ctrl is uncomfortable on DJ's keyboard (the binding is
+  `InputBindings.Sidestep`, one line); the swing-in suppression makes long sideways runs feel stuck (let it follow
+  after a longer delay).

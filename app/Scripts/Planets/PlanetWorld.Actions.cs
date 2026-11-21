@@ -14,6 +14,9 @@ namespace FileScape.App.Planets;
 /// confirmations for code, links and cloud files, and a message saying what happened, failures included).</item>
 /// <item><b>Enter</b>: open the selection (shared with every view, Main.RequestOpen).</item>
 /// </list>
+/// A picture on a live folder is the exception (AD-94, <see cref="GalleryBrowse"/>): a click looks at it (its preview)
+/// and a double-click views it large in FileScape; Windows opens it only on Enter or "Open with Windows ↗". The
+/// workbench's cards keep the rule above (a project's files; <see cref="DoubleClickOn"/>).
 /// Before 2026-11-16 a double-click on a file hopped the traveller to it and previewed it (DJ: "the character jumped and
 /// beeped instead of opening the solution"), while a folder card navigated: the same gesture meant two things.
 /// <para>
@@ -39,6 +42,7 @@ public partial class PlanetWorld
         if (_s.Tree is not { } tree || !tree.Contains(id)) return "unknown node";
         var n = tree[id];
         var kind = n.IsDirectory ? "folder" : n.Kind == NodeKind.Link ? "link" : "file";
+        if (BrowseTargetOf(id, sky: false) == BrowseTarget.Picture) return $"picture {n.Name}: {(doubleClick ? "view it large (in FileScape, AD-94)" : "select and look (its preview)")}";
         return $"{kind} {n.Name}: {(doubleClick ? (n.IsDirectory || n.Kind == NodeKind.Link ? "go there" : "open (the deliberate Open)") : "select")}";
     }
 

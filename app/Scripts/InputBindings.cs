@@ -16,6 +16,9 @@ public static class InputBindings
     // Walking (WALK-03): the arrow keys turn in Places; in the maps they still move sideways (aliases of A/D).
     public const string TurnLeft = "nav_turn_left", TurnRight = "nav_turn_right", Jump = "nav_jump";
 
+    // On foot, held Ctrl makes ← → step sideways instead of turning (PLANET-165, AD-94; Core ArrowSidestep says why Ctrl).
+    public const string Sidestep = "nav_sidestep";
+
     // Mouse modes.
     public const string FlyLook = "nav_fly_look", Pan = "nav_pan", Orbit = "nav_orbit_select";
 
@@ -44,7 +47,7 @@ public static class InputBindings
     // The overview's discovery (PLANET-76): X pauses and resumes it (only while the overview is open; X is free elsewhere).
     public const string DiscoveryPause = "cmd_discovery_pause";
 
-    public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump];
+    public static readonly string[] MovementActions = [Forward, Back, Left, Right, TurnLeft, TurnRight, Up, Down, Fast, Jump, Sidestep];
 
     /// <summary>Human-readable bindings for Help.</summary>
     public static readonly (string Action, string Keys)[] Describe =
@@ -52,6 +55,7 @@ public static class InputBindings
         (Forward, "W / Up arrow"), (Back, "S / Down arrow"), (Left, "A"), (Right, "D"),
         (TurnLeft, "Left arrow (maps: move left)"), (TurnRight, "Right arrow (maps: move right)"),
         (Up, "E (flight: up)"), (Down, "Q or C (flight: down)"), (Fast, "Shift"), (Jump, "Space (flight: up)"),
+        (Sidestep, "hold Ctrl: ← → step sideways (on foot)"),
     ];
 
     /// <summary>
@@ -70,6 +74,7 @@ public static class InputBindings
         Physical(Up, Key.E);
         Physical(Down, Key.Q); Physical(Down, Key.C); // C: descend, under the left hand next to Space (climb)
         Logical(Fast, Key.Shift);
+        Logical(Sidestep, Key.Ctrl);
 
         Mouse(FlyLook, MouseButton.Right);
         Mouse(Pan, MouseButton.Middle);
