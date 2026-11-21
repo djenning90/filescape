@@ -171,6 +171,12 @@ function Drag($button, [int]$dx, [int]$dy) {
 }
 function Heading { $s = State; if ($s.planets -and $null -ne $s.planets.camYaw) { return [double]$s.planets.camYaw } else { return $null } }
 function Turned($before, $after) { if ($null -eq $before -or $null -eq $after) { return $null }; $d = [Math]::Abs($after - $before) % 360; if ($d -gt 180) { $d = 360 - $d }; return $d }
+# Traces (seventh pass, stream R): one row per state-file sample while a move plays, saved as CSV in -Out, so a real-input
+# failure can be compared with the Core replay that models it (fields: ms since the start, then the named state values).
+$script:traces = @{}
+function Trace-Start($name) { $script:traces[$name] = New-Object System.Collections.Generic.List[string]; $script:traces[$name].Add('ms,air,grounded,height,vy,airPhase,leapFacing,facingYaw,wishYaw,camYaw,onOverlook,overlookEdge,onBench,benchDistance,feetX,feetY,feetZ'); $script:traceSw = [Diagnostics.Stopwatch]::StartNew() }
+function Trace-Row($name, $q) { if (-not $q -or -not $script:traces[$name]) { return }; $f = $q.feet; $script:traces[$name].Add((@($script:traceSw.ElapsedMilliseconds, $q.airSeconds, $q.grounded, $q.height, $q.vy, $q.airPhase, $q.leapFacing, $q.facingYaw, $q.wishYaw, $q.camYaw, $q.onOverlook, $q.overlookEdge, $q.onBench, $q.benchDistance, $f[0], $f[1], $f[2]) | ForEach-Object { [string]$_ }) -join ',') }
+function Trace-Save($name) { if ($script:traces[$name]) { $script:traces[$name] | Set-Content -Encoding ascii (Join-Path $Out "trace-$name.csv") } }
 $shot = 0
 function Shot($name) { $script:shot++; $p = Join-Path $Out ('os-{0:D2}-{1}.png' -f $script:shot, ($name -replace '[^\w\-]+', '-')); Save-WindowShot $script:w $p; return $p }
 # One drag judged by the camera heading (new builds) or by how much of the view changed (older builds).
@@ -201,7 +207,7 @@ function Launch {
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   if ($script:RootLook) { $a += "--test-root-look=$($script:RootLook)" } # PLANET-119: a fixture with a root's look, never a real root
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
-  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart -or $Gallery -or $AirIntent -or $Steps) { 0 } else { -1 }
+  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart -or $Gallery -or $AirIntent -or $Steps -or $Route) { 0 } else { -1 }
   if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
@@ -1632,9 +1638,20 @@ try {
       # and is released in a finally; presses are timed from the app's own clock (planets.airSeconds, the state written
       # every frame). Judged from the state file: planets.pressWas, recoveries, fallsStarted, airPhase, feet and leapFacing
       # (the body's facing against the leap's bridge, degrees: it must not swing round to face the ledge left).
+      # Every sample of a leap goes through Air-Sample: the trace, and the body's turn from its facing at take-off (the
+      # first airborne sample). Stream R (seventh pass): the turn used to be measured from the facing at the stand point,
+      # before the run-up; after a fall and the way back the body there still faced along the route it came by (≈ 140°
+      # off the bridge), so a jump flown straight across read as "turned 144-152 deg" (instrument defect, trace-air-fwd-0.5.csv).
+      function Air-Sample($q) {
+        if (-not $q) { return }
+        if ($script:airTrace) { Trace-Row $script:airTrace $q }
+        if ($q.grounded -or $q.falling) { return }
+        if ($null -eq $script:takeOffFacing) { $script:takeOffFacing = [double]$q.leapFacing }
+        $d = [Math]::Abs([double]$q.leapFacing - $script:takeOffFacing); if ($d -gt $script:maxTurn) { $script:maxTurn = $d }
+      }
       function Wait-Air([scriptblock]$test, [int]$limitMs) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
-        while ($sw.ElapsedMilliseconds -lt $limitMs) { $p0 = (State).planets; if ($p0 -and (& $test $p0)) { return $p0 }; Start-Sleep -Milliseconds 3 }
+        while ($sw.ElapsedMilliseconds -lt $limitMs) { $p0 = (State).planets; Air-Sample $p0; if ($p0 -and (& $test $p0)) { return $p0 }; Start-Sleep -Milliseconds 3 }
         return $null
       }
       function Air-Presses($what, [double]$since) {
@@ -1662,8 +1679,9 @@ try {
           if ([Math]::Abs($b) -le 3) { break }
           Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(25, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150
         }
-        $p0 = (State).planets; $f0 = [int]$p0.fallsStarted; $r0 = [int]$p0.recoveries; $t0 = Air-LastT; $feet0 = $p0.feet; $face0 = [double]$p0.leapFacing
-        $maxTurn = 0.0
+        $p0 = (State).planets; $f0 = [int]$p0.fallsStarted; $r0 = [int]$p0.recoveries; $t0 = Air-LastT; $feet0 = $p0.feet
+        $script:maxTurn = 0.0; $script:takeOffFacing = $null
+        $tn = "air-$(if ($Back) { 'back' } else { 'fwd' })-$secondAt"; Trace-Start $tn; $script:airTrace = $tn
         Key-Down 'Up'
         try {
           [void](Wait-Air { param($p) ([double]$p.leapToEdge -ge 0 -and [double]$p.leapToEdge -le 0.55) -or [double]$p.airSeconds -gt 0 } 4000)
@@ -1678,13 +1696,14 @@ try {
             if (-not $spaceUp -and $sw.ElapsedMilliseconds -ge 200) { Key-Up 'Space'; $spaceUp = $true }
             $q = (State).planets
             if ($q) {
+              Air-Sample $q
               if ($q.falling) { break }
-              if (-not $q.grounded) { $d = [Math]::Abs([double]$q.leapFacing - $face0); if ($d -gt $maxTurn) { $maxTurn = $d } }
-              elseif ($sw.ElapsedMilliseconds -gt 250) { break }
+              if ($q.grounded -and $sw.ElapsedMilliseconds -gt 250) { break }
             }
             Start-Sleep -Milliseconds 5
           }
-        } finally { Key-Up 'Up'; Key-Up 'Down'; Key-Up 'Space' }
+        } finally { Key-Up 'Up'; Key-Up 'Down'; Key-Up 'Space'; Trace-Save $tn; $script:airTrace = $null }
+        $maxTurn = $script:maxTurn
         Start-Sleep -Milliseconds 700
         $s = State; $p = $s.planets
         $moved = Air-Dist $feet0 $p.feet
@@ -1754,14 +1773,16 @@ try {
     }
     # One climb: at the climb's start facing along the ring, ↑ and the turn key the curve needs held (with -Run, Shift
     # too) for up to 4 s; pinned = time on a stone slower than half the speed asked for within 0.1 m of the platform's wall.
-    function Steps-Climb([switch]$Run) {
+    function Steps-Climb([switch]$Run, [switch]$Away) {
       if (-not (Steps-Steer)) { Log "  could not reach the climb's start (instrument)"; return $null }
       Steps-Face; Start-Sleep -Milliseconds 300
       $st = @((State).planets.stones)
       $key = if ([double]$st[2][0] -gt 0) { 'Right' } else { 'Left' } # the stones curve this way from here
+      if ($Away) { $key = if ($key -eq 'Right') { 'Left' } else { 'Right' } } # the turn away from the curve (reported only)
       $asked = if ($Run) { 11.0 } else { 6.0 }
       $pinned = 0.0; $top = 0.0; $up = $false
       $prev = (State).planets; $sw = [Diagnostics.Stopwatch]::StartNew(); $lastMs = 0
+      $tn = "steps-$(if ($Run) { 'run' } else { 'walk' })-$key-$script:stepsTry"; $script:stepsTry++; Trace-Start $tn
       if ($Run) { Key-Down 'Shift' }
       Key-Down 'Up'; Key-Down $key
       try {
@@ -1769,6 +1790,7 @@ try {
           Start-Sleep -Milliseconds 20
           $q = (State).planets; $ms = $sw.ElapsedMilliseconds
           if (-not $q) { continue }
+          Trace-Row $tn $q
           $dt = ($ms - $lastMs) / 1000.0; $lastMs = $ms
           $speed = if ($dt -gt 0) { (Air-Dist2 $prev.feet $q.feet) / $dt } else { $asked }
           if ([double]$q.height -gt $top) { $top = [double]$q.height }
@@ -1776,7 +1798,7 @@ try {
           if ([double]$q.height -gt 0.1 -and $speed -lt $asked / 2 -and [double]$q.overlookEdge -lt 0.45) { $pinned += $dt }
           $prev = $q
         }
-      } finally { Key-Up $key; Key-Up 'Up'; Key-Up 'Shift' }
+      } finally { Key-Up $key; Key-Up 'Up'; Key-Up 'Shift'; Trace-Save $tn }
       $r = @{ Up = $up; Pinned = $pinned; Top = $top; Key = $key; At = $sw.ElapsedMilliseconds / 1000.0 }
       Log ("  {0} up the steps with Up+{1}: {2} (highest {3:0.0} m), pinned against the wall {4:0.00} s" -f $(if ($Run) { 'running' } else { 'walking' }), $key, $(if ($up) { "on the platform after $([Math]::Round($r.At, 2)) s" } else { 'not up' }), $top, $pinned)
       return $r
@@ -1784,7 +1806,7 @@ try {
     function Air-Dist2($a, $b) { if (-not $a -or -not $b) { return 0 }; [Math]::Sqrt([Math]::Pow($b[0] - $a[0], 2) + [Math]::Pow($b[1] - $a[1], 2) + [Math]::Pow($b[2] - $a[2], 2)) }
     # Down from the platform (or off the stones): turn about and walk off, then the next climb starts from the foot again.
     function Steps-Down { Hold-Key 'Left' 1600; Hold-Key 'Up' 1500; Start-Sleep -Milliseconds 600 }
-    $walk = $null
+    $walk = $null; $script:stepsTry = 0
     for ($k = 0; $k -lt 2; $k++) {
       $walk = Steps-Climb
       if ($walk -and $walk.Up) { break }
@@ -1797,6 +1819,11 @@ try {
     # the final turn onto the platform needs more turn than the key gives at 11 m/s — DJ to judge).
     $run = Steps-Climb -Run
     if ($run) { Check ($run.Pinned -lt 0.3) "running up with Shift+Up+$($run.Key): never pinned against the wall ($([Math]::Round([double]$run.Pinned, 2)) s; $(if ($run.Up) { 'up' } else { "not up, highest $([Math]::Round([double]$run.Top, 1)) m" }))" }
+    # Stream R (seventh pass): the turn away from the curve (↑ and the other key): it leaves the stones by geometry, so it
+    # is reported, and judged only on DJ's must: never trapped against the wall.
+    Steps-Down
+    $away = Steps-Climb -Away
+    if ($away) { Check ($away.Pinned -lt 0.3) "walking with Up+$($away.Key) (turning away from the curve): never pinned against the wall ($([Math]::Round([double]$away.Pinned, 2)) s; $(if ($away.Up) { 'up' } else { "not up, highest $([Math]::Round([double]$away.Top, 1)) m" }))" }
     exit $fails
   }
 
@@ -1924,12 +1951,20 @@ try {
       Start-Sleep -Milliseconds 120
     }
     $s = State; Log "route: at the bench's edge? bearing $($s.planets.benchBearing) deg, $($s.planets.benchDistance) m"
-    Key-Down 'W'; Start-Sleep -Milliseconds 120; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 700; Key-Up 'W'; Start-Sleep -Milliseconds 700
+    Trace-Start 'route-bench'
+    # Stream R (seventh pass): W is let go once the traveller stands on the bench, as a player stops there (it used to be
+    # held 0.7 s after Space whatever happened, and a landing near the rim could run on off the deck), and every sample
+    # is traced (trace-route-bench.csv, trace-route-spin.csv).
+    function Bench-Wait([int]$ms, [switch]$StopOnBench) { $sw = [Diagnostics.Stopwatch]::StartNew(); while ($sw.ElapsedMilliseconds -lt $ms) { $q = (State).planets; Trace-Row 'route-bench' $q; if ($StopOnBench -and $q -and $q.onBench) { return }; Start-Sleep -Milliseconds 15 } }
+    Key-Down 'W'
+    try { Bench-Wait 120; Hold-Key 'Space' 90; Bench-Wait 700 -StopOnBench } finally { Key-Up 'W' }
+    Bench-Wait 700; Trace-Save 'route-bench'
     $s = State
     if (-not $s.planets.benchRevealed) { Key-Down 'W'; Hold-Key 'Space' 90; Start-Sleep -Milliseconds 800; Key-Up 'W'; Start-Sleep -Milliseconds 600; $s = State }
     Check ($s.planets.benchRevealed -and $s.planets.benchPanel) "route: jumped onto the workbench with the keyboard: the project's key places come up (onBench=$($s.planets.onBench), $($s.planets.benchEntries) places)"
     Shot 'route-bench' | Out-Null
-    Hold-Key 'Space' 80; Start-Sleep -Milliseconds 260; Hold-Key 'Space' 80; Start-Sleep -Milliseconds 1200
+    Trace-Start 'route-bench'
+    Hold-Key 'Space' 80; Bench-Wait 260; Hold-Key 'Space' 80; Bench-Wait 1200; $script:traces['route-spin'] = $script:traces['route-bench']; Trace-Save 'route-spin'
     $s = State
     Check ($s.planets.previewOpen -and $s.selectedName -like 'README*') "route: a spin from the bench opens the README (selected $($s.selectedName))"
     Shot 'route-spin-readme' | Out-Null
