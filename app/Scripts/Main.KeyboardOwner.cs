@@ -176,7 +176,12 @@ public partial class Main
             case PanelId.LocationActions: _planets.CloseRootMarkPanel(); break;
             case PanelId.Help: if (_hud.HelpVisible) _hud.ToggleHelp(); break;
             case PanelId.LegacyMenu or PanelId.Problems: _hud.CloseMenus(); break;
-            case PanelId.TextField: GetViewport().GuiReleaseFocus(); break; // Esc lets go of a bare field (AD-92)
+            case PanelId.TextField:
+                // The legacy Places drawer's filter is the drawer's: its Esc closes the drawer, as it did before AD-92 and
+                // as the field's own placeholder says (explore-ui1.0, seventh-pass integration). Any other bare field lets go.
+                if (_hud.DestinationsOpen && GetViewport().GuiGetFocusOwner() == _hud.DestinationFilter) _hud.ToggleDestinations(focusFilter: false);
+                else GetViewport().GuiReleaseFocus();
+                break;
         }
     }
 
