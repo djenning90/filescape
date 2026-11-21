@@ -11,9 +11,12 @@ namespace FileScape.App;
 /// <para>
 /// Timing assumptions every probe inherits: a key or click is held for a couple of frames so the app's _Process sees
 /// it at least once between press and release (an event pressed and released in the same frame can be missed by
-/// polled actions); waits are by frames or by seconds, and seconds are simulated time while a movie is being written
-/// (<see cref="RecordingMovie"/>). Injected input is ignored while the window is unfocused (KD-31), so focus changes
-/// are logged next to the checks. The process exit code is the failure count's verdict (0 = every check passed),
+/// polled actions); waits are by frames or by seconds, and seconds are game time under <see cref="SimulatedTime"/>
+/// (<c>--sim-clock</c> with the engine's <c>--fixed-fps 60</c>, or a movie being written; AD-91), else the wall clock.
+/// A probe's own timing loops use <see cref="ClockSeconds"/> (game time) or <see cref="Deadline"/> (a timeout on both
+/// clocks), never Time.GetTicksMsec directly, unless they time real background work or audio, which is wall-clock by
+/// nature (those journeys stay real-time in tools/verify.sh). Under automation injected input continues while the
+/// window is unfocused (KD-31), and focus changes are logged next to the checks. The process exit code is the failure count's verdict (0 = every check passed),
 /// which tools/fs.sh reads.
 /// </para>
 /// </summary>
@@ -38,6 +41,7 @@ public abstract partial class ProbeBase : Node
         DirAccess.MakeDirRecursiveAbsolute(Out);
         App.Perf.Probe = () => (RenderingServer.ViewportGetMeasuredRenderTimeGpu(App.GetViewport().GetViewportRid()), App.Tree?.Count ?? 0);
         Log($"{Mode} probe: adapter={RenderingServer.GetVideoAdapterName()} api={RenderingServer.GetVideoAdapterApiVersion()} window={DisplayServer.WindowGetSize()} ui_scale={GetWindow().ContentScaleFactor}");
+        StartSimClock();
         try
         {
             await RunProbe();
@@ -129,11 +133,78 @@ public abstract partial class ProbeBase : Node
     /// </summary>
     protected static bool RecordingMovie => !string.IsNullOrEmpty(Engine.GetWriteMoviePath());
 
-    /// <summary>Seconds since <paramref name="startTicksMsec"/>: wall clock live, simulated time while recording a movie.</summary>
+    /// <summary>
+    /// <c>--sim-clock</c> (an app argument, TEST-14, AD-91), given by tools/verify.sh together with the engine arguments
+    /// <c>--fixed-fps 60 --disable-vsync</c>: every frame is exactly 1/60 s of game time and frames run as fast as the
+    /// machine draws them, so a journey's in-game outcomes (walk distances, jump timing, easing) do not depend on load,
+    /// and the journey may run faster than real time. <see cref="Seconds"/> and <see cref="Hold"/> then count game time;
+    /// <see cref="Until"/>'s timeout needs both clocks (<see cref="FileScape.Core.Timing.JourneyWait"/>).
+    /// </summary>
+    protected static readonly bool SimClockArg = OS.GetCmdlineUserArgs().Contains("--sim-clock");
+
+    /// <summary>True while waits count game time: <c>--sim-clock</c>, or a movie being written.</summary>
+    protected static bool SimulatedTime => SimClockArg || RecordingMovie;
+
+    /// <summary>The fixed frame rate <c>--sim-clock</c> expects from the engine's <c>--fixed-fps</c> (frames per second).</summary>
+    private const int SimFramesPerSecond = 60;
+
+    /// <summary>Frames whose delta is checked against the fixed step at the start of a <c>--sim-clock</c> run.</summary>
+    private const int SimStepCheckFrames = 30;
+
+    private int _simFramesChecked, _simFramesOff;
+
+    /// <summary>Seconds since <paramref name="startTicksMsec"/>: wall clock live, simulated time under <see cref="SimulatedTime"/>.</summary>
     private double Since(ulong startTicksMsec, double startSimSeconds) =>
-        RecordingMovie ? _simSeconds - startSimSeconds : (Time.GetTicksMsec() - startTicksMsec) / 1000.0;
+        SimulatedTime ? _simSeconds - startSimSeconds : (Time.GetTicksMsec() - startTicksMsec) / 1000.0;
 
     private double _simSeconds;
+
+    /// <summary>
+    /// The probe's clock now, seconds: game time under <see cref="SimulatedTime"/>, the wall clock otherwise. For a
+    /// probe's own loops that time something in the game (a walk of N seconds, a fall's duration); a wait for real
+    /// background work uses <see cref="Deadline"/> or a Stopwatch instead.
+    /// </summary>
+    protected double ClockSeconds => SimulatedTime ? _simSeconds : Time.GetTicksUsec() / 1e6;
+
+    /// <summary>
+    /// A timeout for a probe's own condition loop: true once <paramref name="seconds"/> have passed by the rule of
+    /// <see cref="FileScape.Core.Timing.JourneyWait.TimedOut"/> (both clocks under simulated time, the wall clock live).
+    /// </summary>
+    protected Func<bool> Deadline(double seconds)
+    {
+        var wall0 = Time.GetTicksUsec();
+        var sim0 = _simSeconds;
+        var timeout = FileScape.Core.Units.Durations.FromSeconds(seconds);
+        return () => FileScape.Core.Timing.JourneyWait.TimedOut(
+            FileScape.Core.Units.Durations.FromSeconds(_simSeconds - sim0),
+            FileScape.Core.Units.Durations.FromSeconds((Time.GetTicksUsec() - wall0) / 1e6),
+            timeout, SimulatedTime);
+    }
+
+    /// <summary>
+    /// Under <c>--sim-clock</c>: vsync off and no frame cap, so frames run as fast as the machine allows (the engine's
+    /// <c>--disable-vsync</c> does the same; this covers a launch without it), and a log line saying which clock runs.
+    /// </summary>
+    private void StartSimClock()
+    {
+        if (!SimClockArg) return;
+        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+        Engine.MaxFps = 0;
+        Log($"clock: simulated (--sim-clock: waits count game time at a fixed {SimFramesPerSecond} frames per second; timeouts need the wall clock too)");
+    }
+
+    /// <summary>
+    /// The first <see cref="SimStepCheckFrames"/> frames of a <c>--sim-clock</c> run must have the fixed step: without the
+    /// engine's <c>--fixed-fps</c> the deltas are measured and game time would be load-dependent again. An instrument
+    /// defect (the launch), reported as a failed check so the run cannot pass silently on the wrong clock.
+    /// </summary>
+    private void CheckSimStep(double delta)
+    {
+        if (!SimClockArg || _simFramesChecked >= SimStepCheckFrames) return;
+        if (!FileScape.Core.Timing.JourneyWait.IsFixedStep(delta, SimFramesPerSecond)) _simFramesOff++;
+        if (++_simFramesChecked == SimStepCheckFrames)
+            Check(_simFramesOff == 0, F($"--sim-clock: the first {SimStepCheckFrames} frames have the fixed 1/{SimFramesPerSecond} s step ({_simFramesOff} did not; the launch needs the engine argument --fixed-fps {SimFramesPerSecond})"));
+    }
 
     private bool _lastFocused = true;
     private bool _lossIgnored;
@@ -141,6 +212,7 @@ public abstract partial class ProbeBase : Node
     public override void _Process(double delta)
     {
         _simSeconds += delta;
+        CheckSimStep(delta);
         // KD-31 diagnostics: injected input does nothing while the window is not focused (by design), so every focus
         // change is logged; a failure next to "lost focus" is the environment, not the product.
         // Under --automate the app keeps taking injected input while the OS window is unfocused (Main: focus loss is
@@ -218,7 +290,7 @@ public abstract partial class ProbeBase : Node
         for (var i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
-    /// <summary>Waits <paramref name="s"/> seconds (simulated time while recording a movie).</summary>
+    /// <summary>Waits <paramref name="s"/> seconds: game time under <see cref="SimulatedTime"/> (--sim-clock, a movie), else the wall clock.</summary>
     protected async Task Seconds(double s)
     {
         var start = Time.GetTicksMsec();
@@ -232,9 +304,8 @@ public abstract partial class ProbeBase : Node
     /// </summary>
     protected async Task Until(Func<bool> condition, double timeoutSeconds)
     {
-        var start = Time.GetTicksMsec();
-        var sim = _simSeconds;
-        while (!condition() && Since(start, sim) < timeoutSeconds) await Frames(1);
+        var timedOut = Deadline(timeoutSeconds);
+        while (!condition() && !timedOut()) await Frames(1);
     }
 
     /// <summary>

@@ -150,14 +150,14 @@ public partial class PlanetsProbe
         var efforts = P.Walker.LastEfforts + P.LateEfforts;
         HoldKey(Godot.Key.W, true);
         await Until(() => !P.Walker.Grounded, 3);
-        var offMs = Time.GetTicksMsec();
+        var offMs = ClockSeconds * 1000; // game time under --sim-clock (AD-91)
         await Until(() => P.Falling, 3);
         var fallAfterSlip = P.AirSeconds;
-        var fallMs = Time.GetTicksMsec();
+        var fallMs = ClockSeconds * 1000;
         HoldKey(Godot.Key.W, false);
         Check(P.FallsStarted == started + 1, "walking on past the edge starts a fall");
         // PLANET-71 (AD-69): an uncaught slip falls promptly, as soon as the catch's window has closed.
-        Check(fallAfterSlip < 0.55f, F($"an uncaught slip falls {fallAfterSlip:0.00} s after it (game time; {fallMs - offMs} ms on the clock) — the catch's 0.4 s window and no more"));
+        Check(fallAfterSlip < 0.55f, F($"an uncaught slip falls {fallAfterSlip:0.00} s after it (game time; {fallMs - offMs:0} ms on the probe clock) — the catch's 0.4 s window and no more"));
         // Space now is too late: a last effort (a flail, a bump and its cry), and the fall goes on — every press, early
         // and late in the fall (PLANET-72: there used to be nothing after its first 0.6 s).
         await Seconds(0.15);
@@ -173,9 +173,9 @@ public partial class PlanetsProbe
         await Until(() => P.FallProgress < 0, 4);
         Check(P.LastFallTurns >= 2f && P.LastFallClosestMetres < 0.3f * r, F($"the fall spirals round the black hole: {P.LastFallTurns:0.00} turns, down to {P.LastFallClosestMetres:0.0} m from the centre"));
         await Until(() => P.FallReturns == returns + 1 && !P.Busy, 8);
-        var returnMs = Time.GetTicksMsec();
+        var returnMs = ClockSeconds * 1000;
         // The sequence stays prompt (PLANET-72): the fall is ≈ 2.6 s and the return a warp's descent; the presses add nothing.
-        Check(returnMs - fallMs < 6000, F($"slip to fall {fallMs - offMs} ms, fall to standing on the parent {returnMs - fallMs} ms (under 6 s)"));
+        Check(returnMs - fallMs < 6000, F($"slip to fall {fallMs - offMs:0} ms, fall to standing on the parent {returnMs - fallMs:0} ms (under 6 s)"));
         await Frames(3);
         Check(App.Navigator.Current == root && P.Composition?.FolderId == root, $"the fall returns you to the parent by ordinary navigation: {Tree.DisplayName(App.Navigator.Current)}");
         var landing = P.Composition!.LauncherFor(eh);
