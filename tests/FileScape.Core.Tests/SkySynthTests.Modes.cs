@@ -1,4 +1,6 @@
 using FileScape.Core.Audio;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -20,17 +22,8 @@ public sealed class SkySynthModesFactAttribute : FactAttribute
 /// intervals, the tune's rhythm and contour kept in every mode, only the mode differing within a comparison, the
 /// characteristic degree heard, and renders that neither clip nor fall silent where they should not.
 /// </summary>
-public partial class SkySynthTests
+public class SkySynthModeTests(ITestOutputHelper output)
 {
-    /// <summary>A 50 ms window quieter than this (RMS, ≈ −60 dBFS) counts as silence in the gap scan.</summary>
-    private const double SilenceRms = 0.001;
-
-    /// <summary>The gap scan's window, seconds.</summary>
-    private const double SilenceWindowSeconds = 0.05;
-
-    /// <summary>The soft clipper bends samples above this (SkySynth.SoftClip): a render whose peak stays below it is unclipped.</summary>
-    private const float SoftClipFrom = 0.85f;
-
     [Fact]
     public void Each_mode_has_the_intervals_of_its_rotation_of_the_major_scale()
     {
@@ -232,36 +225,6 @@ public partial class SkySynthTests
 
     /// <summary>Where the last note's written length ends, seconds: after it only the ring, which fades to silence as it should.</summary>
     private static double MusicEnd(SketchScore score) => score.Notes.Max(n => n.Start + n.Length).TotalSeconds;
-
-    /// <summary>The peak, and how long (seconds) the 50 ms windows between 0.2 s and <paramref name="untilSeconds"/> are silent in all; also each silent run's start and length.</summary>
-    private static (float Peak, double SilentSeconds, List<(double At, double Length)> Runs) Scan(float[] x, double untilSeconds)
-    {
-        var peak = x.Max(MathF.Abs);
-        var window = (int)(SilenceWindowSeconds * Rate);
-        var runs = new List<(double, double)>();
-        double silent = 0;
-        double? runStart = null;
-        for (var f = (int)(0.2 * Rate); f + window <= Math.Min(x.Length / 2, (int)(untilSeconds * Rate)); f += window)
-        {
-            double sum = 0;
-            for (var i = f; i < f + window; i++) sum += x[2 * i] * x[2 * i] + x[2 * i + 1] * x[2 * i + 1];
-            var quiet = Math.Sqrt(sum / (2 * window)) < SilenceRms;
-            var t = f / (double)Rate;
-            if (quiet)
-            {
-                silent += SilenceWindowSeconds;
-                runStart ??= t;
-            }
-            else if (runStart is { } s)
-            {
-                runs.Add((s, t - s));
-                runStart = null;
-            }
-        }
-
-        if (runStart is { } last) runs.Add((last, untilSeconds - last));
-        return (peak, silent, runs);
-    }
 
     /// <summary>
     /// The listening folder (SKYSYNTH_MODES_DIR): every sketch (<see cref="ModeSketches.All"/>) and each mode's version on its

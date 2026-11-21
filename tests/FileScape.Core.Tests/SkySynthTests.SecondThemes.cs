@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
 /// <summary>PLANET-65 (AD-66): the folder bands' second themes: where they play, how they read as notes, the mix, the warning's room and the cost.</summary>
-public partial class SkySynthTests
+public class SkySynthSecondThemeTests(ITestOutputHelper output)
 {
     public static TheoryData<MusicIdentity> FolderBands() => new([MusicIdentity.Outskirts, MusicIdentity.Trails, MusicIdentity.DeepWoods, MusicIdentity.Underglow]);
 
@@ -38,8 +40,9 @@ public partial class SkySynthTests
     /// (the arrival as before), in bars 8–11 of every odd cycle and of a revisit's first free section (unless an augmented
     /// ending holds bar 8), and in no other world at any visit.
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void The_second_theme_plays_on_revisits_and_odd_cycles_in_the_folder_bands_only(MusicIdentity id)
     {
         var band = id is >= MusicIdentity.Outskirts and <= MusicIdentity.Underglow;
@@ -108,6 +111,7 @@ public partial class SkySynthTests
     /// The second theme's bars sit in the mix like the band motif's (no louder than the theme's own bars of that cycle +1 dB,
     /// inside −31…−24 LUFS), never clip (peak ≤ 0.4), and leave the edge warning ≥ 4 dB of room in each of its bars (AD-52's bound).
     /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(FolderBands))]
     public void The_second_theme_keeps_the_mix_and_the_warning_s_room(MusicIdentity id)
@@ -154,6 +158,7 @@ public partial class SkySynthTests
     }
 
     /// <summary>The second theme costs nothing measurable: a revisit's bars 8–11 with cues render within the usual bound (60 ms per second of audio, Debug).</summary>
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
     [Theory]
     [MemberData(nameof(FolderBands))]
     public void Rendering_a_revisit_with_the_second_theme_is_cheap(MusicIdentity id)

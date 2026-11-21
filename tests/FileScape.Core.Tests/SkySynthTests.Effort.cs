@@ -1,5 +1,7 @@
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -8,7 +10,7 @@ namespace FileScape.Core.Tests;
 /// fall's own roar (DJ, 2026-11-19: "pressing Space produced no visible effort"). Measured as the existing cue checks are:
 /// the effort rendered alone against the same moment with the music and the fall, the difference being what it competes with.
 /// </summary>
-public partial class SkySynthTests
+public class SkySynthEffortTests(ITestOutputHelper output)
 {
     /// <summary>The effort is measured over this long from its start, seconds (its figure and most of its glide).</summary>
     private const double EffortWindowSeconds = 0.35;

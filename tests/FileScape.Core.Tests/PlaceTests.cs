@@ -126,7 +126,7 @@ public class PlaceTests
         {
             for (var j = i + 1; j < solids.Count; j++)
             {
-                solids[i].Box.Overlaps(solids[j].Box).Should().BeFalse($"{solids[i].What} #{solids[i].Id} overlaps {solids[j].What} #{solids[j].Id}");
+                if (solids[i].Box.Overlaps(solids[j].Box)) solids[i].Box.Overlaps(solids[j].Box).Should().BeFalse($"{solids[i].What} #{solids[i].Id} overlaps {solids[j].What} #{solids[j].Id}"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }
@@ -181,6 +181,7 @@ public class PlaceTests
         c.Vistas.Should().BeEmpty("tiers omit vistas; that is stated in the HUD");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Files_are_placed_once_in_type_quarters_and_keep_the_route_home_clear()
     {
@@ -312,7 +313,8 @@ public class PlaceTests
         {
             for (var j = i + 1; j < c.Vistas.Count; j++)
             {
-                Vector3.Distance(c.Vistas[i].Center, c.Vistas[j].Center).Should().BeGreaterThanOrEqualTo(c.Vistas[i].Radius + c.Vistas[j].Radius);
+                var d = Vector3.Distance(c.Vistas[i].Center, c.Vistas[j].Center);
+                if (d < c.Vistas[i].Radius + c.Vistas[j].Radius) d.Should().BeGreaterThanOrEqualTo(c.Vistas[i].Radius + c.Vistas[j].Radius); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }

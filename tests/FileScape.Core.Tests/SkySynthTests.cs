@@ -2,6 +2,7 @@ using System.Diagnostics;
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
 using Xunit.Abstractions;
+using static FileScape.Core.Tests.SkySynthKit;
 
 namespace FileScape.Core.Tests;
 
@@ -41,44 +42,15 @@ public sealed class SkySynthArrangementsFactAttribute : FactAttribute
     }
 }
 
-/// <summary>The Planets audio synth (pure DSP; PLANET-23, PLANET-28, AD-49): safety, determinism, latency, smooth crossfades, the worlds' music and cost.</summary>
-public partial class SkySynthTests(ITestOutputHelper output)
+/// <summary>
+/// The Planets audio synth (pure DSP; PLANET-23, PLANET-28, AD-49): safety, determinism, the effects' latency, smooth
+/// crossfades and mute. The synth's other areas are their own classes (TEST-10, AD-90): this file's sections below
+/// (worlds and tempo, the theme, the AD-52 arrangements and hazard cues, the listening evidence) and the
+/// SkySynthTests.*.cs files, one class each, sharing SkySynthKit. Put a new test in the class of its area; a new area
+/// gets a new SkySynthTests.(Area).cs with its own class (a name starting SkySynth keeps it in the music area set).
+/// </summary>
+public class SkySynthTests(ITestOutputHelper output)
 {
-    private const int Rate = SkySynth.DefaultSampleRateHz;
-
-    private static int Frames(double seconds) => (int)Math.Round(seconds * Rate);
-
-    private static (float Peak, float MaxJump, double Rms) Measure(float[] s)
-    {
-        float peak = 0, jump = 0;
-        double sum = 0;
-        for (var i = 0; i < s.Length; i++)
-        {
-            peak = MathF.Max(peak, MathF.Abs(s[i]));
-            sum += s[i] * (double)s[i];
-            if (i >= 2) jump = MathF.Max(jump, MathF.Abs(s[i] - s[i - 2])); // same channel, consecutive frames
-        }
-
-        return (peak, jump, Math.Sqrt(sum / Math.Max(1, s.Length)));
-    }
-
-    private static void FireEverything(SkySynth s)
-    {
-        s.Step(1);
-        s.Jump();
-        s.AirJump();
-        s.Land(30);
-        s.WindUp(TimeSpan.FromSeconds(0.6));
-        s.Launch();
-        s.Fly(0.5f);
-        s.Arrive();
-        s.Select();
-        s.Inspect();
-        s.Open();
-        s.Deny();
-        for (var i = 0; i < 6; i++) s.Chime(i);
-    }
-
     [Fact]
     public void Stress_all_effects_at_once_with_music_and_flight_stays_finite_and_below_full_scale()
     {
@@ -291,6 +263,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         back.Rms.Should().BeGreaterThan(0.0005);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
     [Fact]
     public void Rendering_one_second_of_music_with_six_effects_is_cheap()
     {
@@ -345,51 +318,16 @@ public partial class SkySynthTests(ITestOutputHelper output)
         s.Key.Mode.Should().Be("lydian");
     }
 
+}
+
+/// <summary>
+/// The worlds' music identities and their tempo (PLANET-28, AD-49): which character plays which arrangement, the tempo-locked effects' grid, switching worlds on the next downbeat, the identities heard apart.
+/// One class per section of SkySynthTests.cs (TEST-10, AD-90): each class is its own xUnit collection, so the sections run
+/// side by side; the shared helpers are <see cref="SkySynthKit"/>. A new test goes in the class of its section.
+/// </summary>
+public class SkySynthWorldTests(ITestOutputHelper output)
+{
     // ---------------------------------------------------------------- worlds and tempo (PLANET-28, AD-49)
-
-    private const int LowRate = 8000;
-    private static readonly WorldCharacter Hub = new(WorldKind.Hub, 0, 0, -1);
-    private static readonly WorldCharacter Windows = new(WorldKind.WindowsRoot, 0, 0, -1);
-    private static readonly WorldCharacter Wsl = new(WorldKind.WslRoot, 0, 0, -1);
-    private static readonly WorldCharacter Repo = new(WorldKind.Repository, 3, 0, 42);
-    private static readonly WorldCharacter Worktree = new(WorldKind.Repository, 3, 0, 43, Worktree: true);
-    private static readonly WorldCharacter HazardWorld = new(WorldKind.Hazard, 2, 0, -1);
-
-    private static WorldCharacter Band(int band, int repositoryId = -1) =>
-        new(WorldKind.Folder, band switch { 1 => 1, 2 => 2, 3 => 4, _ => 6 }, band, repositoryId);
-
-    /// <summary>One representative character per identity.</summary>
-    public static TheoryData<MusicIdentity> Identities() => new(Enum.GetValues<MusicIdentity>());
-
-    private static WorldCharacter CharacterOf(MusicIdentity id) => id switch
-    {
-        MusicIdentity.Hub => Hub,
-        MusicIdentity.WindowsRoot => Windows,
-        MusicIdentity.WslRoot => Wsl,
-        MusicIdentity.Repository => Repo,
-        MusicIdentity.Hazard or MusicIdentity.Abyss => HazardWorld,
-        _ => Band(id - MusicIdentity.Outskirts + 1),
-    };
-
-    /// <summary>
-    /// A synth playing <paramref name="id"/> from its first downbeat: its representative character, and for a score with no
-    /// world kind of its own (the abyss, AD-60) that score chosen before the first downbeat (a retarget, so nothing else plays).
-    /// </summary>
-    private static SkySynth SynthFor(int seed, PlanetTheme theme, MusicIdentity id, float musicVolume = 1f, int rate = Rate)
-    {
-        var s = new SkySynth(seed, theme, rate, CharacterOf(id)) { MusicVolume = musicVolume };
-        if (SkySynth.IdentityOf(CharacterOf(id)) != id) s.SetWorld(theme, CharacterOf(id), 1, id);
-        return s;
-    }
-
-    private static double FramesPerSixteenth(MusicIdentity id, int rate = Rate) => rate * 60.0 / (SkySynth.TempoFor(id) * 4.0);
-
-    private static float[] RenderSeconds(SkySynth s, double seconds)
-    {
-        var all = new float[Frames(seconds) * 2];
-        for (var done = 0; done < all.Length; done += 735 * 2) s.Render(all.AsSpan(done, Math.Min(735 * 2, all.Length - done)));
-        return all;
-    }
 
     [Fact]
     public void Each_identity_has_its_tempo_the_hub_calm_and_the_journey_quicker()
@@ -450,15 +388,8 @@ public partial class SkySynthTests(ITestOutputHelper output)
         SkySynth.KeyFor(PlanetTheme.Meadow, Band(1)).Should().BeEquivalentTo(SkySynth.KeyFor(PlanetTheme.Meadow));
     }
 
-    /// <summary>The first frame (after <paramref name="from"/>) where |x| exceeds the threshold, or −1.</summary>
-    private static long FirstSound(float[] buffer, long from, float threshold = 1e-6f)
-    {
-        var i = Array.FindIndex(buffer, x => MathF.Abs(x) > threshold);
-        return i < 0 ? -1 : from + i / 2;
-    }
-
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void Tempo_locked_effects_land_on_the_32nd_grid_of_every_identity_within_the_bound(MusicIdentity id)
     {
         var grid = FramesPerSixteenth(id) / 2;
@@ -478,13 +409,6 @@ public partial class SkySynthTests(ITestOutputHelper output)
         }
 
         output.WriteLine($"{id}: 32nd {grid * 1000 / Rate:0.0} ms, worst wait {worst * 1000.0 / Rate:0.0} ms (bound {SkySynth.QuantisedLatencyBound.TotalMilliseconds} ms)");
-    }
-
-    /// <summary>The frame of the first beat at or after <paramref name="frame"/> on a clock starting at <paramref name="origin"/>.</summary>
-    private static long NextBeat(long frame, long origin, double framesPerSixteenth)
-    {
-        var k = (long)Math.Ceiling((frame - origin) / (4 * framesPerSixteenth) - 1e-9);
-        return origin + (long)Math.Ceiling(4 * k * framesPerSixteenth - 1e-6);
     }
 
     [Fact]
@@ -519,7 +443,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void AlignToGrid_ends_a_wind_up_on_a_sixteenth_at_every_tempo(MusicIdentity id)
     {
         var sixteenth = FramesPerSixteenth(id);
@@ -556,6 +480,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         Math.Abs(rel - Math.Round(rel / repo) * repo).Should().BeLessThan(1.5, "on the repository's sixteenths, from its downbeat");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Eight_worlds_in_two_seconds_stay_within_the_voice_budget_bounded_and_click_free()
     {
@@ -645,52 +570,6 @@ public partial class SkySynthTests(ITestOutputHelper output)
         b.Should().Equal(a);
     }
 
-    /// <summary>Energy above ≈ 7 kHz (first differences of first differences), as a fraction of the total: hats, shakers, glass.</summary>
-    private static double HighShare(float[] s)
-    {
-        double hf = 0, all = 0;
-        for (var i = 4; i < s.Length; i++)
-        {
-            var d2 = s[i] - 2 * s[i - 2] + s[i - 4];
-            hf += d2 * (double)d2;
-            all += s[i] * (double)s[i];
-        }
-
-        return hf / Math.Max(1e-12, all);
-    }
-
-    /// <summary>Onsets per second: 10 ms frames whose high-passed energy jumps above 1.6× the previous three (and a floor).</summary>
-    private static double OnsetRate(float[] s)
-    {
-        const int hop = Rate / 100;
-        var frames = s.Length / 2;
-        var e = new List<double>();
-        for (var f = 0; f + hop <= frames; f += hop)
-        {
-            double x = 0;
-            for (var i = Math.Max(1, f); i < f + hop; i++)
-            {
-                var hp = s[2 * i] - s[2 * i - 2];
-                x += hp * (double)hp;
-            }
-
-            e.Add(x);
-        }
-
-        var floor = e.Average() * 0.2;
-        var onsets = 0;
-        for (var i = 3; i < e.Count; i++)
-        {
-            if (e[i] > floor && e[i] > 1.6 * (e[i - 1] + e[i - 2] + e[i - 3]) / 3 && e[i] >= e[i - 1])
-            {
-                onsets++;
-                i += 4;
-            }
-        }
-
-        return onsets / (frames / (double)Rate);
-    }
-
     [Fact]
     public void The_identities_sound_measurably_different_and_the_hub_is_the_calm_one()
     {
@@ -733,6 +612,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         (features[MusicIdentity.WindowsRoot].High / features[MusicIdentity.WslRoot].High).Should().BeGreaterThan(1.5, "Windows is the glassy one, WSL the warm one");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(MusicIdentity.Trails)]
     [InlineData(MusicIdentity.Repository)]
@@ -802,8 +682,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
         notes.Count(n => n.Part == MelodyPart.Theme && n.Frame < 8).Should().Be(1, "it was not restarted");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void Launch_and_landing_cues_stand_clear_of_every_world_s_music(MusicIdentity id)
     {
         // The cue alone (music silent: the voices and their allocation are the same) against the music as the cue ducks it
@@ -855,32 +736,16 @@ public partial class SkySynthTests(ITestOutputHelper output)
         }
     }
 
+}
+
+/// <summary>
+/// The FileScape theme (AD-49): the written 8 bars, its returns every 16 bars with variations, the lead in every key's scale.
+/// One class per section of SkySynthTests.cs (TEST-10, AD-90): each class is its own xUnit collection, so the sections run
+/// side by side; the shared helpers are <see cref="SkySynthKit"/>. A new test goes in the class of its section.
+/// </summary>
+public class SkySynthThemeTests(ITestOutputHelper output)
+{
     // ---------------------------------------------------------------- the FileScape theme
-
-    private static int Midi(MusicalKey key, int degree)
-    {
-        var len = key.IntervalsSemitones.Count;
-        var octave = (int)Math.Floor(degree / (double)len);
-        return key.RootMidiNote + 12 + key.IntervalsSemitones[degree - octave * len] + 12 * octave;
-    }
-
-    /// <summary>
-    /// The fraction of the written theme's notes (in a 7-note key) found among <paramref name="onsets"/> from bar
-    /// <paramref name="startBar"/>: an onset of the same pitch class within ± 2 sixteenths (an octave shift, an
-    /// anticipation or a delay still count; an ornament adds notes but keeps the theme's).
-    /// </summary>
-    private static double ThemeMatch(IReadOnlyList<MelodyNote> onsets, MusicalKey key, int startBar, double framesPerSixteenth)
-    {
-        var found = 0;
-        foreach (var t in SkySynth.ThemeMelody)
-        {
-            var expected = (startBar * 16 + t.StartSixteenths) * framesPerSixteenth;
-            var pitchClass = Midi(key, t.Degree) % 12;
-            if (onsets.Any(o => Math.Abs(o.Frame - expected) <= 2 * framesPerSixteenth + 1 && o.MidiNote % 12 == pitchClass)) found++;
-        }
-
-        return found / (double)SkySynth.ThemeMelody.Count;
-    }
 
     [Fact]
     public void The_written_theme_is_8_bars_built_from_a_motif_and_its_answer()
@@ -897,6 +762,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         foreach (var n in theme) (n.Degree % 7).Should().BeOneOf([0, 1, 2, 4, 5], "the theme uses the pentatonic subset, so it maps into every key");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(MusicIdentity.Outskirts)]
     [InlineData(MusicIdentity.Repository)]
@@ -959,27 +825,31 @@ public partial class SkySynthTests(ITestOutputHelper output)
         // Over many cycles each variation appears; in each key the lead plays it in the scale.
         var seen = new HashSet<ThemeVariation>();
         var fps = FramesPerSixteenth(MusicIdentity.Outskirts, LowRate);
-        foreach (var theme in Enum.GetValues<PlanetTheme>())
+        // The 33 keys are independent renders: computed side by side (TEST-12), then checked in the same order as before.
+        var cases = (from theme in Enum.GetValues<PlanetTheme>() from character in new[] { Band(1), Band(4), Wsl } select (theme, character)).ToList();
+        var leads = TestParallel.Map(cases, c =>
         {
-            foreach (var character in new[] { Band(1), Band(4), Wsl })
+            // 8 kHz: the notes are what is checked here, and the low rate keeps 12 cycles per key quick.
+            var s = new SkySynth(seed: (int)c.theme * 17 + 3, c.theme, LowRate, c.character);
+            var lead = new List<MelodyNote>();
+            s.MelodyObserver = n =>
             {
-                var key = SkySynth.KeyFor(theme, character);
-                // 8 kHz: the notes are what is checked here, and the low rate keeps 12 cycles per key quick.
-                var s = new SkySynth(seed: (int)theme * 17 + 3, theme, LowRate, character);
-                var lead = new List<MelodyNote>();
-                s.MelodyObserver = n =>
-                {
-                    if (n.Part is MelodyPart.Theme or MelodyPart.Grace or MelodyPart.Counter) lead.Add(n);
-                };
-                var buffer = new float[4096 * 2];
-                var total = (int)Math.Round(12 * 16 * 16 * fps); // ≈ 12 cycles
-                for (var done = 0; done < total; done += 4096) s.Render(buffer);
-
-                var scale = key.IntervalsSemitones.Select(x => (x + key.RootMidiNote) % 12).ToHashSet();
-                lead.Should().OnlyContain(n => scale.Contains(n.MidiNote % 12), $"{theme}'s lead stays in {key.Mode}");
-                lead.Should().OnlyContain(n => n.MidiNote >= 40 && n.MidiNote <= 100, $"{theme}'s lead stays in a singable range");
-                foreach (var n in lead) seen.Add(n.Variation);
-            }
+                if (n.Part is MelodyPart.Theme or MelodyPart.Grace or MelodyPart.Counter) lead.Add(n);
+            };
+            var buffer = new float[4096 * 2];
+            var total = (int)Math.Round(12 * 16 * 16 * fps); // ≈ 12 cycles
+            for (var done = 0; done < total; done += 4096) s.Render(buffer);
+            return lead;
+        });
+        for (var i = 0; i < cases.Count; i++)
+        {
+            var (theme, character) = cases[i];
+            var key = SkySynth.KeyFor(theme, character);
+            var lead = leads[i];
+            var scale = key.IntervalsSemitones.Select(x => (x + key.RootMidiNote) % 12).ToHashSet();
+            lead.Should().OnlyContain(n => scale.Contains(n.MidiNote % 12), $"{theme}'s lead stays in {key.Mode}");
+            lead.Should().OnlyContain(n => n.MidiNote >= 40 && n.MidiNote <= 100, $"{theme}'s lead stays in a singable range");
+            foreach (var n in lead) seen.Add(n.Variation);
         }
 
         seen.Should().BeEquivalentTo(Enum.GetValues<ThemeVariation>());
@@ -1007,6 +877,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
         (first.Value.Frame - called).Should().BeLessThanOrEqualTo((long)(4 * hub) + 1, "within one beat of the hub (0.64 s)");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Variations_are_deterministic_per_seed_and_cycle()
     {
@@ -1032,86 +903,20 @@ public partial class SkySynthTests(ITestOutputHelper output)
         output.WriteLine($"seed 1: {string.Join(", ", one)}; seed 2: {string.Join(", ", two)}");
     }
 
+}
+
+/// <summary>
+/// AD-52's arrangements (PLANET-35): the theme recognisable in each, equal loudness, no clicks between them, a minute of each that varies and never runs away.
+/// One class per section of SkySynthTests.cs (TEST-10, AD-90): each class is its own xUnit collection, so the sections run
+/// side by side; the shared helpers are <see cref="SkySynthKit"/>. A new test goes in the class of its section.
+/// </summary>
+public class SkySynthArrangementTests(ITestOutputHelper output)
+{
     // ---------------------------------------------------------------- AD-52: the arrangements and the hazard cues (PLANET-35)
 
-    private static readonly MusicIdentity[] NewArrangements = [MusicIdentity.Trails, MusicIdentity.DeepWoods, MusicIdentity.Underglow, MusicIdentity.Hazard];
-
-    /// <summary>The identities whose AD-49 arrangements are still in use: the reference for loudness.</summary>
-    private static readonly MusicIdentity[] CurrentArrangements = [MusicIdentity.Hub, MusicIdentity.WindowsRoot, MusicIdentity.WslRoot, MusicIdentity.Repository, MusicIdentity.Outskirts];
-
-    public static TheoryData<MusicIdentity> NewArrangementIds() => new(NewArrangements);
-
-    /// <summary>Frames per sixteenth of the theme (the score: half the pulse in a half-time arrangement).</summary>
-    private static double ThemeFramesPerSixteenth(MusicIdentity id, int rate = Rate) => rate * 60.0 / (SkySynth.ThemeTempoFor(id) * 4.0);
-
-    /// <summary>
-    /// Integrated loudness after ITU-R BS.1770 (K-weighting, 400 ms blocks with 75 % overlap, the −70 LUFS absolute and
-    /// −10 LU relative gates), in LUFS, of interleaved stereo at <see cref="Rate"/>.
-    /// </summary>
-    private static double Lufs(float[] s)
-    {
-        // The K-weighting filter's two biquads (the high shelf and the RLB high-pass), designed for this sample rate.
-        static (double B0, double B1, double B2, double A1, double A2) Shelf()
-        {
-            const double f0 = 1681.974450955533, g = 3.999843853973347, q = 0.7071752369554196;
-            var k = Math.Tan(Math.PI * f0 / Rate);
-            var vh = Math.Pow(10, g / 20);
-            var vb = Math.Pow(vh, 0.4996667741545416);
-            var a0 = 1 + k / q + k * k;
-            return ((vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0);
-        }
-
-        static (double B0, double B1, double B2, double A1, double A2) HighPass()
-        {
-            const double f0 = 38.13547087602444, q = 0.5003270373238773;
-            var k = Math.Tan(Math.PI * f0 / Rate);
-            var a0 = 1 + k / q + k * k;
-            return (1, -2, 1, 2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0);
-        }
-
-        var frames = s.Length / 2;
-        var weighted = new double[2][];
-        foreach (var ch in new[] { 0, 1 })
-        {
-            var x = new double[frames];
-            for (var i = 0; i < frames; i++) x[i] = s[2 * i + ch];
-            foreach (var (b0, b1, b2, a1, a2) in new[] { Shelf(), HighPass() })
-            {
-                double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-                for (var i = 0; i < frames; i++)
-                {
-                    var y = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-                    x2 = x1;
-                    x1 = x[i];
-                    y2 = y1;
-                    y1 = y;
-                    x[i] = y;
-                }
-            }
-
-            weighted[ch] = x;
-        }
-
-        var block = (int)(0.4 * Rate);
-        var hop = block / 4;
-        var powers = new List<double>();
-        for (var start = 0; start + block <= frames; start += hop)
-        {
-            double sum = 0;
-            for (var i = start; i < start + block; i++) sum += weighted[0][i] * weighted[0][i] + weighted[1][i] * weighted[1][i];
-            powers.Add(sum / block);
-        }
-
-        static double L(double power) => -0.691 + 10 * Math.Log10(Math.Max(1e-12, power));
-        var absolute = powers.Where(z => L(z) > -70).ToList();
-        if (absolute.Count == 0) return -70;
-        var relative = L(absolute.Average()) - 10;
-        var gated = absolute.Where(z => L(z) > relative).ToList();
-        return L(gated.Average());
-    }
-
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(NewArrangementIds))]
+    [MemberData(nameof(NewArrangementIds), MemberType = typeof(SkySynthKit))]
     public void Every_new_arrangement_keeps_the_theme_recognisable_and_returning(MusicIdentity id)
     {
         var fps = ThemeFramesPerSixteenth(id);
@@ -1136,23 +941,30 @@ public partial class SkySynthTests(ITestOutputHelper output)
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Every_arrangement_is_as_loud_as_the_others_within_2_dB_and_never_clips()
     {
         var results = new Dictionary<MusicIdentity, (double Lufs, double Rms, float Peak)>();
+        // Each arrangement in each key is an independent 32 s render: measured side by side (TEST-12), reported in order.
+        var themes = new[] { PlanetTheme.Hearth, PlanetTheme.Workshop, PlanetTheme.Vault };
+        var cases = (from id in Enum.GetValues<MusicIdentity>() from theme in themes select (id, theme)).ToList();
+        var measured = TestParallel.Map(cases, c =>
+        {
+            var buf = RenderSeconds(SynthFor(77, c.theme, c.id), 32);
+            return (Lufs: Lufs(buf), Measure: Measure(buf));
+        });
         foreach (var id in Enum.GetValues<MusicIdentity>())
         {
             var lufs = new List<double>();
             var rms = new List<double>();
             float peak = 0;
-            foreach (var theme in new[] { PlanetTheme.Hearth, PlanetTheme.Workshop, PlanetTheme.Vault })
+            for (var i = 0; i < cases.Count; i++)
             {
-                var s = SynthFor(77, theme, id);
-                var buf = RenderSeconds(s, 32);
-                lufs.Add(Lufs(buf));
-                var m = Measure(buf);
-                rms.Add(Db(m.Rms));
-                peak = MathF.Max(peak, m.Peak);
+                if (cases[i].id != id) continue;
+                lufs.Add(measured[i].Lufs);
+                rms.Add(Db(measured[i].Measure.Rms));
+                peak = MathF.Max(peak, measured[i].Measure.Peak);
             }
 
             results[id] = (lufs.Average(), rms.Average(), peak);
@@ -1173,7 +985,7 @@ public partial class SkySynthTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [MemberData(nameof(NewArrangementIds))]
+    [MemberData(nameof(NewArrangementIds), MemberType = typeof(SkySynthKit))]
     public void Switching_into_and_out_of_each_arrangement_never_clicks(MusicIdentity id)
     {
         var s = new SkySynth(seed: 13, PlanetTheme.Hearth, Rate, Band(1));
@@ -1253,8 +1065,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
         s.Identity.Should().Be(MusicIdentity.Trails, "the way back ends where the hops began");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(NewArrangementIds))]
+    [MemberData(nameof(NewArrangementIds), MemberType = typeof(SkySynthKit))]
     public void A_full_minute_in_one_arrangement_varies_and_never_runs_away(MusicIdentity id)
     {
         var s = new SkySynth(seed: 60, PlanetTheme.Library, Rate, CharacterOf(id));
@@ -1292,8 +1105,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
         peak.Should().BeLessThan(0.8f);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
     [Theory]
-    [MemberData(nameof(NewArrangementIds))]
+    [MemberData(nameof(NewArrangementIds), MemberType = typeof(SkySynthKit))]
     public void Rendering_each_arrangement_with_cues_is_cheap(MusicIdentity id)
     {
         var best = double.MaxValue;
@@ -1384,6 +1198,15 @@ public partial class SkySynthTests(ITestOutputHelper output)
         (first.MidiNote % 12).Should().Be(Midi(SkySynth.KeyFor(PlanetTheme.Meadow, Band(2)), 2) % 12);
     }
 
+}
+
+/// <summary>
+/// AD-52's hazard cues (PLANET-35): the warning throttles itself, the fall spirals down and the return brings the music back, every cue stands clear of every world's music.
+/// One class per section of SkySynthTests.cs (TEST-10, AD-90): each class is its own xUnit collection, so the sections run
+/// side by side; the shared helpers are <see cref="SkySynthKit"/>. A new test goes in the class of its section.
+/// </summary>
+public class SkySynthHazardCueTests(ITestOutputHelper output)
+{
     [Fact]
     public void The_hazard_warning_throttles_itself_and_falls_silent_when_the_calls_stop()
     {
@@ -1506,8 +1329,9 @@ public partial class SkySynthTests(ITestOutputHelper output)
         after.Should().BeGreaterThan(reference * 0.5, "the music comes back after the return");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
-    [MemberData(nameof(Identities))]
+    [MemberData(nameof(Identities), MemberType = typeof(SkySynthKit))]
     public void Hazard_cues_stand_clear_of_every_world_s_music(MusicIdentity id)
     {
         (string Name, Action<SkySynth> Start, Action<SkySynth, int> Frame, double Seconds)[] cues =
@@ -1548,6 +1372,15 @@ public partial class SkySynthTests(ITestOutputHelper output)
         }
     }
 
+}
+
+/// <summary>
+/// Opt-in listening evidence (SKYSYNTH_WAV, SKYSYNTH_EVIDENCE_DIR, SKYSYNTH_ARRANGEMENTS_DIR): renders to .wav for DJ to hear; skipped otherwise.
+/// One class per section of SkySynthTests.cs (TEST-10, AD-90): each class is its own xUnit collection, so the sections run
+/// side by side; the shared helpers are <see cref="SkySynthKit"/>. A new test goes in the class of its section.
+/// </summary>
+public class SkySynthEvidenceTests(ITestOutputHelper output)
+{
     // ---------------------------------------------------------------- listening evidence (opt-in)
 
     [SkySynthWavFact]
@@ -1565,8 +1398,6 @@ public partial class SkySynthTests(ITestOutputHelper output)
         output.WriteLine($"wrote {path}: {r.Samples.Count / 2 / (double)Rate:0.0} s, peak {peak:0.000} ({Db(peak):0.0} dBFS), rms {rms:0.0000} ({Db(rms):0.0} dBFS)");
         peak.Should().BeLessThan(1f);
     }
-
-    private static double Db(double linear) => 20 * Math.Log10(Math.Max(1e-9, linear));
 
     /// <summary>
     /// The listening evidence for PLANET-28 (SKYSYNTH_EVIDENCE_DIR): a 25 s clip per identity (a wind-up, launch, flight and
@@ -1811,103 +1642,4 @@ public partial class SkySynthTests(ITestOutputHelper output)
         r.MaxMusicVoices.Should().BeLessThanOrEqualTo(SkySynth.MaxMusicVoices);
     }
 
-    /// <summary>A scripted playthrough in 60 Hz frames: walking, a launch (wind-up aligned to the grid), flight, a landing and arrival.</summary>
-    private sealed class Route(SkySynth s)
-    {
-        public readonly List<float> Samples = new(Rate * 2 * 80);
-        public readonly List<string> Events = [];
-        public double T;
-        public int MaxMusicVoices;
-
-        public void Until(double seconds, Action<double>? each = null)
-        {
-            while (T < seconds)
-            {
-                each?.Invoke(T);
-                Samples.AddRange(s.Render(735));
-                MaxMusicVoices = Math.Max(MaxMusicVoices, s.ActiveMusicVoices);
-                T += 735 / (double)Rate;
-            }
-        }
-
-        public void Walk(double seconds)
-        {
-            var next = T + 0.3;
-            Until(T + seconds, now =>
-            {
-                if (now < next) return;
-                s.Step(0.6f);
-                next += 0.36;
-            });
-        }
-
-        public void Travel(PlanetTheme theme, WorldCharacter character, int visits)
-        {
-            var windUp = s.AlignToGrid(TimeSpan.FromSeconds(0.75), TimeSpan.FromSeconds(0.09));
-            s.WindUp(windUp);
-            Until(T + windUp.TotalSeconds);
-            s.Launch();
-            Events.Add($"launch {T:0.00} s");
-            var t0 = T;
-            Until(t0 + 2.4, now =>
-            {
-                var p = (float)((now - t0) / 2.4);
-                s.Fly(p);
-                s.SetFlight(MathF.Sin(MathF.PI * Math.Clamp(p, 0, 1)));
-            });
-            s.Fly(1);
-            s.SetFlight(0);
-            s.Land(6);
-            s.SetWorld(theme, character, visits);
-            s.Arrive();
-            Events.Add($"land {T:0.00} s ({SkySynth.IdentityOf(character)})");
-        }
-
-        /// <summary>The synth the route drives (for cues the route has no method for).</summary>
-        public SkySynth Synth => s;
-
-        /// <summary>A launch as the app makes it (AD-52 samples): a 0.4 s wind-up on the grid, a flight calling Fly every frame, landing at 8 m/s, SetWorld, Arrive.</summary>
-        public void Flight(PlanetTheme theme, WorldCharacter character, int visits, double flightSeconds = 2.0, MusicIdentity? score = null)
-        {
-            var windUp = s.AlignToGrid(TimeSpan.FromSeconds(0.4), TimeSpan.FromSeconds(0.09));
-            s.WindUp(windUp);
-            Until(T + windUp.TotalSeconds);
-            s.Launch();
-            Events.Add($"launch {T:0.00} s");
-            var t0 = T;
-            Until(t0 + flightSeconds, now => s.Fly((float)((now - t0) / flightSeconds)));
-            s.Fly(1);
-            s.Land(8);
-            s.SetWorld(theme, character, visits, score ?? SkySynth.IdentityOf(character));
-            s.Arrive();
-            Events.Add($"land {T:0.00} s ({score ?? SkySynth.IdentityOf(character)})");
-        }
-
-        public void Hop(PlanetTheme theme, WorldCharacter character, int visits)
-        {
-            s.SetWorld(theme, character, visits);
-            s.Arrive();
-            Events.Add($"hop {T:0.00} s ({SkySynth.IdentityOf(character)})");
-        }
-    }
-
-    private static void WriteWav(string path, List<float> interleaved, int rate)
-    {
-        using var w = new BinaryWriter(File.Create(path));
-        var dataBytes = interleaved.Count * 2;
-        w.Write("RIFF"u8);
-        w.Write(36 + dataBytes);
-        w.Write("WAVE"u8);
-        w.Write("fmt "u8);
-        w.Write(16);
-        w.Write((short)1); // PCM
-        w.Write((short)2); // stereo
-        w.Write(rate);
-        w.Write(rate * 4);
-        w.Write((short)4);
-        w.Write((short)16);
-        w.Write("data"u8);
-        w.Write(dataBytes);
-        foreach (var x in interleaved) w.Write((short)Math.Round(Math.Clamp(x, -1f, 1f) * 32767));
-    }
 }

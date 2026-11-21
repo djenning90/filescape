@@ -35,7 +35,7 @@ public class WorldLayoutTests
             for (var j = i + 1; j < list.Count; j++)
             {
                 var d = Vector2.Distance(list[i].Center, list[j].Center);
-                d.Should().BeGreaterThanOrEqualTo(list[i].Radius + list[j].Radius, $"{t.FullPath(list[i].Id)} and {t.FullPath(list[j].Id)} must not overlap");
+                if (!(d >= list[i].Radius + list[j].Radius)) d.Should().BeGreaterThanOrEqualTo(list[i].Radius + list[j].Radius, $"{t.FullPath(list[i].Id)} and {t.FullPath(list[j].Id)} must not overlap"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }
@@ -204,8 +204,8 @@ public class WorldLayoutTests
         m.Islands[t.Find("Wide").Id].Radius.Should().BeGreaterThan(50f, "70 gates need tiers: a bigger place");
     }
 
-    [Fact]
-    public void Layout_is_deterministic_and_fast_for_thousands_of_folders()
+    /// <summary>40 folders of 30 folders of one folder each: 2,441 islands.</summary>
+    private static FsTree ThousandsOfFolders()
     {
         var big = new Spec("root");
         for (var i = 0; i < 40; i++)
@@ -215,13 +215,27 @@ public class WorldLayoutTests
             big.Dir(d);
         }
 
-        var t = big.Build();
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        return big.Build();
+    }
+
+    [Fact]
+    public void Layout_is_deterministic_for_thousands_of_folders()
+    {
+        var t = ThousandsOfFolders();
         var m1 = WorldLayout.Compute(t);
-        var ms = sw.Elapsed.TotalMilliseconds;
         var m2 = WorldLayout.Compute(t);
         m1.Islands.Count.Should().Be(2441);
         m1.Islands.Values.All(i => m2.Islands[i.Id] == i).Should().BeTrue();
-        ms.Should().BeLessThan(150, "laid out on the main thread when the explored world changes (throttled)");
+    }
+
+    /// <summary>The wall-clock half of the check above (TEST-11): it failed at 242 ms beside the other streams' builds, so it runs in the serial perf step.</summary>
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
+    [Fact]
+    public void Layout_of_thousands_of_folders_takes_under_150_ms()
+    {
+        var t = ThousandsOfFolders();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        WorldLayout.Compute(t);
+        sw.Elapsed.TotalMilliseconds.Should().BeLessThan(150, "laid out on the main thread when the explored world changes (throttled)");
     }
 }

@@ -17,6 +17,10 @@
     <ProjectReference Include="..\..\src\FileScape.Fixtures\FileScape.Fixtures.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The area sets for tools/fs.sh test-area (TEST-13); TestAreaTests reads it beside the assembly. -->
+    <None Include="areas.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="FluentAssertions" />
   </ItemGroup>

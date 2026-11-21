@@ -310,6 +310,7 @@ public class HazardWorldTests(ITestOutputHelper output)
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Worlds))]
     public void Bridges_are_at_least_the_walkable_width_and_some_have_a_gap_to_jump(string kind)
@@ -450,6 +451,7 @@ public class HazardWorldTests(ITestOutputHelper output)
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Worlds))]
     public void Falls_happen_only_off_the_shell(string kind)
@@ -508,6 +510,7 @@ public class HazardWorldTests(ITestOutputHelper output)
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Worlds))]
     public void Composition_is_deterministic(string kind)

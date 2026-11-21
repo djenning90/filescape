@@ -1,0 +1,16 @@
+# Core test areas (TEST-13, AD-90): `tools/fs.sh test-area AREA[,AREA...]` (and `test-wsl-area`) runs the classes whose
+# name starts with one of the area's prefixes (FullyQualifiedName~FileScape.Core.Tests.<prefix>), without the Perf and
+# Report kinds. A class may be in several areas. Every test class must start with some area's prefix
+# (TestAreaTests.Every_test_class_is_in_an_area): a new class either gets a name that already matches or a prefix here.
+# Format: "area: Prefix Prefix ..." ; '#' starts a comment.
+music: SkySynth MusicActivity SoundPreference
+hazard: Hazard SphereWalker JumpModel
+walking: SphereWalker JumpModel Walk LookLeveling NavigationAndConsistency UsabilityPass Horizon
+overview: Overview UniverseLayout TelescopeSurvey
+gallery: Gallery MediaWorld ThumbnailPlan ShellThumbnail
+places: Place PlanetComposer PlanetRelief ArrivalComposition ConnectedPlace RootMark ProminenceAndProject ProjectBench WorldCharacter WorldLayout LayoutAndInteraction SampleSky
+panels: PanelOwnership SelectionActions FaceToggle LessonText Markdown DeveloperActions FileAction HubAndLocation
+input: PanelOwnership SelectionActions FaceToggle DeveloperActions NavigationAndConsistency UsabilityPass
+navigation: Departure DestinationTree Traversal HubAndLocation WorldExplorer ListAhead NavigationAndConsistency
+scanning: WindowsScanner SyntheticAndModel WindowsWorld WorldExplorer ListAhead Traversal
+baseline: BehaviourBaseline GoldenBehaviour Quantity TestArea

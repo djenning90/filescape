@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -20,7 +22,7 @@ public sealed class SkySynthCycleHashFactAttribute : FactAttribute
 /// PLANET-64/65 (AD-66): the orchestra's tempo lift and the second themes. Here: the instrument that shows which scores a
 /// change touched (a hash of a whole cycle of every score, first to third visit, before and after), and the tests.
 /// </summary>
-public partial class SkySynthTests
+public partial class SkySynthTempoTests(ITestOutputHelper output)
 {
     /// <summary>
     /// Writes, per score and visit (1–3), a SHA-256 of one whole cycle plus two seconds rendered from its first downbeat
@@ -63,7 +65,7 @@ public sealed class SkySynthMusic66FactAttribute : FactAttribute
     }
 }
 
-public partial class SkySynthTests
+public partial class SkySynthTempoTests
 {
     /// <summary>
     /// The folder DJ heard (/home/david/src/possibility-engine/src on the Ubuntu-24.04 distribution) as FileScape sees it
@@ -99,10 +101,10 @@ public partial class SkySynthTests
             var land = r.T;
             var downbeat = land + 60.0 / SkySynth.TempoFor(MusicIdentity.DeepWoods);
             r.Walk(downbeat + 16 * Bar(MusicIdentity.DeepWoods) + 1.5 - r.T);
-            SaveWindow(r, Path.Combine(dir, $"orchestra-src-arrival-{tag}.wav"), land - 0.5, land + 26);
-            SaveWindow(r, Path.Combine(dir, $"orchestra-src-climax-{tag}.wav"), downbeat + 11 * Bar(MusicIdentity.DeepWoods) - 0.3, downbeat + 16 * Bar(MusicIdentity.DeepWoods) + 1.5);
+            SaveWindow(output, r, Path.Combine(dir, $"orchestra-src-arrival-{tag}.wav"), land - 0.5, land + 26);
+            SaveWindow(output, r, Path.Combine(dir, $"orchestra-src-climax-{tag}.wav"), downbeat + 11 * Bar(MusicIdentity.DeepWoods) - 0.3, downbeat + 16 * Bar(MusicIdentity.DeepWoods) + 1.5);
             output.WriteLine($"orchestra: {SkySynth.TempoFor(MusicIdentity.DeepWoods)} BPM pulse, theme {SkySynth.ThemeTempoFor(MusicIdentity.DeepWoods)} BPM, bar {Bar(MusicIdentity.DeepWoods):0.00} s; landed {land:0.00} s");
-            ReportBands(r, $"orchestra-src-{tag}", downbeat, Bar(MusicIdentity.DeepWoods));
+            ReportBands(output, r, $"orchestra-src-{tag}", downbeat, Bar(MusicIdentity.DeepWoods));
             LogLine(notes, (long)(downbeat * Rate), (long)((downbeat + 16 * Bar(MusicIdentity.DeepWoods)) * Rate), "orchestra-src first visit");
         }
 
@@ -116,7 +118,7 @@ public partial class SkySynthTests
             r.Flight(theme, character, 2); // a second visit (not remembered: it starts on its second cycle)
             var downbeat = r.T + 60.0 / SkySynth.TempoFor(id);
             r.Walk(downbeat + toBar * Bar(id) + 1.0 - r.T);
-            SaveWindow(r, Path.Combine(dir, $"{name}-{tag}.wav"), downbeat + fromBar * Bar(id) - 0.3, downbeat + toBar * Bar(id) + 1.0);
+            SaveWindow(output, r, Path.Combine(dir, $"{name}-{tag}.wav"), downbeat + fromBar * Bar(id) - 0.3, downbeat + toBar * Bar(id) + 1.0);
             LogLine(notes, (long)((downbeat + 8 * Bar(id)) * Rate), (long)((downbeat + 12 * Bar(id)) * Rate), name + " bars 8–11");
         }
 
@@ -165,7 +167,7 @@ public partial class SkySynthTests
     }
 }
 
-public partial class SkySynthTests
+public partial class SkySynthTempoTests
 {
     [Fact]
     public void The_orchestra_is_lifted_modestly_and_keeps_its_half_time_shape()

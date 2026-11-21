@@ -168,6 +168,7 @@ public sealed class WindowsScannerTests : IDisposable
         tree.Root.Flags.Should().HaveFlag(NodeFlags.Vanished);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
     [WindowsFact]
     public void Cancellation_stops_a_real_scan_promptly()
     {

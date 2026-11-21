@@ -267,6 +267,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
         Snapshot(sky.Root).Should().Equal(before);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Content_is_deterministic()
     {
@@ -331,6 +332,7 @@ public sealed class SampleSkyTests(SampleSkyFixture sky) : IClassFixture<SampleS
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void An_older_sample_is_refreshed_in_place_and_keeps_files_it_did_not_write()
     {
