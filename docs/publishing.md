@@ -2,7 +2,17 @@
 
 A review of what a fresh clone and a release package would expose (2026-11-15, PLANET-36; refreshed 2026-11-17 for the
 build after the second playtest), what has been fixed, how the history is backed up and prepared for publication, the
-decisions that are DJ's to make, and the exact remaining steps. Nothing has been pushed or published.
+decisions that are DJ's to make, and the exact remaining steps. The private backup is on GitHub (see the newest
+refresh); nothing has been published.
+
+## 2026-11-20 (seventh pass) refresh at a glance
+
+| Item | State |
+|---|---|
+| Off-machine backup (GitHub, private) | **in use**: `origin` = github.com/djenning90/filescape (private, Git Credential Manager). DJ pushed the sixth pass (`e03ab2e`, 2026-11-20 17:04). From the seventh pass, DJ asked agents to push completed, verified milestones of `main`; the pushed commit is named in docs/implementation-status.md |
+| Owner and repository | settled in practice: `djenning90/filescape` (private). The public name stays parked (AD-73) |
+| .NET | **.NET 10** (AD-89) |
+| Decisions | [Decisions for DJ](#decisions-for-dj-before-publishing): licence first. Note on item 3: the private origin already holds the original-email history, so a rewritten public history needs a new repository or a force-push, not a visibility switch |
 
 ## 2026-11-20 (evening) refresh at a glance
 
@@ -80,15 +90,15 @@ evidence screenshots and every evidence log path, the export preset, and the str
 
 DJ's preference (2026-11-17): keep the development history public, so someone can follow FileScape from the flat-world
 prototype to Planets and through the playtests. Scan of every commit, message and file version (216 commits on `main`;
-every `worktree-*` branch is merged, 0 commits ahead):
+every `worktree-*` branch was merged, 0 commits ahead; none remain as of the seventh pass):
 
 | Exposed | Where | Recommendation |
 |---|---|---|
 | The author email (a personal Gmail address) | every commit's author and committer, and quoted in this file in 56 commits | **rewrite** to your GitHub noreply address (the one cleanup recommended) |
 | The Windows user name "David" | ~190,000 path occurrences, almost all `C:\Users\David\AppData\…` in evidence logs and fixtures | keep (it is the author's first name, already in the commit identity) |
-| Laptop hardware, driver versions | `INVESTIGATION_01_FINDINGS.md`, `docs/implementation-status.md` | keep (part of the performance story) |
+| Laptop hardware, driver versions | `docs/archive/INVESTIGATION_01_FINDINGS.md`, `docs/implementation-status.md` | keep (part of the performance story) |
 | Installed NuGet packages | `docs/evidence/2026-11-03/live-nuget*` (4 files), `live-dotnet.log` | keep, or `--drop` them (low sensitivity) |
-| Agent prompts and handoffs | `FileScape_Project_Handoff.md`, `CLAUDE_INVESTIGATION_01.md`, `CLAUDE.md`, `docs/development-methodology.md` (names another project, "Possibility Engine") | keep: they are how the project was built |
+| Agent prompts and handoffs | `docs/archive/FileScape_Project_Handoff.md`, `docs/archive/CLAUDE_INVESTIGATION_01.md`, `CLAUDE.md`, `docs/development-methodology.md` (names another project, "Possibility Engine") | keep: they are how the project was built |
 | Long quotations from Nintendo interviews and manuals | `docs/galaxy-research.md` | the most copyright-sensitive file: keep, paraphrase at HEAD, or `--drop` (a drop removes it from every commit) |
 | Evidence screenshots and logs | `docs/evidence/` (124 MB, 336 files; largest 1.6 MB) | keep: within GitHub's limits (no file over 50 MB) |
 | Secrets, tokens, private folder contents | none found (fixtures, the Starter Sky, system locations only) | — |
@@ -107,8 +117,8 @@ files. Rerun it after the final merge with your real noreply address (GitHub →
 
 ## Backup (private, off-machine)
 
-What a push of `main` alone would miss: the uncommitted working-tree edits (README, Windows workflow, the ZIP quick
-start — Codex's, still under review) and any tag. `tools/backup-snapshot.sh snapshot` commits the working tree onto
+Superseded 2026-11-20: the https `origin` exists and is in use (steps 1–3 below are done). Kept for the record.
+What a push of `main` alone would miss: uncommitted working-tree edits and any tag (Codex's docs were committed in `4d1b6b5`). `tools/backup-snapshot.sh snapshot` commits the working tree onto
 `backup/working-tree` (parent `main`) without touching the index, the working tree or `main`; `bundle DIR` writes and
 test-clones a bundle; `push URL` pushes `main`, `backup/*` and tags and verifies every ref from a fresh clone.
 

@@ -1592,7 +1592,7 @@ Other measurements:
 - **KD-03 Startup frames of 150–220 ms** (first frame and first relayout; likely shader/pipeline compilation). No shader warm-up yet.
 - **KD-04 Hand-feel not reviewed.** Speeds and sensitivities are measured and consistent, but were chosen without DJ's hands-on judgement: ground speed max(4, 0.9·distance) u/s; starting flight speed clamp(0.6·distance, 2, 400) u/s; look 0.12°/px; orbit 0.28/0.22°/px.
 - **KD-08 Trackpads.** Holding the right button while moving is awkward on a trackpad, and there is no fly toggle yet.
-- **KD-09 Open via a document association is unverified** (only directory → Explorer was verified).
+- ~~KD-09 Open via a document association is unverified~~ **Closed 2026-11-20:** documents open through their real associations (.txt, .html, .xml, .png; PLANET-140, sixth pass).
 - **KD-05 Not exercised by automation:** the native folder dialog (keyboard movement after closing it is covered only by the equivalent in-engine dialog case), the broad-root confirmation, the code-running-file confirmation dialog, Show in Explorer, Copy path, DPI scaling above 1.0 (automation forces `--ui-scale=1`; the default is DPI/96).
 - **KD-06 Spatial stability during scans is partial.** The selection stays fixed on screen, but other subtrees can shift sideways as siblings grow.
 - **KD-07 District overview is dark at bird's-eye distance.** It reads mainly through labels and streets. LOD/impostors are not implemented.
@@ -1627,7 +1627,7 @@ Other measurements:
   - the tread brightness of the stairs.
 
   If vertical flight still "feels wrong", the next suspects are the vertical speed (0.8 × flight speed) and the take-off rise.
-- **KD-27 Not promoted:** build `4a7b9ce6fdf6` is staged, not installed (DJ's FileScape was running). Install by closing FileScape and running `tools/fs.sh export`.
+- ~~KD-27 Not promoted (`4a7b9ce6fdf6`)~~ **Superseded:** every later candidate is staged, and installing is DJ's step (close FileScape, `tools/fs.sh promote`); the current candidate is named at the top of this file.
 - **KD-28 Right-hold real-input check (open as intermittent, instrument).** The check read one state snapshot 150 ms after the right press, so it could see a snapshot written before the app reacted. This was reproduced 3 times in 76 cycles, each with the sample predating the app's look (where timed), and with no product failure in a fresh snapshot.
   - **Original occurrence (2026-11-06):** it recorded no values, so its cause is unconfirmed, though consistent with this race.
   - **Fix:** the check now waits up to 1.5 s for a fresh snapshot and logs its values. A future failure will therefore show which part failed.
@@ -1641,7 +1641,7 @@ Other measurements:
   - **Common symptom:** injected keys and mouse events have no effect for a stretch, which is what Places does by design while the window is not focused. No change to Places' input, look or flight code was found; the flat walker's only change is the shared jump model.
   - **Diagnostics added:** probes now log every window focus change ("window focus LOST"). A recurrence next to such a line is the environment; one without it reopens this as a product defect.
 - **KD-32 Not promoted:** the planetary build is verified in its staging folder but could not be moved into `build`: Windows refused to move the current `build` folder (no file in it is open, so a folder handle is held, for example a terminal or Explorer window open inside it). Nothing was closed. `tools/fs.sh promote <staging-name>` installs it once the folder is free.
-- **KD-33 Planets, not established:** how it feels to a person (movement, camera, scale, sound: nobody has played or listened yet); real large trees in the app (Core composes 800 files in 2.6 ms); NTFS cloud placeholders in the app (they are never read; not exercised); the music on other audio devices; UI scale 1.5 and above.
+- **KD-33 Planets, not established** (updated 2026-11-20: DJ and others have played and listened since, see the playtest sections; the "feel" part is closed): ~~how it feels to a person~~; real large trees in the app (Core composes 800 files in 2.6 ms); NTFS cloud placeholders in the app (they are never read; not exercised); the music on other audio devices; UI scale 1.5 and above.
 
 ## Provisional decisions to confirm with DJ
 

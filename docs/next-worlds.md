@@ -1,6 +1,8 @@
 # Next worlds: photos and videos, documents, Downloads
 
-A design sketch (2026-11-16, AD-61, proposed). Nothing here is built. It answers DJ's brief: how photos and videos,
+A design sketch (2026-11-16, AD-61, proposed). **Since built:** the Gallery (AD-78, AD-86: picture folders by
+their contents or the Pictures library, real thumbnails on easels). The Arrivals Port (Downloads) and the Reading
+Room remain proposals. It answers DJ's brief: how photos and videos,
 documents and Downloads could become distinct places; how FileScape would recognise each one; what would make each feel
 different; and one thing the player could do there that makes the folder more useful. It also covers mixed folders,
 overrides and risks, ranks the three ideas and names the first prototype.

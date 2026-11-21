@@ -76,4 +76,4 @@ tools/fs.sh             WSL → Windows build/run/test/export helper
 docs/                   requirements, decisions, architecture, workflow, status, evidence
 ```
 
-Project history and context: `FileScape_Project_Handoff.md`, `INVESTIGATION_01_FINDINGS.md`, `docs/development-methodology.md`.
+Project history and context: `docs/archive/FileScape_Project_Handoff.md`, `docs/archive/INVESTIGATION_01_FINDINGS.md`, `docs/development-methodology.md`.
