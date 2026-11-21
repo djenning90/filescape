@@ -149,6 +149,29 @@ Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.
 
 ## Seventh pass (2026-11-21)
 
+### Stream R: the candidate's three real-input failures (PLANET-199, AD-99)
+
+Desktop owner for the rest of the pass. Branch `worktree-agent-ab8a0c8e814cc44a1` from main e1088c6. Each failure on the
+candidate (os -AirIntent, -Steps, -Route; evidence `2026-11-21-os-cand`) was traced frame by frame (the probe's new
+`trace-*.csv`; the state file's new `wishYaw`, `facingYaw`) and replayed in Core:
+
+| Failure | Cause | Kind | Fix | Evidence |
+|---|---|---|---|---|
+| -AirIntent B "turned 152 deg" | the body flew straight across (bridge facing 177.7° throughout); the turn was measured from the stand point's facing, which after a fall still faced along the route | instrument | the turn from the take-off facing | os -AirIntent: 0° (A), 0° (B, effort, fell), 179° (C, steered back, caught) |
+| -Steps "not up, highest 2.1 m" | the app steered by the rendered camera's look, which trails the heading ≈ 0.13 s: the walk lagged the key by ≈ 17° and spiralled off the stones' outer side | product (camera/steering) | forward is the camera's heading (`_camFwd`) | `OverlookStepsTests.Steering_by_the_rendered_camera_lagged_…` reproduces 2.1 m; os -Steps: up in 1.89 s with ↑ → |
+| -Route "spin … selected Lantern Workshop" (1 in 3) | touching the bench's rim 7–9° off its centre, AD-97's slide carried the walker along the rim at 2× the plain speed, the body turned to it, the camera swung in behind it, ↑ followed: the jump went along the rim and off the deck | product (AD-97) | within 15° of head-on the plain slide, and the body faces the input (`WallSlideHeadOnFromDegrees` 65, `WallSlideHeadOnDegrees` 75) | `BenchJumpTests` (failed first: off the deck from 4°); os -Route 3/3 (touching at 15.6°, 1.9°, 9.7°) |
+
+The probe's -Steps now also reports ↑ with the turn away from the curve (← here): it walks off the stones by geometry
+(highest 0.3 m), never pinned. Running up (Shift) still stops at 2.1 m (reported, as AD-97 left it).
+
+Final staged build a436c27 (`staging-20261121-062009-3036576`): os -Route ×3, -AirIntent, -Steps, -Hazard -Recovery,
+-Play, -Landmarks all pass (0 failures); journeys planets-hazard, -lookouts, -route, -route-hub, -relief, -text,
+-gallery 7/7 (journeys-20261121-063050); `test-wsl` 1,217 passed after BenchJumpTests joined its areas (one run:
+TestAreaTests failed first on the new class). **Demonstrated.**
+
+For DJ by feel: steering now leads the easing picture by ≈ 0.13 s while turning; a wall met 65–75° off along slides a
+little slower than AD-97's slide; a run up the stones with Shift still needs more turn than the key gives.
+
 ### Stream F: integration fixes after every stream merged (PLANET-198)
 
 Four journeys failed on main 208faa3 (journeys-20261121-043542) and two more showed up in the regression set. Each
