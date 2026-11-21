@@ -9,11 +9,11 @@ walking: SphereWalker JumpModel Walk OverlookSteps LookLeveling NavigationAndCon
 overview: Overview UniverseLayout TelescopeSurvey
 gallery: Gallery MediaWorld ThumbnailPlan ShellThumbnail
 places: Place PlanetComposer PlanetRelief ArrivalComposition ConnectedPlace RootMark ProminenceAndProject ProjectBench WorldCharacter WorldLayout LayoutAndInteraction SampleSky
-panels: PanelOwnership SelectionActions FaceToggle LessonText Markdown DeveloperActions FileAction HubAndLocation PlayCommands PanelFit
+panels: PanelOwnership SelectionActions FaceToggle LessonText Markdown DeveloperActions FileAction HubAndLocation PlayCommands PanelFit IntegrationFix
 input: PanelOwnership SelectionActions FaceToggle DeveloperActions NavigationAndConsistency UsabilityPass PlayCommands
 navigation: Departure DestinationTree Traversal HubAndLocation WorldExplorer ListAhead NavigationAndConsistency TravelRoutes SurfaceResume
 scanning: WindowsScanner SyntheticAndModel WindowsWorld WorldExplorer ListAhead Traversal
 baseline: BehaviourBaseline GoldenBehaviour Quantity TestArea
-text: UiText LiteralText PanelFit LessonText Markdown HelpSheet
+text: UiText LiteralText PanelFit LessonText Markdown HelpSheet IntegrationFix
 clock: JourneyClock
 stalls: NeighbourhoodScheduling PlanetComposer
