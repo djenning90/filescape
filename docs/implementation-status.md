@@ -4,7 +4,96 @@ Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
-## Seventh pass (2026-11-20)
+## Seventh pass (2026-11-20 to 21)
+
+### The integrated candidate and the request checklist (integrator)
+
+The seventh pass ran in three waves on one desktop owner at a time: an early desktop reproduction (the stalls, the
+telescope's terminal, the airborne turn, the steps, the overview), then streams V1, V2, K, T, G, M without the
+desktop, then S5 (with measurement launches), S6 and S8, an integration-fix stream F (in-app journeys) and a final
+real-input stream R. Every stream's report is summarised in its own subsection below.
+
+**Where verification time went before this pass** (the sixth pass's final `check full`, 42.9 min wall): build 40 s;
+Windows Core 330 s (the slowest step: SkySynthTests was one partial class, so ≈ 200 tests ran one after another and
+set the wall time; the 330 s run was also on a loaded machine, and tiered JIT kept parallel hot loops unoptimised —
+V1's analysis); WSL Core 199 s beside it; the stage 49 s; ≈ 47 in-app journeys one at a time ≈ 1,950 s. Across the
+sixth pass's streams: ≈ 11,000 s active and ≈ 18,500 s waiting for the shared desktop. Reruns came mostly from
+load-sensitive timing (walk speed under load, Core timing bounds beside the build).
+
+**What changed (material):**
+
+| Measure | Before | After (this pass, same machine) |
+|---|---|---|
+| Windows Core (`fs.sh test`) | 330–412 s | 60–64 s (one Release process, parallel collections; Perf tests apart) |
+| WSL Core (`fs.sh test-wsl`) | 199–209 s (3 shards) | 24–45 s; `--fast` 15 s; an area 2–20 s |
+| `check full` wall | 42.9 min | **17.1 min** (1,023 s; final candidate run `full-20261121-050509`) |
+| Desktop occupied in `check full` | ≈ 2,600 s (every journey serial) | 939 s (38 journeys three at a time ×2.80, the real-time ones serial) |
+| Load-sensitive flakes | walk W+D speed, Core timing bounds | the simulated clock makes in-game outcomes load-independent; timing bounds only in `tests-perf` |
+| Whole pass: active / lock-wait / reruns / desktop | sixth pass ≈ 11,000 / 18,500 / — / — s | ≈ 12,000 / 2,100 / 4,800 / 4,200 s (`fs.sh timing --all` less the earlier rows) |
+
+Reruns this pass were nearly all deliberate (diagnosis, a second pass after a fix); the reasons are in the timing log.
+The harness itself had a defect found here: WSL steps its wall clock by ≈ 1 s, which gave negative lock waits; every
+duration now uses `/proc/uptime`.
+
+**The fast loop and the release path** are in docs/windows-workflow.md ("Verification tiers" and the testing guide):
+build + `fs.sh test-wsl-area <area>` (seconds) while working; `check journeys NAME…` for the journeys your change
+touches (simulated clock, three at a time); `check full` on an integrated candidate; `check release` and the real-input
+probes before a hand-over. Desktop work goes through one owner at a time (this pass: the early reproduction agent,
+then S5's measurements, F's journeys, R's real input; the integrator's `check full` runs between).
+
+**Candidate verification** (main `e1088c6`; the final candidate is named in "Final candidate" below once R's fixes
+are merged):
+- `check full` on `cb384c19`: 55 of 56 steps passed in 17.1 min; `planets-overview-enter` failed 3 of 3 runs (a
+  "you are here" name lay over home's world disc, so the click focused the root): fixed in `e1088c6`, and the six
+  overview journeys then passed.
+- Real input on `e1088c6` (`2026-11-21-os-cand`): -Dialogs 106/0, -OverviewEnter 11/0, -Depart 5/0, -Hazard -Recovery
+  21/0, -Gallery 14/0, -Look 23/0, -Tutorial 30/0, -Landmarks 27/0, -Play 15/0, -InputFocus 14/0, -Audio 8/0;
+  **failed**: -AirIntent (a late second Space turned the body 152° before the fall), -Steps (Up+Right with real keys
+  did not reach the platform, never pinned), -Route (a spin at the workbench did not open the README). Stream R.
+
+**Request checklist** (DJ's items; statuses for the final candidate; evidence names the run):
+
+| # | Request | Implementation | Evidence | Status |
+|---|---|---|---|---|
+| 1 | Where time goes; Core 186→330 s explained | integrator TRX analysis; V1 (AD-90) | V1 subsection; TRX | complete |
+| 1 | Area test sets, fast loop, commands | V1: `areas.txt`, `test-area`, `--fast`, `test-perf` | timings above | complete |
+| 1 | Failing test before logic fixes | every stream (listed per stream) | stream subsections | complete where practical (new features were not failing-first) |
+| 1 | Journeys migrated/shortened | V2's clock and parallelism (desktop −64 %); S6/S8/F moved rules into Core; no journey step trimmed | — | partial (no step-level trims this pass) |
+| 1 | One desktop coordinator; streams without the desktop | the plan above | timing log | complete |
+| 1 | Broad suite on the candidate; reruns by impact | `check full`, then the affected journeys, real input | above | complete |
+| 1 | Costs in normal output | `desktop` and `parallel` lines, Core cost summaries, `fs.sh timing` | windows-workflow.md | complete |
+| 2 | Every fix across comparable interfaces | per stream "where else" lists; TravelRoutes and PlayCommands tables enforce it for travel and keys | stream subsections | complete |
+| 3 | No ordinary shortcuts to legacy views; menu only | K: PlayCommands (AD-92) | -OverviewEnter 11/0 (real V/Tab/M); planets journeys | complete |
+| 3 | Keyboard ownership in every context | K (TextField row), G (viewer), F (drawer Esc), integrator (viewer passes nothing) | -Dialogs 106/0, -InputFocus 14/0, dialog-keys 139/0 | complete |
+| 3 | Root landmark arrows/Enter at once; outside click consumed; last panel returns control | AD-83 (re-checked: no gap) | -Dialogs, -Landmarks | complete (not reproduced as a defect) |
+| 3 | Legacy round trip restores world, place, camera; unsafe place → safe nearby | K: SurfaceResume.Place, SafeStanding | overview-controls 18/0; Core | complete (feel: DJ) |
+| 4 | Coherent rich text; literal filenames; scroll/clip/wheel; sizes and scales | T: UiText, HelpSheet, PanelFit (AD-93); F: short windows | planets-text 77/0 (12 size/scale pairs) | partial: at 1280×720 UI 1.5 the prompt runs under the preview's edge and the toolbar is cut at the right |
+| 5 | Stalls found and removed; distributions; fullscreen | S5 (AD-96) | S5 table: worst walking frame 716 → 62 ms, landings 776 → 43 ms | complete (DJ's 1440p GPU figure not reproduced; first arrival ≈ 1 s remains) |
+| 6 | Airborne intent, bounded boosts, effort, recovery | S6 (AD-97) | Core; -AirIntent | see R |
+| 6 | Sideways movement for arrow users | G: Ctrl + ← → (AD-94), Help, cues | -Gallery 14/0 | complete |
+| 6 | Telescope steps: trapped against the wall | S6: wall slide | Core; -Steps | see R |
+| 7 | Gallery as one browsing experience | G (AD-94); F probe fix | gallery 64/0, gallery-fixture 80/0, -Gallery 14/0 | complete (cloud pictures on DJ's folders: S5's Saved Pictures run, loading only) |
+| 8 | Telescope double-click, wheel, arrows, sparse | S8; F (lens) | lookouts 80/0 | complete |
+| 8 | Telescope opened a terminal at /boot | S8: selection given back; folders open with the explicit "open" verb | Core; -Landmarks 27/0 | complete in code; the original report's cause is provisional (not reproduced) |
+| 8 | Overview zoom-out reach | S8: OverviewFraming | Core; overview-sample | partial: the Ubuntu-root constraint was not reproduced (that system is far inside the old 6 km) |
+| 8 | Label placement; double-click a name | S8: LabelPlacement; F, integrator (clicks) | overview journeys | complete (look: DJ) |
+| 8 | Discovery during gameplay verified | S8: census, Discover brings a queued folder forward, premature complete fixed | play-discovery 9/0, overview-attention 102/0 | complete |
+| 9 | Every travel route through the launcher | K: TravelRoutes (29 routes, tags enforced) | Core; travel 26/0, -Depart 5/0 | complete |
+| 9 | Dropdown ▾ beside the path | K | destinations-keys 48/0 | complete |
+| 10 | Starter Sky alternatives, reel, long in-game example | M (AD-95): Homecoming default, three pieces | evidence `2026-11-20-p7-music` (reel, 3.5 min renders, in-game recording) | complete (by ear: DJ) |
+| 10 | Aurora demonstration | M | `aurora\` renders and README | complete |
+| 11 | Code clarity, named tuning; LookLeveling.Duration | every stream; integrator (`5ac0b9a`: name kept, header widened) | doc-coverage | complete |
+| 12 | Clipboard log | integrator: sanitised; copies searched; probes paste fixture text and restore (`0e3fef6`) | — | complete (one old local agent transcript holds a copy) |
+| + | .NET 10 | AD-89 (`ae32129`) | this pass's builds, `check full`, real input, ZIP, fresh clone | complete |
+| + | Outstanding-work audit, branches, worktrees | integrator | "Remaining work" below | complete |
+
+**Newly found defects (all fixed unless marked):** early focus-out under automation ignored every injected key when
+three journeys shared the desktop; WSL wall-clock steps in the harness; a gallery double-click travel route untagged;
+the picture viewer passed shortcuts to panels beneath it; a Windows-impossible test name; Complete before the
+children's listings arrived; Discover could not hurry a queued folder; the telescope's framed selection outlived the
+view; a name over another world's disc took its click; the telescope lens zoom was a no-op; the looked-at file lost the
+focus to a nearer neighbour; the legacy drawer's Esc. **Open:** the 1280×720 UI 1.5 overlap; the first arrival's ≈ 1 s.
+
 
 ### Stream S6: airborne intent on Hazard Worlds; the overlook's curved steps (PLANET-181..187, AD-97)
 
@@ -146,8 +235,6 @@ Evidence: `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-p7-music\` (README, metr
 To run on the desktop: `planets-starter-music` with `FILESCAPE_STARTER_MUSIC=Homecoming`, `FILESCAPE_AUDIO_RECORD`
 and `FILESCAPE_AUDIO_RECORD_SECONDS=240` (the in-game recording); `planets-music` (unchanged checks; the hub now plays
 Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.25 UI scale (the new Music row).
-
-## Seventh pass (2026-11-21)
 
 ### Stream F: integration fixes after every stream merged (PLANET-198)
 
