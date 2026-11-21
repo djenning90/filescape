@@ -1,4 +1,5 @@
 using FileScape.Core.Audio;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using CoreDecoration = FileScape.Core.Planets.DecorationKind;
@@ -92,7 +93,7 @@ public partial class PlanetWorld
     }
 
     /// <summary>The lighthouse's prompt (probes check it).</summary>
-    public const string LighthousePrompt = "E or twirl (Space, Space) · light the lighthouse";
+    public const string LighthousePrompt = "{E} or twirl ({Space}, {Space}) · light the lighthouse";
 
     /// <summary>Lights the lighthouse: the beam sweeps, the lamp flares, the horn and bells sound. Opens nothing.</summary>
     private void LightLighthouse()
@@ -172,7 +173,7 @@ public partial class PlanetWorld
     {
         if (NearestScenery() is not { } n || n.Metres > SceneryReachMetres) return false;
         if (_sceneryRepliesByKind.GetValueOrDefault(n.Kind) >= SceneryPromptTimes) return false;
-        SetPrompt($"Space, Space · twirl by the {SceneryName(n.Kind)}", "a little scenery that answers");
+        SetPrompt($"{K("Space")}, {K("Space")} · twirl by the {SceneryName(n.Kind)}", "a little scenery that answers");
         return true;
     }
 
@@ -187,7 +188,7 @@ public partial class PlanetWorld
     }
 
     /// <summary>The caption line now (probes check the telescope's caption).</summary>
-    public string HintText => _hint.Text;
+    public string HintText => _hintPlain;
 
     /// <summary>The piece of scenery shimmering now (its decoration index), or −1 (probes).</summary>
     public int SceneryCueIndex => _current?.Visual?.SceneryCue ?? -1;

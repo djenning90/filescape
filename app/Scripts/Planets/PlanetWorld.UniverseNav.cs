@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 
@@ -34,13 +35,18 @@ public partial class PlanetWorld
     private enum UniverseControl { Select, Wheel, Ring, Up }
 
     private PanelContainer _uniHintPanel = null!;
-    private Label _uniHintLabel = null!;
+    private RichTextLabel _uniHintLabel = null!;
+
+    /// <summary>The controls the hint teaches (<see cref="UiText"/> markup: keys as caps).</summary>
+    private const string UniverseHintMarkup = "Click a world to orbit it · {F} frames it · the wheel zooms toward the pointer\n"
+        + "{[} {]} the next world round its ring · {Z} up a level · {W}{A}{S}{D} or middle-drag pan\n"
+        + "{Shift}: faster · {Esc}: back down · {F1}: every control · a haze holds folded worlds";
     private float _uniHintT = float.MaxValue, _uniHintFor;
     private int _uniHintOpenings;
     private readonly HashSet<UniverseControl> _uniHintUsed = [];
 
     /// <summary>The hint's text (probes).</summary>
-    public string UniverseHintText => _uniHintLabel.Text;
+    public string UniverseHintText => UiText.Plain(UniverseHintMarkup);
 
     /// <summary>The hint is showing (probes).</summary>
     public bool UniverseHintShown => _uniHintPanel.Visible && _uniHintPanel.Modulate.A > 0.05f;
@@ -57,11 +63,9 @@ public partial class PlanetWorld
         // toolbar and of the "You are in" bar under it (at 64 the bar covered the hint's left half; PLANET-113).
         _uniHintPanel.OffsetLeft = -350; _uniHintPanel.OffsetRight = 350; _uniHintPanel.OffsetTop = 150; _uniHintPanel.OffsetBottom = 236;
         root.AddChild(_uniHintPanel);
-        _uniHintLabel = MakeLabel(15, new Color(0.88f, 0.93f, 1f), HorizontalAlignment.Center, outline: 0);
-        _uniHintLabel.MouseFilter = Control.MouseFilterEnum.Ignore;
-        _uniHintLabel.Text = "Click a world to orbit it · F frames it · the wheel zooms toward the pointer\n"
-            + "[ ] the next world round its ring · Z up a level · WASD or middle-drag pan\n"
-            + "Shift: faster · Esc: back down · F1: every control · a haze holds folded worlds";
+        _uniHintLabel = MakeRichLine(UiTextStyle.Panel, new Color(0.88f, 0.93f, 1f), outline: 0);
+        _uniHintLabel.AddThemeConstantOverride("line_separation", 3); // room for the caps' backgrounds between lines
+        SetRich(_uniHintLabel, UniverseHintMarkup, UiTextStyle.Panel);
         _uniHintPanel.AddChild(_uniHintLabel);
     }
 

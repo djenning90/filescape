@@ -1,4 +1,5 @@
 using FileScape.App.Ui;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using FileScape.Core.Scanning;
 using FileScape.Core.Shell;
@@ -154,26 +155,27 @@ public partial class PlanetWorld
         if (RootMark is not { } m || _current == null || _s.Tree is not { } tree || RootMarkFaceDistance(m) > RootMarkReachMetres) return false;
         _focusRootMark = true;
         var wsl = m.Kind == WorldKind.WslRoot;
-        var what = $"{(wsl ? "the terminal monolith" : "the pane gateway")} · {PathForms.For(tree.FullPath(_current.FolderId))[0].Text}";
+        var what = $"{(wsl ? "the terminal monolith" : "the pane gateway")} · {UiText.Lit(PathForms.For(tree.FullPath(_current.FolderId))[0].Text)}";
         if (!_rootPanel.Visible)
         {
             // PLANET-57 (DJ: "replace the compressed text with a clear instruction such as E · Show location actions").
-            SetPrompt(RootMarkPromptText, $"{what}   ·   or twirl (Space, Space): a terminal or Explorer, then Enter");
+            SetPrompt(RootMarkPromptText, $"{what}   ·   or twirl ({K("Space")}, {K("Space")}): a terminal or Explorer, then {K("Enter")}");
         }
         else if (_rootArmed >= 0)
         {
-            SetPrompt($"Enter · {RootMarkArmed}   ·   ↑ ↓ choose   ·   E · close", what);
+            SetPrompt($"{K("Enter")} · {UiText.Lit(RootMarkArmed)}   ·   {K("↑")} {K("↓")} choose   ·   {K("E")} · close", what);
         }
         else
         {
-            SetPrompt("↑ ↓ choose · Enter or a number runs it   ·   E · close", what);
+            SetPrompt("{↑} {↓} choose · {Enter} or a number runs it   ·   {E} · close", what);
         }
 
         return true;
     }
 
-    /// <summary>The prompt within reach of the mark with its panel closed (probes check it).</summary>
-    public const string RootMarkPromptText = "E · Show location actions";
+    /// <summary>The prompt within reach of the mark with its panel closed, <see cref="UiText"/> markup (probes compare its
+    /// plain form).</summary>
+    public const string RootMarkPromptText = "{E} · Show location actions";
 
     /// <summary>E at the mark: opens (or closes) its panel. Nothing runs here.</summary>
     private void ToggleRootMarkPanel()

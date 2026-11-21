@@ -1,4 +1,5 @@
 using FileScape.App.Planets;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using FileScape.Core.Scanning;
 using FileScape.Core.Shell;
@@ -172,7 +173,7 @@ public partial class PlanetsProbe
         var (_, standFace) = P.RootMarkBearing();
         var onFront = NVector3.Dot(P.Walker.Up - m.Direction, m.Facing) > 0;
         Check(closest > 0.2f && onFront, F($"{tag}: the mark is solid: W towards it, then 0.5 s more into it, stops {closest:0.00} m from its face (the walker is 0.35 m round), still in front of it"));
-        Check(P.RootMarkFocused && P.PromptText == PlanetWorld.RootMarkPromptText, F($"{tag}: within reach ({standFace:0.0} m) the prompt offers it: \"{P.PromptText}\""));
+        Check(P.RootMarkFocused && P.PromptText == UiText.Plain(PlanetWorld.RootMarkPromptText), F($"{tag}: within reach ({standFace:0.0} m) the prompt offers it: \"{P.PromptText}\""));
         Check(P.RootMarkGlow > 0.8f && P.RootMarkGlow > farGlow + 0.5f, F($"{tag}: the cue brightened from {farGlow:0.00} to {P.RootMarkGlow:0.00}"));
         Check(App.ShellLog.Count == shell0, $"{tag}: walking up to it and into it started nothing");
 

@@ -26,7 +26,13 @@ namespace FileScape.App.Planets;
 public partial class PlanetWorld
 {
     private CanvasLayer _overlay = null!;
-    private Label _title = null!, _titleDetail = null!, _prompt = null!, _promptDetail = null!, _hint = null!;
+    private Label _title = null!, _titleDetail = null!;
+
+    /// <summary>The prompt, its quiet second line and the caption above them (PLANET-153): <see cref="UiText"/> markup,
+    /// so keys are caps and names are literal; their plain text is kept for probes and the state file.</summary>
+    private RichTextLabel _prompt = null!, _promptDetail = null!, _hint = null!;
+
+    private string _promptPlain = "", _promptDetailPlain = "", _hintPlain = "";
     private Control _titleBox = null!, _promptBox = null!;
     private float _titleTime, _hintTime;
     private PanelContainer _previewPanel = null!, _contentsPanel = null!;
@@ -86,10 +92,11 @@ public partial class PlanetWorld
         // The prompt: bottom centre, one line plus a quiet second line.
         var pb = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.End };
         pb.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
-        pb.OffsetLeft = -460; pb.OffsetRight = 460; pb.OffsetTop = -150; pb.OffsetBottom = -64;
-        _prompt = MakeLabel(21, new Color(1f, 0.93f, 0.7f), HorizontalAlignment.Center, outline: 8);
-        _promptDetail = MakeLabel(14, new Color(0.82f, 0.86f, 0.98f), HorizontalAlignment.Center, outline: 5);
-        _hint = MakeLabel(15, new Color(0.8f, 0.95f, 1f), HorizontalAlignment.Center, outline: 5);
+        pb.OffsetLeft = -PromptHalfWidth; pb.OffsetRight = PromptHalfWidth; pb.OffsetTop = -150; pb.OffsetBottom = -64;
+        pb.GrowVertical = Control.GrowDirection.Begin; // a wrapped line pushes the box up, never under the screen's edge
+        _prompt = MakeRichLine(UiTextStyle.Prompt, new Color(1f, 0.93f, 0.7f), outline: 8);
+        _promptDetail = MakeRichLine(UiTextStyle.Small, new Color(0.82f, 0.86f, 0.98f), outline: 5);
+        _hint = MakeRichLine(UiTextStyle.Panel, new Color(0.8f, 0.95f, 1f), outline: 5);
         pb.AddChild(_hint);
         pb.AddChild(_prompt);
         pb.AddChild(_promptDetail);
@@ -120,6 +127,56 @@ public partial class PlanetWorld
         l.AddThemeColorOverride("font_outline_color", new Color(0.04f, 0.03f, 0.1f, 0.9f));
         return l;
     }
+
+    /// <summary>The prompt box's half width, viewport units: 920 wide where the window allows, narrower (and wrapping) on a
+    /// small window or a large UI scale (<see cref="PanelFit"/>; at 1280 × 720 and UI 1.5 there are 853 units).</summary>
+    private const float PromptHalfWidth = 460f, TitleHalfWidth = 420f;
+
+    /// <summary>The least room kept between the prompt or the title and the window's sides, viewport units.</summary>
+    private const float ScreenTextMargin = 16f;
+
+    /// <summary>
+    /// A line of interface text over the world (PLANET-153): a RichTextLabel for <see cref="UiText"/> markup in
+    /// <paramref name="style"/>'s size, centred, outlined like the labels (<paramref name="outline"/> pixels) so it reads
+    /// over any sky, as tall as its text, wrapping rather than clipping when the window is narrow.
+    /// </summary>
+    private static RichTextLabel MakeRichLine(UiTextStyle style, Color color, int outline)
+    {
+        var l = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        l.AddThemeFontSizeOverride("normal_font_size", style.BodyPixels);
+        l.AddThemeFontSizeOverride("bold_font_size", style.BodyPixels);
+        l.AddThemeColorOverride("default_color", color);
+        l.AddThemeConstantOverride("outline_size", outline);
+        l.AddThemeColorOverride("font_outline_color", new Color(0.04f, 0.03f, 0.1f, 0.9f));
+        return l;
+    }
+
+    /// <summary>Sets a rich line's markup in its style and returns its plain text.</summary>
+    private static string SetRich(RichTextLabel label, string markup, UiTextStyle style)
+    {
+        label.Text = UiText.ToBbcode(markup, style);
+        label.Visible = markup.Length > 0;
+        return UiText.Plain(markup);
+    }
+
+    /// <summary>A file or folder name for a one-line prompt: literal, and middle-shortened past
+    /// <see cref="PromptNameChars"/> so the line still says what the key does.</summary>
+    private static string PromptName(string name) => UiText.Lit(UiText.Shorten(name, PromptNameChars));
+
+    /// <summary>The longest name a prompt shows whole, characters (by eye: the line's verb and keys must stay readable).</summary>
+    private const int PromptNameChars = 48;
+
+    /// <summary>A key cap in prompt markup.</summary>
+    private static string K(string key) => UiText.Key(key);
 
     /// <summary>The planets' panel look: deep blue-violet, nearly opaque, a thin warm-gold border, rounded corners.</summary>
     private static StyleBoxFlat PanelStyle()
@@ -195,19 +252,34 @@ public partial class PlanetWorld
 
     private string _promptKey = "";
 
-    /// <summary>Sets the prompt line and its quiet second line; unchanged text is not re-set (it is called every frame).</summary>
+    /// <summary>Sets the prompt line and its quiet second line, both <see cref="UiText"/> markup (names through
+    /// <see cref="PromptName"/>); unchanged text is not re-set (it is called every frame).</summary>
     private void SetPrompt(string text, string detail = "")
     {
-        if (_promptKey == text + detail) return;
-        _promptKey = text + detail;
-        _prompt.Text = text;
-        _promptDetail.Text = detail;
+        if (_promptKey == text + "\n" + detail) return;
+        _promptKey = text + "\n" + detail;
+        _promptPlain = SetRich(_prompt, text, UiTextStyle.Prompt);
+        _promptDetailPlain = SetRich(_promptDetail, detail, UiTextStyle.Small);
     }
 
+    /// <summary>Shows a caption above the prompt for <see cref="HintSeconds"/> (<see cref="UiText"/> markup).</summary>
     private void ShowHint(string text)
     {
-        _hint.Text = text;
+        _hintPlain = SetRich(_hint, text, UiTextStyle.Panel);
         _hintTime = HintSeconds;
+    }
+
+    /// <summary>Keeps the title and the prompt inside a narrow window (PLANET-155): their boxes shrink to the viewport and
+    /// the prompt's lines wrap.</summary>
+    private void FitScreenText()
+    {
+        var w = GetViewport().GetVisibleRect().Size.X;
+        var half = PanelFit.Width(2 * PromptHalfWidth, w, ScreenTextMargin) / 2;
+        _promptBox.OffsetLeft = -half;
+        _promptBox.OffsetRight = half;
+        var titleHalf = PanelFit.Width(2 * TitleHalfWidth, w, ScreenTextMargin) / 2;
+        _titleBox.OffsetLeft = -titleHalf;
+        _titleBox.OffsetRight = titleHalf;
     }
 
     /// <summary>
@@ -229,6 +301,7 @@ public partial class PlanetWorld
         _hintTime = MathF.Max(0, _hintTime - dt);
         _hint.Modulate = new Color(1, 1, 1, Mathf.Clamp(_hintTime / HintFadeSeconds, 0, 1));
         _promptBox.Visible = !Busy;
+        FitScreenText();
         if (_phase == Phase.Walking && _transfer == null) _warpFlash = Mathf.MoveToward(_warpFlash, 0, dt * StrayFlashFadePerSecond); // a stray veil fades
         // The same flash curve as the overview's (squared level, capped; see FlashPeakOpacity).
         _flash.Color = FlashColor with { A = Mathf.Clamp(_warpFlash * _warpFlash * FlashPeakOpacity, 0, FlashPeakOpacity) };

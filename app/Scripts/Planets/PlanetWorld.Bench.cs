@@ -91,6 +91,9 @@ public partial class PlanetWorld
         OnBenchWorld && _current!.Comp.Overlook is { } ov && _walker.Grounded && _walker.Support.Value > ov.Top - 0.3f &&
         PlanetShape.Angle(_walker.Up, ov.Direction) * _current.Comp.Shape.Radius < ov.Radius + 0.3f;
 
+    /// <summary>The bench panel's instruction line: 12 px with 11 px caps (small print under the list).</summary>
+    private static readonly UiTextStyle BenchHintStyle = new(12, 11, 12, 12);
+
     /// <summary>Builds the bench's panel (hidden until a reveal). Its list ignores clicks from a stale tree or while the overview is open.</summary>
     private void BuildBenchPanel(Control root)
     {
@@ -118,13 +121,10 @@ public partial class PlanetWorld
             if (_universe != null || !ReferenceEquals(_s.Tree, _tree) || i < 0 || i >= _benchIds.Count) return;
             DoubleClickOn(_benchIds[(int)i], sky: false); // the same rule as the cards (PLANET-43)
         };
-        var hint = new Label
-        {
-            Text = "Click: select (the card shows its actions) · double-click: open a file, go to a folder · spin on the bench (Space, Space) or E: read the README · Enter opens the selection",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        hint.AddThemeFontSizeOverride("font_size", 12);
-        hint.AddThemeColorOverride("font_color", new Color(0.7f, 0.86f, 0.85f));
+        // The panel's instructions (PLANET-153): keys as caps, left-aligned like the list above them.
+        var hint = MakeRichLine(BenchHintStyle, new Color(0.7f, 0.86f, 0.85f), outline: 0);
+        hint.HorizontalAlignment = HorizontalAlignment.Left;
+        SetRich(hint, "Click: select (the card shows its actions) · double-click: open a file, go to a folder · spin on the bench ({Space}, {Space}) or {E}: read the README · {Enter} opens the selection", BenchHintStyle);
         v.AddChild(_benchTitle);
         v.AddChild(_benchList);
         v.AddChild(hint);
@@ -206,7 +206,7 @@ public partial class PlanetWorld
             }
 
             ShowHint(_benchEntries.Count > 0
-                ? "The workbench shows this project. Spin here (Space, Space) or press E to read its README."
+                ? "The workbench shows this project. Spin here ({Space}, {Space}) or press {E} to read its README."
                 : "The workbench: this project has no README or entry points that FileScape recognises by name.");
         }
 
