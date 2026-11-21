@@ -103,9 +103,10 @@ public sealed partial class SkySynth
     {
         visits = Math.Max(1, visits);
         var cur = _decks[_current];
-        if (cur.Live && cur.Theme == theme && cur.Character == character && cur.Visits == visits && cur.Identity == score) return;
         var id = score;
-        var key = WorldKeyOf(id, theme, character);
+        var key = WorldKeyOf(id, theme, character, _hubTheme);
+        // The same world and visit (and, on the hub, the same starter theme: AD-95) is already playing.
+        if (cur.Live && cur.Theme == theme && cur.Character == character && cur.Visits == visits && cur.Identity == score && cur.WorldKey == key) return;
         var other = _decks[1 - _current];
         var prompt = experienceChange || BypassesDwell(cur.Identity, id);
         if (cur.Live && cur.NextStep == 0)
@@ -182,17 +183,26 @@ public sealed partial class SkySynth
         d.Profile = KeyProfiles[(int)id][(int)theme];
         d.Piece = PieceFor(id, theme, character);
         if (d.Piece is { Mode: DiatonicMode.Dorian }) d.Profile = OverviewDorianProfiles[(int)theme]; // AD-79: the star chart from a minor place
+        var hubPiece = id == MusicIdentity.Hub ? StarterThemes.PieceOf(_hubTheme) : null;
+        if (hubPiece != null)
+        {
+            // AD-95: the hub plays its chosen starter theme's written piece, in the place's root and the piece's own mode
+            // (so the effects pitched while it plays agree with it).
+            d.Piece = hubPiece;
+            d.Profile = HubPieceProfile(theme, hubPiece.Mode);
+        }
+
         d.ScoreTranspose = TransposeTo(d.Profile.Root);
         d.Deferred = false;
         d.Echo = character.InsideRepository && IsBand(id);
-        d.WorldKey = WorldKeyOf(id, theme, character);
+        d.WorldKey = WorldKeyOf(id, theme, character, _hubTheme);
         d.Origin = origin;
         // The pulse's sixteenth (the effects' grid) and the score's: the same, except in a half-time arrangement, whose
         // score steps are eighths of the pulse (AD-52).
         d.GridFramesPerSixteenth = _rate * 60.0 / (d.Style.Bpm * 4.0); // frames per minute ÷ sixteenths per minute (4 per beat); fractional, and each step's frame is computed from the origin, so the clock never drifts
         d.FramesPerSixteenth = d.Style.HalfTime ? d.GridFramesPerSixteenth * 2 : d.GridFramesPerSixteenth;
         d.StepsPerBeat = d.Style.HalfTime ? 2 : 4;
-        d.Level = d.Style.Level;
+        d.Level = hubPiece != null ? StarterThemes.LevelOf(_hubTheme) : d.Style.Level;
         d.PumpDepth = d.Style.PumpDepth;
         d.PumpLast = d.PumpPrev = long.MinValue / 2;
         d.DropAtStep = -1;
@@ -224,13 +234,16 @@ public sealed partial class SkySynth
 
     /// <summary>
     /// A world's identity for the music: its identity, theme, repository and worktree flag, packed into one long (identity
-    /// in bits 56+, theme 48–55, worktree bit 47, repository id + 1 below; 0 for none). Two folders with the same key share
+    /// in bits 56+, theme 48–55, worktree bit 47, repository id + 1 below; 0 for none; the hub's starter theme in bits 40+). Two folders with the same key share
     /// their music: a sibling of the same band and theme keeps the groove.
     /// </summary>
-    private static long WorldKeyOf(MusicIdentity id, PlanetTheme theme, WorldCharacter c)
+    private static long WorldKeyOf(MusicIdentity id, PlanetTheme theme, WorldCharacter c, StarterTheme hubTheme)
     {
         // An experience's piece (AD-79) belongs to the theme (its key) and the mode it is played in, not to a repository.
         if (IsExperience(id)) return ((long)id << 56) | ((long)theme << 48) | ((long)ExperienceModeFor(id, theme, c) << 40);
+        // AD-95: each starter theme is its own music on the hub (remembered apart; a change is a new world). The classic is
+        // 0, so its key, its random stream and its audio are what they were. The hub has no repository, so bits 40+ are free.
+        if (id == MusicIdentity.Hub) return ((long)id << 56) | ((long)theme << 48) | ((long)hubTheme << 40);
         var repo = c.RepositoryId >= 0 && (id == MusicIdentity.Repository || c.InsideRepository) ? c.RepositoryId + 1L : 0L;
         return ((long)id << 56) | ((long)theme << 48) | ((c.Worktree ? 1L : 0L) << 47) | (repo & 0x7FFF_FFFF_FFFFL);
     }
