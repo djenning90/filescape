@@ -16,3 +16,4 @@ scanning: WindowsScanner SyntheticAndModel WindowsWorld WorldExplorer ListAhead 
 baseline: BehaviourBaseline GoldenBehaviour Quantity TestArea
 text: UiText LiteralText PanelFit LessonText Markdown HelpSheet
 clock: JourneyClock
+stalls: NeighbourhoodScheduling PlanetComposer
