@@ -14,7 +14,8 @@
 # Options: --exe=<staged FileScape.exe (Windows path)> reuses a build instead of staging one; --fresh-stage always
 # exports a new one; --out=<Windows dir>. FS_LAUNCH_LOCK=/path takes that flock for each app launch, or for each
 # parallel batch as a whole (shared desktop). --parallel=N (FS_JOURNEY_PARALLEL, default 3) runs up to N simulated-clock
-# journeys at once; --real-time (FS_JOURNEY_CLOCK=real) runs every journey on the wall clock, one at a time, as before.
+# journeys at once; --real-time (FS_JOURNEY_CLOCK=real) runs every journey on the wall clock, one at a time, as before;
+# --render-scale=F (FS_JOURNEY_RENDER_SCALE, default 0.5) draws their 3D at F of the window (1 for full-detail shots).
 # Journeys (AD-91): window-only journeys run on a simulated clock (--fixed-fps 60, uncapped frames; load cannot change
 # what happens in the game) N at a time; those that time real background work, audio or frames (REALTIME_JOURNEYS)
 # run after them on the wall clock, one at a time; --measure, the release tier and real-OS-input probes stay serial.
@@ -27,11 +28,12 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=tools/verify-lib.sh
 source "$REPO/tools/verify-lib.sh"
 TIER="${1:-}"; shift || true
-case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,23p' "$0"; exit 2 ;; esac
+case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,24p' "$0"; exit 2 ;; esac
 EXEW=""; OUTW=""; FRESH=0; MEASURE=0; LIST=0; PATTERNS=()
 # AD-91: how many simulated-clock journeys run at once, and whether journeys use the simulated clock at all.
 PAR="${FS_JOURNEY_PARALLEL:-3}"; SIM=1; [[ "${FS_JOURNEY_CLOCK:-sim}" == real ]] && SIM=0
-RSCALE="${FS_JOURNEY_RENDER_SCALE:-}"   # --render-scale=F: simulated-clock journeys draw 3D at F of the window (ProbeBase)
+RSCALE="${FS_JOURNEY_RENDER_SCALE:-0.5}"   # --render-scale=F: simulated-clock journeys draw 3D at F of the window (ProbeBase); 1 = full
+# (the release tier runs on the wall clock at full resolution, so its screenshots are the ones to judge looks by)
 for a in "$@"; do
   case "$a" in
     --exe=*) EXEW="${a#--exe=}" ;; --out=*) OUTW="${a#--out=}" ;; --fresh-stage) FRESH=1 ;;
