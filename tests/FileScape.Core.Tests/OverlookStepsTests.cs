@@ -33,6 +33,9 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
     /// <summary>The key turn eases in over this, seconds (PlanetWorld.KeyLookEaseInSeconds).</summary>
     private const float KeyEaseInSeconds = 0.12f;
 
+    /// <summary>The climb starts this far before the first stone's edge, metres (the body's radius and half a metre: a step or two of run-up; the real-input probe's -Steps mode stands there too).</summary>
+    private const float StandOffMetres = 0.85f;
+
     /// <summary>How long each climb is played, seconds (the seven stones take ≈ 1.5 s at walking pace).</summary>
     private const float ClimbSeconds = 6f;
 
@@ -69,10 +72,7 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
     {
         var ov = comp.Overlook;
         var r = comp.Shape.Radius;
-        var s0 = ov.Steps[0];
-        var s1 = ov.Steps[1];
-        var along = Vector3.Normalize(s1.Direction - s0.Direction - s0.Direction * Vector3.Dot(s1.Direction - s0.Direction, s0.Direction));
-        var start = PlanetFrame.Move(s0.Direction, -along, s0.Radius + 0.35f + 0.5f, r);
+        var (start, along) = ov.ClimbStart(r, StandOffMetres)!.Value;
         var w = new SphereWalker(walk);
         w.Teleport(comp.Surface, start, along);
         var cam = w.Facing;
