@@ -319,8 +319,8 @@ public static class MarkdownText
         return $"[url={index}][color={LinkColor}][u]{label}[/u][/color][/url]{web}";
     }
 
-    /// <summary>Escapes a literal: '[' → [lb] (the only character BBCode reads as markup).</summary>
-    private static string Escape(string s) => s.Replace("[", "[lb]");
+    /// <summary>Escapes a literal: '[' → [lb] (the only character BBCode reads as markup; <see cref="Interaction.UiText.Escape"/>).</summary>
+    private static string Escape(string s) => Interaction.UiText.Escape(s);
 
     /// <summary>Strikethrough, strong and emphasis on already escaped text (underscores inside words stay literal).</summary>
     private static string Emphasis(string s)

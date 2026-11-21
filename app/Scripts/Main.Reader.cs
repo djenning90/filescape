@@ -1,5 +1,6 @@
 using FileScape.App.Planets;
 using FileScape.App.Ui;
+using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Shell;
@@ -49,7 +50,7 @@ public partial class Main
             ReleaseAllInput();
             if (r.Error != null)
             {
-                _hud.ShowReader(new ReaderDocument(title, $"[color=#ffb070]{r.Error.Replace("[", "[lb]")}[/color]", "Nothing was shown.", path));
+                _hud.ShowReader(new ReaderDocument(title, $"[color=#ffb070]{UiText.Escape(r.Error)}[/color]", "Nothing was shown.", path));
                 return;
             }
 

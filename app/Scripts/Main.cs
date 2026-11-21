@@ -1789,7 +1789,7 @@ public partial class Main : Node3D
         }
 
         var node = _tree[_selection.Selected];
-        _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
+        _hud.SetInspector(_tree.DisplayName(node.Id), InspectorText.Describe(node, _tree, ActiveVisualization.LayoutParams.Scale), ActiveVisualization.ColorFor(node, _tree));
         if (worldCard)
         {
             var current = node.Id == _nav.Current ? _place != null && KindOf(node.Id) is { } k && (k.Kind != FileScape.Core.Places.PlaceKind.Ordinary || k.Overridden) ? $"You are here · {k.Label}: {string.Join(", ", k.Evidence)}\n" : "You are here\n" : "";

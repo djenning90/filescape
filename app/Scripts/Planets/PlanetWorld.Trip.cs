@@ -239,14 +239,7 @@ public partial class PlanetWorld
         var tree = _s.Tree;
         var hereName = tree != null && _current != null ? tree.DisplayName(_current.FolderId) : "";
         var originName = tree != null && tree.Contains(t.Origin) ? tree.DisplayName(t.Origin) : "where you started";
-        var back = t.Reached > 0 ? $" · Backspace: back to {originName}" : "";
-        var text = outcome switch
-        {
-            "arrived" => $"[b]Arrived at {Bb(hereName)}[/b] · {t.Hops.Count} hops{back}",
-            "stopped" => $"[b]Trip stopped at {Bb(hereName)}[/b] (hop {t.Reached} of {t.Hops.Count}){back}",
-            "unavailable" => $"[b]Trip stopped at {Bb(hereName)}[/b] · [color=#ffb880]{Bb(_unavailableWhy)}[/color]{back}",
-            _ => $"[b]Trip stopped at {Bb(hereName)}[/b] (the next hop could not start){back}",
-        };
+        var text = TripText.Outcome(outcome, hereName, originName, t.Hops.Count, t.Reached, _unavailableWhy);
         _tripText.Text = text;
         _tripStop.Visible = false;
         _tripPanel.Visible = true;
@@ -258,19 +251,11 @@ public partial class PlanetWorld
     private void UpdateTripPanel()
     {
         if (_trip is not { } t || _s.Tree is not { } tree) return;
-        var hop = Math.Min(t.Reached + 1, t.Hops.Count);
-        var route = string.Join(" › ", t.Hops.Select((id, i) =>
-            i < t.Reached ? $"[color=#9fb3d8]{Bb(tree[id].Name)}[/color]"
-            : i == t.Reached ? $"[b][color=#ffe6a0]{Bb(tree[id].Name)}[/color][/b]"
-            : $"[color=#7f8db0]{Bb(tree[id].Name)}[/color]"));
-        var status = t.StopRequested ? " · [color=#ffb880]stopping after this landing[/color]" : "";
-        _tripText.Text = $"Trip to [b]{Bb(tree[t.Hops[^1]].Name)}[/b] · hop {hop} of {t.Hops.Count}{status}\n[font_size=12]{route}[/font_size]";
+        _tripText.Text = TripText.Progress(t.Hops.Select(id => tree[id].Name).ToList(), t.Reached, t.StopRequested);
         _tripStop.Visible = true;
         _tripStop.Disabled = t.StopRequested;
         _tripPanel.Visible = true;
     }
-
-    private static string Bb(string s) => s.Replace("[", "[lb]");
 
     /// <summary>Esc during a trip stops it (before anything else sees the key, Main.KeyboardOwner); J waits until the trip is over.</summary>
     public bool TripKey(InputEvent e)
