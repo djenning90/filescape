@@ -2387,3 +2387,46 @@ as FileScape while naming remains open.
 - **Unknown / DJ by ear:** which piece; whether Homecoming reads as sentimental; whether This computer should keep the
   classic while the Starter Sky changes (today both follow the one setting). **Revisit if:** DJ picks another default
   (change `GameDefault`), wants per-place choices, or wants the reserved star-chart arrangements wired.
+
+## AD-98 The telescope's framing is a look, not a choice; folders open with an explicit verb; the overview's reach and names are derived in Core; discovery's neighbourhood counts what the layout has not caught up with (2026-11-21, seventh pass stream S8, PLANET-188..197; amends AD-85, extends AD-71, AD-81, AD-87)
+
+- **Context:** the desktop owner traced "the telescope opened a terminal at `\\wsl.localhost\Ubuntu-24.04\boot`"
+  (provisional): framing a world selects it (AD-85: "the selection it makes is the shared one … G or Enter after closing
+  still go there"); after the view closed the framed folder stayed selected, and Enter outside the view is Open, which
+  ran a verb-less ShellExecute; on that PC `HKCR\Directory\shell` has default `none` with `cmd` first, so a folder's
+  default verb may be "Open command window here". The root panel's terminal uses the folder you stand on, not /boot, so
+  it is not the route. Elsewhere: overview names stacked on long vertical stems, and the attention journey's
+  neighbourhood read "complete" while its listings were a relayout ahead of the layout.
+- **Decision:**
+  1. `TelescopeSurvey.SelectionAfter`: stepping back (Esc, E, J, a step-back command, an interruption) gives back the
+     selection from before; a trip (Enter, G, a double-click on the framed world) or T keeps the framed world. While the
+     view is open the framed world is still the shared selection (the card names it). This amends AD-85's sentence.
+  2. `TelescopeSurvey.Click`: a click on another world aims; a double-click on the framed world travels (the Enter
+     departure); a double-click whose first click aimed only aims. With one world or none, ← → do nothing and the key
+     line (`KeysMarkup`) leaves them out.
+  3. `ShellVerbs`: folders, drives, shares, WSL folders and `shell:` names open with "open"; programs start with "open";
+     files and web addresses keep their default verb (the person's choice of app; "open" fails for a type that registers
+     only another verb).
+  4. `OverviewFraming`: the wheel's reach is 3 × the focus's neighbourhood (its system, or the one it orbits in, measured
+     from it), at least 6,000 m (the former fixed limit), at most 3 × the universe's extent or 2,000 km; past a shrunken
+     limit the wheel stops instead of pulling in; the far clip follows the distance and extent.
+  5. `LabelPlacement` (Core): the overview's names are placed round their worlds greedily by tier (selection, hover, you
+     are here, root, folded, nearest) on 4 rings × 8 directions, nearest first, above-right preferred, last frame's slot
+     tried first; never overlapping, crossing, running under a name or covering a named world; at most 12. A name is a
+     target: a click or double-click focuses its world; landing stays Enter or a double-click on the world.
+  6. Discovery: the explorer promotes a folder waiting in the background walk on Discover, and the scheduler asks for
+     pending folders; `OverviewAttention.Neighbourhood` counts a listed world's folders that are in the tree but neither
+     drawn nor folded as waiting; the probe state's `census` is written whether or not the overview is open.
+- **Why:** the visible target must be the acted one: an automatic framing is not a choice a later key may act on, and an
+  explicit verb keeps a machine's verb order from turning Open into a terminal. The reach, names and neighbourhood are
+  rules over pure data, so they are tested in Core and the app calls them.
+- **Alternatives:** clearing the selection on close (loses the selection made before looking); asking before opening a
+  folder (an Enter that asks is still the wrong target); "explore" as the folder verb (ignores a person's file-manager
+  choice); a lower floor for small universes (DJ felt constrained, not lost); force-directed labels (not deterministic,
+  slower, harder to test).
+- **Unknown / DJ by feel:** whether the felt constraint at the Ubuntu root was the reach (Core layouts there are ≈ 0.3–1.6
+  km, well inside 6 km: not reproduced) or something else (the wheel's pace, ≈ 32 notches from 30 m to 6 km; the minimum
+  drawn size); whether a name's single click should only select (today it focuses, as a click on the world does);
+  whether the overview's own selection should also be given back on Esc (unchanged: it is a deliberate click, PLANET-83).
+- **Revisit if:** the real folder Open still starts a terminal (the verb is then not the route), names flicker while
+  orbiting, or a universe beyond 2,000 km appears.

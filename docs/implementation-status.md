@@ -112,6 +112,25 @@ Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.
 
 ## Seventh pass (2026-11-21)
 
+### Stream S8: telescope travel and selection, Overview reach and names, discovery verified (PLANET-188..197, AD-98)
+
+DJ's item 8 (and 2, 11). No desktop use by this stream: Core tests and journey/probe code; the coordinator runs the
+journeys below.
+
+| Request | Implementation | Evidence | Status |
+|---|---|---|---|
+| 8a telescope double-click travel; wheel; ← → on sparse worlds | `TelescopeSurvey.Click/Step/KeysMarkup`, `PlanetWorld.Telescope` (`TravelFromScope`) | `TelescopeSurveyTests` (+3); planets-lookouts (wheel, single click, sparser sky, double-click trip) | Core demonstrated; journey to run |
+| 8b terminal at /boot | framed selection given back on step-back (`SelectionAfter`); folders open with "open" (`ShellVerbs`), every ShellExecute site | `TelescopeSurveyTests`, `FileActionTests`; planets-lookouts (Enter after Esc opens nothing) | provisional mechanism (desktop owner's); fix demonstrated in Core; real Open on DJ's PC unknown |
+| 8c overview zoom-out limits | `OverviewFraming` (reach, wheel, far clip) | `OverviewFramingTests`; planets-overview-routes (reach) | partial: derived and tested; the Ubuntu-root constraint not reproduced (old limit not binding there) |
+| 8d label layout; double-click a name | `LabelPlacement` (Core), `SignLayer.LayoutAround`, overview candidates by tier, name click/hover | `OverviewLabelPlacementTests`; planets-overview-routes (faults, name clicks, screenshots) | Core demonstrated; by eye to judge |
+| 8e discovery during play | census in the state file always; planets-play-discovery census/progress checks; explorer promotes walk-queued folders; neighbourhood counts unlaid folders | `OverviewDiscoveryTests`, `WorldExplorerTests`, `OverviewAttentionTests` (failed first ×2) | Core demonstrated; journeys to run |
+
+- Newly found defects (fixed): discovery could not hurry a folder queued by the background walk (PLANET-196); the
+  attention journey's premature "complete" was the neighbourhood judged from the laid-out worlds only (PLANET-197).
+- Where else: every ShellExecute call (Open with and without a job, Start both routes, Reveal's fallback); the overview's
+  own selection after Esc (unchanged: a deliberate click, PLANET-83 — for DJ); every way the telescope closes.
+- Instrument: lookouts, play-discovery and overview-routes journeys extended; no journey trimmed (the Core tests cover
+  rules, the journeys input delivery).
 ### Stream V2: journey speed: a simulated clock, journeys three at a time, the desktop's cost shown (TEST-14..17, AD-91)
 
 The same machine and the representative set (walk-ui1.0, planets-look, -tutorial-cues, -dialog-keys, -hazard,
