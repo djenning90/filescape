@@ -14,7 +14,10 @@ namespace FileScape.App;
 /// nothing happened); on the platform E looks through it (AD-85, PLANET-125..127): the view rises to the eyepiece and
 /// frames a world of this sky with its relation to the Starter Sky, → frames the next, Esc steps back to exactly where you
 /// stood; a twirl beside it opens the same view; T from it opens the overview with the framed world chosen, Esc comes back
-/// down to the platform; Enter from it departs (its pad first) and lands on the framed world. Then, from the foot again,
+/// down to the platform; Enter from it departs (its pad first) and lands on the framed world. Seventh pass (PLANET-188..190):
+/// the wheel zooms the lens, a single click on the framed world keeps the view; Esc gives back the selection from before and
+/// an Enter after it opens nothing; on the world it lands on (a sparser sky) ← → step only when there is another world and
+/// the key line says so; back home, a double-click on the framed world departs for it. Then, from the foot again,
 /// walking up the stones still reaches the top, and a file in reach keeps E. <b>Scenery</b> (PLANET-75): the nearest answering
 /// piece shimmers; beside it the prompt says to twirl; a twirl makes it answer (it moves, nothing opens), and after two
 /// replies its prompt steps aside. <b>Bell:</b> an ordinary jump and a twirl beside the tower ring nothing; W walks onto
@@ -137,6 +140,7 @@ public partial class PlanetsProbe
         var here = Tree.DisplayName(root);
         var feet = P.Walker.Feet;
         var views0 = P.TelescopeViews;
+        App.Selection.Select(-1, recordHistory: false); // [direct] nothing chosen before looking (PLANET-190: what stepping back gives back)
         await Key(Godot.Key.E);
         await Until(() => P.TelescopeViewOpen, 2);
         await Seconds(1.6); // the rise (0.9 s) and the swing to the first world
@@ -161,6 +165,8 @@ public partial class PlanetsProbe
         }
 
         await Key(Godot.Key.W); // a held key zooms in, a tap barely; it must not walk
+        await TelescopeWheelAndClick();
+        var framedAtClose = P.TelescopeTargetId;
         await Key(Godot.Key.Escape);
         await Until(() => !P.TelescopeViewOpen, 1);
         await Until(() => P.CameraSettled, 3);
@@ -168,6 +174,14 @@ public partial class PlanetsProbe
         Check(!P.TelescopeViewOpen && NVector3.Distance(P.Walker.Feet, feet) < 0.01f && P.OnOverlook && P.Avatar.Visible,
             F($"Esc steps back to exactly where you stood ({NVector3.Distance(P.Walker.Feet, feet) * 100:0.0} cm), the traveller in view"));
         Check(P.Camera.Fov > 55f, F($"  and the lens widens back ({P.Camera.Fov:0.#}°)"));
+        // PLANET-190 (AD-98; the 2026-11-21 report of a terminal at /boot): the framed world does not stay selected, so the
+        // Enter that follows a step back acts on nothing the lens chose (before, it opened that folder with Windows).
+        Check(App.Selection.Selected == -1 && P.LastTelescopeExit == Core.Planets.TelescopeExit.StepBack,
+            $"  and gives back the selection from before (none; {Tree.DisplayName(framedAtClose)} was framed): selected {App.Selection.Selected}");
+        var shellBefore = App.ShellLog.Count;
+        await Key(Godot.Key.Enter);
+        await Frames(6);
+        Check(App.ShellLog.Count == shellBefore && !P.Busy && !P.TelescopeViewOpen, $"  Enter after stepping back opens nothing and goes nowhere ({App.ShellLog.Count - shellBefore} shell actions)");
         await Shot("lookouts-telescope-back");
 
         // The jump and twirl beside it does the same (as at the lighthouse).
@@ -213,9 +227,108 @@ public partial class PlanetsProbe
         await Until(() => !P.Busy && App.Navigator.Current == go, 12);
         Check(App.Navigator.Current == go && P.Transfers == transfers + 1 && P.Walker.Grounded, $"  and lands there on foot: {Tree.DisplayName(App.Navigator.Current)}");
         await Seconds(1.0);
+        // PLANET-189: the telescope on that world, a sparser sky (the world above and its own few folders, or none).
+        await TelescopeOnThisWorld();
         await Key(Godot.Key.Backspace);
         await Until(() => !P.Busy && App.Navigator.Current == root, 12);
         await Seconds(1.0);
+
+        // PLANET-188: a deliberate double-click on the framed world flies there too (through the same departure as Enter).
+        if (!await ClimbToTelescope()) return;
+        App.Selection.Select(-1, recordHistory: false); // [direct]
+        await Key(Godot.Key.E);
+        await Until(() => P.TelescopeViewOpen, 2);
+        await Seconds(1.6); // the rise and the swing
+        var dc = P.TelescopeTargetId;
+        if (P.TelescopeTargetScreen is not { } at)
+        {
+            Check(false, "the framed world is on screen to double-click");
+            return;
+        }
+
+        var trips = P.TelescopeTrips;
+        await DoubleClickAt(at);
+        await Until(() => P.Busy, 2);
+        Check(!P.TelescopeViewOpen && P.Busy && P.LastDepartureEntry == "Telescope" && P.TelescopeTrips == trips + 1 && P.LastTelescopeTripBy == "double-click" && App.Selection.Selected == dc,
+            $"a double-click on {Tree.DisplayName(dc)} in the eyepiece departs for it ({P.LastDepartureEntry}, by {P.LastTelescopeTripBy}), keeping it selected");
+        await Until(() => !P.Busy && App.Navigator.Current == dc, 12);
+        Check(App.Navigator.Current == dc && P.Walker.Grounded, $"  and lands there: {Tree.DisplayName(App.Navigator.Current)}");
+        await Seconds(1.0);
+        await Key(Godot.Key.Backspace);
+        await Until(() => !P.Busy && App.Navigator.Current == root, 12);
+        await Seconds(1.0);
+    }
+
+    /// <summary>
+    /// In the open view (PLANET-188): the wheel widens and narrows the lens; a single click on the framed world keeps the
+    /// view and goes nowhere (only a double-click travels).
+    /// </summary>
+    private async Task TelescopeWheelAndClick()
+    {
+        var centre = P.GetViewport().GetVisibleRect().Size / 2;
+        var fov0 = P.Camera.Fov;
+        await WheelAt(centre, down: true, 3); // out: a wider lens
+        await Seconds(1.2);
+        var wide = P.Camera.Fov;
+        await WheelAt(centre, down: false, 6); // in: narrower
+        await Seconds(1.2);
+        var narrow = P.Camera.Fov;
+        Check((wide > fov0 + 0.5f || fov0 > 49f) && narrow < wide - 0.5f && P.TelescopeViewOpen, F($"the wheel zooms the lens: {fov0:0.#}° → out {wide:0.#}° → in {narrow:0.#}°"));
+        if (P.TelescopeTargetScreen is { } at)
+        {
+            var trips = P.TelescopeTrips;
+            var framed = P.TelescopeTargetId;
+            await ClickWorldAt(at);
+            await Frames(8);
+            Check(P.TelescopeViewOpen && P.TelescopeTrips == trips && P.TelescopeTargetId == framed && !P.Busy, "a single click on the framed world keeps the view (only a double-click flies)");
+        }
+    }
+
+    /// <summary>
+    /// Climbs this world's overlook as a player does: [direct] to the foot of its stones, then E (real key). False, with a
+    /// log line, when the platform was not reached.
+    /// </summary>
+    private async Task<bool> ClimbToTelescope()
+    {
+        var c = P.Composition!;
+        var ov = c.Overlook;
+        var r = c.Shape.Radius;
+        var outward = ov.StepFoot - ov.Direction * NVector3.Dot(ov.StepFoot, ov.Direction);
+        var foot = PlanetFrame.Move(ov.StepFoot, NVector3.Normalize(outward - ov.StepFoot * NVector3.Dot(outward, ov.StepFoot)), ov.Steps[0].Radius + 1.2f, r);
+        P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot); // [direct] at the foot of the stones, facing the first
+        P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - foot * NVector3.Dot(ov.StepFoot, foot)));
+        await Seconds(0.8);
+        await Key(Godot.Key.E);
+        await Until(() => P.OnOverlook && P.Walker.Grounded, 4);
+        await Seconds(0.6);
+        Check(P.OnOverlook, $"E at the foot of {Tree.DisplayName(App.Navigator.Current)}'s overlook lifts you onto its platform");
+        return P.OnOverlook;
+    }
+
+    /// <summary>
+    /// PLANET-189: the telescope on the world you stand on, whatever its sky holds: ← → step only when there is another
+    /// world (the key line says so), the wheel zooms, Esc gives back the selection.
+    /// </summary>
+    private async Task TelescopeOnThisWorld()
+    {
+        if (!await ClimbToTelescope()) return;
+        App.Selection.Select(-1, recordHistory: false); // [direct]
+        await Key(Godot.Key.E);
+        await Until(() => P.TelescopeViewOpen, 2);
+        await Seconds(1.6);
+        var n = P.TelescopeTargetCount;
+        var first = P.TelescopeTargetId;
+        var keys = P.TelescopeKeysMarkup;
+        Check(P.TelescopeViewOpen && keys.Contains("{←}") == n > 1, $"on {Tree.DisplayName(App.Navigator.Current)} the view frames {n} world(s) and its key line {(n > 1 ? "offers" : "leaves out")} ← → (\"{UiText.Plain(keys)}\")");
+        await Shot("lookouts-telescope-sparse");
+        await Key(Godot.Key.Right);
+        await Seconds(1.0);
+        Check(n > 1 ? P.TelescopeTargetId != first : P.TelescopeTargetId == first, $"→ {(n > 1 ? "frames the next world" : "stays on the only world (nothing to step to)")}: {(P.TelescopeTargetId >= 0 ? Tree.DisplayName(P.TelescopeTargetId) : "none")}");
+        if (n > 0) await TelescopeWheelAndClick();
+        await Key(Godot.Key.Escape);
+        await Until(() => !P.TelescopeViewOpen, 1);
+        await Until(() => P.CameraSettled, 3);
+        Check(App.Selection.Selected == -1, $"Esc gives back the selection from before (selected {App.Selection.Selected})");
     }
 
     /// <summary>

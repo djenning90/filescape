@@ -591,9 +591,11 @@ public sealed class BrokenShell
     /// The nearest solid ground to <paramref name="up"/> (a point over open sky) within <paramref name="maxMetres"/>, for the
     /// recovery twirl (PLANET-62, AD-65): the unit direction of the first solid point found along the best bearing and its
     /// distance, metres; null when there is none in reach. Ground ahead along <paramref name="heading"/> (a tangent, or
-    /// zero) counts as up to a third nearer, so a jump that falls short reaches for the far rim before the near one.
+    /// zero) counts as up to a third nearer, so a jump that falls short reaches for the far rim before the near one. With a
+    /// heading, <paramref name="minCosine"/> keeps only bearings at least that close to it (the cosine of the widest angle
+    /// from it; −1, the default, keeps all): the catch reaches only where the player means to go (AD-97).
     /// </summary>
-    public (Vector3 Point, float Metres)? NearestGround(Vector3 up, float maxMetres, Vector3 heading)
+    public (Vector3 Point, float Metres)? NearestGround(Vector3 up, float maxMetres, Vector3 heading, float minCosine = -1f)
     {
         var (a, b) = PlanetShape.Tangents(up);
         var h = heading - up * Vector3.Dot(heading, up);
@@ -605,6 +607,7 @@ public sealed class BrokenShell
         {
             var th = 2 * MathF.PI * i / GroundSearchBearings;
             var dir = a * MathF.Cos(th) + b * MathF.Sin(th);
+            if (hasHeading && Vector3.Dot(dir, h) < minCosine) continue;
             var weight = hasHeading ? 1f - Vector3.Dot(dir, h) / 3f : 1f; // ahead 2/3, beside 1, behind 4/3
             for (var d = GroundSearchStepMetres; d <= maxMetres + 1e-4f; d += GroundSearchStepMetres)
             {

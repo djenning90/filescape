@@ -27,6 +27,19 @@
   leap's stand point (leapRoute*), Space on the take-off board and again 0.31 s after take-off crosses it (apexTwirls);
   the same jump without the twirl falls short and returns you to Event Horizon.
 
+  -AirIntent (PLANET-181..184, AD-97; seventh pass, stream S6; implies -Hazard without its route and fall plays) on Debris
+  Field's leap with real arrow keys, presses timed from planets.airSeconds: (A) the forward gap crossing, Up held, Space on
+  the board and again at the top (0.31 s): across, the body never turned more than 45 deg (planets.leapFacing); (B) the
+  same with the second Space late (0.50 s, where the old catch carried you back and turned you to the ledge): not 'catch',
+  never back on the take-off side nor turned 90 deg (an effort and a fall, or across); (C) a deliberate return towards the
+  rim: Up, then Down from 0.15 s, Space at 0.6 s: the catch back onto the take-off side, no fall (two tries).
+
+  -Steps (PLANET-185..186, AD-97; seventh pass, stream S6) on the Starter Sky with real arrow keys: to where Core's
+  OverlookStepsTests start the climb (planets.climbFoot), face along the ring (climbAlong), then Up and the turn key the
+  curve needs held together: walking reaches the platform (onOverlook, height above 2.2 m) and is never pinned against its
+  wall (on a stone, under half speed, within 0.45 m of the edge) for 0.3 s; then the same running (Shift): reported, and
+  never pinned.
+
   -Play (PLANET-39..43, 2026-11-16) plays the second playtest's navigation and file actions with real input, the
   recording test shell launching nothing: J to the repository (the workbench in view on landing), a real double-click
   on its solution file (opened through Open, no jump), a nested trip watched hop by hop, U and Backspace after it, a
@@ -122,7 +135,7 @@
   .\tools\os-planets-probe.ps1 -Exe "...\FileScape.exe" -Out C:\dir [-ReproOnly | -Route | -Tutorial | -Hazard [-Recovery] | -Play | -Audio | -Landmarks | -Dialogs | -OverviewEnter | -Depart | -Gallery [-GalleryRoot <dir>] | -Look [-LookPrefs default|usual|reversed] | -Discovery -DiscoveryRoot <dir> | -InputFocus [-ReaderRoot \\wsl.localhost\…] [-RealOpen]]
 #>
 param([string]$Exe, [string]$Out, [switch]$ReproOnly, [switch]$Route, [switch]$Tutorial, [switch]$Hazard, [switch]$Recovery, [switch]$Play, [switch]$Audio, [switch]$Landmarks, [string]$HearthWorld = 'Constellations', [string]$AudioRoot = 'sample', [string]$AudioWindow = '1600x900',
-  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$OverviewEnter, [switch]$Depart, [switch]$Gallery, [string]$GalleryRoot = '', [int]$StateIntervalMs = -1)
+  [switch]$InputFocus, [string]$ReaderRoot = '', [switch]$RealOpen, [switch]$Discovery, [string]$DiscoveryRoot = '', [switch]$Look, [ValidateSet('default', 'usual', 'reversed')][string]$LookPrefs = 'default', [switch]$Dialogs, [switch]$OverviewEnter, [switch]$Depart, [switch]$Gallery, [string]$GalleryRoot = '', [switch]$AirIntent, [switch]$Steps, [int]$StateIntervalMs = -1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'os-input-probe.ps1')
 Add-Type -TypeDefinition @"
@@ -138,6 +151,7 @@ $script:Vk['J'] = 0x4A; $script:Vk['T'] = 0x54; $script:Vk['Backspace'] = 0x08; 
 foreach ($c in [char[]]'ABCDEFGHIKLMNOPRUVXYZ') { $script:Vk[[string]$c] = [int][char]$c }
 # Input safety (Guard, Guard-Pointer, held-key release, an Alt-free Focus-Window, focus loss to the probe's own window)
 # lives in os-input-probe.ps1 (2026-11-14).
+if ($AirIntent) { $Hazard = $true } # its leaps run in the Hazard block, after Event Horizon is entered
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $state = Join-Path $Out 'state.json'
 $log = New-Object System.Collections.Generic.List[string]
@@ -187,7 +201,7 @@ function Launch {
   if ($Discovery) { $a += '--test-broad' } # PLANET-76: only discovery lists the fixture (as on a drive root)
   if ($script:RootLook) { $a += "--test-root-look=$($script:RootLook)" } # PLANET-119: a fixture with a root's look, never a real root
   # Stream 2 (2026-11-19): presses timed from the state file need it fresh (every frame for -Hazard and -Look).
-  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart -or $Gallery) { 0 } else { -1 }
+  $interval = if ($StateIntervalMs -ge 0) { $StateIntervalMs } elseif ($Hazard -or $Look -or $Depart -or $Gallery -or $AirIntent -or $Steps) { 0 } else { -1 }
   if ($interval -ge 0) { $a += "--state-interval-ms=$interval" }
   # -Audio: the app records what it mixed to a WAV (FILESCAPE_AUDIO_RECORD, SkyAudio) so gaps can be found in the output.
   if ($Audio) { $env:FILESCAPE_AUDIO_RECORD = (Join-Path $Out 'output.wav') } else { Remove-Item Env:FILESCAPE_AUDIO_RECORD -ErrorAction SilentlyContinue }
@@ -1418,34 +1432,36 @@ try {
       }
       return State
     }
-    # Play 1: the route along the bridges.
-    $s = Enter-Hazard
-    Check ($s.planets.character -eq 'Hazard' -and $s.planets.edgeMetres -gt 3) "J -> Event Horizon: a hazard world, landed on solid ground ($($s.planets.edgeMetres) m from the nearest edge)"
-    Shot 'hazard-arrival' | Out-Null
-    $f0 = $s.planets.fallsStarted
-    $s = Steer-Route 0.6
-    Check ($s.planets.fallsStarted -eq $f0 -and [double]$s.planets.childPadDistance -lt 1.3) "walked the route along the bridges to a child's launcher without falling ($($s.planets.childPadDistance) m from the pad)"
-    $hz = $s.planets.folder
-    Hold-Key 'Space' 80; Start-Sleep -Seconds 4
-    $s = State; Check ($s.planets.folder -ne $hz -and $s.planets.fallsStarted -eq $f0) "launched from the hazard world into $($s.currentName), no fall"
-    Hold-Key 'U' 60; Start-Sleep -Seconds 4
-    $s = State; Check ($s.planets.folder -eq $hz) "U: back up to Event Horizon"
-    # Play 2: off an edge.
-    $s = Steer 'holeBearing' 'holeDistance' 0 120
-    if (-not $s.planets.falling) { Hold-Key 'W' 1500; $s = State }
-    for ($i = 0; $i -lt 40 -and -not (State).planets.falling; $i++) { Hold-Key 'W' 200 }
-    $s = State
-    Check ($s.planets.fallsStarted -gt $f0) "ran off an edge: the fall begins (falls $($s.planets.fallsStarted))"
-    Start-Sleep -Milliseconds 1200; Shot 'hazard-falling' | Out-Null
-    for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $sky -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
-    Start-Sleep -Seconds 1; $s = State
-    Check ($s.planets.folder -eq $sky -and $s.planets.fallReturns -ge 1) "the fall returns you to the parent, the Starter Sky (returns $($s.planets.fallReturns))"
-    Shot 'hazard-returned' | Out-Null
-    $s = Steer 'selPadBearing' 'selPadDistance' 0.6 40
-    Hold-Key 'Space' 80
-    for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
-    Check ($s.planets.character -eq 'Hazard') "straight back in from its launcher ($($s.currentName))"
-    Shot 'hazard-reentered' | Out-Null
+    if (-not $AirIntent) { # -AirIntent goes straight to the leaps
+      # Play 1: the route along the bridges.
+      $s = Enter-Hazard
+      Check ($s.planets.character -eq 'Hazard' -and $s.planets.edgeMetres -gt 3) "J -> Event Horizon: a hazard world, landed on solid ground ($($s.planets.edgeMetres) m from the nearest edge)"
+      Shot 'hazard-arrival' | Out-Null
+      $f0 = $s.planets.fallsStarted
+      $s = Steer-Route 0.6
+      Check ($s.planets.fallsStarted -eq $f0 -and [double]$s.planets.childPadDistance -lt 1.3) "walked the route along the bridges to a child's launcher without falling ($($s.planets.childPadDistance) m from the pad)"
+      $hz = $s.planets.folder
+      Hold-Key 'Space' 80; Start-Sleep -Seconds 4
+      $s = State; Check ($s.planets.folder -ne $hz -and $s.planets.fallsStarted -eq $f0) "launched from the hazard world into $($s.currentName), no fall"
+      Hold-Key 'U' 60; Start-Sleep -Seconds 4
+      $s = State; Check ($s.planets.folder -eq $hz) "U: back up to Event Horizon"
+      # Play 2: off an edge.
+      $s = Steer 'holeBearing' 'holeDistance' 0 120
+      if (-not $s.planets.falling) { Hold-Key 'W' 1500; $s = State }
+      for ($i = 0; $i -lt 40 -and -not (State).planets.falling; $i++) { Hold-Key 'W' 200 }
+      $s = State
+      Check ($s.planets.fallsStarted -gt $f0) "ran off an edge: the fall begins (falls $($s.planets.fallsStarted))"
+      Start-Sleep -Milliseconds 1200; Shot 'hazard-falling' | Out-Null
+      for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $sky -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+      Start-Sleep -Seconds 1; $s = State
+      Check ($s.planets.folder -eq $sky -and $s.planets.fallReturns -ge 1) "the fall returns you to the parent, the Starter Sky (returns $($s.planets.fallReturns))"
+      Shot 'hazard-returned' | Out-Null
+      $s = Steer 'selPadBearing' 'selPadDistance' 0.6 40
+      Hold-Key 'Space' 80
+      for ($i = 0; $i -lt 40; $i++) { $s = State; if ($s.planets.character -eq 'Hazard' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+      Check ($s.planets.character -eq 'Hazard') "straight back in from its launcher ($($s.currentName))"
+      Shot 'hazard-reentered' | Out-Null
+    }
 
     if ($Recovery) {
       # PLANET-71..72, AD-69 (2026-11-19). Every press is timed from the app's own clock: the state file's airSeconds
@@ -1610,6 +1626,177 @@ try {
       }
     }
 
+    if ($AirIntent) {
+      # PLANET-181..184 (AD-97, seventh pass, stream S6) with real arrow keys on Debris Field's leap: what a second Space in
+      # the air means after a forward jump, and the return towards the rim. Every key goes through Guard (os-input-probe.ps1)
+      # and is released in a finally; presses are timed from the app's own clock (planets.airSeconds, the state written
+      # every frame). Judged from the state file: planets.pressWas, recoveries, fallsStarted, airPhase, feet and leapFacing
+      # (the body's facing against the leap's bridge, degrees: it must not swing round to face the ledge left).
+      function Wait-Air([scriptblock]$test, [int]$limitMs) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.ElapsedMilliseconds -lt $limitMs) { $p0 = (State).planets; if ($p0 -and (& $test $p0)) { return $p0 }; Start-Sleep -Milliseconds 3 }
+        return $null
+      }
+      function Air-Presses($what, [double]$since) {
+        foreach ($q in @((State).planets.presses) | Where-Object { $_ -and [double]$_.t -gt $since }) { Log ("    press {0}: {1:0.000} s after leaving the ground, phase {2}, vy {3:+0.00;-0.00} m/s, h {4:+0.00;-0.00} m, open sky {5} -> '{6}'" -f $what, [double]$q.air, $q.phase, [double]$q.vy, [double]$q.h, $q.overHole, $q.was) }
+      }
+      function Air-LastT { $pr = @((State).planets.presses); if ($pr.Count -gt 0 -and $pr[-1]) { [double]$pr[-1].t } else { -1 } }
+      function Air-Dist($a, $b) { if (-not $a -or -not $b) { return -1 }; [Math]::Sqrt([Math]::Pow($b[0] - $a[0], 2) + [Math]::Pow($b[1] - $a[1], 2) + [Math]::Pow($b[2] - $a[2], 2)) }
+      function To-Debris {
+        $here = (State).planets.folder
+        Hold-Key 'J' 60; Start-Sleep -Milliseconds 600; Type-Text 'debris'; Start-Sleep -Milliseconds 300; Hold-Key 'Down' 60; Start-Sleep -Milliseconds 200; Hold-Key 'Enter' 60
+        for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.currentName -eq 'Debris Field' -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+        Start-Sleep -Seconds 2; return State
+      }
+      function After-Fall($eh) {
+        for ($i = 0; $i -lt 60; $i++) { $s = State; if ($s.planets.folder -eq $eh -and $s.planets.phase -eq 'Walking') { break }; Start-Sleep -Milliseconds 200 }
+        return To-Debris
+      }
+      # One leap: the route to the stand point (3 m before the take-off edge), face across, ↑ held; Space on the board
+      # (held 0.1 s past take-off); with -Back, ↑ let go and ↓ held from 0.15 s after take-off; a second Space at
+      # $secondAt s after take-off held 0.2 s; the facing sampled through the airtime.
+      function Air-Leap([double]$secondAt, [switch]$Back) {
+        [void](Steer-Route 0.5 220 'leapRoute')
+        for ($i = 0; $i -lt 20; $i++) {
+          $b = [double](State).planets.leapAcrossBearing
+          if ([Math]::Abs($b) -le 3) { break }
+          Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(25, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150
+        }
+        $p0 = (State).planets; $f0 = [int]$p0.fallsStarted; $r0 = [int]$p0.recoveries; $t0 = Air-LastT; $feet0 = $p0.feet; $face0 = [double]$p0.leapFacing
+        $maxTurn = 0.0
+        Key-Down 'Up'
+        try {
+          [void](Wait-Air { param($p) ([double]$p.leapToEdge -ge 0 -and [double]$p.leapToEdge -le 0.55) -or [double]$p.airSeconds -gt 0 } 4000)
+          Key-Down 'Space'
+          [void](Wait-Air { param($p) [double]$p.airSeconds -gt 0 } 1000)
+          Start-Sleep -Milliseconds 100; Key-Up 'Space'
+          if ($Back) { [void](Wait-Air { param($p) [double]$p.airSeconds -ge 0.15 } 1000); Key-Up 'Up'; Key-Down 'Down' }
+          [void](Wait-Air { param($p) [double]$p.airSeconds -ge $secondAt - 0.02 } 1500)
+          Key-Down 'Space'
+          $sw = [Diagnostics.Stopwatch]::StartNew(); $spaceUp = $false
+          while ($sw.ElapsedMilliseconds -lt 2000) {
+            if (-not $spaceUp -and $sw.ElapsedMilliseconds -ge 200) { Key-Up 'Space'; $spaceUp = $true }
+            $q = (State).planets
+            if ($q) {
+              if ($q.falling) { break }
+              if (-not $q.grounded) { $d = [Math]::Abs([double]$q.leapFacing - $face0); if ($d -gt $maxTurn) { $maxTurn = $d } }
+              elseif ($sw.ElapsedMilliseconds -gt 250) { break }
+            }
+            Start-Sleep -Milliseconds 5
+          }
+        } finally { Key-Up 'Up'; Key-Up 'Down'; Key-Up 'Space' }
+        Start-Sleep -Milliseconds 700
+        $s = State; $p = $s.planets
+        $moved = Air-Dist $feet0 $p.feet
+        $fell = [int]$p.fallsStarted -gt $f0
+        $width = [double]$p0.leapWidth
+        $r = @{ Fell = $fell; Caught = ([int]$p.recoveries -gt $r0); Back = (-not $fell -and $moved -ge 0 -and $moved -lt 3 + $width / 2); Across = (-not $fell -and $moved -ge 3 + $width / 2); Turn = $maxTurn; Was = $p.pressWas; At = [double]$p.pressAfterSeconds }
+        Log ("  leap {0}: second Space '{1}' at {2:0.000} s; moved {3:0.0} m ({4}); the body turned at most {5:0} deg from its take-off facing" -f $(if ($Back) { 'steering back' } else { 'forward' }), $r.Was, $r.At, $moved, $(if ($fell) { 'fell' } elseif ($r.Across) { 'across' } else { 'back on the take-off side' }), $maxTurn)
+        Air-Presses "the leap" $t0
+        return $r
+      }
+      $s = State
+      if ($s.planets.character -ne 'Hazard') { $s = Enter-Hazard }
+      $eh = (State).planets.folder
+      $s = To-Debris
+      Check ($s.currentName -eq 'Debris Field' -and [double]$s.planets.leapWidth -gt 0) "J -> Debris Field: a leap of $($s.planets.leapWidth) m"
+      # A: the forward gap crossing: ↑ held, the twirl at the top (0.31 s): across, facing ahead.
+      $a = Air-Leap 0.31
+      Check ($a.Across -and $a.Turn -lt 45) "forward gap crossing with real keys: across ('$($a.Was)' at $($a.At) s), the body turned $([int]$a.Turn) deg at most"
+      if ($a.Fell) { $s = After-Fall $eh }
+      # B: forward with the second Space late (0.50 s: where the old catch carried you back and turned you round): never
+      # back on the ledge left, never facing it; a fall here is the honest outcome (an effort), across too if the press came early.
+      $b = Air-Leap 0.50
+      Check (-not $b.Back -and $b.Turn -lt 90 -and $b.Was -ne 'catch') "a late second Space on a forward jump: '$($b.Was)' at $($b.At) s, $(if ($b.Fell) { 'fell' } else { 'across' }), never back on the ledge left nor turned to it (turned $([int]$b.Turn) deg)"
+      if ($b.Fell) { $s = After-Fall $eh }
+      # C: a deliberate return towards the rim: ↑ then ↓ from 0.15 s, Space at 0.6 s (falling below the rim): the catch
+      # back onto the take-off side, no fall. Up to two tries (the press's timing comes from the state file).
+      $c = $null
+      for ($k = 0; $k -lt 2; $k++) {
+        $c = Air-Leap 0.6 -Back
+        if ($c.Caught -and $c.Back) { break }
+        if ($c.Fell) { $s = After-Fall $eh }
+      }
+      Check ($c.Caught -and $c.Back -and -not $c.Fell) "steering back towards the rim with real keys: '$($c.Was)' at $($c.At) s, back on the take-off side (recoveries +$([int]$c.Caught))"
+      Shot 'air-intent-back' | Out-Null
+    }
+
+    exit $fails
+  }
+
+  if ($Steps) {
+    # PLANET-185..186 (AD-97, seventh pass, stream S6) with real arrow keys on the Starter Sky: the overlook's curved
+    # stepping stones climbed with ↑ and the turn key held together, as DJ did. Every key goes through Guard
+    # (os-input-probe.ps1) and is released in a finally. Judged from the state file (written every frame): planets.climbFoot
+    # ([bearing, metres] to where Core's OverlookStepsTests start the climb), climbAlong (the bearing along the ring from
+    # there), stones, height, grounded, onOverlook, overlookEdge (metres from the platform's edge) and feet.
+    function Steps-Steer([int]$tries = 120) {
+      $last = [double]::MaxValue; $stuck = 0
+      for ($i = 0; $i -lt $tries; $i++) {
+        $cf = (State).planets.climbFoot
+        if (-not $cf) { return $false }
+        $b = [double]$cf[0]; $d = [double]$cf[1]
+        if ($d -le 0.3) { return $true }
+        if ([Math]::Abs($b) -gt 10) { Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Min(450, [Math]::Max(30, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 100; continue }
+        Hold-Key 'Up' ([int][Math]::Min(350, 60 + $d * 50))
+        $stuck = if ($d -gt $last - 0.05) { $stuck + 1 } else { 0 }; $last = $d
+        if ($stuck -ge 3) { Hold-Key 'D' 500; $stuck = 0 } # round whatever is in the way (the book tower beside the platform)
+        Start-Sleep -Milliseconds 100
+      }
+      return $false
+    }
+    function Steps-Face {
+      for ($i = 0; $i -lt 20; $i++) {
+        $b = [double](State).planets.climbAlong
+        if ([Math]::Abs($b) -le 3) { return }
+        Hold-Key ($(if ($b -gt 0) { 'Right' } else { 'Left' })) ([int][Math]::Max(25, [Math]::Min(400, [Math]::Abs($b) / 110 * 1000))); Start-Sleep -Milliseconds 150
+      }
+    }
+    # One climb: at the climb's start facing along the ring, ↑ and the turn key the curve needs held (with -Run, Shift
+    # too) for up to 4 s; pinned = time on a stone slower than half the speed asked for within 0.1 m of the platform's wall.
+    function Steps-Climb([switch]$Run) {
+      if (-not (Steps-Steer)) { Log "  could not reach the climb's start (instrument)"; return $null }
+      Steps-Face; Start-Sleep -Milliseconds 300
+      $st = @((State).planets.stones)
+      $key = if ([double]$st[2][0] -gt 0) { 'Right' } else { 'Left' } # the stones curve this way from here
+      $asked = if ($Run) { 11.0 } else { 6.0 }
+      $pinned = 0.0; $top = 0.0; $up = $false
+      $prev = (State).planets; $sw = [Diagnostics.Stopwatch]::StartNew(); $lastMs = 0
+      if ($Run) { Key-Down 'Shift' }
+      Key-Down 'Up'; Key-Down $key
+      try {
+        while ($sw.ElapsedMilliseconds -lt 4000) {
+          Start-Sleep -Milliseconds 20
+          $q = (State).planets; $ms = $sw.ElapsedMilliseconds
+          if (-not $q) { continue }
+          $dt = ($ms - $lastMs) / 1000.0; $lastMs = $ms
+          $speed = if ($dt -gt 0) { (Air-Dist2 $prev.feet $q.feet) / $dt } else { $asked }
+          if ([double]$q.height -gt $top) { $top = [double]$q.height }
+          if ($q.onOverlook -and $q.grounded -and [double]$q.height -gt 2.2) { $up = $true; break }
+          if ([double]$q.height -gt 0.1 -and $speed -lt $asked / 2 -and [double]$q.overlookEdge -lt 0.45) { $pinned += $dt }
+          $prev = $q
+        }
+      } finally { Key-Up $key; Key-Up 'Up'; Key-Up 'Shift' }
+      $r = @{ Up = $up; Pinned = $pinned; Top = $top; Key = $key; At = $sw.ElapsedMilliseconds / 1000.0 }
+      Log ("  {0} up the steps with Up+{1}: {2} (highest {3:0.0} m), pinned against the wall {4:0.00} s" -f $(if ($Run) { 'running' } else { 'walking' }), $key, $(if ($up) { "on the platform after $([Math]::Round($r.At, 2)) s" } else { 'not up' }), $top, $pinned)
+      return $r
+    }
+    function Air-Dist2($a, $b) { if (-not $a -or -not $b) { return 0 }; [Math]::Sqrt([Math]::Pow($b[0] - $a[0], 2) + [Math]::Pow($b[1] - $a[1], 2) + [Math]::Pow($b[2] - $a[2], 2)) }
+    # Down from the platform (or off the stones): turn about and walk off, then the next climb starts from the foot again.
+    function Steps-Down { Hold-Key 'Left' 1600; Hold-Key 'Up' 1500; Start-Sleep -Milliseconds 600 }
+    $walk = $null
+    for ($k = 0; $k -lt 2; $k++) {
+      $walk = Steps-Climb
+      if ($walk -and $walk.Up) { break }
+      Steps-Down
+    }
+    Check ($walk -and $walk.Up -and $walk.Pinned -lt 0.3) "walking up the curved steps with Up and $($walk.Key) held reaches the platform ($([Math]::Round([double]$walk.At, 2)) s), never pinned against the wall ($([Math]::Round([double]$walk.Pinned, 2)) s)"
+    Shot 'steps-walked-up' | Out-Null
+    Steps-Down
+    # Running (Shift) with the key held: reported, not judged (AD-97: the wall now guides the walker to the top stone;
+    # the final turn onto the platform needs more turn than the key gives at 11 m/s — DJ to judge).
+    $run = Steps-Climb -Run
+    if ($run) { Check ($run.Pinned -lt 0.3) "running up with Shift+Up+$($run.Key): never pinned against the wall ($([Math]::Round([double]$run.Pinned, 2)) s; $(if ($run.Up) { 'up' } else { "not up, highest $([Math]::Round([double]$run.Top, 1)) m" }))" }
     exit $fails
   }
 

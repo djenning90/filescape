@@ -74,7 +74,7 @@ public partial class PlanetWorld
     {
         if (_s.Tree is not { } tree || _uniBodies.Count == 0) return (default, 0);
         var bodies = _uniBodies.Select(b => b.Body).ToList();
-        var near = Attention.Neighbourhood(tree, bodies, NeighbourhoodFocus(), _s.MayListAhead);
+        var near = Attention.Neighbourhood(tree, bodies, NeighbourhoodFocus(), _s.MayListAhead, _s.IsVisible); // PLANET-197: folders the layout has not caught up with wait
         var deferred = Attention.Deferred(tree, bodies, tree.Root.Id, _s.MayListAhead);
         return (near, deferred);
     }

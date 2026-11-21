@@ -21,6 +21,26 @@ public class FileActionTests
         ShellErrors.OpenFailed(@"C:\x\Makefile", 1155, "x").Should().Contain("this kind of item");
     }
 
+    /// <summary>
+    /// PLANET-191 (AD-98): a folder is opened with the explicit "open" verb, so a machine whose folder default is a
+    /// terminal ("Open command window here" first, default <c>none</c>, seen 2026-11-21) still shows it in File Explorer;
+    /// a file and a web address keep their own default verb (the person's choice of app); a program starts with "open".
+    /// </summary>
+    [Fact]
+    public void A_folder_is_opened_with_the_explicit_open_verb_and_a_file_with_its_own_default()
+    {
+        ShellVerbs.ForOpen(@"\\wsl.localhost\Ubuntu-24.04\boot", isFolder: true).Should().Be("open", "the reported case: a WSL folder must not run the machine's first folder verb");
+        ShellVerbs.ForOpen(@"C:\Users\x\Documents", isFolder: true).Should().Be("open");
+        ShellVerbs.ForOpen(@"D:\", isFolder: true).Should().Be("open", "a drive");
+        ShellVerbs.ForOpen(@"\\server\share", isFolder: true).Should().Be("open", "a share");
+        ShellVerbs.ForOpen("shell:MyComputerFolder", isFolder: false).Should().Be("open", "This PC (the hub) is a folder too");
+        ShellVerbs.ForOpen(@"C:\p\Lantern.sln", isFolder: false).Should().BeNull("a file opens with its association, whatever its default verb is");
+        ShellVerbs.ForOpen(@"C:\p\photo.jpg", isFolder: false).Should().BeNull();
+        ShellVerbs.ForOpen("https://example.org/a", isFolder: false).Should().BeNull("a web address: the browser's own default");
+        ShellVerbs.ForOpen("mailto:someone@example.org", isFolder: false).Should().BeNull();
+        ShellVerbs.ForStart().Should().Be("open");
+    }
+
     [Fact]
     public void The_recording_shell_fails_once_when_asked_and_launches_nothing()
     {

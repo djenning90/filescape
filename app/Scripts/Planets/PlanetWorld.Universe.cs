@@ -41,8 +41,8 @@ public partial class PlanetWorld
     /// overview never change the lens (a separate choice: the two need not stay equal).</summary>
     private const float OverviewFovDegrees = 62f;
 
-    /// <summary>Far clip in the overview, metres: the largest systems are kilometres across (the surface camera uses <see cref="SurfaceFarMetres"/>).</summary>
-    private const float OverviewFarMetres = 30000f;
+    // Far clip in the overview: OverviewFraming.FarClip (PLANET-192), at least 30 km and always the whole universe from where
+    // the camera is (the surface camera uses SurfaceFarMetres).
 
     /// <summary>Far clip back on a planet, metres (restored when the overview closes).</summary>
     private const float SurfaceFarMetres = 4000f;
@@ -64,8 +64,27 @@ public partial class PlanetWorld
 
     // One wheel notch's zoom and what Shift does to every control: OverviewControls (Core, PLANET-110).
 
-    /// <summary>The closest and farthest the wheel goes, metres.</summary>
-    private const float MinZoomMetres = 4f, MaxZoomMetres = 6000f;
+    // The closest and farthest the wheel goes: OverviewFraming (PLANET-192, AD-98). The farthest is derived from the focus's
+    // neighbourhood and the universe's extent (UniverseMaxZoomMetres), never less than the 6,000 m it was fixed at before.
+
+    /// <summary>The universe's extent from its root, metres, as last laid out (<see cref="OverviewFraming.Extent"/>).</summary>
+    private float _uniExtent;
+
+    /// <summary>
+    /// How far the wheel may zoom out now, metres: from the focus (the selected world, else where you stand) far enough to
+    /// see its neighbourhood (<see cref="OverviewFraming.MaxDistance"/>).
+    /// </summary>
+    public float UniverseMaxZoomMetres()
+    {
+        var focus = _uniSelected >= 0 && _uniIndex.ContainsKey(_uniSelected) ? _uniSelected : _current?.FolderId ?? -1;
+        if (!_uniIndex.TryGetValue(focus, out var i) || _uniBodies.Count == 0) return OverviewFraming.FloorMetres;
+        var b = _uniBodies[i].Body;
+        UniverseBody? parent = _uniIndex.TryGetValue(b.ParentId, out var pi) ? _uniBodies[pi].Body : null;
+        return OverviewFraming.MaxDistance(OverviewFraming.NeighbourhoodSize(b, parent), _uniExtent, System.Numerics.Vector3.Distance(b.Position, _uniBodies[0].Body.Position));
+    }
+
+    /// <summary>The universe's extent from its root, metres (probes: the wheel reaches <see cref="UniverseMaxZoomMetres"/>).</summary>
+    public float UniverseExtentMetres => _uniExtent;
 
     // ---- framing a world: distance = a multiple of its system's size (SystemSize), within limits
     /// <summary>Opening: start this many body radii from where you stand, then pull back (the zoom out is the transition).</summary>
@@ -175,6 +194,9 @@ public partial class PlanetWorld
     private Vector3 _uniFocus, _uniFocusTarget;
     private float _uniYaw = StartYawRadians, _uniPitch = StartPitchRadians, _uniDistance, _uniDistanceTarget;
     private int _uniSelected = -1, _uniHovered = -1;
+
+    /// <summary>The pointer is over a name (PLANET-194): the hovered world is the named one, kept at its own size and rank.</summary>
+    private bool _uniHoverOnName;
     private bool _uniPanning;
     private (int Id, float T, float Seconds)? _uniLanding;
     private MeshInstance3D? _uniSelectRing;
@@ -236,7 +258,7 @@ public partial class PlanetWorld
         _uniDistance = here.Body.Radius * OpenStartRadii;
         _uniDistanceTarget = Mathf.Clamp(SystemSize(here.Body) * OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
         _uniFrame = (here.Body.NodeId, OpenFrameSystems, OpenMinMetres, OpenMaxMetres);
-        _camera.Far = OverviewFarMetres;
+        _camera.Far = OverviewFraming.FarClip(_uniDistanceTarget, _uniExtent); // and every frame after (PlaceUniverseCamera)
         _warpFlash = OpenFlashLevel; // a soft flash, fading as you pull back from your world
         _s.Hud.SetPlanetsOverview(open: true);
         _titleTime = MathF.Min(_titleTime, 0.3f); // the arrival title fades out of the way (it lingered over the map)
@@ -265,11 +287,8 @@ public partial class PlanetWorld
         return bodies;
     }
 
-    /// <summary>
-    /// A system's size for framing, metres: its ring plus a margin (1.3 × the ring radius + the body) or, for a world with
-    /// no children, a few body radii (4 ×), so a lone world is not framed as a speck.
-    /// </summary>
-    private static float SystemSize(UniverseBody b) => MathF.Max(b.Radius * 4f, b.OrbitRadius * 1.3f + b.Radius);
+    /// <summary>A system's size for framing, metres (<see cref="OverviewFraming.SystemSize"/>: Core since PLANET-192, unchanged).</summary>
+    private static float SystemSize(UniverseBody b) => OverviewFraming.SystemSize(b);
 
     /// <summary>
     /// Takes a layout into the scene. The first one (<paramref name="animate"/> false) is drawn where it lies. Later ones
@@ -303,6 +322,7 @@ public partial class PlanetWorld
         _uniIndex.Clear();
         _uniMotion.Clear();
         _uniLocal.Clear();
+        _uniExtent = bodies.Count > 0 ? OverviewFraming.Extent(bodies, bodies[0].Position) : 0f; // PLANET-192: the wheel's reach and the far clip
         foreach (var b in bodies)
         {
             var to = Gd(b.Position + _uniShift);
@@ -691,7 +711,11 @@ public partial class PlanetWorld
         PlaceUniverse(dt);
 
         var mouse = GetViewport().GetMousePosition();
-        _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? PickUniverse(mouse) : -1;
+        // PLANET-194: over a name, the world it names is the one pointed at (not the world under the name); it is not promoted
+        // or enlarged for that (its name would move away from under the pointer).
+        var overName = !_orbiting && !_uniPanning && SignTarget(mouse) is { } nm && _uniIndex.ContainsKey(nm) ? nm : -1;
+        _uniHoverOnName = overName >= 0;
+        _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? (overName >= 0 ? overName : PickUniverse(mouse)) : -1;
         if (_uniSelectRing != null)
         {
             var sel = _uniIndex.TryGetValue(_uniSelected, out var si) ? _uniBodies[si] : default;
@@ -709,7 +733,7 @@ public partial class PlanetWorld
         _signs.Clear();
         var camPos = _camera.GlobalPosition;
         var camFwd = -_camera.GlobalBasis.Z;
-        var screenUp = _camera.GlobalBasis.Y;
+        var pixelsPerRadian = GetViewport().GetVisibleRect().Size.Y / (2f * MathF.Tan(Mathf.DegToRad(_camera.Fov) / 2f)); // a world's drawn radius on screen
         // Only drawn worlds are measured (PLANET-108: at tens of thousands laid out, most are folded away).
         var nearby = _uniBodies
             .Select((b, i) => (b, i))
@@ -735,7 +759,7 @@ public partial class PlanetWorld
             if (!Drawn(bi)) continue;
             var id = b.NodeId;
             var here = id == _current?.FolderId;
-            var focus = id == _uniSelected || id == _uniHovered || here;
+            var focus = id == _uniSelected || id == _uniHovered && !_uniHoverOnName || here;
             if (!focus && b.ParentId >= 0 && !nearby.Contains(id)) continue;
             var n = tree[id];
             var name = (here ? "★ " : "") + tree.DisplayName(id);
@@ -750,7 +774,12 @@ public partial class PlanetWorld
             else if (b.HiddenChildren > 0) detail += $" · +{b.HiddenChildren} more folders";
             if (_s.Visited(id) && !here) detail += " · visited";
             var color = here ? new Color(1f, 0.85f, 0.45f) : b.Discovery == Discovery.Unknown ? new Color(0.75f, 0.78f, 0.95f) : new Color(1f, 0.95f, 0.8f);
-            _signs.Add(new SignCandidate(id, at + screenUp * (DrawnRadius(b, at) * 1.15f), name, detail, color, FileIcons.For(n), focus, here ? 30f : 0f, FixedAnchor: true));
+            // PLANET-193 (AD-98): placed round the world by Core's LabelPlacement, by priority: the selection, the pointed-at
+            // world, where you stand, the root, the largest folded systems, then the nearest (before: pinned straight above
+            // each world, stacked on long stems that crossed other worlds and names).
+            var tier = id == _uniSelected ? 0 : id == _uniHovered && !_uniHoverOnName ? 1 : here ? 2 : b.ParentId < 0 ? 3 : FoldedAt(bi) >= FoldedLabelMin ? 4 : 5;
+            var pixels = DrawnRadius(b, at) / MathF.Max(1e-3f, camPos.DistanceTo(at)) * pixelsPerRadian;
+            _signs.Add(new SignCandidate(id, at, name, detail, color, FileIcons.For(n), focus, here ? 30f : 0f, Around: true, AnchorPixels: pixels, Tier: tier));
         }
 
         _s.Signs.Layout(_camera, _signs, _s.Hud.BlockingRects);
@@ -770,6 +799,7 @@ public partial class PlanetWorld
         // Godot's LookAt judges a few metres "the same position" (relative tolerance) and fails (AD-81, the vast fixture).
         _camera.GlobalTransform = new Transform3D(Basis.LookingAt(-offset, Vector3.Up), _uniFocus + offset * _uniDistance);
         _camera.Fov = OverviewFovDegrees;
+        _camera.Far = OverviewFraming.FarClip(_uniDistance, _uniExtent); // PLANET-192: the whole universe from the farthest zoom
     }
 
     /// <summary>
@@ -1078,7 +1108,8 @@ public partial class PlanetWorld
                 return true;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel when !OverHud(wheel.Position):
                 // Shift: a notch counts as two (PLANET-110).
-                _uniDistanceTarget = Mathf.Clamp(_uniDistanceTarget * OverviewControls.WheelDistanceFactor(wheel.ButtonIndex == MouseButton.WheelUp, wheel.ShiftPressed), MinZoomMetres, MaxZoomMetres);
+                // PLANET-192: out as far as the focus's neighbourhood needs (OverviewFraming), never pulled in by a smaller limit.
+                _uniDistanceTarget = OverviewFraming.WheelDistance(_uniDistanceTarget, OverviewControls.WheelDistanceFactor(wheel.ButtonIndex == MouseButton.WheelUp, wheel.ShiftPressed), UniverseMaxZoomMetres());
                 if (wheel.ButtonIndex == MouseButton.WheelUp) ZoomTowardPointer(wheel.Position, wheel.ShiftPressed); // PlanetWorld.UniverseNav.cs (PLANET-93)
                 _uniFrame = null;
                 NoteUniverseControl(UniverseControl.Wheel);

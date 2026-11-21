@@ -229,14 +229,22 @@ public sealed class OverviewAttention
     /// The neighbourhood of <paramref name="focus"/> in <paramref name="bodies"/> (see <see cref="NeighbourhoodStatus"/>):
     /// the focus and the laid-out worlds up to <see cref="Rules.NeighbourhoodLevels"/> below it. A world at the last level
     /// need not be listed (its children would be a level further); the ones above it must be for the neighbourhood to be
-    /// complete. <paramref name="inScope"/>: the app's rule for what discovery may list.
+    /// complete. <paramref name="inScope"/>: the app's rule for what discovery may list; <paramref name="visible"/>: the
+    /// layout's rule for which folders are shown (null: all).
+    /// <para>
+    /// PLANET-197: a listed world above the last two levels whose folders are in the tree but neither laid out nor folded
+    /// (its listing landed after the last relayout) has those folders counted as waiting: they still have to be laid out
+    /// and listed. Before, they were not counted at all, and the neighbourhood read complete for up to a relayout's
+    /// interval (1.5 s) after its worlds' listings arrived.
+    /// </para>
     /// </summary>
-    public NeighbourhoodStatus Neighbourhood(FsTree tree, IReadOnlyList<UniverseBody> bodies, int focus, Func<int, bool> inScope)
+    public NeighbourhoodStatus Neighbourhood(FsTree tree, IReadOnlyList<UniverseBody> bodies, int focus, Func<int, bool> inScope, Func<FsNode, bool>? visible = null)
     {
         var levels = _rules.NeighbourhoodLevels;
         if (!tree.Contains(focus)) return new NeighbourhoodStatus(focus, levels, 0, 0, 0, 0, 0);
         var fd = tree[focus].Depth;
         int worlds = 0, listed = 0, waiting = 0, unlistable = 0, folded = 0;
+        HashSet<int>? laid = null;
         foreach (var b in bodies)
         {
             if (!tree.Contains(b.NodeId)) continue;
@@ -249,6 +257,23 @@ public sealed class OverviewAttention
             worlds++;
             if (rel == levels) continue; // its listing would show the level beyond the neighbourhood
             folded += b.HiddenChildren;
+            if (n.ScanState == DirScanState.Complete && rel <= levels - 2)
+            {
+                // Its folders must be listed too: those the layout has not caught up with (neither drawn nor folded) wait.
+                laid ??= bodies.Select(x => x.NodeId).ToHashSet();
+                var shown = 0;
+                var drawn = 0;
+                foreach (var c in n.Children)
+                {
+                    var cn = tree[c];
+                    if (cn.Kind != NodeKind.Directory || visible != null && !visible(cn)) continue;
+                    shown++;
+                    if (laid.Contains(c)) drawn++;
+                }
+
+                waiting += Math.Max(0, shown - drawn - b.HiddenChildren);
+            }
+
             if (n.ScanState == DirScanState.Complete) listed++;
             else if (OverviewDiscovery.Eligible(n) && inScope(b.NodeId) && ListAhead.Refusal(tree.FullPath(b.NodeId), ListAheadKind.Background) == null) waiting++;
             else if (n.ScanState != DirScanState.Listing && n.ScanState != DirScanState.Pending) unlistable++;

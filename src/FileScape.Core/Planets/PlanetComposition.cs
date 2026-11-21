@@ -47,6 +47,25 @@ public sealed record PlanetOverlook(Vector3 Direction, float Top, float Radius, 
 {
     /// <summary>Where the first stepping stone stands: the foot of the walking route up.</summary>
     public Vector3 StepFoot => Steps.Count > 0 ? Steps[0].Direction : Direction;
+
+    /// <summary>
+    /// Where a climb up the stones starts (PLANET-186; OverlookStepsTests and the real-input probe's -Steps mode stand
+    /// there): <paramref name="standOffMetres"/> before the first stone's edge, back along the ring the stones climb, and
+    /// the unit tangent there pointing along the ring towards the second stone. Null with fewer than two stones (a
+    /// repository's bench has none).
+    /// </summary>
+    /// <param name="planetRadius">The planet's radius, metres (surface distances are measured at it).</param>
+    public (Vector3 Foot, Vector3 Along)? ClimbStart(float planetRadius, float standOffMetres)
+    {
+        if (Steps.Count < 2) return null;
+        var s0 = Steps[0].Direction;
+        var towards = Steps[1].Direction - s0;
+        towards -= s0 * Vector3.Dot(towards, s0);
+        if (towards.LengthSquared() < 1e-12f) return null;
+        var along = Vector3.Normalize(towards);
+        var foot = PlanetFrame.Move(s0, -along, Steps[0].Radius + standOffMetres, planetRadius);
+        return (foot, Vector3.Normalize(along - foot * Vector3.Dot(along, foot)));
+    }
 }
 
 /// <summary>

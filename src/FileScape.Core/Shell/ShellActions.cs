@@ -10,7 +10,7 @@ public sealed record ShellResult(bool Succeeded, bool WasMock, string Message);
 /// <summary>Deliberate user-initiated actions on a path. Nothing in FileScape calls these automatically (FILE-02).</summary>
 public interface IShellActions
 {
-    /// <summary>Opens the item with its Windows association (the default verb).</summary>
+    /// <summary>Opens the item with Windows: a file with its default verb (its association), a folder with the explicit "open" verb (<see cref="ShellVerbs"/>).</summary>
     ShellResult Open(string path);
 
     /// <summary>Opens the folder that contains the item in File Explorer, with the item selected (a link: the link itself; PLANET-138).</summary>
@@ -107,6 +107,37 @@ public static class ShellErrors
     }
 }
 
+/// <summary>
+/// The verb each shell call asks Windows for (PLANET-191, AD-98). A verb-less ShellExecute runs the item's default verb,
+/// and what that is depends on the machine: on the desktop owner's PC <c>HKCR\Directory\shell</c> has the default
+/// <c>none</c> with <c>cmd</c> ("Open command window here") listed first, so a verb-less open of a folder may start a
+/// terminal there instead of File Explorer (2026-11-21, the report of a terminal at <c>\\wsl.localhost\Ubuntu-24.04\boot</c>).
+/// So a folder (a drive, a share, a WSL folder, a <c>shell:</c> name) is opened with the explicit <see cref="Open"/> verb,
+/// which every folder class registers as "show it in the file manager"; a program is started with <see cref="Open"/>.
+/// A file and a web address keep their own default verb on purpose: what opens a document is the person's choice of app
+/// (a picture's default may be "edit" or "play"), and an explicit "open" fails for a type that registers only another verb.
+/// Pure, so the choice per kind is tested (<c>FileActionTests</c>); <see cref="WindowsShellActions"/> calls it.
+/// </summary>
+public static class ShellVerbs
+{
+    /// <summary>The shell's "open" verb: a folder in the file manager, a program run.</summary>
+    public const string Open = "open";
+
+    /// <summary>
+    /// The verb for opening <paramref name="path"/>: <see cref="Open"/> for a folder (<paramref name="isFolder"/>: it is
+    /// a directory now) and for a <c>shell:</c> name; null (the item's own default) for a file or a web or mail address.
+    /// </summary>
+    public static string? ForOpen(string path, bool isFolder)
+    {
+        if (path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) return Open;
+        if (Uri.TryCreate(path, UriKind.Absolute, out var u) && u.Scheme is "http" or "https" or "mailto") return null;
+        return isFolder ? Open : null;
+    }
+
+    /// <summary>The verb for starting a program with arguments (an editor, a terminal): always <see cref="Open"/>.</summary>
+    public static string ForStart() => Open;
+}
+
 /// <summary>Classifies paths that would run code if opened, so the UI can ask for confirmation first (FILE-03).</summary>
 public static class LaunchRisk
 {
@@ -151,12 +182,14 @@ public sealed class WindowsShellActions : IShellActions
             return new ShellResult(false, false, "Opening files requires Windows.");
         }
 
+        // PLANET-191: a folder is opened with the explicit "open" verb, never the machine's default (which may be a terminal).
+        var verb = ShellVerbs.ForOpen(path, !IsShellName(path) && Directory.Exists(path));
         if (OutsideJob)
         {
             if (!IsShellName(path) && !File.Exists(path) && !Directory.Exists(path))
                 return new ShellResult(false, false, ShellErrors.OpenFailed(path, FileNotFoundCode, new Win32Exception(FileNotFoundCode).Message));
             LetTheViewerComeForward();
-            if (DesktopShell.TryShellExecute(path, null, null, "", out _)) return new ShellResult(true, false, $"Opened with Windows: {path}");
+            if (DesktopShell.TryShellExecute(path, null, null, verb ?? "", out _)) return new ShellResult(true, false, $"Opened with Windows: {path}");
             // No desktop shell to ask (no Explorer, another shell): open directly, as outside a job.
         }
 
@@ -167,7 +200,7 @@ public sealed class WindowsShellActions : IShellActions
         {
             cbSize = Marshal.SizeOf<ShellExecuteInfo>(),
             fMask = SeeMaskNoAsync | SeeMaskFlagNoUi,
-            lpVerb = null,
+            lpVerb = verb,
             lpFile = path,
             nShow = SwShowNormal,
         };
@@ -189,12 +222,13 @@ public sealed class WindowsShellActions : IShellActions
     public ShellResult Start(string program, IReadOnlyList<string> args)
     {
         if (!OperatingSystem.IsWindows()) return new ShellResult(false, false, "Starting programs requires Windows.");
-        if (OutsideJob && DesktopShell.TryShellExecute(program, CommandLine(args), null, "", out _))
+        if (OutsideJob && DesktopShell.TryShellExecute(program, CommandLine(args), null, ShellVerbs.ForStart(), out _))
             return new ShellResult(true, false, $"Started {Path.GetFileName(program)} {CommandLine(args)}");
         var info = new ShellExecuteInfo
         {
             cbSize = Marshal.SizeOf<ShellExecuteInfo>(),
             fMask = SeeMaskNoAsync | SeeMaskFlagNoUi,
+            lpVerb = ShellVerbs.ForStart(), // PLANET-191: explicit, as for folders
             lpFile = program,
             lpParameters = CommandLine(args),
             nShow = SwShowNormal,
@@ -249,7 +283,7 @@ public sealed class WindowsShellActions : IShellActions
         var hr = SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _);
         if (hr != 0)
         {
-            if (OutsideJob && DesktopShell.TryShellExecute("explorer.exe", $"/select,\"{path}\"", null, "", out _))
+            if (OutsideJob && DesktopShell.TryShellExecute("explorer.exe", $"/select,\"{path}\"", null, ShellVerbs.ForStart(), out _))
                 return new ShellResult(true, false, $"Explorer asked (through the desktop shell) to show: {path}");
             var code = hr & 0xFFFF;
             var why = code is FileNotFoundCode or PathNotFoundCode ? "it is no longer there (moved, renamed or deleted since FileScape listed it)" : "Windows refused";

@@ -228,6 +228,7 @@ public partial class Main : Node3D
         // synthetic tree, maps for the evidence scripts) so their expectations stay valid.
         var personLaunch = args.Automation == null;
         _automationIgnoresFocus = !personLaunch;
+        if (_automationIgnoresFocus) _windowFocused = true; // an early focus-out under automation is ignored too (see the field)
         _experience = args.Experience ?? (legacyScript ? Experience.Classic : personLaunch ? Experience.Planets : Experience.Places);
         if (_experience != Experience.Places) _visIndex = _experience == Experience.Classic ? 0 : 1;
         ApplyExperience(frame: false);
@@ -1134,7 +1135,14 @@ public partial class Main : Node3D
     /// injected probe input must not depend on what a person does elsewhere on the machine (KD-31). A person's launch
     /// never has --automate, so for a player focus loss still releases everything and pauses input.</summary>
     private bool _osFocused = true;
-    private bool _automationIgnoresFocus;
+    /// <summary>
+    /// True for an automated run (--automate=…), read from the command line when Main is created rather than in _Ready:
+    /// Windows can deliver the window's focus-out while _Ready is still sizing the window, and that early loss used to
+    /// clear <see cref="_windowFocused"/> for good when the window never got the focus back (seen 2026-11-20 with journeys
+    /// three at a time: planets-lookouts, -tutorial, -fixture and -route-hub ignored every injected key). _Ready sets it
+    /// again from the parsed arguments.
+    /// </summary>
+    private bool _automationIgnoresFocus = OS.GetCmdlineUserArgs().Any(a => a.StartsWith("--automate", StringComparison.Ordinal));
     private Vector2 _flyStartMouse;
     private int _consumedEscapes;
 

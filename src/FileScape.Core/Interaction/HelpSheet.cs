@@ -35,7 +35,7 @@ public static class HelpSheet
         "\n" +
         "## Landmarks\n" +
         "- *The telescope* on the overlook: {E} (or a twirl) looks through it · {←} {→} world to world · {Enter} flies there · {T} the overview · {Esc} steps back\n" +
-        "- *Hazard Worlds* (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths, jump the gaps; step off and you fall back up to the folder above. {J}, {U}, {Backspace} and every file action work as anywhere.";
+        "- *Hazard Worlds* (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths, jump the gaps (a second {Space} in the air reaches ground where you steer; steer back with {↓} to catch the edge you left); step off and you fall back up to the folder above. {J}, {U}, {Backspace} and every file action work as anywhere.";
 
     /// <summary>The legacy views' part: the earlier experiences, kept working (AD-15, AD-51).</summary>
     public const string Legacy =

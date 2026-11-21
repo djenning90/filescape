@@ -195,6 +195,12 @@ public partial class PlanetWorld
     private bool AtBellTower() =>
         _current?.Comp.Landmark is { Bell: true } lm && PlanetShape.Angle(_walker.Up, lm.Direction) * _current.Comp.Shape.Radius <= BellPromptMetres;
 
+    /// <summary>A climb up the stones starts this far before the first stone's edge, metres (OverlookStepsTests.StandOffMetres).</summary>
+    private const float ClimbStandOffMetres = 0.85f;
+
+    /// <summary>"climbAlong" is the bearing of the point this far along the ring's tangent from the climb's start, metres (far enough to be a direction).</summary>
+    private const float ClimbAlongLookMetres = 3f;
+
     /// <summary>The probe state's bell and telescope fields (a JSON fragment ending in a comma).</summary>
     private string LandmarkStateJson()
     {
@@ -209,7 +215,13 @@ public partial class PlanetWorld
         var stones = c?.Comp.Overlook is { } ov2 && !OnBenchWorld
             ? string.Join(",", ov2.Steps.Select(st => System.FormattableString.Invariant($"[{CameraTurnTo(st.Direction):0.#},{PlanetShape.Angle(_walker.Up, st.Direction) * c.Comp.Shape.Radius:0.##}]")))
             : "";
-        return TelescopeViewStateJson() + System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},\"uniDrawn\":{UniverseDrawnCount},");
+        // Where a climb up the stones starts (PLANET-186: Core's PlanetOverlook.ClimbStart, as OverlookStepsTests) and the
+        // bearing that faces along the ring from there: os-planets-probe.ps1 -Steps stands there and climbs with ↑ and a turn.
+        var climb = c?.Comp.Overlook is { } ov3 && !OnBenchWorld ? ov3.ClimbStart(c.Comp.Shape.Radius, ClimbStandOffMetres) : null;
+        var climbJson = climb is { } cs
+            ? System.FormattableString.Invariant($"\"climbFoot\":[{CameraTurnTo(cs.Foot):0.#},{PlanetShape.Angle(_walker.Up, cs.Foot) * c!.Comp.Shape.Radius:0.##}],\"climbAlong\":{CameraTurnTo(PlanetFrame.Move(cs.Foot, cs.Along, ClimbAlongLookMetres, c.Comp.Shape.Radius)):0.#},")
+            : "\"climbFoot\":null,\"climbAlong\":0,";
+        return TelescopeViewStateJson() + climbJson + System.FormattableString.Invariant($"\"telescopeFoot\":{(_focusTelescopeFoot ? "true" : "false")},\"telescopeClimbs\":{TelescopeClimbs},\"telescopeLists\":{TelescopeLists},{WhimsyStateJson()}\"stones\":[{stones}],\"bellRings\":{BellRings},\"underBell\":{(UnderBell ? "true" : "false")},\"bellSwing\":{BellSwing:0.###},\"bellBearing\":{bb:0.#},\"bellDistance\":{bd:0.##},\"telescopeCue\":{cue:0.##},\"telescopeSign\":{(visible ? "true" : "false")},\"overlookBearing\":{tb:0.#},\"overlookEdge\":{td:0.##},\"uniZoom\":{zoom:0.#},\"uniWorlds\":{UniverseWorldsInView},\"uniDrawn\":{UniverseDrawnCount},");
     }
 
     /// <summary>Where the bell tower's axis is and a point <paramref name="metres"/> out from it towards the arrival (probes walk in from there), or null without a bell.</summary>
