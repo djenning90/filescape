@@ -11,6 +11,8 @@ using FileScape.Fixtures;
 //   FileScape.Fixtures create-sky [parent]    creates a marked sky-<stamp>-<hex> holding the "Starter Sky" sample; prints its path
 //   FileScape.Fixtures create-gallery [parent] creates a marked gallery-<stamp>-<hex> holding "Picture Gallery" with its stress cases (PLANET-96)
 //     and, beside it, "Crowd of 3", "Crowd of 30" and "Crowd of 300" (unmarked; galleries by their contents, PLANET-130/132)
+//   FileScape.Fixtures create-markup [parent] creates a marked markup-<stamp>-<hex> holding "Markup Names": names and texts
+//     that look like BBCode, Markdown and FileScape's key-cap markup (PLANET-152/156, the planets-text journey)
 //   FileScape.Fixtures delete <fixtureRoot>  deletes a fixture; refuses directories without the marker
 //   FileScape.Fixtures delete-all            deletes every marked fixture under the default parent
 switch (args.FirstOrDefault())
@@ -34,6 +36,9 @@ switch (args.FirstOrDefault())
     case "create-gallery":
         Console.WriteLine(GalleryFixture.Create(args.Length > 1 ? args[1] : null));
         return 0;
+    case "create-markup":
+        Console.WriteLine(MarkupFixture.Create(args.Length > 1 ? args[1] : null));
+        return 0;
     case "create-places":
         var places = PlacesFixture.Create(args.Length > 1 ? args[1] : null);
         Console.WriteLine(places);
@@ -46,7 +51,7 @@ switch (args.FirstOrDefault())
         Console.WriteLine($"Deleted {FixtureBuilder.DeleteAllUnderDefaultParent()} fixture(s) under {FixtureBuilder.DefaultParent}");
         return 0;
     default:
-        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-vast [parentDir|-] [moons] | create-places [parentDir] | create-sky [parentDir] | create-gallery [parentDir] | delete <fixtureRoot> | delete-all");
+        Console.Error.WriteLine("usage: FileScape.Fixtures create [parentDir] | create-walk [parentDir] | create-deep [parentDir] | create-vast [parentDir|-] [moons] | create-places [parentDir] | create-sky [parentDir] | create-gallery [parentDir] | create-markup [parentDir] | delete <fixtureRoot> | delete-all");
         return 2;
 }
 
@@ -84,5 +89,22 @@ internal static class SkyFixture
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, FixtureBuilder.MarkerName), "FileScape Starter Sky fixture. Safe to delete.\n");
         return FileScape.Core.Samples.SampleSky.Create(dir);
+    }
+}
+
+/// <summary>
+/// The markup-names fixture (PLANET-152, PLANET-156): an owned, marked directory (markup-&lt;stamp&gt;-&lt;hex&gt;) holding
+/// <see cref="FileScape.Core.Samples.MarkupNamesSample"/>, for the <c>planets-text</c> journey.
+/// </summary>
+internal static class MarkupFixture
+{
+    /// <summary>Creates the fixture under <paramref name="parent"/> (default: the fixtures parent) and returns the sample's path.</summary>
+    public static string Create(string? parent)
+    {
+        parent ??= FixtureBuilder.DefaultParent;
+        var dir = Path.Combine(parent, "markup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, FixtureBuilder.MarkerName), "FileScape markup-names fixture. Safe to delete.\n");
+        return FileScape.Core.Samples.MarkupNamesSample.Create(dir);
     }
 }

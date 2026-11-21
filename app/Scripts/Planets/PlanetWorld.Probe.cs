@@ -40,6 +40,11 @@ public partial class PlanetWorld
 
     public Rect2 PreviewTextRect => _previewText.GetGlobalRect();
 
+    /// <summary>The prompt box and the planet's list on screen, viewport units (planets-text: they fit the window).</summary>
+    public Rect2 PromptBoxRect => _promptBox.GetGlobalRect();
+
+    public Rect2 ContentsRect => _contentsPanel.GetGlobalRect();
+
     /// <summary>The preview text's scroll position, pixels from the top (probes: the wheel over it scrolls it).</summary>
     public double PreviewScroll => _previewText.GetVScrollBar().Value;
 

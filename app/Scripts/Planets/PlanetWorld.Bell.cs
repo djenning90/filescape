@@ -1,5 +1,6 @@
 using FileScape.App.Ui;
 using FileScape.App.Visual;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -151,7 +152,7 @@ public partial class PlanetWorld
         // The bell first: the tower stands beside the overlook, so at the tower you are also near the stones.
         if (AtBellTower())
         {
-            SetPrompt(UnderBell ? "Space, Space · jump and twirl to ring the bell" : "Step under the bell, then jump and twirl (Space, Space) to ring it", "the bell tower");
+            SetPrompt(UnderBell ? "{Space}, {Space} · jump and twirl to ring the bell" : "Step under the bell, then jump and twirl ({Space}, {Space}) to ring it", "the bell tower");
             return true;
         }
 
@@ -167,11 +168,11 @@ public partial class PlanetWorld
         return false;
     }
 
-    /// <summary>The prompt within the telescope's reach, off the platform (probes check it).</summary>
-    public const string TelescopeFootPrompt = "E · up to the telescope   ·   or climb the stones";
+    /// <summary>The prompt within the telescope's reach, off the platform (<see cref="UiText"/> markup; probes compare its plain form).</summary>
+    public const string TelescopeFootPrompt = "{E} · up to the telescope   ·   or climb the stones";
 
-    /// <summary>The prompt on the platform (AD-85: E and the twirl do the same, as at the lighthouse; probes check it).</summary>
-    public const string TelescopeTopPrompt = "E or twirl (Space, Space) · look through the telescope";
+    /// <summary>The prompt on the platform (AD-85: E and the twirl do the same, as at the lighthouse; markup, as above).</summary>
+    public const string TelescopeTopPrompt = "{E} or twirl ({Space}, {Space}) · look through the telescope";
 
     /// <summary>
     /// E within the telescope's reach, off the platform (PLANET-73): a hop up onto the platform beside the telescope,

@@ -1,4 +1,5 @@
 using FileScape.App.Places;
+using FileScape.Core.Interaction;
 using FileScape.Core.Movement;
 using FileScape.Core.Planets;
 using Godot;
@@ -335,7 +336,7 @@ public partial class PlanetWorld
         {
             _overlookNoted = true;
             _audio.Inspect();
-            ShowHint("From the overlook every destination is named. Look through the telescope (E) to survey the worlds around this one.");
+            ShowHint("From the overlook every destination is named. Look through the telescope ({E}) to survey the worlds around this one.");
         }
 
         _overlook01 = Mathf.MoveToward(_overlook01, wantOverlook ? 1 : 0, dt * OverlookBlendPerSecond);

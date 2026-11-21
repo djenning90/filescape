@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using Godot;
 
 namespace FileScape.App.Ui;
@@ -452,71 +453,22 @@ public partial class Hud : CanvasLayer
         _help.GrowHorizontal = Control.GrowDirection.Both;
         _help.GrowVertical = Control.GrowDirection.Both;
         _root.AddChild(_help);
+        // The sheet's content is Core's HelpSheet (PLANET-154): headings, key caps and notes in the shared UiText style.
         var text = new RichTextLabel
         {
             BbcodeEnabled = true,
             // A fixed, scrolling area (2026-11-15): the sheet is taller than a 720-pixel window, and with the Learn to play
-            // button above it, a self-sizing label pushed the button off the top of the screen.
+            // button above it, a self-sizing label pushed the button off the top of the screen. Its size follows the
+            // window (FitHelp, PLANET-155).
             FitContent = false,
             ScrollActive = true,
-            CustomMinimumSize = new Vector2(1100, 540),
-            Text =
-                "[b]✦ Planets[/b]  FileScape's main view. New here? Press [b]Learn to play[/b] above for a few minutes of guided play.\n" +
-                "  Each folder is a small world; its folders hang in the sky above flower launchers; files stand in groves.\n" +
-                "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
-                "  [b]Step sideways[/b]: A D, or hold [b]Ctrl[/b] with ← → (add Shift to run) · handy along a gallery's easels\n" +
-                "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
-                "  [b]In the overview[/b]: click a world to orbit it · drag or ← → orbit · wheel zooms toward the pointer · middle-drag or WASD pan ·\n" +
-                "    [b][ ][/b] the next world round its ring · [b]Z[/b] up a level · [b]F[/b] frame it · [b]Shift[/b] faster (pan ×3, ← → ×1.6, a wheel notch counts twice) ·\n" +
-                "    [b]Enter[/b] lands there · [b]Esc[/b] or [b]T[/b] flies back down to where you stood (press again to hurry)\n" +
-                "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
-                "  [b]Pictures[/b]: click or E to look · double-click, R or a click on the preview's picture: view it large (← → or the ‹ › edges step,\n" +
-                "    wheel zoom, drag, Esc or a click outside comes back) · [b]Enter[/b] or [b]Open with Windows ↗[/b] opens the original in Windows' app\n" +
-                "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
-                "  Every journey leaves from a launcher: you hop to the pad that leads there (toward a deeper folder, or the way back for\n" +
-                "    somewhere else; with no pad, a ring of light at your feet), then take off · [b]Esc[/b] before take-off stays\n" +
-                "  [b]F[/b] face the selection; [b]F[/b] again turns back to your earlier view (same world, within 20 s, if you have not walked off or looked away)\n" +
-                "  [b]The telescope[/b] on the overlook: E (or a twirl) looks through it · ← → world to world · Enter flies there · T the overview · Esc steps back\n" +
-                "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
-                "    jump the gaps; step off and you fall back up to the folder above. J, U, Backspace and every file action work as anywhere.\n\n" +
-                "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +
-                "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
-                "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
-                "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
-                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn (hold [b]Ctrl[/b]: step sideways)    [b]W A S D[/b] walk and step sideways    hold [b]Shift[/b] run\n" +
-                "    hold [b]right mouse[/b] (or left-drag) to look; letting go levels the view (on foot only)    [b]Space[/b] jump: hold for a high jump, tap for a hop\n" +
-                "[b]Flight[/b]   [b]T[/b]: rise 16 m and look down across the place; [b]T[/b] again lands you safely on foot (the view levels)\n" +
-                "    [b]W A S D[/b] fly level (looking down never makes you dive)    [b]E[/b] / [b]Space[/b] up    [b]Q[/b] / [b]C[/b] down    [b]wheel[/b] speed (faster the higher you are)\n" +
-                "    the view stays where you leave it    [b]B[/b] aerial view: this place, its parent and its child places from above\n" +
-                "[b]The aerial world[/b]   Above 14 m every folder you know is an island: roads lead to child folders, cyan arcs are links,\n" +
-                "    a warm ring marks places you have visited, a gold beacon where you are. Fly over one and press [b]T[/b] to land there,\n" +
-                "    or click it and press [b]G[/b] to fly there. Places near you inside the folder you opened are listed as you fly;\n" +
-                "    others stay \"not listed yet\" until you go there (nothing scans a drive). Distances between places are symbolic.\n" +
-                "[b]Panels on demand[/b]   [b]J[/b] Destinations (type to filter, ↑↓ Enter)    [b]K[/b] key (colours and heights)    [b]F4[/b] settings    [b]Esc[/b] closes\n" +
-                "[b]G[/b]  go into the selected folder or link      [b]U[/b] / [b]PgUp[/b]  up to the parent      [b]Backspace[/b]  back (also back through a link)\n" +
-                "[b]Home[/b]  this folder's arrival point      [b]Ctrl+Home[/b]  back to the arrival root      [b]M[/b]  map      [b]Tab[/b]  next view\n" +
-                "[b]L[/b] or [b]Ctrl+O[/b]  open a location: [b]⌂ This computer[/b] (This PC: every drive and WSL distribution), a drive, Browse…      [b]Ctrl+L[/b]  type a path (\"This PC\" works)\n" +
-                "[b]H[/b]  show / hide hidden and system items      Gates marked [b]⌂[/b] home, [b]◆[/b] Downloads, Pictures…, [b]⚙[/b] projects, [b]★[/b] your pins (the card says why)\n" +
-                "[b]P[/b]  pin or unpin the selected folder (or the one you are in)      [b]R[/b]  read this project's README (as text; nothing is run or fetched)\n" +
-                "    A project's card offers the editors on this computer (a Windows solution's own app, VS Code, VS Code for WSL); FileScape asks first.\n" +
-                "    Gates show [b]queued[/b] or [b]listing now…[/b] while nearby places are listed ahead; /proc, /sys, /dev, /run and /mnt are never listed ahead.\n" +
-                "Selecting something never moves you: [b]click[/b] inspects (a card with Details ▸), travel is always deliberate.\n\n" +
-                "[b]Moving around in the maps (Classic FSN, District)[/b]\n" +
-                "[b]W A S D[/b] or [b]arrow keys[/b]  move      [b]Q / E[/b]  down / up      hold [b]Shift[/b]  faster\n" +
-                "[b]Hold right mouse[/b]  fly: look around with the mouse while W A S D / arrows move you\n" +
-                "    where you look; the [b]wheel[/b] changes flight speed; release to stop (or [b]Esc[/b])\n" +
-                "[b]Left-drag[/b]  orbit around the view centre      [b]Middle-drag[/b]  pan\n" +
-                "[b]Wheel[/b]  zoom in / out (while flying: flight speed)\n" +
-                "[b]Home[/b]  back to the start view      [b]B[/b]  bird's-eye overview\n\n" +
-                "[b]Exploring[/b]\n" +
-                "[b]Click[/b]  select and inspect      [b]Double-click[/b] or [b]F[/b]  fly to the selection\n" +
-                "[b]Esc[/b]  parent directory (in Places: back to the folder itself)      [b]Backspace[/b]  previous selection (Places: previous place)\n" +
-                "[b]Enter[/b]  open with Windows (asks first for programs, links and cloud files)\n" +
-                "[b]Tab[/b]  cycle Places / Classic FSN / District (the selection stays)\n" +
-                "[b]F1[/b]  this help      [b]F2[/b]  quality      [b]F3[/b]  performance stats      [b]F4[/b]  settings      [b]K[/b]  key\n\n" +
-                "Right-drag used to pan; pan is now on the middle button.\n" +
-                "Nothing is opened or run unless you press Open. FileScape only reads metadata.",
+            SelectionEnabled = true,
+            CustomMinimumSize = new Vector2(HelpWidth, HelpTextHeight),
+            Text = HelpSheet.Bbcode(null),
         };
+        text.AddThemeFontSizeOverride("normal_font_size", UiTextStyle.Panel.BodyPixels);
+        text.AddThemeFontSizeOverride("bold_font_size", UiTextStyle.Panel.BodyPixels);
+        text.AddThemeConstantOverride("line_separation", HelpLineSeparation);
         // The walkthrough is one click away from Help (PLANET-33), above the control sheet nobody has to read.
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 8);
@@ -544,7 +496,37 @@ public partial class Hud : CanvasLayer
     public Rect2 LearnToPlayButtonRect => _learnButton.GetGlobalRect();
 
     /// <summary>Shows which build is running at the end of Help (delivery traceability).</summary>
-    public void SetBuildIdentifier(string id) => _helpText.Text += $"\n\n[color=#7f8fab]Build: {id}[/color]";
+    public void SetBuildIdentifier(string id) => _helpText.Text = HelpSheet.Bbcode(id);
+
+    // ---- Help's size (viewport units): designed for 1600 × 900 at UI 1.0, fitted to smaller windows and larger scales
+    /// <summary>Help's text area as designed: 1100 × 540 (the sheet scrolls inside it).</summary>
+    private const float HelpWidth = 1100f, HelpTextHeight = 540f;
+
+    /// <summary>The least room kept round Help, viewport units: the panel never runs off a window's edge.</summary>
+    private const float HelpMargin = 16f;
+
+    /// <summary>Extra space between Help's lines, pixels: room for the key caps' backgrounds.</summary>
+    private const int HelpLineSeparation = 3;
+
+    /// <summary>The text area's share of the window when it must shrink: what is left after the panel's padding, the
+    /// Learn to play button and the gap under it (measured from the live controls, so it holds at any UI scale).</summary>
+    private void FitHelp()
+    {
+        var vp = GetViewport().GetVisibleRect().Size;
+        var chrome = _help.GetCombinedMinimumSize() - _helpText.CustomMinimumSize; // padding and the button row
+        var (w, h) = PanelFit.Size(HelpWidth + chrome.X, HelpTextHeight + chrome.Y, vp.X, vp.Y, HelpMargin);
+        var size = new Vector2(Mathf.Max(0, w - chrome.X), Mathf.Max(0, h - chrome.Y));
+        if (size != _helpText.CustomMinimumSize) _helpText.CustomMinimumSize = size;
+        // Sized and centred explicitly: a panel under a plain Control does not shrink back when its minimum does.
+        _help.Size = _help.GetCombinedMinimumSize();
+        _help.Position = ((vp - _help.Size) / 2).Floor();
+    }
+
+    /// <summary>Help's panel and text rectangles, viewport units (probes check they fit the window).</summary>
+    public Rect2 HelpRect => _help.GetGlobalRect();
+
+    /// <summary>Help's text as shown, plain (probes).</summary>
+    public string HelpShownText => _helpText.GetParsedText();
 
     private void BuildStatsAndToast()
     {
@@ -600,6 +582,7 @@ public partial class Hud : CanvasLayer
         }
 
         UpdateReader(); // Hud.Reader: a heading to scroll to once the text is laid out
+        if (_help.Visible) FitHelp();
 
         // The left column stacks: the place panel grows (connection, problems), Destinations and chips follow it, and
         // Destinations stops above the legend; the hint sits between the legend and the inspector (VISI-01). All in
@@ -640,8 +623,10 @@ public partial class Hud : CanvasLayer
             var left = _legendPanel.Visible ? _legendPanel.Position.X + _legendPanel.Size.X + 10 : 10;
             var right = _inspector.Visible ? _inspector.Position.X - 10 : vp.X - 10;
             var room = Mathf.Max(200, right - left);
-            _hintLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            _hintLabel.CustomMinimumSize = new Vector2(Mathf.Min(room - 24, _hintLabel.GetThemeFont("font").GetStringSize(_hintLabel.Text, HorizontalAlignment.Left, -1, 14).X + 4), 0);
+            // As wide as its plain text and the caps' padding, never wider than the room (then it wraps).
+            var natural = _hintLabel.GetThemeFont("normal_font").GetStringSize(UiText.Plain(_hintMarkup), HorizontalAlignment.Left, -1, HintStyle.BodyPixels).X
+                + UiText.Keys(_hintMarkup).Count * HintCapExtraPixels + 4;
+            _hintLabel.CustomMinimumSize = new Vector2(Mathf.Min(room - 24, natural), 0);
             _hintPanel.Size = _hintPanel.GetCombinedMinimumSize();
             _hintPanel.Position = new Vector2(left + (room - _hintPanel.Size.X) / 2, vp.Y - _hintPanel.Size.Y - 14);        }
     }
@@ -686,7 +671,7 @@ public partial class Hud : CanvasLayer
         ApplyLegendVisibility();
         if (!places) SetInspectorCard(false, true, "", null);
         if (!places) SetAscentChip(null);
-        _hintLabel.Text = planets ? PlanetsHintText : places ? PlacesHintText : HintText;
+        SetHintMarkup(planets ? PlanetsHintText : places ? PlacesHintText : HintText);
         _homeButton.Visible = true;
         _overviewButton.Visible = !planets;
         _flightButton.Visible = true;
@@ -811,7 +796,9 @@ public partial class Hud : CanvasLayer
     // ------------------------------------------------------------ hint and flight status
 
     private PanelContainer _hintPanel = null!;
-    private Label _hintLabel = null!;
+    /// <summary>The first-run hint (PLANET-153): <see cref="UiText"/> markup, keys as caps; its markup is kept for probes.</summary>
+    private RichTextLabel _hintLabel = null!;
+    private string _hintMarkup = HintText;
     private PanelContainer _flyPanel = null!;
     private Label _flyLabel = null!;
     private double _hintShownAt;
@@ -819,9 +806,47 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string PlanetsHintText = "WASD run · drag or ← → look · Space jump (again: twirl) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · T overview · J list · N sound · F1 help";
+    public const string PlanetsHintText = "{W A S D} run · drag or {←} {→} look · {Space} jump (again: twirl) · on a launcher: {Space} to fly · {E} look closer · {Enter} open · {Backspace} back · {T} overview · {J} list · {N} sound · {F1} help";
 
-    public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
+    /// <summary>The maps' first-run hint (<see cref="UiText"/> markup, as the others).</summary>
+    public const string HintText = "{W} / {↑} walk  ·  {Shift} run  ·  {Space} jump  ·  hold right mouse to look  ·  {F4} settings (look direction, speed)  ·  {F1} help";
+
+    /// <summary>The hint's style: 14 px with 12 px caps (<see cref="UiTextStyle.Small"/>).</summary>
+    private static UiTextStyle HintStyle => UiTextStyle.Small;
+
+    /// <summary>Room a key cap adds to a line beyond its letters, pixels at 14 px (its two no-break spaces, by measure).</summary>
+    private const float HintCapExtraPixels = 8f;
+
+    private void SetHintMarkup(string markup)
+    {
+        _hintMarkup = markup;
+        _hintLabel.Text = UiText.ToBbcode(markup, HintStyle);
+    }
+
+    /// <summary>
+    /// A note under a setting or a panel's instructions (PLANET-153): a wrapping RichTextLabel for <see cref="UiText"/>
+    /// markup in 12 px small print, as tall as its text. Authored text only; a name or path goes through UiText.Lit.
+    /// </summary>
+    private static RichTextLabel MakeNote(string markup, Color color)
+    {
+        var l = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Text = UiText.ToBbcode(markup, NoteStyle),
+        };
+        l.AddThemeFontSizeOverride("normal_font_size", NoteStyle.BodyPixels);
+        l.AddThemeFontSizeOverride("bold_font_size", NoteStyle.BodyPixels);
+        l.AddThemeColorOverride("default_color", color);
+        return l;
+    }
+
+    /// <summary>Small print: 12 px with 11 px caps.</summary>
+    private static readonly UiTextStyle NoteStyle = new(12, 11, 14, 13);
 
     private void BuildHintAndFlyChip()
     {
@@ -831,9 +856,12 @@ public partial class Hud : CanvasLayer
         _hintPanel.GrowVertical = Control.GrowDirection.Begin;
         _hintPanel.OffsetBottom = -14;
         _hintPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
-        _hintLabel = new Label { Text = HintText, HorizontalAlignment = HorizontalAlignment.Center };
-        _hintLabel.AddThemeFontSizeOverride("font_size", 14);
-        _hintLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
+        _hintLabel = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, HorizontalAlignment = HorizontalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _hintLabel.AddThemeFontSizeOverride("normal_font_size", HintStyle.BodyPixels);
+        _hintLabel.AddThemeFontSizeOverride("bold_font_size", HintStyle.BodyPixels);
+        _hintLabel.AddThemeColorOverride("default_color", new Color(0.9f, 0.94f, 1f));
+        _hintLabel.AddThemeConstantOverride("line_separation", 3); // room for the caps' backgrounds when it wraps
+        SetHintMarkup(HintText);
         _hintPanel.AddChild(_hintLabel);
         _root.AddChild(_hintPanel);
         _hintShownAt = Time.GetTicksMsec() / 1000.0;

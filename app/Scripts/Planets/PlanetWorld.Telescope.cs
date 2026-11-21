@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -75,7 +76,10 @@ public partial class PlanetWorld
     private const float ScopeTwirlReachMetres = 1.6f;
 
     /// <summary>The words under the view (probes check them).</summary>
-    public const string ScopeKeysText = "← →  the next world   ·   W S or wheel  zoom   ·   drag  look   ·   Enter  fly there   ·   T  the whole overview   ·   J  the list   ·   Esc  step back";
+    public const string ScopeKeysText = "{←} {→} the next world   ·   {W} {S} or wheel: zoom   ·   drag: look   ·   {Enter} fly there   ·   {T} the whole overview   ·   {J} the list   ·   {Esc} step back";
+
+    /// <summary>The telescope panel's designed half width, viewport units (it narrows on a small window: <see cref="PanelFit"/>).</summary>
+    private const float ScopePanelHalfWidth = 450f;
 
     private TelescopeSurvey? _scope;
     private float _scopeT, _scopeFov, _scopeZoom = 1f;
@@ -86,7 +90,10 @@ public partial class PlanetWorld
     private bool _scopeDragged, _scopeQueuedByTwirl;
     private NVector3 _scopeFeet;
     private PanelContainer _scopePanel = null!;
-    private Label _scopeName = null!, _scopeRelation = null!, _scopeDetail = null!, _scopeKeys = null!;
+    private Label _scopeName = null!, _scopeRelation = null!, _scopeDetail = null!;
+
+    /// <summary>The view's controls as key caps (PLANET-153: they were one 13 px line, trimmed at every window size).</summary>
+    private RichTextLabel _scopeKeys = null!;
     private ColorRect _scopeField = null!;
     private ShaderMaterial _scopeFieldMaterial = null!;
 
@@ -149,13 +156,15 @@ public partial class PlanetWorld
         _scopePanel.AddThemeStyleboxOverride("panel", style);
         _scopePanel.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
         // Viewport units: 900 wide, centred, its bottom 66 above the screen's edge (clear of the HUD's key line under it).
-        _scopePanel.OffsetLeft = -450; _scopePanel.OffsetRight = 450; _scopePanel.OffsetTop = -196; _scopePanel.OffsetBottom = -66;
+        _scopePanel.OffsetLeft = -ScopePanelHalfWidth; _scopePanel.OffsetRight = ScopePanelHalfWidth; _scopePanel.OffsetTop = -196; _scopePanel.OffsetBottom = -66;
+        _scopePanel.GrowVertical = Control.GrowDirection.Begin; // the wrapped key line grows the panel upwards
         var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.Center };
         _scopeName = MakeLabel(24, new Color(1f, 0.93f, 0.72f), HorizontalAlignment.Center, outline: 0);
         _scopeRelation = MakeLabel(17, new Color(0.75f, 0.92f, 1f) /* the telescope's light */, HorizontalAlignment.Center, outline: 0);
         _scopeDetail = MakeLabel(14, new Color(0.85f, 0.88f, 0.98f), HorizontalAlignment.Center, outline: 0);
-        _scopeKeys = MakeLabel(13, new Color(0.7f, 0.74f, 0.86f), HorizontalAlignment.Center, outline: 0);
-        _scopeKeys.Text = ScopeKeysText;
+        _scopeKeys = MakeRichLine(UiTextStyle.Small, new Color(0.7f, 0.74f, 0.86f), outline: 0);
+        _scopeKeys.AddThemeConstantOverride("line_separation", 3); // room for the caps' backgrounds when it wraps
+        SetRich(_scopeKeys, ScopeKeysText, UiTextStyle.Small);
         box.AddChild(_scopeName);
         box.AddChild(_scopeRelation);
         box.AddChild(_scopeDetail);
@@ -293,6 +302,9 @@ public partial class PlanetWorld
     private void UpdateTelescopeView(float dt, bool blockedKeys)
     {
         if (_scope == null || _current == null || Eyepiece() is not { } eye) { CloseTelescopeView(); return; }
+        var scopeHalf = PanelFit.Width(2 * ScopePanelHalfWidth, GetViewport().GetVisibleRect().Size.X, ScreenTextMargin) / 2; // PLANET-155
+        _scopePanel.OffsetLeft = -scopeHalf;
+        _scopePanel.OffsetRight = scopeHalf;
         _scopeT += dt;
         var rise = Mathf.Clamp(_scopeT / ScopeEnterSeconds, 0, 1);
         var k = rise * rise * (3 - 2 * rise);

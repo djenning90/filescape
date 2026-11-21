@@ -1,5 +1,6 @@
 using FileScape.App.Planets;
 using FileScape.Core.Audio;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -154,7 +155,7 @@ public partial class PlanetsProbe
         P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - start * NVector3.Dot(ov.StepFoot, start)));
         await Seconds(0.5);
         await WalkToward(ov.StepFoot, ov.Steps[0].Radius + 1.2f, 6);
-        if (P.PromptText != PlanetWorld.TelescopeFootPrompt)
+        if (P.PromptText != UiText.Plain(PlanetWorld.TelescopeFootPrompt))
         {
             var foot = PlanetFrame.Move(ov.StepFoot, away, ov.Steps[0].Radius + 1.2f, r);
             P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot); // [direct] the walk was blocked: to the foot

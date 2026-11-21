@@ -61,10 +61,12 @@ public partial class PlanetWorld
 
     /// <summary>The node in focus (an object's, or the pad's target), or −1.</summary>
     public int FocusNodeId => _focusItem?.NodeId ?? _focusLauncher?.TargetId ?? -1;
-    public string PromptText => _prompt.Text;
+    /// <summary>The prompt as shown, plain (key caps as their names; probes compare it with <see cref="UiText.Plain"/> of
+    /// the markup constants below).</summary>
+    public string PromptText => _promptPlain;
 
-    /// <summary>The prompt's quieter second line (probes).</summary>
-    public string PromptDetail => _promptDetail.Text;
+    /// <summary>The prompt's quieter second line, plain (probes).</summary>
+    public string PromptDetail => _promptDetailPlain;
 
     // ------------------------------------------------------------------ input
 
@@ -469,17 +471,19 @@ public partial class PlanetWorld
 
         if (_focusLauncher is { } l && tree.Contains(l.TargetId))
         {
-            var name = tree.DisplayName(l.TargetId);
-            var what = l.IsParent ? $"Space · fly back up to {name}"
-                : l.IsLink ? (l.Followable ? $"Space · follow the link to {name}" : $"{name}: this link can't be followed ({PlaceText.LinkShort(tree, tree[l.TargetId])})")
-                : $"Space · fly to {name}";
-            SetPrompt(what, l.IsParent ? "the way back" : l.IsLink ? $"a link · {PlaceText.LinkShort(tree, tree[l.TargetId])}" : _s.Summary(l.TargetId));
+            // Names and link targets are filesystem text: literal (PLANET-153), and shortened past PromptNameChars.
+            var name = PromptName(tree.DisplayName(l.TargetId));
+            var linkShort = UiText.Lit(PlaceText.LinkShort(tree, tree[l.TargetId]));
+            var what = l.IsParent ? $"{K("Space")} · fly back up to {name}"
+                : l.IsLink ? (l.Followable ? $"{K("Space")} · follow the link to {name}" : $"{name}: this link can't be followed ({linkShort})")
+                : $"{K("Space")} · fly to {name}";
+            SetPrompt(what, l.IsParent ? "the way back" : l.IsLink ? $"a link · {linkShort}" : UiText.Lit(_s.Summary(l.TargetId)));
         }
         else if (_focusItem is { } it2)
         {
             if (it2.Kind == PlanetItemKind.Pile)
             {
-                SetPrompt($"E · list all {it2.HiddenCount:N0} more {PlaceText.CategoryName(it2.Category).ToLowerInvariant()} here", "too many to stand here one by one");
+                SetPrompt($"{K("E")} · list all {it2.HiddenCount:N0} more {UiText.Lit(PlaceText.CategoryName(it2.Category).ToLowerInvariant())} here", "too many to stand here one by one");
             }
             else if (tree.Contains(it2.NodeId))
             {
@@ -488,21 +492,23 @@ public partial class PlanetWorld
                 // The twirl's preview is named before you do it (PLANET-43); opening stays Enter (or a double-click).
                 // AD-94: a picture is looked at in FileScape first (E, a click; R or a double-click large); Windows is the
                 // marked way out (↗). In a gallery the second line teaches walking along the easels, arrows included.
+                // AD-93: the prompt is markup (key caps); the name and the detail are literal text.
                 var isPicture = BrowseTargetOf(n.Id, sky: false) == BrowseTarget.Picture;
                 var previewing = sel && _previewPanel.Visible;
-                var detail = $"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}";
+                var file = PromptName(n.Name);
+                var detail = UiText.Lit($"{PlaceText.CategoryName(FileCategories.Of(n.Name))} · {SizeFormat.Short(n.Size)}");
                 if (isPicture && OnGallery) detail += previewing ? GalleryWalkCue : GallerySideCue;
                 SetPrompt(
-                    isPicture && previewing ? "R or click the picture · view it large   ·   Enter · open with Windows ↗   ·   E · close"
-                    : isPicture ? $"E or click · look at {n.Name}   ·   double-click · view it large"
-                    : previewing ? $"Enter · open {n.Name} with Windows ↗   ·   E · close"
-                    : $"E · look closer at {n.Name}   ·   or twirl (Space, Space) to preview",
+                    isPicture && previewing ? $"{K("R")} or click the picture · view it large   ·   {K("Enter")} · open with Windows ↗   ·   {K("E")} · close"
+                    : isPicture ? $"{K("E")} or click · look at {file}   ·   double-click · view it large"
+                    : previewing ? $"{K("Enter")} · open {file} with Windows ↗   ·   {K("E")} · close"
+                    : $"{K("E")} · look closer at {file}   ·   or twirl ({K("Space")}, {K("Space")}) to preview",
                     detail);
             }
         }
         else if (_focusTelescope && OnBenchWorld)
         {
-            SetPrompt("E · read the README   ·   or spin here: Space, Space", _benchEntries.Count > 0 ? $"the workbench · {_benchEntries.Count} key places in this project" : "the workbench");
+            SetPrompt("{E} · read the README   ·   or spin here: {Space}, {Space}", _benchEntries.Count > 0 ? $"the workbench · {_benchEntries.Count} key places in this project" : "the workbench");
         }
         else if (_focusTelescope)
         {
@@ -814,7 +820,7 @@ public partial class PlanetWorld
         if (!_active || _current == null) return ",\"planets\":null";
         var f = _walker.Feet;
         var sb = System.FormattableString.Invariant(
-            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(_prompt.Text)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{MusicStateJson()}{DepartureStateJson()}{GalleryStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
+            $",\"planets\":{{\"folder\":{_current.FolderId},\"theme\":\"{_current.Comp.Theme}\",\"radius\":{_current.Comp.Shape.Radius:0.##},\"phase\":\"{_phase}\",\"transfers\":{Transfers},\"grounded\":{(_walker.Grounded ? "true" : "false")},\"height\":{_walker.Height.Value:0.###},\"feet\":[{f.X:0.###},{f.Y:0.###},{f.Z:0.###}],\"r\":{f.Length():0.###},\"jumps\":{_walker.Jumps},\"airJumps\":{_walker.AirJumps},\"focus\":{FocusNodeId},\"onOverlook\":{(OnOverlook ? "true" : "false")},\"prompt\":\"{Esc(PromptText)}\",\"items\":{_current.Comp.Items.Count},\"launchers\":{_current.Comp.Launchers.Count},\"children\":{_children.Count},\"parent\":{_parent?.FolderId ?? -1},\"previewOpen\":{(_previewPanel.Visible ? "true" : "false")},\"listOpen\":{(_contentsPanel.Visible ? "true" : "false")},\"maxRollRate\":{_maxRollRateDegreesPerSecond:0.#},\"camYaw\":{CameraHeadingDegrees():0.##},\"camPitch\":{_camPitchDegrees:0.##},\"viewPitch\":{ViewPitchDegrees:0.##},\"arrivalFraming\":{_arrival01:0.###},\"overlookView\":{_overlook01:0.###},\"orbiting\":{(_orbiting ? "true" : "false")},\"overview\":{(_universe != null ? "true" : "false")},\"uniYaw\":{_uniYaw:0.###},\"uniPitch\":{_uniPitch:0.###},\"guiFocus\":\"{Esc(GetViewport().GuiGetFocusOwner()?.GetType().Name ?? "")}\",\"character\":\"{_character.Kind}\",\"band\":{_character.Band},\"depth\":{_character.Depth},\"benchWorld\":{(OnBenchWorld ? "true" : "false")},\"benchRevealed\":{(_benchRevealed ? "true" : "false")},\"benchEntries\":{_benchEntries.Count},\"benchPanel\":{(_benchPanel.Visible ? "true" : "false")},\"benchBearing\":{BenchBearing().Degrees:0.#},\"benchDistance\":{BenchBearing().Metres:0.##},\"onBench\":{(StandingOnBench() ? "true" : "false")},\"arrivals\":{Arrivals(_current.FolderId)},\"audioSkips\":{_audio.Skips},\"audioQueuedMs\":{_audio.QueuedSeconds * 1000:0},\"audio\":{_audio.DiagnosticsJson()},{RootMarkStateJson()}{LandmarkStateJson()}{HazardStateJson()}{DiscoveryStateJson()}{MusicStateJson()}{DepartureStateJson()}{GalleryStateJson()}\"worldOnScreen\":{(ClickableWorld() is { } cw ? $"[{cw.Id},{cw.Centre.X:0},{cw.Centre.Y:0}]" : "null")}}}");
         return sb;
     }
 

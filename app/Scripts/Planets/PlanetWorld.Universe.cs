@@ -1,6 +1,7 @@
 using FileScape.App.Places;
 using FileScape.App.Ui;
 using FileScape.App.Visual;
+using FileScape.Core.Interaction;
 using FileScape.Core.Model;
 using FileScape.Core.Places;
 using FileScape.Core.Planets;
@@ -755,8 +756,9 @@ public partial class PlanetWorld
         _s.Signs.Layout(_camera, _signs, _s.Hud.BlockingRects);
         var selName = _uniSelected >= 0 && tree.Contains(_uniSelected) ? tree.DisplayName(_uniSelected) : "";
         var (listed, partial, unknown, visitedCount) = UniverseCounts;
-        SetPrompt(_uniSelected == _current?.FolderId ? $"★ {selName}: you are here · click a world, then Enter to land there" : $"{selName} · Enter (or double-click) to land there",
-            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   Shift: faster · X: pause discovery · Esc or T: back down · F1: every control");
+        var shown = PromptName(selName);
+        SetPrompt(_uniSelected == _current?.FolderId ? $"★ {shown}: you are here · click a world, then {K("Enter")} to land there" : $"{shown} · {K("Enter")} (or double-click) to land there",
+            $"{_uniBodies.Count:N0} known folders: {listed:N0} listed (solid) · {partial:N0} partly · {unknown:N0} not listed yet (pale) · {visitedCount:N0} visited (ringed)   —   {K("Shift")}: faster · {K("X")}: pause discovery · {K("Esc")} or {K("T")}: back down · {K("F1")}: every control");
         UpdateUniverseHint(dt); // PlanetWorld.UniverseNav.cs
     }
 

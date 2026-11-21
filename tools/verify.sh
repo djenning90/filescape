@@ -322,6 +322,11 @@ if [[ "$LEVEL" == full || "$LEVEL" == release ]]; then
   else skip_step planets-gallery-fixture "no gallery fixture with crowds (FileScape.Fixtures.dll create-gallery)"; fi
   if [[ -n "${FILESCAPE_WSL_README:-}" ]]; then journey planets-reader planets-reader.log 200 --automate=planets-reader "--root=$FILESCAPE_WSL_README" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
   else skip_step planets-reader "FILESCAPE_WSL_README not set (tools/make-wsl-fixture.sh --readme)"; fi
+  # 2026-11-20 (seventh pass, stream T, PLANET-152..156): every text surface on names and texts that look like markup,
+  # each fitted and screenshotted at the representative window sizes and UI scales (FileScape.Fixtures create-markup).
+  MARKUPFIX="$(ls -1d "$FIX"/markup-*/"Markup Names" 2>/dev/null | sort | tail -1)"
+  if [[ -n "$MARKUPFIX" ]]; then journey planets-text planets-text.log 420 --automate=planets-text "--root=$(wslpath -w "$MARKUPFIX")" --vis=planets --test-shell=record --ui-scale=1 --tier=functional
+  else skip_step planets-text "no markup-names fixture under $FIX (FileScape.Fixtures.dll create-markup)"; fi
 fi
 
 if [[ "$LEVEL" == release ]]; then

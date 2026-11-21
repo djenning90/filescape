@@ -66,10 +66,10 @@ public partial class PlanetWorld
 
     /// <summary>The focus prompt's second line beside a picture in a gallery (AD-94): the sideways step, arrows included,
     /// so an arrow-key player finds it where it is needed (PLANET-166).</summary>
-    private const string GallerySideCue = "   ·   Ctrl + ← → or A D · step sideways along the easels";
+    private const string GallerySideCue = "   ·   {Ctrl} + {←} {→} or {A} {D} · step sideways along the easels";
 
     /// <summary>The same line while the preview is open: walking on moves the preview along (browsing by walking).</summary>
-    private const string GalleryWalkCue = "   ·   walk on: the next easel shows here (Ctrl + ← → or A D step sideways)";
+    private const string GalleryWalkCue = "   ·   walk on: the next easel shows here ({Ctrl} + {←} {→} or {A} {D} step sideways)";
 
     /// <summary>The arrival card's words on how to look in a gallery (after "a picture gallery of N pictures").</summary>
     private const string GalleryArrivalCue = "click or E on a picture to look, double-click or R to view it large";

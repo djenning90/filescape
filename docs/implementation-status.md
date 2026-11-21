@@ -40,6 +40,33 @@ double-click a picture (or R, or click the preview's picture) to view it large; 
 zooms; Esc or a click outside the picture brings you back where you stood; Enter or "Open with Windows ↗" opens the
 original in Windows' app.
 
+### Stream T: text presentation everywhere (PLANET-151..158, AD-93)
+
+Branch `worktree-agent-abde1989b13d5dc12` from `ae32129`; not staged (the coordinator owns the desktop). DJ's item 4.
+
+| Area | Status | Evidence |
+|---|---|---|
+| One formatter, one typography (PLANET-151) | **Demonstrated** in Core; on screen **provisional** | `UiTextTests`; built |
+| Filesystem text literal everywhere (PLANET-152); two defects fixed | **Demonstrated** in Core | `LiteralTextTests` (failing first: 18 failures — inspector extension, trip panel's Backspace name — then 0); a real scan of the Markup Names fixture |
+| Key caps in prompts, captions, the overview hint, the telescope's controls, the first-run hints (PLANET-153) | **Demonstrated** in Core, built; look: DJ | probes' plain text unchanged; `planets-text` screenshots |
+| Help in Core with headings and caps (PLANET-154) | **Demonstrated** in Core; look: DJ | `UiTextTests.The_help_sheet…` |
+| Surfaces fit 1280×720…2560×1440 at UI 1.0–1.5 (PLANET-155) | **Demonstrated** in Core; on screen **unknown** | `PanelFitTests`; `planets-text` |
+| The planets-text journey and its fixture (PLANET-156) | **Unknown** (written, built, not run) | `--automate=planets-text`, `FileScape.Fixtures create-markup` |
+| Wheel over Help and the reader (PLANET-157) | reader **demonstrated** (planets-reader); Help **unknown** | `planets-text` |
+| Plain controls stay plain (PLANET-158) | **Demonstrated** (audit) | AD-93 |
+
+**Whole Core suite once (WSL, 3 shards, 398 s with the build):** 1,092 passed, 9 failed, 29 skipped of 1,130. The 9 are
+timing bounds only (eight `SkySynthTests …_is_cheap`, `WorldLayoutTests.Layout_is_deterministic_and_fast…`), run while the
+other streams loaded the machine (load average ≈ 20); all 11 cases pass alone (41 s). None touches text.
+
+**Fast loop for this area** (≈ 25–40 s on Linux): `tools/fs.sh test-wsl --filter "FullyQualifiedName~UiTextTests|FullyQualifiedName~LiteralTextTests|FullyQualifiedName~PanelFitTests|FullyQualifiedName~LessonTextTests|FullyQualifiedName~MarkdownText"`.
+On screen: `planets-text` (above) after `FileScape.Fixtures create-markup`.
+
+**Open / for DJ:** the caps' look in the outlined prompt over a bright sky; whether the overview's long second line
+should wrap (it now does: two lines at 1600×900) or be shortened; the 48-character limit for names in prompts. Not
+changed: the title card (a plain Label: a name), Destinations' and Locations' rows (plain Tree rows), the gallery
+viewer (stream G), the toasts (plain), MarkdownText's own document colours.
+
 ## Sixth pass (2026-11-20)
 
 ### The final candidate (`5ba12f91daa3`, staged, not installed)

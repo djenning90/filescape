@@ -1782,14 +1782,14 @@ public partial class Main : Node3D
         {
             _hud.SetEnterAction(false, "Go inside (G)");
             _hud.SetInspector("Nothing selected",
-                "[color=#9fb0cc]Click a pedestal or block to inspect it. Double-click to fly to it.\n\nPress [b]F1[/b] for controls, [b]Home[/b] to reset the view.[/color]",
+                UiText.ToBbcode("~Click a pedestal or block to inspect it. Double-click to fly to it.~\n\n~Press~ {F1} ~for controls,~ {Home} ~to reset the view.~", UiTextStyle.Small),
                 new Color(0, 0, 0, 0));
             _hud.SetSelectionActions(false, false, false);
             return;
         }
 
         var node = _tree[_selection.Selected];
-        _hud.SetInspector(_tree.DisplayName(node.Id), Inspector.Describe(node, _tree, ActiveVisualization), ActiveVisualization.ColorFor(node, _tree));
+        _hud.SetInspector(_tree.DisplayName(node.Id), InspectorText.Describe(node, _tree, ActiveVisualization.LayoutParams.Scale), ActiveVisualization.ColorFor(node, _tree));
         if (worldCard)
         {
             var current = node.Id == _nav.Current ? _place != null && KindOf(node.Id) is { } k && (k.Kind != FileScape.Core.Places.PlaceKind.Ordinary || k.Overridden) ? $"You are here · {k.Label}: {string.Join(", ", k.Evidence)}\n" : "You are here\n" : "";

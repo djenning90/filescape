@@ -28,6 +28,9 @@ public partial class Hud
     /// <summary>The speed sliders move in steps of 0.5 m/s (within Preferences.MinSpeed…MaxSpeed).</summary>
     private const double SpeedStepMetresPerSecond = 0.5;
 
+    /// <summary>The settings' small print colour (notes under the choices, where the preferences are saved).</summary>
+    private static readonly Color SettingsNoteColor = new(0.7f, 0.78f, 0.92f);
+
     public bool SettingsVisible => _settingsPanel.Visible;
     public Rect2 SettingsButtonRect => _settingsButton.GetGlobalRect();
     public Rect2 ReverseHorizontalRect => _reverseH.GetGlobalRect();
@@ -83,9 +86,7 @@ public partial class Hud
         _flyGaze.TooltipText = "Off (default): looking down from above never makes you dive; height changes only with E/Space and Q/C. On: forward follows your gaze, as before.";
         _flyGaze.Toggled += _ => EmitPreferences();
         v.AddChild(_flyGaze);
-        var mapNote = new Label { Text = "The arrow keys always turn the way they point. The maps keep their own mouse controls (orbit, fly), unchanged.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        mapNote.AddThemeFontSizeOverride("font_size", 12);
-        mapNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        var mapNote = MakeNote("The arrow keys always turn the way they point. The maps keep their own mouse controls (orbit, fly), unchanged.", SettingsNoteColor);
         v.AddChild(mapNote);
 
         Section("Speed on foot in Places (metres per second)");
@@ -120,15 +121,14 @@ public partial class Hud
         var qrow = new HBoxContainer();
         qrow.AddThemeConstantOverride("separation", 10);
         qrow.AddChild(_quality);
-        var qnote = new Label { Text = "F2 toggles it anywhere. Low turns off volumetric fog, reflections and ambient occlusion.", AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        qnote.AddThemeFontSizeOverride("font_size", 12);
-        qnote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        var qnote = MakeNote("{F2} toggles it anywhere. Low turns off volumetric fog, reflections and ambient occlusion.", SettingsNoteColor);
         qrow.AddChild(qnote);
         v.AddChild(qrow);
 
+        // A plain Label: it shows a path (the preferences file), which must render literally.
         _settingsNote = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        _settingsNote.AddThemeFontSizeOverride("font_size", 12);
-        _settingsNote.AddThemeColorOverride("font_color", new Color(0.7f, 0.78f, 0.92f));
+        _settingsNote.AddThemeFontSizeOverride("font_size", NoteStyle.BodyPixels);
+        _settingsNote.AddThemeColorOverride("font_color", SettingsNoteColor);
         v.AddChild(_settingsNote);
         var buttons = new HBoxContainer();
         buttons.AddChild(MakeButton("Reset to defaults", () => PreferencesChanged?.Invoke(Preferences.Default with { Pins = _shownPrefs.Pins }), "Reverse both look directions, level the view on release; walk 5.5 m/s, run 11 m/s. Pins are kept."));

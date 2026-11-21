@@ -1,4 +1,5 @@
 using FileScape.App.Planets;
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -69,7 +70,7 @@ public partial class PlanetsProbe
         var shown = App.Signs.ShownText.GetValueOrDefault(PlanetWorld.TelescopeSignId, "");
         Check(near.Cue > 0.6f && App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && shown.Contains(PlanetWorld.TelescopeSignName),
             F($"at the foot of the stones the sign over the telescope shows \"{shown.Replace('\n', ' ')}\" (cue {near.Cue:0.00})"));
-        Check(P.PromptText == PlanetWorld.TelescopeFootPrompt, $"the prompt says what E does here: \"{P.PromptText}\"");
+        Check(P.PromptText == UiText.Plain(PlanetWorld.TelescopeFootPrompt), $"the prompt says what E does here: \"{P.PromptText}\"");
         if (P.TelescopePoint is { } tp && !P.Camera.IsPositionBehind(tp))
         {
             var s = P.Camera.UnprojectPosition(tp);
@@ -88,7 +89,7 @@ public partial class PlanetsProbe
         Check(P.TelescopeClimbs == climbs0 + 1 && P.OnOverlook && MathF.Abs(P.Walker.Support.Value - ov.Top) < 0.05f && !P.ListOpen,
             F($"E at the foot lifts you onto the platform: support {P.Walker.Support.Value:0.00} m (top {ov.Top:0.00} m), the overlook view, nothing opened"));
         Check(App.Signs.ShownIds.Contains(PlanetWorld.TelescopeSignId) && top.Cue > 0.9f, F($"on the platform the sign is shown and the telescope lit: cue {top.Cue:0.00}"));
-        Check(P.PromptText == PlanetWorld.TelescopeTopPrompt, $"the prompt says E and the twirl look through it: \"{P.PromptText}\"");
+        Check(P.PromptText == UiText.Plain(PlanetWorld.TelescopeTopPrompt), $"the prompt says E and the twirl look through it: \"{P.PromptText}\"");
         await Shot("lookouts-telescope-top");
         await TelescopeViewVisit(root: App.Navigator.Current);
 
@@ -98,7 +99,7 @@ public partial class PlanetsProbe
         P.Walker.Teleport(c.Surface, foot, ov.StepFoot - foot); // [direct] back at the foot of the stones, facing the first
         P.FaceCameraAlong(NVector3.Normalize(ov.StepFoot - foot * NVector3.Dot(ov.StepFoot, foot)));
         await Seconds(0.8);
-        Check(!P.OnOverlook && P.PromptText == PlanetWorld.TelescopeFootPrompt, $"back at the foot: \"{P.PromptText}\"");
+        Check(!P.OnOverlook && P.PromptText == UiText.Plain(PlanetWorld.TelescopeFootPrompt), $"back at the foot: \"{P.PromptText}\"");
         foreach (var step in ov.Steps) await WalkToward(step.Direction, step.Radius * 0.6f, 6);
         await WalkToward(ov.Direction, ov.Radius * 0.5f, 6);
         await Until(() => P.OnOverlook, 3);
@@ -282,10 +283,10 @@ public partial class PlanetsProbe
         P.Walker.Teleport(c.Surface, start, lm.Direction - start); // [direct] 7 m out from its footprint, facing it
         P.FaceCameraAlong(NVector3.Normalize(lm.Direction - start * NVector3.Dot(lm.Direction, start)));
         await Seconds(1.0);
-        Check(P.PromptText != PlanetWorld.LighthousePrompt, $"from afar it is scenery: \"{P.PromptText}\"");
+        Check(P.PromptText != UiText.Plain(PlanetWorld.LighthousePrompt), $"from afar it is scenery: \"{P.PromptText}\"");
         await WalkToward(lm.Direction, lm.Radius + 1.0f, 10);
         await Seconds(0.4);
-        Check(P.PromptText == PlanetWorld.LighthousePrompt, F($"at its foot ({P.DistanceTo(lm.Direction):0.0} m from its axis) the prompt: \"{P.PromptText}\""));
+        Check(P.PromptText == UiText.Plain(PlanetWorld.LighthousePrompt), F($"at its foot ({P.DistanceTo(lm.Direction):0.0} m from its axis) the prompt: \"{P.PromptText}\""));
         await Shot("lookouts-lighthouse-foot");
         var lights0 = P.LighthouseLights;
         var beam = false;

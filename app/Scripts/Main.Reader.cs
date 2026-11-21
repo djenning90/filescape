@@ -49,7 +49,7 @@ public partial class Main
             ReleaseAllInput();
             if (r.Error != null)
             {
-                _hud.ShowReader(new ReaderDocument(title, $"[color=#ffb070]{r.Error.Replace("[", "[lb]")}[/color]", "Nothing was shown.", path));
+                _hud.ShowReader(new ReaderDocument(title, ReaderText.ErrorBody(r.Error), "Nothing was shown.", path));
                 return;
             }
 
@@ -58,11 +58,10 @@ public partial class Main
             if (r.Truncated)
             {
                 // PLANET-52: a genuine limit is said where the reading stops, not only in the footer.
-                body += $"\n[color=#ffcf80][b]— The file continues. The reader shows the first {Readme.MaxBytes / 1024} KB or {Readme.MaxLines:N0} lines; Open with Windows (Enter) shows all of it. —[/b][/color]\n";
+                body += ReaderText.CutNote;
             }
 
-            var footer = (markdown ? "Markdown" : "plain text") + " · read here, locally: links go only where you click, images are not loaded, nothing is run · Enter opens it with Windows · Esc closes"
-                + (r.Truncated ? $" · shortened: the first {Readme.MaxBytes / 1024} KB / {Readme.MaxLines:N0} lines" : "");
+            var footer = ReaderText.Footer(markdown, r.Truncated);
             _hud.ShowReader(new ReaderDocument(title, body, footer, path, doc.Links, doc.Anchors), anchor);
             ReaderViews++;
         }).CallDeferred());

@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -329,9 +330,9 @@ public partial class PlanetWorld
             if (_s.Tree is { } tree && tree.Contains(_fallReturnFrom) && _current != null)
             {
                 // Until a recovery has been made, the first falls also teach it (PLANET-62).
-                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? System.FormattableString.Invariant($" Tip: slip off an edge? Press Space at once (within about {_walker.Params.Hazard.Window.TotalSeconds:0.0#} s) and a twirl catches the rim.") : "";
+                var tip = _walker.Recoveries == 0 && _recoveryTipsShown < RecoveryTipShows ? System.FormattableString.Invariant($" Tip: slip off an edge? Press {{Space}} at once (within about {_walker.Params.Hazard.Window.TotalSeconds:0.0#} s) and a twirl catches the rim.") : "";
                 if (tip.Length > 0) _recoveryTipsShown++;
-                ShowHint($"Back in {tree.DisplayName(_current.FolderId)}, beside {tree.DisplayName(_fallReturnFrom)}'s launcher: step on and press Space to try again.{tip}");
+                ShowHint($"Back in {UiText.Lit(tree.DisplayName(_current.FolderId))}, beside {UiText.Lit(tree.DisplayName(_fallReturnFrom))}'s launcher: step on and press {K("Space")} to try again.{tip}");
             }
         }
 
@@ -395,7 +396,7 @@ public partial class PlanetWorld
         {
             _edgeHintShown = true;
             var parent = tree[_current.FolderId].ParentId;
-            ShowHint(parent >= 0 ? $"The ground ends here. Step off and you fall, round the black hole and back up to {tree.DisplayName(parent)}." : "The ground ends here.");
+            ShowHint(parent >= 0 ? $"The ground ends here. Step off and you fall, round the black hole and back up to {UiText.Lit(tree.DisplayName(parent))}." : "The ground ends here.");
         }
     }
 
