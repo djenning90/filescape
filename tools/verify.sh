@@ -31,11 +31,12 @@ case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,23p' "$0"; exi
 EXEW=""; OUTW=""; FRESH=0; MEASURE=0; LIST=0; PATTERNS=()
 # AD-91: how many simulated-clock journeys run at once, and whether journeys use the simulated clock at all.
 PAR="${FS_JOURNEY_PARALLEL:-3}"; SIM=1; [[ "${FS_JOURNEY_CLOCK:-sim}" == real ]] && SIM=0
+RSCALE="${FS_JOURNEY_RENDER_SCALE:-}"   # --render-scale=F: simulated-clock journeys draw 3D at F of the window (ProbeBase)
 for a in "$@"; do
   case "$a" in
     --exe=*) EXEW="${a#--exe=}" ;; --out=*) OUTW="${a#--out=}" ;; --fresh-stage) FRESH=1 ;;
     --measure) MEASURE=1 ;; --list) LIST=1 ;;
-    --parallel=*) PAR="${a#--parallel=}" ;; --real-time) SIM=0 ;;
+    --parallel=*) PAR="${a#--parallel=}" ;; --real-time) SIM=0 ;; --render-scale=*) RSCALE="${a#--render-scale=}" ;;
     -*) echo "verify: unknown option $a" >&2; exit 2 ;;
     *) PATTERNS+=("$a") ;;
   esac
@@ -171,17 +172,21 @@ test_counts() {
 # <out>\NAME\godot.log (the default Godot log is one file shared by every instance).
 # REALTIME_JOURNEYS keep the wall clock and run alone, because what they check runs on the wall clock: audio playback
 # and its gaps (audio-gaps, sound, music), real background work timed in wall seconds (overview-discovery's levels at
-# 0/10/30 s, play-discovery's walk while listing, the synthetic scan rate of places-scan) and probes that are not built
-# on ProbeBase and time themselves by the wall clock (navigation, map-journey and the places journeys); walk-perf
+# 0/10/30 s, play-discovery's walk while listing, the synthetic scan rate of places-scan, the listing delay instrument
+# --test-list-delay-ms of planets-navigation and planets-overview-enter: on a slow simulated clock the held folder
+# finished before the check, 2026-11-21) and probes that are not built on ProbeBase and time themselves by the wall clock (navigation, map-journey and the places journeys); walk-perf
 # measures frames. A journey moves out of this list once it passes on the simulated clock twice (docs/windows-workflow.md).
-REALTIME_JOURNEYS=" planets-audio-gaps planets-sound planets-music planets-overview-discovery planets-play-discovery places-connected places-tree places-scan places-ui1.25 navigation map-journey walk-perf "
+REALTIME_JOURNEYS=" planets-audio-gaps planets-sound planets-music planets-overview-discovery planets-play-discovery places-connected places-tree places-scan places-ui1.25 navigation map-journey walk-perf planets-navigation planets-overview-enter "
+# A simulated-clock journey may run slower than real time (a GPU-bound frame takes longer than 1/60 s, more so beside
+# others: 0.42–0.6× real time at 3 at once on the Radeon 890M, 2026-11-21), so its hang timeout is this many times longer.
+SIM_TIMEOUT_FACTOR=3
 journey() {
   local name="$1" logname="$2" to="$3"; shift 3
-  [[ $LIST == 1 ]] || mkdir -p "$OUT/$name"
+  [[ $LIST == 1 ]] || { wanted "$name" || return 0; mkdir -p "$OUT/$name"; }
   local tail=("$@" "--out=$OUTW\\$name" --window=1600x900)
   if [[ $SIM == 1 && "$REALTIME_JOURNEYS" != *" $name "* ]]; then
-    pool_add sim "$name" "$to" "$OUT/$name/$logname" journey "sim clock" \
-      "$EXE" --fixed-fps 60 --disable-vsync --log-file "$OUTW\\$name\\godot.log" -- "${tail[@]}" --sim-clock
+    pool_add sim "$name" "$((to * SIM_TIMEOUT_FACTOR))" "$OUT/$name/$logname" journey "sim clock" \
+      "$EXE" --fixed-fps 60 --disable-vsync --log-file "$OUTW\\$name\\godot.log" -- "${tail[@]}" --sim-clock ${RSCALE:+"--sim-render-scale=$RSCALE"}
   else
     pool_add rt "$name" "$to" "$OUT/$name/$logname" journey "" "$EXE" --log-file "$OUTW\\$name\\godot.log" -- "${tail[@]}"
   fi

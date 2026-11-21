@@ -40,6 +40,7 @@ public abstract partial class ProbeBase : Node
     {
         DirAccess.MakeDirRecursiveAbsolute(Out);
         App.Perf.Probe = () => (RenderingServer.ViewportGetMeasuredRenderTimeGpu(App.GetViewport().GetViewportRid()), App.Tree?.Count ?? 0);
+        RenderingServer.ViewportSetMeasureRenderTime(App.GetViewport().GetViewportRid(), true); // for the pace line (LogClock)
         Log($"{Mode} probe: adapter={RenderingServer.GetVideoAdapterName()} api={RenderingServer.GetVideoAdapterApiVersion()} window={DisplayServer.WindowGetSize()} ui_scale={GetWindow().ContentScaleFactor}");
         StartSimClock();
         try
@@ -52,6 +53,7 @@ public abstract partial class ProbeBase : Node
         }
 
         ProbeTier.WaitForSaves();
+        LogClock();
         Log($"done failures={Failures}");
         System.IO.File.WriteAllText(System.IO.Path.Combine(Out, $"{Mode}.log"), LogText.ToString());
         Finish();
@@ -151,11 +153,40 @@ public abstract partial class ProbeBase : Node
     /// <summary>Frames whose delta is checked against the fixed step at the start of a <c>--sim-clock</c> run.</summary>
     private const int SimStepCheckFrames = 30;
 
+    /// <summary>The lowest 3D render scale <c>--sim-render-scale</c> accepts (a fraction of the window's resolution).</summary>
+    private const float MinSimRenderScale = 0.25f;
+
     private int _simFramesChecked, _simFramesOff;
 
     /// <summary>Seconds since <paramref name="startTicksMsec"/>: wall clock live, simulated time under <see cref="SimulatedTime"/>.</summary>
     private double Since(ulong startTicksMsec, double startSimSeconds) =>
         SimulatedTime ? _simSeconds - startSimSeconds : (Time.GetTicksMsec() - startTicksMsec) / 1000.0;
+
+    private readonly ulong _wallStartUsec = Time.GetTicksUsec();
+    private readonly ulong _framesAtStart = Engine.GetProcessFrames();
+
+    /// <summary>
+    /// The run's pace (TEST-16): frames, game seconds and wall seconds since the probe started, and their ratio (above 1:
+    /// the simulated clock ran faster than real time). Logged last, before "done".
+    /// </summary>
+    private void LogClock()
+    {
+        var wall = (Time.GetTicksUsec() - _wallStartUsec) / 1e6;
+        var n = Math.Max(_paceFrames, 1);
+        Log(F($"clock: {(SimulatedTime ? "simulated" : "wall")}, {Engine.GetProcessFrames() - _framesAtStart} frames, {_simSeconds:0.0} s of game time in {wall:0.0} s ({_simSeconds / Math.Max(wall, 1e-3):0.00}× real time); per frame: render CPU {_paceCpuMs / n:0.0} ms, GPU {_paceGpuMs / n:0.0} ms"));
+    }
+
+    private long _paceFrames;
+    private double _paceCpuMs, _paceGpuMs;
+
+    /// <summary>Adds the viewport's measured render times (CPU, GPU) to the pace totals.</summary>
+    private void SamplePace()
+    {
+        var rid = App.GetViewport().GetViewportRid();
+        _paceFrames++;
+        _paceCpuMs += RenderingServer.ViewportGetMeasuredRenderTimeCpu(rid);
+        _paceGpuMs += RenderingServer.ViewportGetMeasuredRenderTimeGpu(rid);
+    }
 
     private double _simSeconds;
 
@@ -190,6 +221,16 @@ public abstract partial class ProbeBase : Node
         if (!SimClockArg) return;
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
+        // --sim-render-scale=F (0.25–1): the 3D scene drawn at F of the window's resolution, upscaled (the UI stays sharp).
+        // On the Radeon 890M the GPU took ≈ 19 ms of a ≈ 30 ms frame at 1600×900 (2026-11-21), so a lower scale lets a
+        // simulated journey run faster. No assertion reads 3D pixels; only the screenshots' 3D detail is softer.
+        var scaleArg = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--sim-render-scale=", StringComparison.Ordinal));
+        if (scaleArg != null && float.TryParse(scaleArg["--sim-render-scale=".Length..], NumberStyles.Float, CultureInfo.InvariantCulture, out var scale))
+        {
+            GetViewport().Scaling3DScale = Math.Clamp(scale, MinSimRenderScale, 1f);
+            Log(F($"render: 3D at {GetViewport().Scaling3DScale:0.##} of the window's resolution (--sim-render-scale)"));
+        }
+
         Log($"clock: simulated (--sim-clock: waits count game time at a fixed {SimFramesPerSecond} frames per second; timeouts need the wall clock too)");
     }
 
@@ -212,6 +253,7 @@ public abstract partial class ProbeBase : Node
     public override void _Process(double delta)
     {
         _simSeconds += delta;
+        SamplePace();
         CheckSimStep(delta);
         // KD-31 diagnostics: injected input does nothing while the window is not focused (by design), so every focus
         // change is logged; a failure next to "lost focus" is the environment, not the product.
