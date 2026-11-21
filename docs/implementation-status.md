@@ -4,6 +4,32 @@ Last updated: 2026-11-20 (evening), the sixth pass (PLANET-101..140, TEST-06..09
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
+### Seventh pass, stream K: legacy views only by the menu, keys per context, the way back on safe ground, every travel route, ▾ to Destinations (PLANET-141..150, AD-92)
+
+Branch `worktree-agent-a86b829e57c686772` from `ae32129`. Built (`tools/fs.sh build`) and Core-tested only: no app launch,
+no desktop use (the coordinator runs the journeys and probes listed below). DJ's items 3 and 9.
+
+| Request | Implementation | Evidence | Status |
+|---|---|---|---|
+| Remove the shortcuts that switch to legacy views; keep them in the menu (item 3) | Core `PlayCommands` (commands × play contexts), `InputBindings.CommandOf`, `Main.HandleCommand` / `CommandActs`, `PlanetWorld.TelescopeKey`; Help, the menu's labels, the guides | `PlayCommandsTests` 6/6 (2 failed first against the old rule); journeys `planets`, `planets-overview-controls`; probe `-OverviewEnter` | **Provisional** (Core demonstrated; the journeys and probe not yet run) |
+| Where else: the overview, the telescope, Ctrl+V / Shift+V, a panel open | the same table answers every planets context; the telescope consumes F, B, X instead of stepping back | `PlayCommandsTests`; journeys above | **Provisional** |
+| Every context owns its keys; text fields (item 3) | `PanelOwnership` `TextField` row; `Main.KeyboardOwner` (`FocusHolder`, `OpenPanels`, Esc lets go); the audit table in AD-92 | `PanelOwnershipTests` 11/11 (3 failed first) | **Provisional** (Core demonstrated; `navigation`, `planets-dialog-keys` to run) |
+| Root landmark actions take ↑ ↓ Enter at once; click outside closes and is consumed; the last panel returns control | unchanged (AD-83 already does this); re-read and recorded in the audit | journeys `planets-landmarks`, `planets-dialog-keys`; probes `-Dialogs`, `-Landmarks` | **Not reproduced** (no gap found in the code) |
+| Restore world, position and camera after a legacy view, on every way out (item 3) | `SurfaceResume.MayCapture(travelling)`, `InOverview`, `SupportMetres`; `PlanetWorld.CaptureResume` / `Resume` / `Activate` (a Hazard World, the air, a fall, the overview reopened) | `SurfaceResumeTests`, `OverviewCameraTests`; journeys `planets-overview-controls` (menu round trips, from the overview), `planets-hazard` (mid-jump on Event Horizon) | **Provisional** |
+| An unsafe saved position gets a nearby safe one | Core `SurfaceResume.Place`, `SafeStanding` (over a gap, at a rim, something new there; nearest safe ground within 24 m; else the arrival) | `SurfaceResumeTests` 7/7 | **Demonstrated** in Core; in-app provisional |
+| Every travel route through the launcher; tests that enumerate them (item 9) | Core `TravelRoutes` (29 routes); `// travel:` tags on every navigator move and departure in the app; the telescope's Enter → `DepartFor(…, Telescope)` | `TravelRoutesTests` 5/5 (2 failed first; `DepartureEntry.Telescope` unused on `ae32129`) | **Demonstrated** in Core; journeys `planets-travel`, `planets-lookouts`, probe `-Depart` to run |
+| A drop-down beside the current path opens Destinations; breadcrumb and ☰ unchanged; focus and dismissal (item 9) | `Hud.Places` ▾ (`CrumbDropdownRect`, pressed look follows the list); Help | journey `planets-destinations-keys` (new ▾ steps) | **Provisional** (built; not run) |
+
+**Newly found:** the telescope stepped back for every key it did not use and then ran it (V, Tab: a legacy view from the
+eyepiece); the telescope's Enter was labelled a G departure; Ctrl+V matched V. All fixed above. Possible, for stream G:
+the picture viewer's row passes F1–F12, Ctrl+L and Ctrl+O; if a panel they open sits under the full-window viewer, the
+row should pass nothing.
+
+**Tests (Core, WSL):** see the stream's report for the run log; the whole WSL suite once at the end:
+913 passed, 6 failed, 29 skipped of 948 (365 s, three shards, with an app build running beside it). The 6 are timing bounds
+(`SkySynthTests` …_is_cheap ×5: 79.8 ms vs 60 ms; `WorldLayoutTests` …fast: 263 ms vs 150 ms), untouched by this stream; all 9 cases
+pass alone (44 s).
+
 ## Sixth pass (2026-11-20)
 
 ### The final candidate (`5ba12f91daa3`, staged, not installed)

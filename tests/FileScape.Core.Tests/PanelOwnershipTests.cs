@@ -73,8 +73,9 @@ public class PanelOwnershipTests
         PanelOwnership.Route(PanelId.Confirm, new PanelKey(PanelKeyKind.FunctionKey)).Should().Be(KeyRoute.Consume, "a choice is waiting");
     }
 
-    /// <summary>AD-92: the legacy Places drawer's filter (no panel row) let Enter on an empty list open the selection, PgUp
-    /// travel up and the arrows walk. A focused field anywhere now owns them; a registered panel's field stays that panel's.</summary>
+    /// <summary>AD-92: the legacy Places drawer's filter has no panel row, so the keys the field does not use (PgUp, the arrows
+    /// with an empty list; found by reading the code) reached the game. A focused field anywhere now owns them; a registered
+    /// panel's field stays that panel's.</summary>
     [Fact]
     public void A_focused_text_field_outside_any_panel_owns_its_keys()
     {

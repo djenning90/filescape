@@ -2072,3 +2072,80 @@ as FileScape while naming remains open.
 - **Verification:** the seventh pass's candidate runs `check full`, the real-input probes, the ZIP check and the
   fresh-clone build on .NET 10 (docs/implementation-status.md).
 - **Revisit when:** Godot's .NET support or a platform we ship to needs another runtime.
+
+## AD-92 Legacy views only by the menu; every command answers per play context; the way back from a legacy view lands on safe ground; every travel route is inventoried and tagged; a ▾ to Destinations beside the path (2026-11-20, seventh pass stream K, PLANET-141..150; extends AD-82, AD-83, AD-84)
+
+- **Problem (DJ, seventh pass, items 3 and 9):** legacy views were reached by accident from the overview, panels and
+  pictures; keyboard ownership should hold in every context; returning from a legacy view should restore the world,
+  position and camera, with an unsafe saved position replaced by a nearby safe one; every travel route should leave
+  through the launcher sequence, with tests that stop a new route bypassing it; a drop-down beside the current path
+  should open Destinations.
+- **Found (code reading, then Core tests first):** V (`WorldToggle`), Tab (`SwitchVis`) and M (`MapToggle`) reached
+  `Main.HandleCommand` from the world, the overview (its own handler left them) and the telescope (it stepped back for
+  any key it did not use, then ran it); Ctrl+V matched V too. `SurfaceResume.MayCapture` refused the air and
+  `CaptureResume` refused every Hazard World, so a legacy view chosen mid-jump or on Event Horizon came back to the
+  arrival with the establishing shot; the overview was never reopened. The telescope's Enter called G's departure, so
+  `DepartureEntry.Telescope` was used nowhere. A focused text field with no panel row (the legacy Places drawer's
+  filter) let the keys it does not use reach the game. Against stubs of the old rules: `PlayCommandsTests` 2 of 6 failed,
+  `PanelOwnershipTests` 3 of 10 (a panel without a row), `TravelRoutesTests` 2 of 5 (untagged lines).
+- **Decision — commands per context (`PlayCommands`, Core):** one answer for every `GameCommand` (one per command
+  binding; a test reads `InputBindings.cs`) in every `PlayContext` (world, overview, telescope, Places, map). In the
+  planets the three legacy switches are consumed (`IgnoreLegacySwitch`), and the first press in a session toasts
+  "V, Tab and M no longer leave the planets: the earlier views are in the toolbar's Legacy views ▾ menu" (7 s).
+  Inside a legacy view everything acts as before (V back to Planets, Tab / M between them). At the telescope, routes
+  that go somewhere step back then act; Help, Settings, the key, quality, stats, H and P open over the view; F, B and X
+  do nothing. `InputBindings.CommandOf` maps a key onto a command in `HandleCommand`'s order (chords first);
+  `Main.HandleCommand` and `PlanetWorld.TelescopeKey` ask `PlayCommands.Answer`.
+- **Decision — text fields (`PanelOwnership`):** a `TextField` row: a focused LineEdit/TextEdit that no registered
+  panel holds takes the keyboard (F keys, Ctrl+L, Ctrl+O pass; Esc lets go); a world click acts and takes the focus back.
+- **Decision — the way back from a legacy view (`SurfaceResume`, `SafeStanding`, Core):** capture on every way out
+  but a departure, a hop, a trip or the overview's dive (`MayCapture(travelling)`), including the air, a fall off a
+  rim, a Hazard World and the overview (`InOverview`: it opens again over where you stood; on its way back down it
+  counts as the surface). `Place` stands you where you were if that is safe; else on the nearest safe ground (rings
+  every 0.5 m out to 24 m, nearest first, a fixed bearing order); else at the arrival. Unsafe: over a gap, within
+  0.6 m of a rim (`StandClearMetres`: more than the body's 0.35 m, less than half the narrowest 1.8 m bridge, so a
+  bridge resumes), or something now standing more than 0.3 m taller than what you stood on. A found spot keeps 1.2 m
+  inside the rim (`PlaceClearMetres`: the body plus the terrain's 0.8 m edge margin). A Hazard World is rebuilt
+  without an arrival (no second caution card). A world removed meanwhile is a new tree: you arrive wherever the
+  navigator is, as before.
+- **Decision — travel routes (`TravelRoutes`, Core):** AD-84's inventory as data: 29 routes, each with its
+  `DepartureEntry` (or none), whether it leaves from a launcher, where it starts in the app and why. Every app line that
+  moves the navigator or starts a departure carries `// travel: Route` (or `relay` for the session's plumbing, the
+  release and the common departure). `TravelRoutesTests` reads `app/Scripts` (product files): every such line is
+  tagged with known routes, every route is tagged somewhere, only the sky routes (the overview, a fall) set the descent
+  out of the light, every launcher route's entry is used, and each plans a pad on a composed world (a child, a deeper
+  folder, a place elsewhere, the top). The telescope's Enter departs with `DepartureEntry.Telescope` through `DepartFor`.
+- **Decision — the ▾ beside the path:** the breadcrumb ends with a flat ▾ after the current folder (rebuilt with the
+  crumbs, kept in view by the crumbs' scroll-to-end) that opens the same Destinations list as J and ☰ with the filter
+  focused; ▾ again, Esc or a world click (consumed, AD-83's DismissOnClick) closes it; its pressed look follows the list.
+- **The audit (PLANET-150): who owns each kind of key, and which table says so**
+
+| Context | Arrows | Enter | Space | Tab | Esc | Typing (letters, digits) | Modifiers | Decided by |
+|---|---|---|---|---|---|---|---|---|
+| A world on foot | walk / turn | open with Windows | jump, twirl; launch on a pad | nothing (was: Places) | popups, then the selection | shortcuts; V, M nothing | chords: Ctrl+L, Ctrl+O, Ctrl+Home; Ctrl+V nothing | `PlayCommands` (PlanetWorld) |
+| The overview | orbit (Shift faster) | land on the selection | nothing | nothing (was: Places) | back down | its keys ([ ] Z F X N B), shared commands; V, M nothing | as the world | `UniverseCommand`, then `PlayCommands` (Overview) |
+| The telescope | ← → step, ↑ ↓ zoom held | travel there | consumed | consumed (was: step back, Places) | step back | J, T, G its own; Backspace U L R Home step back then act; F B X nothing; F1–F4 K H P over the view | Ctrl+L / Ctrl+O step back then act | `TelescopeKey`, then `PlayCommands` (Telescope) |
+| The picture viewer | its own (stream G) | its own | its own | consumed | close | consumed | F keys, Ctrl+L, Ctrl+O pass | `PanelOwnership` (Viewer); keys: stream G |
+| Location actions | ↑ ↓ the highlight | run it | consumed | next row | close | 1–9 run rows, E closes, rest consumed | Ctrl+L, Ctrl+O pass | `PanelOwnership` + `RootActionsKey` |
+| Destinations | the results | go | in the filter | filter ⇄ results | close | the filter | J closes; F keys, Ctrl+L, Ctrl+O pass | `PanelOwnership` + `ListKey` |
+| Locations | rows | go | the GUI | rows ⇄ path | close | the path field | J opens the list beside; chords pass | `PanelOwnership` |
+| Settings | controls | toggle | toggle | next control | close | consumed | F keys, chords pass | `PanelOwnership` |
+| Help | the game's (by decision) | the game's | the game's | nothing | close | the game's | the game's | `PanelOwnership` (does not take the keyboard) |
+| A text field (no panel) | the field | the field | the field | the GUI | let go | the field | F keys, Ctrl+L, Ctrl+O pass | `PanelOwnership` (TextField) |
+| Places / a map (legacy) | as before | as before | as before | next legacy view | as before | as before; V back to Planets | as before | `PlayCommands` (Places, Map) |
+
+- **Alternatives:** keep V and Tab but ignore them only in the overview and panels (DJ named the overview, panels and
+  pictures as examples; the world is where V is pressed by habit, and Tab is pressed by reflex in lists, so a partial
+  rule would leave the same accident one context away); a confirmation before switching (a dialog for a key nobody
+  meant to press); a table of context × key kind for every context in Core (the play contexts' own keys are spread over
+  `UniverseCommand`, `TelescopeKey` and the walk, and a table they did not read would be a test-only copy: the audit is
+  recorded here instead, and the two tables the app reads cover the shortcuts and the panels); resuming a Hazard World
+  at the arrival always (DJ asked for where you stood); snapping an unsafe spot to the nearest point of any ground
+  (it would put you on a rim or a narrow bridge's edge); tagging only the planets' files (Main moves the navigator for
+  the breadcrumb, Locations, paths and links).
+- **Unknown / for DJ:** whether the once-a-session toast is wanted at all; whether 0.6 m / 1.2 m from the rim feel safe;
+  whether reopening the overview after a legacy view is right (the alternative: stand on the surface); whether ▾ reads
+  as a drop-down at a glance.
+- **Revisit if:** a new legacy-style view is added (a `PlayContext`), the overview keeps its own camera state across a
+  legacy view (now it opens fresh over your world), or stream G finds that F1, F4 or Ctrl+L pressed in the full-window
+  picture viewer open a panel under it (the viewer's row passes them today; it would then pass nothing).
