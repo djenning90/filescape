@@ -1,3 +1,4 @@
+using FileScape.Core.Interaction;
 using Godot;
 
 namespace FileScape.App;
@@ -102,6 +103,34 @@ public static class InputBindings
         Physical(WorldToggle, Key.V);
         Physical(DiscoveryPause, Key.X);
     }
+
+    /// <summary>
+    /// The one-shot command a key press means, or null (a movement key, or nothing bound). The order is
+    /// <c>Main.HandleCommand</c>'s: a chord is tried before the plain key it contains (Godot's non-exact match lets Ctrl+Home
+    /// match Home and Ctrl+L match L), so Ctrl+Home is <see cref="GameCommand.RootPlace"/>, Ctrl+L <see cref="GameCommand.GoToPath"/>.
+    /// The play context's answer for it is Core's <see cref="PlayCommands.Answer"/> (AD-92).
+    /// </summary>
+    public static GameCommand? CommandOf(InputEventKey key)
+    {
+        foreach (var (action, command) in CommandOrder)
+        {
+            if (key.IsAction(action)) return command;
+        }
+
+        return null;
+    }
+
+    /// <summary>The command actions in matching order (chords before the plain keys they contain).</summary>
+    private static readonly (string Action, GameCommand Command)[] CommandOrder =
+    [
+        (WorldToggle, GameCommand.WorldToggle), (Open, GameCommand.Open), (HistoryBack, GameCommand.HistoryBack), (Parent, GameCommand.Parent),
+        (RootPlace, GameCommand.RootPlace), (Home, GameCommand.Home), (Overview, GameCommand.Overview), (SwitchVis, GameCommand.SwitchVis),
+        (EnterFolder, GameCommand.EnterFolder), (UpPlace, GameCommand.UpPlace), (MapToggle, GameCommand.MapToggle), (Frame, GameCommand.Frame),
+        (Help, GameCommand.Help), (Legend, GameCommand.Legend), (Destinations, GameCommand.Destinations), (Pin, GameCommand.Pin),
+        (Readme, GameCommand.Readme), (Quality, GameCommand.Quality), (Stats, GameCommand.Stats), (Settings, GameCommand.Settings),
+        (OpenFolder, GameCommand.OpenFolder), (FlightToggle, GameCommand.FlightToggle), (HiddenToggle, GameCommand.HiddenToggle),
+        (GoToPath, GameCommand.GoToPath), (Locations, GameCommand.Locations), (DiscoveryPause, GameCommand.DiscoveryPause),
+    ];
 
     /// <summary>A stable per-key identity for alias tracking: same key, same id, whichever field the event carries.</summary>
     public static long KeyId(InputEvent e) => e switch

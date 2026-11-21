@@ -92,6 +92,9 @@ public interface IWorldSession
     /// <summary>A short message on the HUD.</summary>
     void Toast(string text);
 
+    /// <summary>Whether a game command acts in a play context (Core's PlayCommands, AD-92; a legacy-view switch in the planets says once where the views went).</summary>
+    bool CommandActs(FileScape.Core.Interaction.PlayContext context, FileScape.Core.Interaction.GameCommand command);
+
     /// <summary>A folder's one-line summary ("3 folders · 12 files · 4.2 MB in all").</summary>
     string Summary(int id);
 

@@ -409,12 +409,14 @@ public partial class Hud : CanvasLayer
         var col = new VBoxContainer();
         col.AddThemeConstantOverride("separation", 4);
         _legacyPanel.AddChild(col);
-        string[] names = ["Places — walk through folder doors (V)", "Classic FSN map (Tab)", "District map (Tab)"];
+        // AD-92: chosen here, deliberately. V, Tab and M do nothing in the planets; inside a legacy view V returns to
+        // Planets and Tab / M move between the legacy views.
+        string[] names = ["Places — walk through folder doors", "Classic FSN map", "District map"];
         string[] tips =
         [
-            "Places: be inside a folder — files around you, child folders as gates you can walk through. V switches between Planets and Places.",
-            "Classic FSN: whole-tree reference map, FSN-inspired (Tab cycles the maps). The selection is preserved.",
-            "District: whole-tree reference map, futuristic city (Tab cycles the maps). The selection is preserved.",
+            "Places: be inside a folder — files around you, child folders as gates you can walk through. In Places, V returns to Planets (where you stood).",
+            "Classic FSN: whole-tree reference map, FSN-inspired (in the legacy views Tab cycles them). The selection is preserved; V returns to Planets.",
+            "District: whole-tree reference map, futuristic city (in the legacy views Tab cycles them). The selection is preserved; V returns to Planets.",
         ];
         for (var i = 0; i < 3; i++)
         {
@@ -476,7 +478,8 @@ public partial class Hud : CanvasLayer
                 "  [b]The telescope[/b] on the overlook: E (or a twirl) looks through it · ← → world to world · Enter flies there · T the overview · Esc steps back\n" +
                 "  [b]Hazard Worlds[/b] (system folders; Event Horizon in the sample): islands of rock over a black hole. Follow the lit paths,\n" +
                 "    jump the gaps; step off and you fall back up to the folder above. J, U, Backspace and every file action work as anywhere.\n\n" +
-                "[b]Legacy views[/b] (the toolbar's Legacy views menu, or V and Tab): the earlier experiences, kept working.\n\n" +
+                "[b]Legacy views[/b] (choose them in the toolbar's Legacy views ▾ menu): the earlier experiences, kept working. In the planets V, Tab and M do nothing;\n" +
+                "    inside a legacy view [b]V[/b] returns to Planets, back where you stood, and Tab and M switch between the legacy views.\n\n" +
                 "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
                 "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
