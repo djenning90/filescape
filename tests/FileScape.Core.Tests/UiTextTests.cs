@@ -76,4 +76,15 @@ public class UiTextTests
         s.Length.Should().Be(24);
         s.Should().StartWith("a-very-long-name").And.EndWith("6.jpeg").And.Contain("…");
     }
+
+    [Fact]
+    public void The_help_sheet_has_headings_caps_and_only_its_own_tags()
+    {
+        var (shown, tags) = BbcodeReading.Read(HelpSheet.Bbcode("abc [b]123"));
+        tags.Where(t => !OwnTags.Contains(t)).Should().BeEmpty();
+        shown.Should().Contain("✦ Planets").And.Contain("Legacy views").And.EndWith("Build: abc [b]123", "the build line is literal");
+        shown.Should().NotContain("{").And.NotContain("}").And.NotContain("~", "every mark is used, none is shown").And.NotContain("[lb]");
+        UiText.Keys(HelpSheet.Markup).Should().Contain(["W A S D", "Space", "E", "Enter", "Backspace", "T", "Esc", "F1", "[", "]"]);
+        HelpSheet.Markup.Split('\n').Count(l => l.StartsWith("# ", StringComparison.Ordinal)).Should().Be(2, "Planets and the legacy views");
+    }
 }
