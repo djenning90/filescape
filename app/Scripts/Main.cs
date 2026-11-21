@@ -1782,7 +1782,7 @@ public partial class Main : Node3D
         {
             _hud.SetEnterAction(false, "Go inside (G)");
             _hud.SetInspector("Nothing selected",
-                "[color=#9fb0cc]Click a pedestal or block to inspect it. Double-click to fly to it.\n\nPress [b]F1[/b] for controls, [b]Home[/b] to reset the view.[/color]",
+                UiText.ToBbcode("~Click a pedestal or block to inspect it. Double-click to fly to it.~\n\n~Press~ {F1} ~for controls,~ {Home} ~to reset the view.~", UiTextStyle.Small),
                 new Color(0, 0, 0, 0));
             _hud.SetSelectionActions(false, false, false);
             return;

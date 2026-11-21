@@ -10,7 +10,7 @@ namespace FileScape.App.Ui;
 /// </summary>
 public partial class Hud
 {
-    public const string PlacesHintText = "↑↓ walk · ←→ turn · WASD · hold right mouse to look · Space jump · Shift run · T fly · J destinations · K key · F1 help";
+    public const string PlacesHintText = "{↑}{↓} walk · {←}{→} turn · {W A S D} · hold right mouse to look · {Space} jump · {Shift} run · {T} fly · {J} destinations · {K} key · {F1} help";
 
     public event Action<int>? BreadcrumbRequested;
     public event Action? UpRequested;
@@ -275,7 +275,7 @@ public partial class Hud
         }
     }
 
-    public string HintLabelText => _hintLabel.Text;
+    public string HintLabelText => _hintMarkup;
 
     /// <summary>Scrolls the destination list so an item is visible (wide folders have hundreds).</summary>
     public void EnsureDestinationVisible(int index)

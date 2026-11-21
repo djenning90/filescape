@@ -111,6 +111,16 @@ public class LiteralTextTests
         BbcodeReading.Read(MarkdownText.Render("A " + text).Bbcode).Tags.Where(t => !MarkdownTags.Contains(t)).Should().BeEmpty("a document can only produce the converter's own tags");
     }
 
+    [Theory]
+    [MemberData(nameof(HostileNames))]
+    public void The_readers_error_is_the_os_message_as_written(string message)
+    {
+        var (shown, tags) = BbcodeReading.Read(ReaderText.ErrorBody($"Could not read C:\\{message}: access denied"));
+        shown.Should().Be($"Could not read C:\\{message}: access denied");
+        tags.Should().Equal("color", "color");
+        BbcodeReading.Read(ReaderText.CutNote).Tags.Should().OnlyContain(t => t == "color" || t == "b");
+    }
+
     /// <summary>The tags MarkdownText writes itself.</summary>
     private static readonly HashSet<string> MarkdownTags = ["b", "i", "s", "u", "code", "color", "font_size", "indent", "table", "cell", "url"];
 }

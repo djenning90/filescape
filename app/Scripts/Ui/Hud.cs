@@ -623,8 +623,10 @@ public partial class Hud : CanvasLayer
             var left = _legendPanel.Visible ? _legendPanel.Position.X + _legendPanel.Size.X + 10 : 10;
             var right = _inspector.Visible ? _inspector.Position.X - 10 : vp.X - 10;
             var room = Mathf.Max(200, right - left);
-            _hintLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            _hintLabel.CustomMinimumSize = new Vector2(Mathf.Min(room - 24, _hintLabel.GetThemeFont("font").GetStringSize(_hintLabel.Text, HorizontalAlignment.Left, -1, 14).X + 4), 0);
+            // As wide as its plain text and the caps' padding, never wider than the room (then it wraps).
+            var natural = _hintLabel.GetThemeFont("normal_font").GetStringSize(UiText.Plain(_hintMarkup), HorizontalAlignment.Left, -1, HintStyle.BodyPixels).X
+                + UiText.Keys(_hintMarkup).Count * HintCapExtraPixels + 4;
+            _hintLabel.CustomMinimumSize = new Vector2(Mathf.Min(room - 24, natural), 0);
             _hintPanel.Size = _hintPanel.GetCombinedMinimumSize();
             _hintPanel.Position = new Vector2(left + (room - _hintPanel.Size.X) / 2, vp.Y - _hintPanel.Size.Y - 14);        }
     }
@@ -669,7 +671,7 @@ public partial class Hud : CanvasLayer
         ApplyLegendVisibility();
         if (!places) SetInspectorCard(false, true, "", null);
         if (!places) SetAscentChip(null);
-        _hintLabel.Text = planets ? PlanetsHintText : places ? PlacesHintText : HintText;
+        SetHintMarkup(planets ? PlanetsHintText : places ? PlacesHintText : HintText);
         _homeButton.Visible = true;
         _overviewButton.Visible = !planets;
         _flightButton.Visible = true;
@@ -794,7 +796,9 @@ public partial class Hud : CanvasLayer
     // ------------------------------------------------------------ hint and flight status
 
     private PanelContainer _hintPanel = null!;
-    private Label _hintLabel = null!;
+    /// <summary>The first-run hint (PLANET-153): <see cref="UiText"/> markup, keys as caps; its markup is kept for probes.</summary>
+    private RichTextLabel _hintLabel = null!;
+    private string _hintMarkup = HintText;
     private PanelContainer _flyPanel = null!;
     private Label _flyLabel = null!;
     private double _hintShownAt;
@@ -802,9 +806,47 @@ public partial class Hud : CanvasLayer
     private double _flyHighlightUntil;
 
     /// <summary>The first-run hint. It is dismissed after the user has both moved and flown, after 60 s, or when Help opens.</summary>
-    public const string PlanetsHintText = "WASD run · drag or ← → look · Space jump (again: twirl) · on a launcher: Space to fly · E look closer · Enter open · Backspace back · T overview · J list · N sound · F1 help";
+    public const string PlanetsHintText = "{W A S D} run · drag or {←} {→} look · {Space} jump (again: twirl) · on a launcher: {Space} to fly · {E} look closer · {Enter} open · {Backspace} back · {T} overview · {J} list · {N} sound · {F1} help";
 
-    public const string HintText = "W / ↑ walk  ·  Shift run  ·  Space jump  ·  hold right mouse to look  ·  F4 settings (look direction, speed)  ·  F1 help";
+    /// <summary>The maps' first-run hint (<see cref="UiText"/> markup, as the others).</summary>
+    public const string HintText = "{W} / {↑} walk  ·  {Shift} run  ·  {Space} jump  ·  hold right mouse to look  ·  {F4} settings (look direction, speed)  ·  {F1} help";
+
+    /// <summary>The hint's style: 14 px with 12 px caps (<see cref="UiTextStyle.Small"/>).</summary>
+    private static UiTextStyle HintStyle => UiTextStyle.Small;
+
+    /// <summary>Room a key cap adds to a line beyond its letters, pixels at 14 px (its two no-break spaces, by measure).</summary>
+    private const float HintCapExtraPixels = 8f;
+
+    private void SetHintMarkup(string markup)
+    {
+        _hintMarkup = markup;
+        _hintLabel.Text = UiText.ToBbcode(markup, HintStyle);
+    }
+
+    /// <summary>
+    /// A note under a setting or a panel's instructions (PLANET-153): a wrapping RichTextLabel for <see cref="UiText"/>
+    /// markup in 12 px small print, as tall as its text. Authored text only; a name or path goes through UiText.Lit.
+    /// </summary>
+    private static RichTextLabel MakeNote(string markup, Color color)
+    {
+        var l = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Text = UiText.ToBbcode(markup, NoteStyle),
+        };
+        l.AddThemeFontSizeOverride("normal_font_size", NoteStyle.BodyPixels);
+        l.AddThemeFontSizeOverride("bold_font_size", NoteStyle.BodyPixels);
+        l.AddThemeColorOverride("default_color", color);
+        return l;
+    }
+
+    /// <summary>Small print: 12 px with 11 px caps.</summary>
+    private static readonly UiTextStyle NoteStyle = new(12, 11, 14, 13);
 
     private void BuildHintAndFlyChip()
     {
@@ -814,9 +856,12 @@ public partial class Hud : CanvasLayer
         _hintPanel.GrowVertical = Control.GrowDirection.Begin;
         _hintPanel.OffsetBottom = -14;
         _hintPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
-        _hintLabel = new Label { Text = HintText, HorizontalAlignment = HorizontalAlignment.Center };
-        _hintLabel.AddThemeFontSizeOverride("font_size", 14);
-        _hintLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
+        _hintLabel = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, HorizontalAlignment = HorizontalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _hintLabel.AddThemeFontSizeOverride("normal_font_size", HintStyle.BodyPixels);
+        _hintLabel.AddThemeFontSizeOverride("bold_font_size", HintStyle.BodyPixels);
+        _hintLabel.AddThemeColorOverride("default_color", new Color(0.9f, 0.94f, 1f));
+        _hintLabel.AddThemeConstantOverride("line_separation", 3); // room for the caps' backgrounds when it wraps
+        SetHintMarkup(HintText);
         _hintPanel.AddChild(_hintLabel);
         _root.AddChild(_hintPanel);
         _hintShownAt = Time.GetTicksMsec() / 1000.0;
