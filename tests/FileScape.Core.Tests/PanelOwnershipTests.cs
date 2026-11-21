@@ -67,8 +67,8 @@ public class PanelOwnershipTests
             PanelOwnership.Route(panel, key).Should().Be(expected, $"{panel}: {key}");
         }
 
-        // The deliberate passes, by name (AD-68): F keys, Ctrl+L and Ctrl+O everywhere but the choices; J from the two navigation panels.
-        KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesShortcuts).Should().BeEquivalentTo([PanelId.Viewer, PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions, PanelId.TextField]);
+        // The deliberate passes, by name (AD-68): F keys, Ctrl+L and Ctrl+O everywhere but the choices and the full-screen viewer (a panel would open beneath it); J from the two navigation panels.
+        KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesShortcuts).Should().BeEquivalentTo([PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions, PanelId.TextField]);
         KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesDestinationsKey).Should().BeEquivalentTo([PanelId.Locations, PanelId.Destinations]);
         PanelOwnership.Route(PanelId.Confirm, new PanelKey(PanelKeyKind.FunctionKey)).Should().Be(KeyRoute.Consume, "a choice is waiting");
     }

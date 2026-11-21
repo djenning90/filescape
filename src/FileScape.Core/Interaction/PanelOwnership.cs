@@ -151,8 +151,8 @@ public static class PanelOwnership
     /// <summary>Every panel's rule, keyboard panels in topmost order first (after a click on the world nothing has the focus).</summary>
     public static readonly IReadOnlyList<PanelRule> Rules =
     [
-        new(PanelId.Viewer, true, true, OutsideClick.Ignore, "the picture", true, false,
-            "Full screen above everything (PLANET-96): ← → step, Esc/R close; there is no world to click outside it."),
+        new(PanelId.Viewer, true, true, OutsideClick.Ignore, "the picture", false, false,
+            "Full screen above everything (PLANET-96): ← → step, Esc/R close, and a click on the backdrop beside the picture returns (AD-94, handled by the viewer). It passes no shortcuts: a panel opened from it would open beneath it (seventh pass)."),
         new(PanelId.Confirm, true, true, OutsideClick.Keep, "Continue", false, false,
             "A consequential action waits on the answer: a click elsewhere must not answer it or act behind it."),
         new(PanelId.Welcome, true, true, OutsideClick.Keep, "Learn to play", false, false,
