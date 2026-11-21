@@ -554,7 +554,7 @@ public partial class Main : Node3D
         _needsInitialFrame = true;
         _scanFinishedReported = false;
         _selection.Reset();
-        _nav.Reset(0);
+        _nav.Reset(0); // travel: SessionArrival
         _place = null;
         _transition = null;
         _hud.SetTransition(0, null);
@@ -1409,7 +1409,7 @@ public partial class Main : Node3D
         if (key.IsAction(InputBindings.WorldToggle)) { ToggleWorld(); return; }
         if (planets && HandlePlanetCommand(key)) return;
         if (key.IsAction(InputBindings.Open)) RequestOpen();
-        else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); }
+        else if (key.IsAction(InputBindings.HistoryBack)) { if (places) _nav.Back(); else if (_selection.Back()) FlyToSelection(); } // travel: HistoryBack
         else if (key.IsAction(InputBindings.Parent)) HandleEscape();
         else if (key.IsAction(InputBindings.RootPlace)) { if (places) TravelRoot(); else ResetView(); }
         else if (key.IsAction(InputBindings.Home)) ResetView();

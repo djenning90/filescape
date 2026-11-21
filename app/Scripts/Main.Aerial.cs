@@ -246,7 +246,7 @@ public partial class Main
         if (_tree == null || _worldMap == null || !_worldMap.Contains(id) || !AerialAvailable || id == _nav.Current || _transition != null) return false;
         var (xz, yaw) = WorldCamera();
         _aerialTravel = new AerialTravel(id, xz, _rig.CameraPosition.Y, yaw, _rig.LookPitch, land);
-        if (_nav.GoTo(_tree, id)) return true;
+        if (_nav.GoTo(_tree, id)) return true; // travel: LegacyAerial
         _aerialTravel = null;
         return false;
     }

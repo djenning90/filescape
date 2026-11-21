@@ -147,7 +147,7 @@ public partial class Main
             }
 
             if (_tree[arrival].Kind != NodeKind.Directory) arrival = _tree[arrival].ParentId;
-            _nav.Reset(arrival);
+            _nav.Reset(arrival); // travel: SessionArrival
             _place = null; // compose the arrival place on the next frame
             GD.Print($"[world] arrival {_tree.FullPath(arrival)} id={arrival} error={r.Error ?? "-"}");
             return;
@@ -177,7 +177,7 @@ public partial class Main
             }
 
             if (!_tree[r.NodeId].IsDirectory) _selection.Select(r.NodeId); // a file link: its folder, with the file selected
-            _nav.FollowLink(_tree, linkId, r.NodeId);
+            _nav.FollowLink(_tree, linkId, r.NodeId); // travel: LinkAnswer
             return;
         }
 
@@ -199,11 +199,11 @@ public partial class Main
                 _pendingNewRoot = -1;
                 if (!_tree[target].IsDirectory) target = _tree[target].ParentId;
                 var from = _nav.Current;
-                _nav.Reset(target);
+                _nav.Reset(target); // travel: OpenFolderNewRoot
                 _place = null;
                 // On the planets the new root is travelled to like any other change (AD-84: from the launcher that leads
                 // there), not cut to; Reset raises no change of its own.
-                if (_experience == Experience.Planets && from != target) OnPlaceChanged(new PlaceChange(from, target, PlaceMove.Jump));
+                if (_experience == Experience.Planets && from != target) OnPlaceChanged(new PlaceChange(from, target, PlaceMove.Jump)); // travel: OpenFolderNewRoot
                 return;
             }
 
@@ -215,7 +215,7 @@ public partial class Main
 
             if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
             if (target == _nav.Current) _hud.Toast("You are already here.");
-            else _nav.GoTo(_tree, target);
+            else _nav.GoTo(_tree, target); // travel: GoToPath
         }
     }
 
@@ -316,7 +316,7 @@ public partial class Main
 
         if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
         if (_nav.Current == 0) _hud.Toast($"You are already at {WorldExplorer.HubName}.");
-        else _nav.GoTo(_tree, 0);
+        else _nav.GoTo(_tree, 0); // travel: ThisPc
     }
 
     /// <summary>A Locations row chosen: travel there (switching to Places from a map), or to the hub.</summary>
@@ -332,7 +332,7 @@ public partial class Main
         if (_tree == null || !_tree.Contains(id)) return;
         if (_experience is not (Experience.Places or Experience.Planets)) SetExperience(Experience.Places);
         if (id == _nav.Current) _hud.Toast("You are already here.");
-        else _nav.GoTo(_tree, id);
+        else _nav.GoTo(_tree, id); // travel: LocationsRow
     }
 
     /// <summary>

@@ -53,7 +53,7 @@ public partial class Main : IWorldSession
     int IWorldSession.PendingRequests => PendingRequests;
     bool IWorldSession.AwaitingArrival => _awaitingArrival;
     bool IWorldSession.TravelUp() => TravelUp();
-    bool IWorldSession.GoBack() => _nav.Back();
+    bool IWorldSession.GoBack() => _nav.Back(); // travel: relay
     void IWorldSession.Select(int id) => Select(id);
     void IWorldSession.OpenSelection() => RequestOpen();
     void IWorldSession.Toast(string text) => _hud.Toast(text);
@@ -73,10 +73,10 @@ public partial class Main : IWorldSession
         if (key.IsAction(InputBindings.Readme) && _planets.OpenViewer()) return true; // R with a picture's preview open: view it large (PLANET-96)
         if (key.IsAction(InputBindings.Overview)) { _planets.ToggleOverlookView(); return true; }
         if (key.IsAction(InputBindings.Frame)) { CardFly(); return true; } // Main.SelectionActions: face it, or say why not
-        if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; }
+        if (key.IsAction(InputBindings.EnterFolder)) { _planets.LaunchToSelection(); return true; } // travel: GoInside
         // U and Backspace leave through their pad like any launch (PLANET-82): the navigator moves at the take-off, so Esc can still stop them.
-        if (key.IsAction(InputBindings.UpPlace) && _planets.LaunchUp()) return true;
-        if (key.IsAction(InputBindings.HistoryBack) && _planets.LaunchBack()) return true;
+        if (key.IsAction(InputBindings.UpPlace) && _planets.LaunchUp()) return true; // travel: ParentKey
+        if (key.IsAction(InputBindings.HistoryBack) && _planets.LaunchBack()) return true; // travel: HistoryBack
         if (key.IsAction(InputBindings.FlightToggle)) { _planets.ToggleUniverse(); _hud.SetPlanetsOverview(_planets.UniverseOpen); return true; }
         return false;
     }
@@ -91,7 +91,7 @@ public partial class Main : IWorldSession
         if (_tree[id].Kind == NodeKind.Link) return FollowLink(id);
         if (!_tree[id].IsDirectory) return false;
         if (id == _tree[_nav.Current].ParentId) return TravelUp();
-        return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id);
+        return _tree[id].ParentId == _nav.Current ? _nav.Enter(_tree, id) : _nav.GoTo(_tree, id); // travel: relay
     }
 
     /// <summary>The shared visibility rule, for probes.</summary>

@@ -150,12 +150,12 @@ public partial class PlanetWorld
         if (_phase != Phase.Walking || _trip is { InHop: false } || _current == null || _s.Tree == null) return;
         if (_universe != null)
         {
-            LandFromOverview(targetId); // PLANET-83: the overview lands; a launch on the surface would never run under it
+            LandFromOverview(targetId); // PLANET-83: the overview lands; a launch on the surface would never run under it // travel: OverviewLanding
             return;
         }
 
         _hop = null;
-        Depart(targetId, change: null, ReleaseAction.Into, entry); // PLANET-82, PLANET-120: its pad first
+        Depart(targetId, change: null, ReleaseAction.Into, entry); // PLANET-82, PLANET-120: its pad first // travel: relay
     }
 
     /// <summary>
@@ -172,7 +172,7 @@ public partial class PlanetWorld
         {
             // A navigation change from the overview (Backspace, the list, a path): come down onto it out of the light.
             CloseUniverse(returnToSurface: false);
-            _arriveFromSky = true;
+            _arriveFromSky = true; // travel: OverviewNavigation
             _warpFlash = 1f;
         }
 
@@ -209,7 +209,7 @@ public partial class PlanetWorld
         // The breadcrumb, Destinations, favourites, Locations, Go to path, a link answering: the same departure as any other
         // (from the launcher that leads there, PLANET-120), the navigator already there.
         _hop = null;
-        Depart(change.To, change, ReleaseAction.Into, DepartureEntry.NavigatorChange);
+        Depart(change.To, change, ReleaseAction.Into, DepartureEntry.NavigatorChange); // travel: relay
     }
 
     /// <summary>One frame of a place change (any phase but Walking); the overlook view fades out meanwhile.</summary>
@@ -260,7 +260,7 @@ public partial class PlanetWorld
                     }
                     else
                     {
-                        var ok = tr.Release == ReleaseAction.Back ? _s.GoBack() : IsParentTarget(tree, tr.LaunchTarget) ? _s.TravelUp() : _s.TravelInto(tr.LaunchTarget);
+                        var ok = tr.Release == ReleaseAction.Back ? _s.GoBack() : IsParentTarget(tree, tr.LaunchTarget) ? _s.TravelUp() : _s.TravelInto(tr.LaunchTarget); // travel: relay
                         if (_phase == Phase.WindUp)
                         {
                             if (!ok) CancelLaunch("That world can't be reached from here.");
@@ -645,7 +645,7 @@ public partial class PlanetWorld
     {
         if (_universe != null)
         {
-            BeginUniverseLanding(_s.Selection.Selected); // G in the overview lands on the selected world
+            BeginUniverseLanding(_s.Selection.Selected); // G in the overview lands on the selected world // travel: OverviewLanding
             return;
         }
 
@@ -656,7 +656,7 @@ public partial class PlanetWorld
         var n = tree[id];
         if (id == _current.FolderId) { _s.Toast("You are already here."); return; }
         if (!n.IsDirectory && n.Kind != NodeKind.Link) { _s.Toast("Files are not worlds: E looks closer, Enter opens it with Windows."); return; }
-        BeginLaunch(id, DepartureEntry.GoInside);
+        BeginLaunch(id, DepartureEntry.GoInside); // travel: GoInside
     }
 
     /// <summary>Home: back to the arrival meadow by a short hop.</summary>
