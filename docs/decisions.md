@@ -2388,6 +2388,37 @@ as FileScape while naming remains open.
   classic while the Starter Sky changes (today both follow the one setting). **Revisit if:** DJ picks another default
   (change `GameDefault`), wants per-place choices, or wants the reserved star-chart arrangements wired.
 
+## AD-96 Gameplay without stalls: the sky is kept, composed on a worker and built in slices; large windows draw at a budget (PLANET-174..180, 2026-11-21, seventh pass stream S5)
+
+- **Measured cause (desktop reproduction, then this stream's `--diag-frames` on the staged build):** background discovery
+  changes the current world's signature; `ApplyPendingRecompose` → `BuildCurrent(−2)` freed and rebuilt every world in
+  the sky, composing each on the main thread (on the Ubuntu root three children cost 40–200 ms each) and building each
+  preview with its ground made inline (≈ 6–9 ms): 475–1,141 ms, every ≈ 4.6 s (the 4 s recompose gap plus the 0.35 s
+  check). A landing back on the root did the same, then the recompose that followed did it again. Worse: a child's full
+  signature mixes its parent's subtree count, so any listing below the root made all 21 children "changed".
+- **Decision:** (1) worlds already in the sky are kept across a recompose and a landing; only those whose
+  `PreviewSignature` (the signature without the parent part: all a preview shows) changed are composed again;
+  (2) compositions are made by `BackgroundComposer` on a worker, holding `FsTree`'s read lease (Apply throws meanwhile;
+  Main defers scan batches; jobs of ≤ 6 folders, longest measured 38 ms); the world you stand on too, first in line;
+  (3) results are kept (`CompositionCache`, 128) and looks cached by kind (48 previews, 6 full); (4) previews and swaps
+  are built by `FrameSliceQueue` within 4 ms a frame, their ground made on a worker; never a swap while travelling;
+  (5) a launch prefetches its destination's sky and prebuilds its previews during the flight.
+- **Large windows:** at 3840×2160 the GPU took 18.2 ms (4× MSAA −7.4 ms when off, sky shader −3.9, glow −2.7, shadows
+  −0.7; scale 0.75 −6.8). `RenderScalePolicy` keeps full scale to 2560×1440 and draws larger windows at that pixel budget
+  (FSR 1, ≥ ⅔): 11.4 ms. MSAA stays 4× (2× saved only 0.5 ms at the reduced scale; off loses edge quality everywhere).
+- **Alternatives:** time-slicing composition on the main thread (one child composes in up to 200 ms: too long for any
+  slice); composing from a tree snapshot (a copy per job costs more than the lease's brief deferral); a longer recompose
+  gap (hides the symptom, the sky lags); MSAA off or FXAA at large sizes (changes the look at every size the GPU could
+  afford); a frame-time-driven dynamic scale (oscillates; harder to reason about).
+- **Preserve:** compositions are the same pure function (only where and when they are made changed); landings are
+  untouched (Land, feet first); the tree is changed only on the main thread with no lease held.
+- **Unknown / not done:** the first arrival of a session still composes its sky on the main thread (≈ 0.9 s at the
+  Ubuntu root, behind the arrival title); a launcher stood on while its world's look was just swapped may wait for the
+  new full ground (one 56 ms frame seen); frames of 60–140 ms with ≈ 1 ms of main-thread work (render/present or the
+  machine) were seen in the before runs and rarely after: not attributed. DJ's 45–55 ms GPU frames at 2560×1440 were not
+  reproduced (this machine showed 18 ms at 3840×2160). **Revisit if:** a world in the sky looks stale after discovery
+  (PreviewSignature missing an input), batches visibly lag (job length), or DJ finds 4K soft (raise `MinScale` or the budget).
+
 ## AD-97 A jump's intent decides its catch; one airborne state machine; the walker slides along walls at the speed asked for (2026-11-20, seventh pass, stream S6, PLANET-181..187; amends AD-65, AD-69)
 
 - **Context:** DJ (item 6): in a long jump the character sometimes turned towards the ledge it had left. Reproduced in
@@ -2474,36 +2505,6 @@ as FileScape while naming remains open.
   whether the overview's own selection should also be given back on Esc (unchanged: it is a deliberate click, PLANET-83).
 - **Revisit if:** the real folder Open still starts a terminal (the verb is then not the route), names flicker while
   orbiting, or a universe beyond 2,000 km appears.
-## AD-96: Gameplay without stalls: the sky is kept, composed on a worker and built in slices; large windows draw at a budget (PLANET-174..180, 2026-11-21, seventh pass stream S5)
-
-- **Measured cause (desktop reproduction, then this stream's `--diag-frames` on the staged build):** background discovery
-  changes the current world's signature; `ApplyPendingRecompose` → `BuildCurrent(−2)` freed and rebuilt every world in
-  the sky, composing each on the main thread (on the Ubuntu root three children cost 40–200 ms each) and building each
-  preview with its ground made inline (≈ 6–9 ms): 475–1,141 ms, every ≈ 4.6 s (the 4 s recompose gap plus the 0.35 s
-  check). A landing back on the root did the same, then the recompose that followed did it again. Worse: a child's full
-  signature mixes its parent's subtree count, so any listing below the root made all 21 children "changed".
-- **Decision:** (1) worlds already in the sky are kept across a recompose and a landing; only those whose
-  `PreviewSignature` (the signature without the parent part: all a preview shows) changed are composed again;
-  (2) compositions are made by `BackgroundComposer` on a worker, holding `FsTree`'s read lease (Apply throws meanwhile;
-  Main defers scan batches; jobs of ≤ 6 folders, longest measured 38 ms); the world you stand on too, first in line;
-  (3) results are kept (`CompositionCache`, 128) and looks cached by kind (48 previews, 6 full); (4) previews and swaps
-  are built by `FrameSliceQueue` within 4 ms a frame, their ground made on a worker; never a swap while travelling;
-  (5) a launch prefetches its destination's sky and prebuilds its previews during the flight.
-- **Large windows:** at 3840×2160 the GPU took 18.2 ms (4× MSAA −7.4 ms when off, sky shader −3.9, glow −2.7, shadows
-  −0.7; scale 0.75 −6.8). `RenderScalePolicy` keeps full scale to 2560×1440 and draws larger windows at that pixel budget
-  (FSR 1, ≥ ⅔): 11.4 ms. MSAA stays 4× (2× saved only 0.5 ms at the reduced scale; off loses edge quality everywhere).
-- **Alternatives:** time-slicing composition on the main thread (one child composes in up to 200 ms: too long for any
-  slice); composing from a tree snapshot (a copy per job costs more than the lease's brief deferral); a longer recompose
-  gap (hides the symptom, the sky lags); MSAA off or FXAA at large sizes (changes the look at every size the GPU could
-  afford); a frame-time-driven dynamic scale (oscillates; harder to reason about).
-- **Preserve:** compositions are the same pure function (only where and when they are made changed); landings are
-  untouched (Land, feet first); the tree is changed only on the main thread with no lease held.
-- **Unknown / not done:** the first arrival of a session still composes its sky on the main thread (≈ 0.9 s at the
-  Ubuntu root, behind the arrival title); a launcher stood on while its world's look was just swapped may wait for the
-  new full ground (one 56 ms frame seen); frames of 60–140 ms with ≈ 1 ms of main-thread work (render/present or the
-  machine) were seen in the before runs and rarely after: not attributed. DJ's 45–55 ms GPU frames at 2560×1440 were not
-  reproduced (this machine showed 18 ms at 3840×2160). **Revisit if:** a world in the sky looks stale after discovery
-  (PreviewSignature missing an input), batches visibly lag (job length), or DJ finds 4K soft (raise `MinScale` or the budget).
 
 ## AD-99 Walking steers by the camera's heading; a near head-on push into a solid slides at the plain speed and keeps the body facing the input (2026-11-21, seventh pass stream R, PLANET-199; amends AD-47, AD-97)
 
