@@ -205,6 +205,8 @@ core_tests() {
   set -e
   tt=$((SECONDS - t0 - tb))
   [[ -f "$tmp/core.trx" ]] && python3 -I "$REPO/tools/test-times.py" "$tmp/core.trx" --top "${FS_TEST_TOP:-6}" || true
+  # FS_TEST_TRX=/path keeps the run's TRX (per-test durations and output) for a closer look; FS_TEST_TOP=N longer lists.
+  [[ -n "${FS_TEST_TRX:-}" && -f "$tmp/core.trx" ]] && cp "$tmp/core.trx" "$FS_TEST_TRX" || true
   local line; line="$(grep -oE '(Passed|Failed)! +- Failed: *[0-9]+, Passed: *[0-9]+, Skipped: *[0-9]+, Total: *[0-9]+' "$tmp/out" | tail -1 || true)"
   rm -rf "$tmp"
   [[ -n "$line" ]] || { line="no test result"; [[ $code -eq 0 ]] && code=1; }

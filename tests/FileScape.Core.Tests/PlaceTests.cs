@@ -188,7 +188,8 @@ public class PlaceTests
         var tree = new Spec("parent").Dir(Spec.WithFiles("many", 800).Dir(new Spec("one")).Dir(new Spec("two"))).Build();
         var many = tree.Find("many").Id;
         var c = PlaceComposer.Compose(tree, many);
-        c.Files.Select(f => f.Id).Should().BeEquivalentTo(tree[many].Children.Where(id => tree[id].Kind == NodeKind.File));
+        // The same multiset check as BeEquivalentTo, sorted: FluentAssertions' equivalency matches 800 × 800 items (TEST-12).
+        c.Files.Select(f => f.Id).Order().Should().Equal(tree[many].Children.Where(id => tree[id].Kind == NodeKind.File).Order());
         c.Quarters.Sum(q => q.Count).Should().Be(800);
         c.Quarters.Select(q => q.Category).Should().OnlyHaveUniqueItems();
         foreach (var f in c.Files)
