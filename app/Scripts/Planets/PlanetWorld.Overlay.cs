@@ -158,7 +158,7 @@ public partial class PlanetWorld
         var close = new Button { Text = "Close (E / Esc)", FocusMode = Control.FocusModeEnum.None };
         close.Pressed += ClosePreview;
         // AD-94: leaving FileScape for Windows' app is marked as leaving (↗, its own colour), apart from looking in-game.
-        var open = PictureViewer.OpenWithWindowsButton("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the file in the app Windows uses for it.");
+        var open = LeaveButton.Make("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the file in the app Windows uses for it.");
         open.Pressed += () => _s.OpenSelection();
         var row = new HBoxContainer();
         row.AddChild(open);

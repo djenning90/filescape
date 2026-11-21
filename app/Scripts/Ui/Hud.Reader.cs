@@ -75,7 +75,9 @@ public partial class Hud
         _readmeTitle = new Label { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         _readmeTitle.AddThemeFontSizeOverride("font_size", 18);
         head.AddChild(_readmeTitle);
-        _readmeOpen = MakeButton("Open with Windows (Enter)", RequestReaderOpen, "Open this file with the app Windows uses for it.");
+        // AD-94: leaving FileScape for Windows' app looks like leaving (↗, the cool outline), apart from reading here.
+        _readmeOpen = LeaveButton.Make("Open with Windows ↗ (Enter)", "Leaves FileScape: opens this file with the app Windows uses for it.");
+        _readmeOpen.Pressed += RequestReaderOpen;
         head.AddChild(_readmeOpen);
         _readmeClose = MakeButton("Close (Esc)", HideReadme, "Close the reading view.");
         head.AddChild(_readmeClose);

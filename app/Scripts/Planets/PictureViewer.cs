@@ -63,10 +63,6 @@ public partial class PictureViewer : Control
 
     private const float EdgeMarkHoverAlpha = 0.95f, EdgeMarkIdleAlpha = 0.28f;
 
-    /// <summary>"Open with Windows ↗"'s colour: a cool sky blue, apart from the viewer's warm gold, so leaving FileScape
-    /// never looks like one of its own steps (AD-94).</summary>
-    private static readonly Color LeaveColor = new(0.62f, 0.84f, 1f);
-
     private readonly ColorRect _back;
     private readonly Control _stage;
     private readonly TextureRect _image;
@@ -154,7 +150,7 @@ public partial class PictureViewer : Control
         _prev = B("‹ Previous (←)", () => Step(-1), "The previous picture in this folder (also a click on the left edge).");
         _next = B("Next (→) ›", () => Step(+1), "The next picture in this folder (also a click on the right edge).");
         B("Fit (0)", Fit, "Show the whole picture again.");
-        var leave = OpenWithWindowsButton("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the original in the app Windows uses for pictures (Photos, usually). This view stays open here.");
+        var leave = Ui.LeaveButton.Make("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the original in the app Windows uses for pictures (Photos, usually). This view stays open here.");
         leave.Pressed += () => { if (Current >= 0) OpenRequested?.Invoke(Current); };
         bar.AddChild(leave);
         B("✕ Back to the world (Esc)", Close, "Back to the world, where you stood (also Esc, R, or a click outside the picture).");
@@ -173,26 +169,6 @@ public partial class PictureViewer : Control
 
     /// <summary>The key line under the picture (AD-94): every way to step, look and leave, in the order people reach for them.</summary>
     public const string KeyLine = "← →  or click ‹ ›  previous / next   ·   wheel  zoom   ·   drag  look around   ·   double-click  zoom / fit   ·   Esc or click outside  back to the world   ·   Enter  open with Windows ↗";
-
-    /// <summary>
-    /// The one look for "Open with Windows ↗" (the viewer's bar and the small preview, AD-94): the ↗ and a cool blue
-    /// outline mark it as leaving FileScape for another app, apart from the in-game buttons beside it.
-    /// </summary>
-    public static Button OpenWithWindowsButton(string text, string tooltip)
-    {
-        var b = new Button { Text = text, FocusMode = FocusModeEnum.None, TooltipText = tooltip };
-        b.AddThemeColorOverride("font_color", LeaveColor);
-        b.AddThemeColorOverride("font_hover_color", LeaveColor.Lightened(0.3f));
-        var box = new StyleBoxFlat { BgColor = new Color(0.06f, 0.1f, 0.18f, 0.85f), BorderColor = LeaveColor with { A = 0.8f }, ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 4, ContentMarginBottom = 4 };
-        box.SetBorderWidthAll(1);
-        box.SetCornerRadiusAll(6);
-        b.AddThemeStyleboxOverride("normal", box);
-        var hover = (StyleBoxFlat)box.Duplicate();
-        hover.BgColor = new Color(0.1f, 0.16f, 0.28f, 0.95f);
-        b.AddThemeStyleboxOverride("hover", hover);
-        b.AddThemeStyleboxOverride("pressed", hover);
-        return b;
-    }
 
     /// <summary>A ‹ or › mark at a stage edge (placed in <see cref="Layout"/>; brightened over its edge).</summary>
     private Label EdgeMark(string glyph)
