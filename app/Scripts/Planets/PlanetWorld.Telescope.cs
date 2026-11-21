@@ -117,6 +117,9 @@ public partial class PlanetWorld
     /// <inheritdoc cref="TelescopeViews"/>
     public string LastTelescopeEntry { get; private set; } = "";
 
+    /// <summary>The key line under the view now (markup; probes, PLANET-189).</summary>
+    public string TelescopeKeysMarkup { get; private set; } = "";
+
     /// <summary>How the view last closed (probes: a step back gives back the selection, PLANET-190).</summary>
     public TelescopeExit LastTelescopeExit { get; private set; }
 
@@ -243,7 +246,8 @@ public partial class PlanetWorld
         // The ground's radius under the overlook stands in for the planet's (it is the horizon the eye looks over).
         _scopeSelectionBefore = _s.Selection.Selected;
         _scope = TelescopeSurvey.Plan(SurveyCandidates(), Nv(ToLocal(eye)), _walker.Up, pointing, _s.Selection.Selected, _current.Comp.Shape.GroundRadius(ov.Direction) * ScopeHorizonShare);
-        SetRich(_scopeKeys, TelescopeSurvey.KeysMarkup(_scope.Targets.Count), UiTextStyle.Small); // PLANET-189: only the keys that do something here
+        TelescopeKeysMarkup = TelescopeSurvey.KeysMarkup(_scope.Targets.Count); // PLANET-189: only the keys that do something here
+        SetRich(_scopeKeys, TelescopeKeysMarkup, UiTextStyle.Small);
         _scopeLastClickAimed = false;
         _scopeT = 0;
         _scopeFrom = _camera.GlobalTransform;

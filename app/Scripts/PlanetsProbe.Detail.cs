@@ -11,7 +11,11 @@ namespace FileScape.App;
 /// <list type="bullet">
 /// <item><c>--automate=planets-play-discovery</c>: walks round the arrival world for 30 s with the overview closed, logging
 /// frame times (p50/p95/max) and what background discovery listed at 10 and 30 s, then opens the overview and counts
-/// what it shows. Run it with and without <c>--test-play-discovery=off</c> (and <c>--no-vsync</c> for frame cost).</item>
+/// what it shows. Run it with and without <c>--test-play-discovery=off</c> (and <c>--no-vsync</c> for frame cost).
+/// Seventh pass (PLANET-195): a census of the tree (known, listed, waiting, failed) at 0 and 30 s, at the overview's
+/// opening (its discovery paused: "newly discovered" against "newly displayed") and after 10 s of its own discovery;
+/// checks that progress only grows, the world you stand on has every folder listed, nothing timed out and the
+/// overview's discovery progresses within its bounds.</item>
 /// <item><c>--automate=planets-overview-navigate</c>: opens the overview, lets discovery fill it for 12 s, measures what
 /// is drawn (worlds, folded, overlapping disc pairs, draw calls, frame times), then plays the navigation: the controls
 /// hint, [ and ] round a ring, Z up a level, the wheel toward a world under the pointer, F; and logs a fingerprint of the
@@ -72,7 +76,8 @@ public partial class PlanetsProbe
         var on = P.PlayDiscoveryEnabled;
         Log($"play discovery {(on ? "on" : "off (--test-play-discovery=off)")}; pace {P.DiscoveryScheduler.Bounds.PlayListingsPerSecond} listings/s, {P.DiscoveryScheduler.Bounds.PlayMaxInFlight} in flight");
         var (l0, d0) = ListedBelow(root);
-        Log(F($"  at 0 s: {l0} folders listed below the arrival, deepest level {d0}; tree {Tree.Count} entries"));
+        var census0 = OverviewDiscovery.Census(Tree);
+        Log(F($"  at 0 s: {l0} folders listed below the arrival, deepest level {d0}; tree {Tree.Count} entries; census {CensusLine(census0)}"));
         var swaps0 = P.RecomposeSwaps;
         var clock = System.Diagnostics.Stopwatch.StartNew();
         _playFrameMs.Clear();
@@ -107,18 +112,49 @@ public partial class PlanetsProbe
             else Check(ms[(int)(ms.Count * 0.95)] < FrameP95LimitMs, line);
         }
 
+        // PLANET-195 (seventh pass): what is known before and after opening the overview, told apart from what it displays.
+        var census30 = OverviewDiscovery.Census(Tree);
+        Log($"  census after 30 s of play (overview closed): {CensusLine(census30)}; play asked {P.PlayDiscoveryRequested}, timed out {P.DiscoveryScheduler.TimedOut}");
+        Check(OverviewDiscovery.Regression(census0, census30) == null, $"progress only grows while you play ({CensusLine(census0)} → {CensusLine(census30)})");
+        var cur = App.Navigator.Current;
+        var hereWaiting = OverviewDiscovery.Census(Tree, n => n.ParentId == cur && OverviewDiscovery.Eligible(n)).Waiting;
+        if (on) Check(hereWaiting == 0, $"the local neighbourhood is complete: every folder of the world you stand on is listed ({hereWaiting} still waiting)");
+        Check(P.DiscoveryScheduler.TimedOut == 0, $"nothing stuck: no request timed out ({P.DiscoveryScheduler.TimedOut})");
+
         // What the overview shows after half a minute of play, before any of its own discovery.
         P.DiscoveryScheduler.Paused = true; // [direct] measure what play found, not the overview's own growth
         await Key(Godot.Key.T);
         await Until(() => P.UniverseOpen, 5);
         await Seconds(1);
         var levels = P.UniverseLevels(root);
+        var atOpen = OverviewDiscovery.Census(Tree);
+        var drawnAtOpen = P.UniverseBodyCount;
         Log(F($"  the overview after 30 s of play: {P.UniverseBodyCount} worlds, levels 0..{(levels.Count > 0 ? levels.Keys.Max() : -1)}, deepest listed {levels.Where(l => l.Value.Listed > 0).Select(l => l.Key).DefaultIfEmpty(-1).Max()}"));
+        Log($"  opening the overview (discovery paused): {CensusLine(atOpen)}: newly discovered {atOpen.Listed - census30.Listed} listed, {atOpen.Known - census30.Known} known; newly displayed {drawnAtOpen} worlds drawn of {atOpen.Known} known");
+        Check(OverviewDiscovery.Regression(census30, atOpen) == null, "opening the overview loses nothing that was known");
         if (!countsOnly) await Shot("overview-after-play");
         await Until(() => P.DiscoveryScheduler.InFlight == 0, 25);
+
+        // The overview's own discovery for ten seconds: progress grows and nothing sticks.
+        var requested0 = P.DiscoveryScheduler.Requested;
+        P.DiscoveryScheduler.Paused = false; // [direct] as X would
+        await Seconds(10);
+        var after = OverviewDiscovery.Census(Tree);
+        Log($"  after 10 s of the overview's discovery: {CensusLine(after)}: newly discovered {after.Listed - atOpen.Listed} listed, {after.Known - atOpen.Known} known; drawn {drawnAtOpen} → {P.UniverseBodyCount}; asked {P.DiscoveryScheduler.Requested - requested0}, in flight {P.DiscoveryScheduler.InFlight}, state {P.DiscoveryScheduler.State}");
+        Check(OverviewDiscovery.Regression(atOpen, after) == null, "progress only grows in the overview");
+        Check(P.DiscoveryScheduler.State is OverviewDiscoveryState.Complete or OverviewDiscoveryState.LimitReached || after.Listed > atOpen.Listed || P.DiscoveryScheduler.Requested > requested0,
+            $"the overview's discovery makes progress or says it is done ({P.DiscoveryScheduler.State})");
+        Check(P.DiscoveryScheduler.InFlight <= P.DiscoveryScheduler.Bounds.MaxInFlight && P.DiscoveryScheduler.TimedOut == 0,
+            $"within its bounds and nothing stuck: {P.DiscoveryScheduler.InFlight} in flight, {P.DiscoveryScheduler.TimedOut} timed out");
+        P.DiscoveryScheduler.Paused = true; // [direct] nothing in flight when the overview closes
+        await Until(() => P.DiscoveryScheduler.InFlight == 0, 25);
+        P.DiscoveryScheduler.Paused = false;
         await Key(Godot.Key.Escape);
         await Until(() => !P.UniverseOpen && !P.Busy, 10);
     }
+
+    /// <summary>A census as one line of counts (never names).</summary>
+    private static string CensusLine(DiscoveryCensus c) => $"{c.Known} folders known, {c.Listed} listed, {c.Waiting} waiting, {c.Failed} failed";
 
     /// <summary>A fingerprint of the looks of the listed worlds drawn (by path, so it compares between runs; never logged as names).</summary>
     private string LookFingerprint()
