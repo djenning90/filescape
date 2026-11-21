@@ -207,13 +207,13 @@ public sealed class OverviewCameraTests
         SurfaceResume.Decide(saved, null, a, -1).Should().Be(SurfaceResumeDecision.NewTree);
     }
 
+    /// <summary>AD-92 (PLANET-144) replaced "only a traveller standing on the ground" (a jump, a twirl, a Hazard World and a
+    /// fall were not kept, so you arrived afresh): now only a departure, a hop or a trip is not (SurfaceResumeTests).</summary>
     [Fact]
-    public void Only_a_traveller_standing_on_the_ground_is_kept()
+    public void Only_a_traveller_on_the_way_somewhere_is_not_kept()
     {
-        SurfaceResume.MayCapture(walking: true, grounded: true, travelling: false).Should().BeTrue();
-        SurfaceResume.MayCapture(walking: true, grounded: false, travelling: false).Should().BeFalse();
-        SurfaceResume.MayCapture(walking: false, grounded: true, travelling: false).Should().BeFalse();
-        SurfaceResume.MayCapture(walking: true, grounded: true, travelling: true).Should().BeFalse();
+        SurfaceResume.MayCapture(travelling: false).Should().BeTrue();
+        SurfaceResume.MayCapture(travelling: true).Should().BeFalse();
     }
 
     // ---------------------------------------------------------------- Enter in the overview (PLANET-83, PLANET-114)
