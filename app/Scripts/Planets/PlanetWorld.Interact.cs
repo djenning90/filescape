@@ -196,6 +196,14 @@ public partial class PlanetWorld
         else OrbitCamera(screenPixels);
     }
 
+    /// <summary>The overview name a single click just focused (−1: none) and when (game time): a double-click's second
+    /// press within <see cref="NameDoubleClickWindow"/> acts on that name, wherever the names have moved since.</summary>
+    private int _lastNameClick = -1;
+    private TimeSpan _lastNameClickAt;
+
+    /// <summary>A double-click's second press counts as on the same name within this time (longer than the OS's usual 0.5 s would not be a double-click anyway).</summary>
+    private static readonly TimeSpan NameDoubleClickWindow = TimeSpan.FromSeconds(0.6);
+
     /// <summary>Clicks on an overview name that focused its world (probes, PLANET-194).</summary>
     public int UniverseLabelFocuses { get; private set; }
 
@@ -218,14 +226,22 @@ public partial class PlanetWorld
             // PLANET-194 (AD-98): a name acts on the world it names, not on whatever world lies under it. A click or a
             // double-click on a name focuses its world (selects it and frames its system); landing stays Enter, or a
             // double-click on the world itself, so a name is never a way to leave by accident.
-            if (SignTarget(at) is { } nameOf && _uniIndex.ContainsKey(nameOf))
+            // The second press of a double-click on a name stays on that name: the first click's focus moves the camera
+            // and the names with it, so the second press could otherwise fall on another name, or on a world and land
+            // (planets-overview-sample, seventh-pass integration: #14 then #116).
+            int? nameHit = doubleClick && _lastNameClick >= 0 && _s.Now - _lastNameClickAt < NameDoubleClickWindow && _uniIndex.ContainsKey(_lastNameClick)
+                ? _lastNameClick : SignTarget(at);
+            if (nameHit is { } nameOf && _uniIndex.ContainsKey(nameOf))
             {
+                _lastNameClick = doubleClick ? -1 : nameOf;
+                _lastNameClickAt = _s.Now;
                 SelectInUniverse(nameOf);
                 UniverseLabelFocuses++;
                 TraceClick($"{(doubleClick ? "double" : "single")} at ({at.X:0},{at.Y:0}): the overview's name of #{nameOf} → focus it");
                 return;
             }
 
+            _lastNameClick = -1;
             var uid = PickUniverse(at);
             if (uid < 0) return;
             SelectInUniverse(uid);

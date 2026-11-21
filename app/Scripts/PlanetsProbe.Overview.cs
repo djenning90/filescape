@@ -119,6 +119,18 @@ public partial class PlanetsProbe
             await Frames(10);
             Check(P.UniverseSelected == other && P.UniverseLabelFocuses == focuses + 1 && P.UniverseOpen, $"a click on the name {Tree.DisplayName(other)} focuses that world (not one under the name)");
             await Seconds(1.2);
+            // The focus reframes the camera and the names follow it: click once the name has stood still for 10 frames
+            // (seventh-pass integration: at 1.2 s on the hub the press found another name where this one had been).
+            var still = 0;
+            var prev = new Rect2();
+            for (var f = 0; f < 240 && still < 10; f++)
+            {
+                await Frames(1);
+                var now = App.Signs.ShownRectById.TryGetValue(other, out var r0) ? r0 : new Rect2();
+                still = now.Size.X > 0 && now.Position.DistanceTo(prev.Position) < 0.5f ? still + 1 : 0;
+                prev = now;
+            }
+
             if (App.Signs.ShownRectById.TryGetValue(other, out var again))
             {
                 await DoubleClickAt(again.GetCenter());
