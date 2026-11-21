@@ -5,7 +5,8 @@
 #   tools/fs.sh check smoke     ~5 min   fast + a staged export (reused for the same source state) + the short end-to-end
 #                                        journeys (walk-explore, hub → project → README/editor, the planets basics).
 #   tools/fs.sh check full      ~30 min  smoke + every functional journey (assertions only; measurement segments
-#                                        are logged as SKIP) at UI 1.0 (planets-sound at 1.25; the 1.25 repeats are in release).
+#                                        are logged as SKIP) at UI 1.0 (planets-sound at 1.25; the 1.25 repeats are in release);
+#                                        before the journeys, the Perf/Report Core tests one at a time (tests-perf, AD-90).
 #   tools/fs.sh check release   ~40 min  full, with measurements, plus walk at 1.25, walk-perf, real OS input at 1.0
 #                                        and 1.25 (moves the real mouse and takes focus), and the recording.
 #   tools/fs.sh check journeys [--measure] NAME...   only the named steps (shell patterns, e.g. 'planets-nav*'), with a
@@ -23,7 +24,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=tools/verify-lib.sh
 source "$REPO/tools/verify-lib.sh"
 TIER="${1:-}"; shift || true
-case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,19p' "$0"; exit 2 ;; esac
+case "$TIER" in fast|smoke|full|release|journeys) ;; *) sed -n '2,20p' "$0"; exit 2 ;; esac
 EXEW=""; OUTW=""; FRESH=0; MEASURE=0; LIST=0; PATTERNS=()
 for a in "$@"; do
   case "$a" in
@@ -166,7 +167,8 @@ journey() {
 if [[ "$TIER" != journeys ]]; then
   # The WSL tests use the Linux SDK and their own obj/ and bin/ (Directory.Build.props), so they run beside the Windows
   # build, the Windows tests and the export; they are waited for before the first journey, whose timing checks must
-  # not share the machine with them. Each host runs its tests in parallel shards (tools/fs.sh core_tests).
+  # not share the machine with them. Each host runs every class side by side in one process, without the Perf and
+  # Report tests (tools/fs.sh core_tests, AD-90); full and release run those apart below (tests-perf).
   bg_step tests-wsl "$TESTS_TIMEOUT_S" "$REPO/tools/fs.sh" test-wsl
   step build "$BUILD_TIMEOUT_S" "$REPO/tools/fs.sh" build
   run_cmd tests-windows "$TESTS_TIMEOUT_S" 0 "$OUT/tests-windows.out" "$REPO/tools/fs.sh" test
@@ -193,6 +195,12 @@ if [[ "$LEVEL" != fast ]]; then
     log "build: $(grep '^build ' "$(dirname "$EXE")/build-info.txt" | cut -d' ' -f2-)  ($EXEW)"
   fi
   BG_NOTE="ran beside build, tests-windows and stage"; bg_wait tests-wsl
+  # TEST-11 (AD-90): the wall-clock bounds and measurement tables, one test at a time, now that nothing else of ours runs
+  # (the parallel tests and the stage are done; no journey yet). On Windows, the host the game ships for.
+  if [[ $LIST == 0 && ( "$TIER" == full || "$TIER" == release ) ]]; then
+    run_cmd tests-perf "$TESTS_TIMEOUT_S" 0 "$OUT/tests-perf.out" "$REPO/tools/fs.sh" test-perf
+    step_done tests-perf "$RUN_CODE" "$RUN_SECS" "$(test_counts "$OUT/tests-perf.out")"
+  fi
   F=(--tier=functional)
   [[ "$LEVEL" == release && ( "$TIER" == release || $MEASURE == 1 ) ]] && F=()
 

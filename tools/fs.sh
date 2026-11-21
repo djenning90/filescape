@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # FileScape helper for working from WSL against the Windows toolchain. The source of truth stays in this WSL repo.
 #   tools/fs.sh build            build the Godot C# project (and Core) with Windows dotnet
-#   tools/fs.sh test [args]      run the test suite with Windows dotnet (includes Windows-only tests), one process
-#                                (FS_TEST_SHARDS=1: three shards side by side, then one combined count)
-#   tools/fs.sh test-wsl [args]  the Linux SDK (Windows-only tests skip); without args three shards side by side
+#   tools/fs.sh test [--fast] [args]  the Core tests with Windows dotnet (includes Windows-only tests), one process,
+#                                every class side by side; without Perf/Report tests (--fast: without Slow tests either)
+#   tools/fs.sh test-wsl [--fast] [args]  the same with the Linux SDK (Windows-only tests skip)
+#   tools/fs.sh test-area AREA[,AREA]  (test-wsl-area) one area's classes (tests/FileScape.Core.Tests/areas.txt)
+#   tools/fs.sh test-perf        (test-wsl-perf) only the Perf (wall-clock) and Report tests, one at a time; run it
+#                                alone on the machine (check full/release do, after the parallel tests)
 #   tools/fs.sh run [-- args]    launch the app on Windows (args after -- go to FileScape, e.g. --root='C:\some dir')
 #   tools/fs.sh editor           open the Godot editor on the project
 #   tools/fs.sh export           export to a fresh staging dir, verify (files, hashes, a smoke launch), then promote it to
@@ -143,57 +146,70 @@ launch() {
   return $c
 }
 
-# Core tests (TEST-05, AD-80). xunit runs test classes in parallel but each class's tests one after another, and
-# SkySynthTests alone is ~145 s of that (the rest of the suite ~125 s spread over many classes), so one run takes ~140 s.
-# Three processes with complementary filters (SkySynthTests whose name contains "theme", SkySynthTests whose name does
-# not, everything else) run every test exactly once by construction and finish in about the longest shard's time. A
-# shard that reports no result fails the run, so a filter that matched nothing cannot pass silently.
-# Default per host (2026-11-19 measurement): WSL shards (152 s -> 80 s); Windows stays one process. Windows shards gained
-# nothing (169 s sharded beside the WSL tests vs 154 s plain) and six test processes at once pushed the timing-bound
-# "Rendering_one_second_of_music_with_six_effects_is_cheap" (best < 60 ms) to 63.8 ms. FS_TEST_SHARDS=1 or 0 forces it.
-CORE_TEST_SHARDS=(
-  'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName~theme'
-  'FullyQualifiedName~.SkySynthTests.&FullyQualifiedName!~theme'
-  'FullyQualifiedName!~.SkySynthTests.'
-)
-# shard_count NAME LINE: the number after "NAME:" in dotnet test's result line.
-shard_count() { grep -oE "$1: *[0-9]+" <<<"$2" | grep -oE '[0-9]+$'; }
-# core_tests HOST(windows|wsl) [ARGS...]: with ARGS (or FS_TEST_SHARDS=0) one plain `dotnet test` as before; otherwise
-# a build, the shards side by side, their output one after another, and one line "Core tests (HOST, ...): Passed!/Failed!
-# - Failed: N, Passed: N, Skipped: N, Total: N" summed over the shards.
+# Core tests (TEST-05, TEST-10..13, AD-80, AD-90). One `dotnet test` process per run: xunit runs each test class as a
+# collection, the collections side by side on every core, and each class's tests one after another. Since AD-90 no class
+# is the critical path on its own (SkySynthTests was one partial class of ≈ 200 tests, ≈ 310 s on WSL alone), so the
+# shards this used to run (AD-80) gained nothing and were removed; one process also has one JIT warm-up and one result.
+# The test kinds (tests/FileScape.Core.Tests/TestKinds.cs) choose what a run includes:
+#   ordinary (test, test-wsl): everything except Kind=Perf (wall-clock bounds) and Kind=Report (measurement tables)
+#   --fast:  the ordinary set without Kind=Slow either (deterministic checks over ≈ 3 s alone): the edit loop
+#   --perf (test-perf, test-wsl-perf): only Perf and Report, one test at a time (xunit's collections not in parallel),
+#            on a machine with nothing else of ours running: check full and release run it after the parallel tests
+#   --area=A[,B] (test-area, test-wsl-area): the classes of those areas (tests/FileScape.Core.Tests/areas.txt), no Perf/Report
+# Any other arguments are passed to one plain `dotnet test` as before (e.g. --filter 'FullyQualifiedName~PlaceTests').
+# Every run prints the build's and the tests' seconds, then where the time went (tools/test-times.py over its TRX).
+# Configuration: Release (the JIT optimises, as in the exported game: Godot's --export-release), except --perf, which
+# stays Debug because its bounds were measured on Debug builds ("6 % of one core, Debug"). Release halves the DSP- and
+# simulation-heavy tests (WSL, 2026-11-20: 142 s -> 76 s under the same load) and changes no assertion.
+CORE_KINDS_ORDINARY='Kind!=Perf&Kind!=Report'
+CORE_KINDS_FAST='Kind!=Perf&Kind!=Report&Kind!=Slow'
+CORE_KINDS_PERF='Kind=Perf|Kind=Report'
+CORE_AREAS="$REPO/tests/FileScape.Core.Tests/areas.txt"
+
+# core_area_filter AREA[,AREA...]: the dotnet test filter for those areas' class prefixes, or a message and status 2.
+core_area_filter() {
+  local want="$1" a line name prefixes p out=()
+  for a in ${want//,/ }; do
+    line="$(grep -E "^$a:" "$CORE_AREAS" || true)"
+    if [[ -z "$line" ]]; then
+      echo "fs.sh: unknown test area '$a' (areas: $(grep -oE '^[a-z]+:' "$CORE_AREAS" | tr -d : | tr '\n' ' '))" >&2; return 2
+    fi
+    prefixes="${line#*:}"
+    for p in $prefixes; do out+=("FullyQualifiedName~FileScape.Core.Tests.$p"); done
+  done
+  local IFS='|'; echo "(${out[*]})&$CORE_KINDS_ORDINARY"
+}
+
+# core_tests HOST(windows|wsl) [--fast|--perf|--area=A] [ARGS...]
 core_tests() {
   local host="$1"; shift
-  local -a dn extra; local proj
+  local -a dn extra run_extra=(); local proj mode=ordinary filter="$CORE_KINDS_ORDINARY" cfg=Release
+  case "${1:-}" in
+    --fast) mode=fast; filter="$CORE_KINDS_FAST"; shift ;;
+    --perf) mode=perf; filter="$CORE_KINDS_PERF"; cfg=Debug; shift
+            # One test at a time: no other collection beside a wall-clock bound.
+            run_extra=(-- xUnit.ParallelizeTestCollections=false) ;;
+    --area=*) mode="area ${1#--area=}"; filter="$(core_area_filter "${1#--area=}")" || return 2; shift ;;
+  esac
   if [[ "$host" == windows ]]; then dn=("$(find_dotnet)"); proj="$(wslpath -w "$REPO/tests/FileScape.Core.Tests")"; extra=("${NOSERVERS[@]}")
   else dn=(dotnet); proj="$REPO/tests/FileScape.Core.Tests"; extra=(); fi
-  local shards=1; [[ "$host" == windows ]] && shards=0
-  if [[ $# -gt 0 || "${FS_TEST_SHARDS:-$shards}" == 0 ]]; then "${dn[@]}" test "$proj" -nologo "${extra[@]}" "$@"; return; fi
-  local t0=$SECONDS
-  "${dn[@]}" build "$proj" -nologo -v q "${extra[@]}" || { echo "fs.sh: Core tests did not build ($host)" >&2; return 1; }
-  local tmp i code=0; tmp="$(mktemp -d)"
-  SHARD_PIDS=()
-  trap 'kill "${SHARD_PIDS[@]}" 2>/dev/null; exit 130' INT TERM
-  for i in "${!CORE_TEST_SHARDS[@]}"; do
-    # The subshell inherits set -e: the exit code is caught with || so a failing shard still writes its code file.
-    ( s=$SECONDS; c=0; "${dn[@]}" test "$proj" --no-build -nologo "${extra[@]}" --filter "${CORE_TEST_SHARDS[$i]}" > "$tmp/$i.out" 2>&1 || c=$?; echo "$c $((SECONDS - s))" > "$tmp/$i.code" ) &
-    SHARD_PIDS+=($!)
-  done
-  wait "${SHARD_PIDS[@]}" || true
-  trap - INT TERM
-  local f=0 p=0 k=0 n=0 line c secs
-  for i in "${!CORE_TEST_SHARDS[@]}"; do
-    read -r c secs < "$tmp/$i.code" || { c=1; secs='?'; }
-    echo "---- shard $((i + 1))/${#CORE_TEST_SHARDS[@]} ($host, ${secs} s, exit $c): ${CORE_TEST_SHARDS[$i]}"
-    cat "$tmp/$i.out"
-    line="$(grep -E '(Passed|Failed)! +- Failed:' "$tmp/$i.out" | tail -1 || true)"
-    if [[ -z "$line" ]]; then echo "fs.sh: shard $((i + 1)) reported no test result" >&2; code=1; continue; fi
-    [[ $c -ne 0 ]] && code=1
-    f=$((f + $(shard_count Failed "$line"))); p=$((p + $(shard_count Passed "$line")))
-    k=$((k + $(shard_count Skipped "$line"))); n=$((n + $(shard_count Total "$line")))
-  done
+  local t0=$SECONDS tb tt code=0 tmp trxdir
+  if [[ $# -gt 0 ]]; then mode="as given: $*"; filter=""; fi
+  "${dn[@]}" build "$proj" -c "$cfg" -nologo -v q "${extra[@]}" || { echo "fs.sh: Core tests did not build ($host)" >&2; return 1; }
+  tb=$((SECONDS - t0))
+  tmp="$(mktemp -d)"; trxdir="$tmp"; [[ "$host" == windows ]] && trxdir="$(wslpath -w "$tmp")"
+  local -a args=(test "$proj" -c "$cfg" --no-build -nologo "${extra[@]}" --logger "trx;LogFileName=core.trx" --results-directory "$trxdir")
+  [[ -n "$filter" ]] && args+=(--filter "$filter")
+  set +e   # a failing run still prints where its time went and the summary line
+  "${dn[@]}" "${args[@]}" "$@" "${run_extra[@]}" 2>&1 | tee "$tmp/out"; code=${PIPESTATUS[0]}
+  set -e
+  tt=$((SECONDS - t0 - tb))
+  [[ -f "$tmp/core.trx" ]] && python3 -I "$REPO/tools/test-times.py" "$tmp/core.trx" --top "${FS_TEST_TOP:-6}" || true
+  local line; line="$(grep -oE '(Passed|Failed)! +- Failed: *[0-9]+, Passed: *[0-9]+, Skipped: *[0-9]+, Total: *[0-9]+' "$tmp/out" | tail -1 || true)"
   rm -rf "$tmp"
-  local word="Passed!"; [[ $code -ne 0 || $f -gt 0 ]] && word="Failed!"
-  echo "Core tests ($host, ${#CORE_TEST_SHARDS[@]} shards side by side, $((SECONDS - t0)) s with the build): $word  - Failed: $f, Passed: $p, Skipped: $k, Total: $n"
+  [[ -n "$line" ]] || { line="no test result"; [[ $code -eq 0 ]] && code=1; }
+  # One line for tools/verify.sh's test_counts: the counts, then this run's costs.
+  echo "Core tests ($host, $mode, $cfg): $line; build ${tb} s, tests ${tt} s, $((SECONDS - t0)) s in all"
   return $code
 }
 
@@ -235,6 +251,15 @@ case "$cmd" in
     core_tests windows "$@" ;;
   test-wsl)
     core_tests wsl "$@" ;;
+  test-area|test-wsl-area)
+    [[ -n "${1:-}" && "${1:-}" != -* ]] || { echo "usage: fs.sh $cmd AREA[,AREA...] (areas: $(grep -oE '^[a-z]+:' "$CORE_AREAS" | tr -d : | tr '\n' ' '))" >&2; exit 2; }
+    area="$1"; shift
+    host=wsl; [[ "$cmd" == test-area ]] && host=windows
+    core_tests "$host" "--area=$area" "$@" ;;
+  test-perf)
+    core_tests windows --perf "$@" ;;
+  test-wsl-perf)
+    core_tests wsl --perf "$@" ;;
   run)
     G="$(find_godot_dir)"
     launch "$G/Godot_v4.7.2-stable_mono_win64_console.exe" --path "$APP_W" -- "$@" ;;
