@@ -19,6 +19,11 @@ namespace FileScape.Core.Tests;
 /// to a stop against it on the fourth stone, facing it, then walked back down. The old rule is
 /// <c>WallSlideFullDegrees = 0</c>, kept here as the comparison that shows the trap.
 /// </para>
+/// <para>
+/// Found (stream R, 2026-11-21): the real keys still did not climb, because the app steered by the rendered camera's look,
+/// which trails the heading the keys turn (the eye eases at 7.5/s): <c>renderedCamera</c> in Play models that
+/// camera (its boom, look point and easing as PlanetWorld.Walk's), and the app now steers by the heading.
+/// </para>
 /// What a change must preserve: the keyboard-turn constants mirror the app's (PlanetWorld.Interact KeyLookDegreesPerSecond,
 /// PlanetWorld.Walk KeyLookEaseInSeconds and KeyLookFastFactor).
 /// </summary>
@@ -66,9 +71,9 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
     /// <summary>
     /// Climbs <paramref name="comp"/>'s steps: ↑ held throughout, the turn key that first swings the view towards the
     /// platform (<paramref name="inward"/>) or away from it held at <paramref name="turnFraction"/> of its rate
-    /// (<paramref name="fast"/>: Shift held), at <paramref name="fps"/> frames a second, with <paramref name="walk"/>'s walker.
+    /// (<paramref name="fast"/>: Shift held), at <paramref name="fps"/> frames a second, with <paramref name="walk"/>'s walker; forward is the camera's heading, or with <paramref name="renderedCamera"/> the rendered camera's look (the app before stream R).
     /// </summary>
-    private static Climb Play(PlanetComposition comp, float turnFraction, bool inward, bool fast, int fps, SphereWalkParams? walk = null)
+    private static Climb Play(PlanetComposition comp, float turnFraction, bool inward, bool fast, int fps, SphereWalkParams? walk = null, bool renderedCamera = false)
     {
         var ov = comp.Overlook;
         var r = comp.Shape.Radius;
@@ -85,6 +90,8 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
         // The key held is the one that first swings the view towards the platform (inward) or away; it stays held.
         var startToCentre = ov.Direction - w.Up * Vector3.Dot(ov.Direction, w.Up);
         var key = (Vector3.Dot(Vector3.Cross(w.Up, cam), startToCentre) > 0 ? 1f : -1f) * (inward ? 1 : -1);
+        var eye = ChaseEye(w, cam);
+        var look = ChaseLook(w);
         for (var i = 0; i < ClimbSeconds * fps; i++)
         {
             var up = w.Up;
@@ -92,7 +99,16 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
             keyLook = MathF.Min(1, keyLook + dt / KeyEaseInSeconds);
             var turn = key * keyLook * turnFraction * KeyTurnDegreesPerSecond * (fast ? FastTurnFactor : 1) * dt * MathF.PI / 180f;
             cam = cam * MathF.Cos(turn) + Vector3.Cross(up, cam) * MathF.Sin(turn);
-            w.Update(new SphereWalkInput(cam, fast, false, false), frame);
+            var wish = cam;
+            if (renderedCamera)
+            {
+                wish = look - eye;
+                wish = Vector3.Normalize(wish - up * Vector3.Dot(wish, up));
+            }
+
+            w.Update(new SphereWalkInput(wish, fast, false, false), frame);
+            eye = Vector3.Lerp(eye, ChaseEye(w, cam), 1 - MathF.Exp(-CamFollowRatePerSecond * dt));
+            look = Vector3.Lerp(look, ChaseLook(w), 1 - MathF.Exp(-LookFollowRatePerSecond * dt));
             highest = MathF.Max(highest, w.Support.Value);
             if (w.Grounded && w.Support.Value >= ov.Top - 1e-3f)
             {
@@ -108,6 +124,25 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
         var off = upAt < 0 && w.Grounded && w.Support.Value < 1e-3f && highest > 0;
         return new Climb(upAt >= 0, upAt, pinned, highest, off);
     }
+
+    /// <summary>The walking camera's boom (PlanetWorld.Walk StartCamPitchDegrees, StartCamDistanceMetres): 18° up, 7.2 m back.</summary>
+    private const float BoomPitchDegrees = 18f, BoomMetres = 7.2f;
+
+    /// <summary>The point looked at: this high above the feet and this far ahead of the body, metres (PlanetWorld.Walk LookHeightMetres, LookAheadMetres).</summary>
+    private const float LookHeightMetres = 1.15f, LookAheadMetres = 0.5f;
+
+    /// <summary>How fast the eye and the point looked at follow, per second (PlanetWorld.Walk CamFollowRatePerSecond, LookFollowRatePerSecond).</summary>
+    private const float CamFollowRatePerSecond = 7.5f, LookFollowRatePerSecond = 12f;
+
+    /// <summary>Where the walking camera's eye wants to be: behind the point looked at along the heading <paramref name="heading"/>, on the boom.</summary>
+    private static Vector3 ChaseEye(SphereWalker w, Vector3 heading)
+    {
+        var pitch = BoomPitchDegrees * MathF.PI / 180f;
+        return ChaseLook(w) - heading * (MathF.Cos(pitch) * BoomMetres) + w.Up * (MathF.Sin(pitch) * BoomMetres);
+    }
+
+    /// <summary>The point the walking camera looks at: above the feet and a little ahead of the body.</summary>
+    private static Vector3 ChaseLook(SphereWalker w) => w.Feet + w.Up * LookHeightMetres + w.Facing * LookAheadMetres;
 
     /// <summary>Turn rates as a fraction of the key's: none, a tapped key (a third, two thirds) and the key held.</summary>
     private static readonly float[] TurnFractions = [0f, 0.33f, 0.66f, 1f];
@@ -147,6 +182,22 @@ public sealed class OverlookStepsTests(SampleSkyFixture sky, ITestOutputHelper o
             output.WriteLine(FormattableString.Invariant($"{name}, walking, the key held, {fps} fps: {c}"));
             c.Up.Should().BeTrue($"walking up {name}'s steps with ↑ and the turn key held reaches the platform at {fps} fps");
             c.Pinned.Should().BeLessThanOrEqualTo(TrapSeconds);
+        }
+    }
+
+    [Fact]
+    public void Steering_by_the_rendered_camera_lagged_the_key_and_walked_off_the_stones()
+    {
+        // The comparison (stream R, seventh pass; os -Steps on e1088c6: not up, highest 2.1 m, never pinned): the app took
+        // forward from the rendered camera's look, whose eye eases after the heading (≈ 0.13 s), so the walk trailed the
+        // key's turn by ≈ 17° and spiralled off the stones' outer side short of the platform. This replay reproduces that;
+        // the app now steers by the heading (PlanetWorld.Walk), as Play does by default and the tests above check.
+        foreach (var (name, comp) in Worlds())
+        foreach (var fps in FrameRates)
+        {
+            var lagged = Play(comp, 1f, inward: true, fast: false, fps, renderedCamera: true);
+            output.WriteLine(FormattableString.Invariant($"{name}, walking, the key held, {fps} fps, steering by the rendered camera: {lagged}"));
+            lagged.Up.Should().BeFalse($"steering by the rendered camera walked off {name}'s stones at {fps} fps (os -Steps on e1088c6)");
         }
     }
 

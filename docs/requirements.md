@@ -770,6 +770,22 @@ explain Aurora's contribution clearly." Decision: AD-95.
 | PLANET-172 | "Listening" analytically through several minutes: 4-minute renders of the classic, each alternative and Star Chart Dorian with loudness (integrated, range, per cycle), recurrence of same-sounding bars, pitch-class entropy, onset rate and melody measures; a comparison reel (≈ 25 s each, timestamps listed), ≥ 3-minute renders with a revisit for each, and a plain-language account of what a listener would hear. Every theme within 1.5 dB of the classic hub's loudness. | `%LOCALAPPDATA%\FileScape\evidence\2026-11-20-p7-music\` (README, metrics, files lists); Core loudness check within 1.5 dB, peaks < 0.5, music voices under 28 | **Demonstrated** (offline); the in-game recording of the strongest: to run |
 | PLANET-173 | Aurora explained: the same phrase on the previous voices and on Aurora, alone and in the arrangement, and Aurora with each feature off in turn (detune, drive, filter motion, resonance, all), loudness-matched, with a plain-language README. | `…\2026-11-20-p7-music\aurora\` (16 files and README); the game's aurora unchanged (the switch is offline-only) | **Demonstrated** (offline); by ear: DJ |
 
+## Gameplay without stalls: the sky kept, composed off the main thread, built in slices; large windows (PLANET-174..180, 2026-11-21, seventh pass stream S5)
+
+DJ (seventh pass, item 5): a roughly half-second pause about every eight seconds walking the Ubuntu root, pauses at
+landings and in fullscreen; measure on the exported build, find the actual causes, fix the expensive work, report
+distributions and the worst stalls (AD-96).
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-174 | A discovery update re-composes only the worlds whose look changed. | `Neighbourhood.Stale` reports the world you stand on by its full signature and the worlds in the sky by `PlanetComposer.PreviewSignature` (no parent part); a listing in one of 21 children marks the root and that child, not its 20 siblings; a sibling whose preview signature is unchanged has the same shape, theme, landmark and shell (NeighbourhoodSchedulingTests). | **Demonstrated** (Core tests; Ubuntu root walk: 51 looks swapped in 60 s instead of 13 × 21 rebuilds) |
+| PLANET-175 | Compositions and looks are kept for the way back. | `CompositionCache` (128 folders, exact or latest, LRU); visual cache 48 previews + 6 full worlds (was 10 of either); ground tasks 96 (was 40); previews keyed by their look from outside. | **Demonstrated** (tests; landings back on the root max 26–34 ms, was 555–773 ms) |
+| PLANET-176 | Neighbours are composed off the main thread and built in bounded slices. | `BackgroundComposer` composes ≤ 6 folders a job under the tree's read lease (`FsTree.BeginBackgroundRead`; `Apply` throws while held; Main defers batches); `FrameSliceQueue` starts work only within 4 ms a frame (at least one item; never interrupted; replaced by key; waits cost nothing); preview ground is made on a worker. | **Demonstrated** (tests; in-app: 0 neighbours composed on the main thread while walking) |
+| PLANET-177 | A launch prepares its destination's sky before touchdown; landings stay continuous and feet-first. | `PrefetchNeighbourhood` on Prepare and for any transfer (warps too): the destination's child folders and parent composed in the background and their previews built into the cache during the flight; no swap while travelling; a world prepared in full is not swapped. Landing code (Land, feet first) unchanged. | **Demonstrated** for the frame times (6 landings × 5 routes, max ≤ 49 ms); feet-first unchanged in code, **by eye: DJ** |
+| PLANET-178 | A regression guard for stalls. | `--automate=planets-stalls` (functional tier) on the vast fixture (`--test-broad`): walking 20 s while discovery lists, no frame over 250 ms and no world in the sky composed on the main thread; then six landings arrive. Journey `planets-stalls` in verify.sh, in REALTIME_JOURNEYS. | **Demonstrated** (passes on the staged build; the same probe failed the 250 ms budget on the before build at the Ubuntu root) |
+| PLANET-179 | Frame-time distributions can be measured and attributed. | `--diag-frames=PATH`: one CSV row per frame (gap, process, 24 sections, GC per generation and pause, allocation, render CPU/GPU, context, the probe's segment, notes with ids and ms only); `tools/frame-diag-summary.py` prints per-segment p50/p95/p99/max, counts over 33/100/300 ms and the worst frames. | **Demonstrated** (before/after measurements, evidence folder) |
+| PLANET-180 | Very large windows stay smooth without changing the look at ordinary sizes. | `RenderScalePolicy`: full scale up to 2560×1440; above, FSR 1 at the scale that draws ≈ 2560×1440 worth of pixels, at least ⅔; `--render-scale=` overrides; printed and shown in the quality line. | **Demonstrated** at 3840×2160 (GPU 18.2 → 11.4 ms, walking p95 28.8 → 18.8 ms); 1600×900 unchanged (scale 1); **DJ by eye**: the softness at 4K |
+
 ## Airborne intent on Hazard Worlds; the overlook's curved steps (PLANET-181..187, 2026-11-20, seventh pass, stream S6)
 
 DJ (item 6): "During a long jump, the character sometimes turns toward the ledge they left. A forward jump and boost
@@ -808,6 +824,24 @@ double-click on a name to focus its world; verify discovery during ordinary play
 | PLANET-196 | Discovery can bring forward a folder waiting in the background walk (the explorer promotes it; the scheduler asks for pending folders). | `WorldExplorerTests.Discover_brings_a_folder_waiting_in_the_background_walk_forward` (failed first: listed only after every other) | **Demonstrated** (Core) |
 | PLANET-197 | The overview's neighbourhood is not complete while a listed world has folders in the tree that the layout has neither drawn nor folded. | `OverviewAttentionTests.The_neighbourhood_is_not_complete_while_…` (failed first: "complete" with 36 folders not laid out); planets-overview-attention unchanged and strict | Core **demonstrated**; journey to run |
 
+## Integration fixes: the focus holds what you looked at; short windows (PLANET-198, 2026-11-21, seventh pass stream F)
+
+Found by the journeys run on the merged seventh pass (planets-text, planets-lookouts): each fixed with a Core test first
+(`IntegrationFixTests`).
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-198 | The object you just looked at closer (a hop from the list, E) stays the focus while it is in reach and you have not walked on (0.5 m) and its preview still shows it, so the prompt and the preview's "Close (E / Esc)" speak of the same file; the telescope's zoom acts on the lens's own range (a near world framed at the widest lens narrows at the first notch in); the planets' preview keeps inside a short window. | `IntegrationFixTests` (Core `ObjectFocus`, `TelescopeLens`, `PanelFit.BottomGap`; failed first: missing); planets-text (the prompt names the hopped-to file; the prompt and preview fit at 1280×720 UI 1.5), planets-lookouts (the wheel: 50° → in 19.5°) | **Demonstrated** (Core; journeys passed twice) |
+
+## Real input matches the replays: steering by the heading, a head-on push at a solid (PLANET-199, 2026-11-21, seventh pass stream R)
+
+Found by the real-input probes on the candidate e1088c6 (os -AirIntent, -Steps, -Route), each traced and replayed in Core
+(AD-99).
+
+| ID | Requirement | Acceptance | Status |
+|---|---|---|---|
+| PLANET-199 | Walking goes where the camera is heading (the heading ← → and a drag turn), not where the easing view still points, so ↑ with a turn key held climbs the overlook's curved stones to the platform; a push within 15° of head-on into a solid slides along it no faster than the plain slide and the body keeps facing the input, so a jump onto the workbench from touching its rim lands on the deck; the -AirIntent probe judges the body's turn from its facing at take-off. | `OverlookStepsTests.Steering_by_the_rendered_camera_lagged_…` (reproduces the app: not up, highest 2.1 m) and the climb tests; `BenchJumpTests` (failed first: off the deck from 4° off the centre); os -Steps (up in 1.9 s), -Route (3 runs), -AirIntent (turned 0°) | **Demonstrated** (Core; real input on the staged build) |
+
 ## Verification that is efficient and accountable; unit tests first (TEST-06..09, 2026-11-20)
 
 DJ (sixth pass): testing has made development take hours. Choose an efficient strategy, report active test time,
@@ -845,31 +879,6 @@ clear command; make normal test output show the costs; a documented fast loop an
 | TEST-11 | Wall-clock bounds and measurement tables are apart from the correctness checks: out of the ordinary run, one at a time in their own step under controlled conditions. | `TestKinds` Perf/Report/Slow traits; every Stopwatch or elapsed-time bound in the suite is Perf (split from its correctness half where a test had both); `fs.sh test-perf` runs them serially (max concurrency 1 in the TRX) in Debug; `check full`/`release` run `tests-perf` after the parallel tests and the stage, in the timing table; the three tests that failed under load in the sixth pass's full run are Perf. | **Demonstrated** (serial: max concurrency 1; harness self-test). Perf on Windows beside other agents' load: 15 of 16 pass, `…six_effects_is_cheap` 68.8 ms vs 60 ms (**unknown** whether it passes on a quiet machine: the integrator's `check full` decides) |
 | TEST-12 | The heaviest correctness checks are made cheaper without weakening them. | The envelope sweep gives the same widths (5.1 / 6.6 / 10.1 / 10.1 m walking, 9.1 / 13.8 m running) at ≈ 4 s instead of 83–111 s; Every_variation and the loudness check computed side by side and asserted in the same order; per-pair assertions only where violated; Files_are_placed_once 20.7 s → ≈ 1 s alone; Release without tiered compilation (330 instead of 1,163 CPU-s); every test that passed before passes; the behaviour baseline is identical. | **Demonstrated** |
 | TEST-13 | Each area has a small set and a clear command; a fast default loop; every run shows its costs. | `fs.sh test-area` / `test-wsl-area AREA[,AREA]` over `areas.txt` (music, hazard, walking, overview, gallery, places, panels, input, navigation, scanning, baseline); every class is in an area (`TestAreaTests`); `--fast` leaves out Slow; each run prints the build's and the tests' seconds, the classes that finished last and the slowest tests; the testing guide in docs/windows-workflow.md says how to pick the smallest set, when to broaden, and the release path. | **Demonstrated** |
-
-## Gameplay without stalls: the sky kept, composed off the main thread, built in slices; large windows (PLANET-174..180, 2026-11-21, seventh pass stream S5)
-
-DJ (seventh pass, item 5): a roughly half-second pause about every eight seconds walking the Ubuntu root, pauses at
-landings and in fullscreen; measure on the exported build, find the actual causes, fix the expensive work, report
-distributions and the worst stalls (AD-96).
-
-| ID | Requirement | Acceptance | Status |
-|---|---|---|---|
-| PLANET-174 | A discovery update re-composes only the worlds whose look changed. | `Neighbourhood.Stale` reports the world you stand on by its full signature and the worlds in the sky by `PlanetComposer.PreviewSignature` (no parent part); a listing in one of 21 children marks the root and that child, not its 20 siblings; a sibling whose preview signature is unchanged has the same shape, theme, landmark and shell (NeighbourhoodSchedulingTests). | **Demonstrated** (Core tests; Ubuntu root walk: 51 looks swapped in 60 s instead of 13 × 21 rebuilds) |
-| PLANET-175 | Compositions and looks are kept for the way back. | `CompositionCache` (128 folders, exact or latest, LRU); visual cache 48 previews + 6 full worlds (was 10 of either); ground tasks 96 (was 40); previews keyed by their look from outside. | **Demonstrated** (tests; landings back on the root max 26–34 ms, was 555–773 ms) |
-| PLANET-176 | Neighbours are composed off the main thread and built in bounded slices. | `BackgroundComposer` composes ≤ 6 folders a job under the tree's read lease (`FsTree.BeginBackgroundRead`; `Apply` throws while held; Main defers batches); `FrameSliceQueue` starts work only within 4 ms a frame (at least one item; never interrupted; replaced by key; waits cost nothing); preview ground is made on a worker. | **Demonstrated** (tests; in-app: 0 neighbours composed on the main thread while walking) |
-| PLANET-177 | A launch prepares its destination's sky before touchdown; landings stay continuous and feet-first. | `PrefetchNeighbourhood` on Prepare and for any transfer (warps too): the destination's child folders and parent composed in the background and their previews built into the cache during the flight; no swap while travelling; a world prepared in full is not swapped. Landing code (Land, feet first) unchanged. | **Demonstrated** for the frame times (6 landings × 5 routes, max ≤ 49 ms); feet-first unchanged in code, **by eye: DJ** |
-| PLANET-178 | A regression guard for stalls. | `--automate=planets-stalls` (functional tier) on the vast fixture (`--test-broad`): walking 20 s while discovery lists, no frame over 250 ms and no world in the sky composed on the main thread; then six landings arrive. Journey `planets-stalls` in verify.sh, in REALTIME_JOURNEYS. | **Demonstrated** (passes on the staged build; the same probe failed the 250 ms budget on the before build at the Ubuntu root) |
-| PLANET-179 | Frame-time distributions can be measured and attributed. | `--diag-frames=PATH`: one CSV row per frame (gap, process, 24 sections, GC per generation and pause, allocation, render CPU/GPU, context, the probe's segment, notes with ids and ms only); `tools/frame-diag-summary.py` prints per-segment p50/p95/p99/max, counts over 33/100/300 ms and the worst frames. | **Demonstrated** (before/after measurements, evidence folder) |
-| PLANET-180 | Very large windows stay smooth without changing the look at ordinary sizes. | `RenderScalePolicy`: full scale up to 2560×1440; above, FSR 1 at the scale that draws ≈ 2560×1440 worth of pixels, at least ⅔; `--render-scale=` overrides; printed and shown in the quality line. | **Demonstrated** at 3840×2160 (GPU 18.2 → 11.4 ms, walking p95 28.8 → 18.8 ms); 1600×900 unchanged (scale 1); **DJ by eye**: the softness at 4K |
-
-## Integration fixes: the focus holds what you looked at; short windows (PLANET-198, 2026-11-21, seventh pass stream F)
-
-Found by the journeys run on the merged seventh pass (planets-text, planets-lookouts): each fixed with a Core test first
-(`IntegrationFixTests`).
-
-| ID | Requirement | Acceptance | Status |
-|---|---|---|---|
-| PLANET-198 | The object you just looked at closer (a hop from the list, E) stays the focus while it is in reach and you have not walked on (0.5 m) and its preview still shows it, so the prompt and the preview's "Close (E / Esc)" speak of the same file; the telescope's zoom acts on the lens's own range (a near world framed at the widest lens narrows at the first notch in); the planets' preview keeps inside a short window. | `IntegrationFixTests` (Core `ObjectFocus`, `TelescopeLens`, `PanelFit.BottomGap`; failed first: missing); planets-text (the prompt names the hopped-to file; the prompt and preview fit at 1280×720 UI 1.5), planets-lookouts (the wheel: 50° → in 19.5°) | **Demonstrated** (Core; journeys passed twice) |
 
 ## Later (not in this prototype)
 

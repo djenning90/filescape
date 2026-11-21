@@ -49,6 +49,23 @@ public sealed record SphereWalkParams
     /// </summary>
     public float WallSlideFullDegrees { get; init; } = 60f;
 
+    /// <summary>
+    /// Pushed into a solid at least this far off along its edge, degrees, the walker slides at the plain speed (speed × cos
+    /// of the angle), as before AD-97; from <see cref="WallSlideHeadOnFromDegrees"/> to here the guided slide
+    /// (<see cref="WallSlideFullDegrees"/>) blends into it (stream R, seventh pass). 75°: a push 15° or less off head-on, as
+    /// at the workbench's rim when you mean to jump onto it, is not carried along the rim at twice the plain speed (the jump
+    /// then went along the rim and off it, BenchJumpTests); the overlook's stones are climbed with pushes nearer along
+    /// (OverlookStepsTests: 72° pinned a run up the stones at 30 fps). 89.9° and 90° give AD-97's slide alone.
+    /// </summary>
+    public float WallSlideHeadOnDegrees { get; init; } = 75f;
+
+    /// <summary>
+    /// Where the blend into the plain slide near head-on starts, degrees off along the edge
+    /// (<see cref="WallSlideHeadOnDegrees"/>); from here on a push into a solid is head-on enough that the body keeps facing
+    /// the input instead of turning to the slide (the camera then does not swing round along the wall behind it).
+    /// </summary>
+    public float WallSlideHeadOnFromDegrees { get; init; } = 65f;
+
     /// <summary>How fast the body turns to face its motion: 720°/s turns about in a quarter second.</summary>
     public DegreesPerSecond FacingTurnRate { get; init; } = DegreesPerSecond.Of(720f);
 
@@ -95,6 +112,7 @@ public sealed record SphereWalkParams
         NonNegative(SnapDown.Value, nameof(SnapDown));
         NonNegative(AirLedgeTolerance.Value, nameof(AirLedgeTolerance));
         if (!float.IsFinite(WallSlideFullDegrees) || WallSlideFullDegrees < 0 || WallSlideFullDegrees >= 90) throw new ArgumentOutOfRangeException(nameof(WallSlideFullDegrees), WallSlideFullDegrees, "must be at least 0° and under 90°");
+        if (!float.IsFinite(WallSlideHeadOnDegrees) || !float.IsFinite(WallSlideHeadOnFromDegrees) || WallSlideHeadOnFromDegrees < WallSlideFullDegrees || WallSlideHeadOnDegrees <= WallSlideHeadOnFromDegrees || WallSlideHeadOnDegrees > 90) throw new ArgumentOutOfRangeException(nameof(WallSlideHeadOnDegrees), WallSlideHeadOnDegrees, "the head-on blend must run from at least WallSlideFullDegrees up to at most 90°");
         if (MaxFrame <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(MaxFrame));
         Jump.Validate();
         Hazard.Validate();
@@ -541,6 +559,8 @@ public sealed class SphereWalker
         var response = grounded ? _p.GroundResponse : _p.AirResponse;
         if (!grounded && wish.LengthSquared() < 1e-8f) response = _p.AirCoast;
         var target = wish * speedMetersPerSecond;
+        // A near head-on push into a solid (more than WallSlideHeadOnFromDegrees off along it): the body keeps facing the input.
+        var headOn = grounded && HeadOnPush(wish, up);
         if (grounded) target = AlongWall(target, up);
         // The recovery's carry holds its course: steering on (W still held from the walk off) would take it back out.
         if (!_carrying) velocity = Vector3.Lerp(velocity, target, response.SmoothingFactor(dtSeconds));
@@ -688,7 +708,11 @@ public sealed class SphereWalker
         // Turn the body towards its motion (or the input while nearly still). The catch's carry is not the player's motion:
         // the body turns only to where they steer, and with nothing held keeps its facing (AD-97: it used to swing round to
         // face the ledge a forward jump had left).
-        var faceTarget = _carrying ? wish : velocity.LengthSquared() > FaceMotionSpeedSquared ? velocity : wish;
+        // Pressed nearly head-on into a solid, the slide along it is not where the player means to go either: the body faces
+        // the input (stream R, seventh pass: touching the workbench's rim a few degrees off its centre, the body turned ≈ 80°
+        // to the slide, the camera swung in behind it, ↑ followed the camera and the jump went along the rim and off it;
+        // BenchJumpTests).
+        var faceTarget = _carrying || headOn ? wish : velocity.LengthSquared() > FaceMotionSpeedSquared ? velocity : wish;
         if (faceTarget.LengthSquared() > 1e-8f)
         {
             faceTarget = Vector3.Normalize(faceTarget);
@@ -938,8 +962,32 @@ public sealed class SphereWalker
         var alongLength = along.Length();
         if (alongLength < 1e-6f) return target; // head-on: no side to slide to
         var cosine = alongLength / speed; // of the angle between the input and the edge
-        var slide = speed * MathF.Min(1, cosine / MathF.Cos(Degrees.Of(_p.WallSlideFullDegrees).ToRadians()));
+        var guided = MathF.Min(1, cosine / MathF.Cos(Degrees.Of(_p.WallSlideFullDegrees).ToRadians()));
+        // Near head-on the plain slide (speed × cos) again, blended in over the last degrees (stream R, seventh pass): the
+        // guided slide carried a push a few degrees off head-on along the workbench's rim at twice the plain speed, and the
+        // jump that followed went along the rim and off it (BenchJumpTests).
+        var angleDegrees = MathF.Acos(Math.Clamp(cosine, 0, 1)) * 180f / MathF.PI;
+        var plainShare = Math.Clamp((angleDegrees - _p.WallSlideHeadOnFromDegrees) / (_p.WallSlideHeadOnDegrees - _p.WallSlideHeadOnFromDegrees), 0, 1);
+        var slide = speed * (guided + (cosine - guided) * plainShare);
         return along / alongLength * slide + away * into;
+    }
+
+    /// <summary>
+    /// Pressed against a solid (the last step's contact, <see cref="AlongWall"/>) with <paramref name="wish"/> pushing into it
+    /// more than <see cref="SphereWalkParams.WallSlideHeadOnFromDegrees"/> off along its edge: a near head-on push (the player means
+    /// the solid or to jump onto it, not the slide along it). False away from solids, with no input or pulling away.
+    /// </summary>
+    private bool HeadOnPush(Vector3 wish, Vector3 up)
+    {
+        var away = _wallAway - up * Vector3.Dot(_wallAway, up);
+        var w = wish - up * Vector3.Dot(wish, up);
+        if (away.LengthSquared() < 1e-8f || w.LengthSquared() < 1e-8f) return false;
+        away = Vector3.Normalize(away);
+        w = Vector3.Normalize(w);
+        var into = Vector3.Dot(w, away);
+        if (into >= 0) return false;
+        var alongCosine = MathF.Sqrt(MathF.Max(0, 1 - into * into)); // of the angle between the input and the edge
+        return alongCosine < MathF.Cos(Degrees.Of(_p.WallSlideHeadOnFromDegrees).ToRadians());
     }
 
     /// <summary>Rotates the walker's frame (position direction, velocity, facing) about a unit axis through the centre.</summary>

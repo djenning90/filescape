@@ -138,6 +138,27 @@ public partial class PlanetWorld
         return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
     }
 
+    /// <summary>
+    /// <paramref name="v"/>'s heading on the ground here, degrees from the local north, positive to the right, as
+    /// <see cref="CameraHeadingDegrees"/> measures the camera's (0 for a vector along the up; probes).
+    /// </summary>
+    private float HeadingDegrees(Godot.Vector3 v)
+    {
+        var up = Gd(_walker.Up);
+        var north = Gd(PlanetFrame.North(_walker.Up));
+        var f = v - up * v.Dot(up);
+        if (f.LengthSquared() < 1e-6f) return 0;
+        return -Mathf.RadToDeg(north.SignedAngleTo(f.Normalized(), up));
+    }
+
+    /// <summary>
+    /// The state file's movement-heading fields (seventh pass, stream R): "wishYaw" — the heading forward meant in the
+    /// last walking frame (<see cref="_wishForward"/>: the camera's heading, so it equals "camYaw"; before stream R it was
+    /// the rendered camera's look and trailed "camYaw" by ≈ 17° while a turn key was held), and "facingYaw" — the body's facing. Probes compare them with Core
+    /// replays that model the keyboard camera (OverlookStepsTests, HazardAirIntentTests).
+    /// </summary>
+    private string HeadingStateJson() => System.FormattableString.Invariant($"\"wishYaw\":{HeadingDegrees(_wishForward):0.#},\"facingYaw\":{HeadingDegrees(Gd(_walker.Facing)):0.#},");
+
     /// <summary>The heading to the world <paramref name="id"/> in this sky, as <see cref="CameraHeadingDegrees"/> measures it (0 when it is not in the sky; probes).</summary>
     public float HeadingTo(int id)
     {

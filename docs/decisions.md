@@ -2504,3 +2504,29 @@ as FileScape while naming remains open.
   machine) were seen in the before runs and rarely after: not attributed. DJ's 45–55 ms GPU frames at 2560×1440 were not
   reproduced (this machine showed 18 ms at 3840×2160). **Revisit if:** a world in the sky looks stale after discovery
   (PreviewSignature missing an input), batches visibly lag (job length), or DJ finds 4K soft (raise `MinScale` or the budget).
+
+## AD-99 Walking steers by the camera's heading; a near head-on push into a solid slides at the plain speed and keeps the body facing the input (2026-11-21, seventh pass stream R, PLANET-199; amends AD-47, AD-97)
+
+- **Context:** three real-input failures on the candidate e1088c6 (os -AirIntent, -Steps, -Route). Each was traced frame
+  by frame (the probe's new `trace-*.csv`; the state file's new `wishYaw` and `facingYaw`) and replayed in Core.
+  (1) -AirIntent "turned 152 deg": the body flew straight across (the bridge at 177.7° throughout); the probe measured
+  from the facing at the stand point, which after a fall still faced along the route it came by — an instrument defect;
+  Core's `HazardAirIntentTests` and the app agreed. (2) -Steps "not up, highest 2.1 m": the app took forward from the
+  rendered camera's look, whose eye eases after the heading (7.5/s, ≈ 0.13 s), so with ↑ and → held the walk trailed the
+  key's turn by ≈ 17° (`wishYaw` vs `camYaw`) and spiralled off the stones' outer side; `OverlookStepsTests` had
+  modelled the wish as the heading itself. (3) -Route "a spin from the bench opens the README (selected Lantern
+  Workshop)" (1 run in 3): the probe's last ↑ pulse pressed nearly head-on into the workbench's rim; AD-97's guided slide
+  carried the walker along the rim at twice the plain speed, the body turned ≈ 80° to that slide, the camera's swing-in
+  turned the view towards the body and ↑ (following the camera) took the jump along the rim and off the deck.
+- **Decision:** (1) forward is the camera's heading (`_camFwd`, which ← → and a drag turn at once), not the rendered
+  camera's look; the probe measures the turn from the take-off facing. (2) A push more than
+  `WallSlideHeadOnFromDegrees` (65°) off along a solid blends into the plain slide (speed × cos), fully at
+  `WallSlideHeadOnDegrees` (75°), and from 65° the body faces the input rather than the slide. AD-97's guided slide
+  (full speed within 60° of along) is unchanged where the overlook's stones need it.
+- **Alternatives:** the plain slide from 72° (pinned a run up the stones at 30 fps), the slide's ratio squared or to the
+  1.5 power over the whole range (pinned walkers on the stones), a probe that lines up within 6° before the jump (would
+  have hidden the product defect). Changing the camera's swing-in (app-only, untestable in Core) was not needed.
+- **Preserve:** the keyboard-turn constants and the camera's boom and easing mirrored in `OverlookStepsTests` and
+  `BenchJumpTests`; forward intent and the catch's rules of AD-97.
+- **Revisit if:** DJ finds steering feels too immediate against the easing view (the heading leads the picture by
+  ≈ 0.13 s while turning), or a wall you mean to slide along at 65–75° feels sticky.

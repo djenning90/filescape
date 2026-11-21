@@ -5,10 +5,10 @@
 # Format: "area: Prefix Prefix ..." ; '#' starts a comment.
 music: SkySynth MusicActivity SoundPreference
 hazard: Hazard SphereWalker JumpModel
-walking: SphereWalker JumpModel Walk OverlookSteps LookLeveling NavigationAndConsistency UsabilityPass Horizon
+walking: SphereWalker JumpModel Walk OverlookSteps BenchJump LookLeveling NavigationAndConsistency UsabilityPass Horizon
 overview: Overview UniverseLayout TelescopeSurvey
 gallery: Gallery MediaWorld ThumbnailPlan ShellThumbnail
-places: Place PlanetComposer PlanetRelief ArrivalComposition ConnectedPlace RootMark ProminenceAndProject ProjectBench WorldCharacter WorldLayout LayoutAndInteraction SampleSky
+places: Place PlanetComposer PlanetRelief ArrivalComposition ConnectedPlace RootMark ProminenceAndProject ProjectBench BenchJump WorldCharacter WorldLayout LayoutAndInteraction SampleSky
 panels: PanelOwnership SelectionActions FaceToggle LessonText Markdown DeveloperActions FileAction HubAndLocation PlayCommands PanelFit IntegrationFix
 input: PanelOwnership SelectionActions FaceToggle DeveloperActions NavigationAndConsistency UsabilityPass PlayCommands
 navigation: Departure DestinationTree Traversal HubAndLocation WorldExplorer ListAhead NavigationAndConsistency TravelRoutes SurfaceResume
