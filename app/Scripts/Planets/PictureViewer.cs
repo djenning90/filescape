@@ -7,9 +7,13 @@ using Godot;
 namespace FileScape.App.Planets;
 
 /// <summary>
-/// The picture viewer (PLANET-96, AD-78): the gallery prototype's "inspect" — one picture large over a dimmed world,
-/// stepped through the folder's pictures with ← →, zoomed with the wheel (about the pointer) or + −, panned by dragging,
-/// fitted again with 0 or a double-click, and closed with Esc, R or ✕ back to exactly where you stood. It owns the
+/// The picture viewer (PLANET-96, AD-78; PLANET-161..163, AD-94): the gallery's "view large" — one picture large over a
+/// dimmed world, stepped through the folder's pictures with ← → (also A D, Page Up / Down, Home / End, the mouse's back
+/// and forward buttons, a click on the ‹ › edges or the bar's buttons), zoomed with the wheel (about the pointer) or + −,
+/// panned by dragging, fitted again with 0 or a double-click, and closed with Esc, R, "✕ Back to the world" or a click on
+/// the backdrop outside the picture, back to exactly where you stood. Where a press lands is Core's
+/// <see cref="ViewerPointer"/>. Enter or "Open with Windows ↗" hands the picture to Windows (marked as leaving, its own
+/// colour) and the viewer stays. Space does nothing here (it is the jump: a habit never steps or closes). It owns the
 /// pointer while open (full-window, one of the HUD's blocking rectangles) and, through Main's keyboard ownership
 /// (<c>KeyPanel.Viewer</c>), the keyboard.
 /// <para>
@@ -53,12 +57,27 @@ public partial class PictureViewer : Control
     /// <summary>The dimmed world behind the picture: nearly black, a hint of the world showing through.</summary>
     private static readonly Color Backdrop = new(0.02f, 0.02f, 0.05f, 0.9f);
 
+    /// <summary>The ‹ › step marks at the stage's edges: their glyph size, pixels, and their opacity while the pointer is
+    /// over that edge and otherwise (by eye: findable, never over the picture's middle).</summary>
+    private const int EdgeMarkPixels = 64;
+
+    private const float EdgeMarkHoverAlpha = 0.95f, EdgeMarkIdleAlpha = 0.28f;
+
+    /// <summary>"Open with Windows ↗"'s colour: a cool sky blue, apart from the viewer's warm gold, so leaving FileScape
+    /// never looks like one of its own steps (AD-94).</summary>
+    private static readonly Color LeaveColor = new(0.62f, 0.84f, 1f);
+
     private readonly ColorRect _back;
     private readonly Control _stage;
     private readonly TextureRect _image;
     private readonly Panel _placeholder;
-    private readonly Label _title, _meta, _status, _keys;
+    private readonly Label _title, _meta, _status, _keys, _prevMark, _nextMark;
     private readonly Button _prev, _next;
+
+    /// <summary>A left press on the viewer, not yet a click or a drag: where it began and in which zone (AD-94).</summary>
+    private Vector2? _pressAt;
+
+    private ViewerZone _pressZone;
 
     private FsTree? _tree;
     private IReadOnlyList<int> _pictures = [];
@@ -132,19 +151,82 @@ public partial class PictureViewer : Control
             return b;
         }
 
-        _prev = B("‹ Previous (←)", () => Step(-1), "The previous picture in this folder.");
-        _next = B("Next (→) ›", () => Step(+1), "The next picture in this folder.");
+        _prev = B("‹ Previous (←)", () => Step(-1), "The previous picture in this folder (also a click on the left edge).");
+        _next = B("Next (→) ›", () => Step(+1), "The next picture in this folder (also a click on the right edge).");
         B("Fit (0)", Fit, "Show the whole picture again.");
-        B("Open with Windows (Enter)", () => { if (Current >= 0) OpenRequested?.Invoke(Current); }, "Open this picture with the app Windows uses for it.");
-        B("✕ Close (Esc)", Close, "Back to the world, where you stood.");
+        var leave = OpenWithWindowsButton("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the original in the app Windows uses for pictures (Photos, usually). This view stays open here.");
+        leave.Pressed += () => { if (Current >= 0) OpenRequested?.Invoke(Current); };
+        bar.AddChild(leave);
+        B("✕ Back to the world (Esc)", Close, "Back to the world, where you stood (also Esc, R, or a click outside the picture).");
+
+        _prevMark = EdgeMark("‹");
+        _nextMark = EdgeMark("›");
 
         _keys = new Label { HorizontalAlignment = HorizontalAlignment.Center, MouseFilter = MouseFilterEnum.Ignore };
         _keys.SetAnchorsPreset(LayoutPreset.BottomWide);
         _keys.OffsetTop = -44; _keys.OffsetBottom = -16;
         _keys.AddThemeFontSizeOverride("font_size", 14);
         _keys.AddThemeColorOverride("font_color", new Color(0.75f, 0.8f, 0.92f));
-        _keys.Text = "← →  step through the pictures here   ·   wheel or + −  zoom   ·   drag  look around   ·   0  fit   ·   Esc  back to the world";
+        _keys.Text = KeyLine;
         AddChild(_keys);
+    }
+
+    /// <summary>The key line under the picture (AD-94): every way to step, look and leave, in the order people reach for them.</summary>
+    public const string KeyLine = "← →  or click ‹ ›  previous / next   ·   wheel  zoom   ·   drag  look around   ·   double-click  zoom / fit   ·   Esc or click outside  back to the world   ·   Enter  open with Windows ↗";
+
+    /// <summary>
+    /// The one look for "Open with Windows ↗" (the viewer's bar and the small preview, AD-94): the ↗ and a cool blue
+    /// outline mark it as leaving FileScape for another app, apart from the in-game buttons beside it.
+    /// </summary>
+    public static Button OpenWithWindowsButton(string text, string tooltip)
+    {
+        var b = new Button { Text = text, FocusMode = FocusModeEnum.None, TooltipText = tooltip };
+        b.AddThemeColorOverride("font_color", LeaveColor);
+        b.AddThemeColorOverride("font_hover_color", LeaveColor.Lightened(0.3f));
+        var box = new StyleBoxFlat { BgColor = new Color(0.06f, 0.1f, 0.18f, 0.85f), BorderColor = LeaveColor with { A = 0.8f }, ContentMarginLeft = 10, ContentMarginRight = 10, ContentMarginTop = 4, ContentMarginBottom = 4 };
+        box.SetBorderWidthAll(1);
+        box.SetCornerRadiusAll(6);
+        b.AddThemeStyleboxOverride("normal", box);
+        var hover = (StyleBoxFlat)box.Duplicate();
+        hover.BgColor = new Color(0.1f, 0.16f, 0.28f, 0.95f);
+        b.AddThemeStyleboxOverride("hover", hover);
+        b.AddThemeStyleboxOverride("pressed", hover);
+        return b;
+    }
+
+    /// <summary>A ‹ or › mark at a stage edge (placed in <see cref="Layout"/>; brightened over its edge).</summary>
+    private Label EdgeMark(string glyph)
+    {
+        var l = new Label { Text = glyph, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = MouseFilterEnum.Ignore, Modulate = new Color(1, 1, 1, EdgeMarkIdleAlpha) };
+        l.AddThemeFontSizeOverride("font_size", EdgeMarkPixels);
+        l.AddThemeColorOverride("font_color", new Color(1f, 0.93f, 0.75f));
+        l.AddThemeConstantOverride("outline_size", 8);
+        l.AddThemeColorOverride("font_outline_color", new Color(0.02f, 0.02f, 0.05f, 0.9f));
+        AddChild(l);
+        return l;
+    }
+
+    /// <summary>The zone under <paramref name="p"/> (viewport units): the stage and the drawn picture (or the placeholder's
+    /// frame while there is none) as Core's rectangles, for <see cref="ViewerPointer.Zone"/>.</summary>
+    public ViewerZone ZoneAt(Vector2 p)
+    {
+        var stage = new ScreenRect(_stage.Position.X, _stage.Position.Y, _stage.Size.X, _stage.Size.Y);
+        var frame = _image.Visible ? FrameRect : new Rect2(_placeholder.Position + _stage.Position, _placeholder.Size);
+        return ViewerPointer.Zone(p.X, p.Y, stage, new ScreenRect(frame.Position.X, frame.Position.Y, frame.Size.X, frame.Size.Y), _pictures.Count > 1);
+    }
+
+    /// <summary>The zone the pointer was last over (probes; <see cref="ViewerZone.Chrome"/> before any motion).</summary>
+    public ViewerZone HoverZone { get; private set; } = ViewerZone.Chrome;
+
+    /// <summary>Brightens the ‹ or › over which the pointer is (and hides both when the folder has one picture).</summary>
+    private void ShowHover(ViewerZone zone)
+    {
+        HoverZone = zone;
+        var canStep = _pictures.Count > 1;
+        _prevMark.Visible = _nextMark.Visible = canStep;
+        _prevMark.Modulate = new Color(1, 1, 1, zone == ViewerZone.PreviousEdge ? EdgeMarkHoverAlpha : EdgeMarkIdleAlpha);
+        _nextMark.Modulate = new Color(1, 1, 1, zone == ViewerZone.NextEdge ? EdgeMarkHoverAlpha : EdgeMarkIdleAlpha);
+        MouseDefaultCursorShape = zone is ViewerZone.PreviousEdge or ViewerZone.NextEdge ? CursorShape.PointingHand : zone == ViewerZone.Picture && _zoom > 1.001f ? CursorShape.Drag : CursorShape.Arrow;
     }
 
     // ------------------------------------------------------------------ what probes and the state file read
@@ -213,7 +295,10 @@ public partial class PictureViewer : Control
         _pictures = pictures;
         _index = Math.Max(0, pictures.ToList().IndexOf(id));
         Visible = true;
+        _pressAt = null;
+        _dragging = false;
         ShowPicture(_index);
+        ShowHover(ViewerZone.Chrome);
     }
 
     public void Close()
@@ -222,14 +307,18 @@ public partial class PictureViewer : Control
         var last = Current;
         Visible = false;
         _dragging = false;
+        _pressAt = null;
         Closed?.Invoke(last);
     }
 
-    /// <summary>Steps <paramref name="delta"/> pictures (wrapping round the folder).</summary>
+    /// <summary>Steps <paramref name="delta"/> pictures (wrapping round the folder; <see cref="int.MinValue"/> the first,
+    /// <see cref="int.MaxValue"/> the last).</summary>
     public void Step(int delta)
     {
         if (!Visible || _pictures.Count == 0) return;
-        _index = ((_index + delta) % _pictures.Count + _pictures.Count) % _pictures.Count;
+        var next = GalleryBrowse.Step(_index, delta, _pictures.Count); // wraps round; int.MinValue / MaxValue: Home / End
+        if (next == _index) return; // Home on the first, End on the last, or the only picture: nothing to show anew
+        _index = next;
         ShowPicture(_index);
         Stepped?.Invoke(Current);
     }
@@ -506,9 +595,20 @@ public partial class PictureViewer : Control
         _placeholder.Size = fitted;
         _status.Position = _placeholder.Position + new Vector2(24, 0);
         _status.Size = fitted - new Vector2(48, 0);
+        var edge = MathF.Min(ViewerPointer.EdgeWidthPixels, area.X * ViewerPointer.MaxEdgeShare);
+        _prevMark.Position = _stage.Position;
+        _nextMark.Position = _stage.Position + new Vector2(area.X - edge, 0);
+        _prevMark.Size = _nextMark.Size = new Vector2(edge, area.Y);
         UpdateMeta();
     }
 
+    /// <summary>
+    /// The viewer's mouse (AD-94; zones from <see cref="ViewerPointer"/>): the wheel zooms about the pointer anywhere; a left
+    /// press becomes a drag (a pan) after <see cref="PlanetWorld.DragThresholdPixels"/> of travel, otherwise a click on
+    /// release: on the ‹ › edges it steps, on the backdrop it goes back to the world, on the picture nothing; a double-click
+    /// zooms ×2 or fits on the picture and steps again on an edge; the mouse's back / forward buttons step. Every button
+    /// stays with the viewer, never the camera.
+    /// </summary>
     public override void _GuiInput(InputEvent @event)
     {
         switch (@event)
@@ -521,19 +621,53 @@ public partial class PictureViewer : Control
                 ZoomBy(1 / ZoomStep, w.Position);
                 AcceptEvent();
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.Left, DoubleClick: true } dc:
-                if (_zoom > 1.001f) Fit();
-                else ZoomBy(2f, dc.Position);
+            case InputEventMouseButton { ButtonIndex: MouseButton.Xbutton1 or MouseButton.Xbutton2, Pressed: true } x:
+                Step(x.ButtonIndex == MouseButton.Xbutton1 ? -1 : +1); // the mouse's back / forward buttons
                 AcceptEvent();
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.Left } b:
-                _dragging = b.Pressed;
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true, DoubleClick: true } dc:
+                var dz = ZoneAt(dc.Position);
+                if (dz is ViewerZone.PreviousEdge or ViewerZone.NextEdge) Step(dz == ViewerZone.PreviousEdge ? -1 : +1);
+                else if (dz == ViewerZone.Picture)
+                {
+                    if (_zoom > 1.001f) Fit();
+                    else ZoomBy(2f, dc.Position);
+                }
+
+                _pressAt = null; // a double-click is done on its press: its release is not a click
                 AcceptEvent();
                 break;
-            case InputEventMouseMotion m when _dragging:
-                _pan += m.Relative;
-                Layout();
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } press:
+                _pressAt = press.Position;
+                _pressZone = ZoneAt(press.Position);
                 AcceptEvent();
+                break;
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false }:
+                var wasClick = _pressAt != null && !_dragging;
+                _dragging = false;
+                _pressAt = null;
+                AcceptEvent();
+                if (!wasClick) break;
+                switch (_pressZone)
+                {
+                    case ViewerZone.PreviousEdge: Step(-1); break;
+                    case ViewerZone.NextEdge: Step(+1); break;
+                    case ViewerZone.Backdrop: Close(); break; // the outside click: back to the world, nothing else (AD-83, AD-94)
+                }
+
+                break;
+            case InputEventMouseMotion m when _pressAt is { } from:
+                if (!_dragging && m.Position.DistanceTo(from) >= PlanetWorld.DragThresholdPixels) _dragging = true;
+                if (_dragging)
+                {
+                    _pan += m.Relative;
+                    Layout();
+                }
+
+                AcceptEvent();
+                break;
+            case InputEventMouseMotion hover:
+                ShowHover(ZoneAt(hover.Position));
                 break;
             case InputEventMouseButton:
                 AcceptEvent(); // every other button stays with the viewer, never the camera
@@ -542,19 +676,27 @@ public partial class PictureViewer : Control
     }
 
     /// <summary>
-    /// The viewer's keys (Main gives it the keyboard while open): ← → (and A D) step, + − zoom, 0 fits, Enter opens with
-    /// Windows, Esc and R close. True when the key was the viewer's; every other key is kept from the game by Main.
+    /// The viewer's keys (Main gives it the keyboard while open): ← → (and A D, Page Up / Down) step, Home / End the first
+    /// and last, + − zoom, 0 fits, Enter opens with Windows (the viewer stays), Esc and R close. Space is not the viewer's:
+    /// Main keeps it from the game, so a jump pressed by habit does nothing (AD-94). True when the key was the viewer's;
+    /// every other key is kept from the game by Main.
     /// </summary>
     public bool HandleKey(InputEventKey k)
     {
         if (!Visible || !k.Pressed) return false;
         switch (k.Keycode)
         {
-            case Godot.Key.Left or Godot.Key.A:
+            case Godot.Key.Left or Godot.Key.A or Godot.Key.Pageup:
                 Step(-1);
                 return true;
-            case Godot.Key.Right or Godot.Key.D:
+            case Godot.Key.Right or Godot.Key.D or Godot.Key.Pagedown:
                 Step(+1);
+                return true;
+            case Godot.Key.Home:
+                Step(int.MinValue);
+                return true;
+            case Godot.Key.End:
+                Step(int.MaxValue);
                 return true;
             case Godot.Key.Equal or Godot.Key.Plus or Godot.Key.KpAdd:
                 ZoomBy(ZoomStep);

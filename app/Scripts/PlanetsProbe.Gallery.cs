@@ -16,7 +16,9 @@ namespace FileScape.App;
 /// list's hop], E for its preview, R for the viewer, shown at once and then sharp; → steps through the folder's pictures
 /// (the large print shrunk; the over-limit poster and the giant scan shown from Windows' thumbnail and saying why, or
 /// refused with the reason; the damaged one refused); wheel zoom, drag pan, 0 fit; game keys inert; quick steps bounded;
-/// Esc back where you stood. <b>Inheritance:</b> Sketches (two pictures inside the gallery) is a gallery too; the Desk
+/// Esc back where you stood. <b>Browsing (AD-94, PlanetsProbe.GalleryBrowse):</b> a click on another easel moves the
+/// preview, a click on empty ground puts it away, a double-click views large (never Windows), the viewer's edge steps and
+/// its backdrop goes back, Home / End, Space inert, Ctrl + → sidesteps without the view swinging. <b>Inheritance:</b> Sketches (two pictures inside the gallery) is a gallery too; the Desk
 /// (one sketch among notes) is ordinary and reads nothing by itself. <b>Counts:</b> the crowds of 3, 30 and 300 beside the
 /// fixture fill within the bounds, with times, texture bytes and memory logged.
 /// <para><c>--automate=planets-gallery-real --root=PATH</c>: the same measurements on a real picture folder (DJ allowed
@@ -70,7 +72,7 @@ public partial class PlanetsProbe
         await Until(() => visual.CanvasState(dawn).State == "sharp", 5);
         Check(visual.CanvasState(dawn).State == "sharp", $"beside it, its canvas is sharp ({visual.CanvasState(dawn).State}, from {visual.CanvasState(dawn).Source}; {visual.CanvasesSharp} sharp now; plan {visual.PlanDebug(dawn)}; feet {P.Walker.Feet}, canvas {visual.CanvasPosition(dawn)}, camera {P.ViewCamera.GlobalPosition})");
         await Frames(4);
-        Check(P.PreviewOpen && P.PreviewHasImage && (P.FocusNodeId != dawn || P.PromptText.StartsWith("R · view it large", StringComparison.Ordinal)), $"E: its preview, and the prompt offers the viewer when it is in focus (focus {(P.FocusNodeId >= 0 ? Tree[P.FocusNodeId].Name : "-")}): \"{P.PromptText}\"");
+        Check(P.PreviewOpen && P.PreviewHasImage && (P.FocusNodeId != dawn || (P.PromptText.Contains("view it large", StringComparison.Ordinal) && P.PromptText.Contains("open with Windows ↗", StringComparison.Ordinal))), $"E: its preview, and the prompt offers the viewer and, apart, Windows ↗ when it is in focus (focus {(P.FocusNodeId >= 0 ? Tree[P.FocusNodeId].Name : "-")}): \"{P.PromptText}\"");
         var feet = P.Walker.Feet;
         var v = P.Viewer;
         await Shot("gallery-preview");
@@ -205,6 +207,11 @@ public partial class PlanetsProbe
         await Key(Godot.Key.R);
         await Frames(3);
         Check(!P.ViewerOpen, "and R closes it");
+        await Key(Godot.Key.Escape);
+        await Frames(3);
+
+        // ---- AD-94: the browsing gestures as one experience (PlanetsProbe.GalleryBrowse.cs).
+        await GalleryBrowsing(dawn);
         await Key(Godot.Key.Escape);
         await Frames(3);
 

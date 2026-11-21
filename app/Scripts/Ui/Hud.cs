@@ -464,11 +464,14 @@ public partial class Hud : CanvasLayer
                 "[b]✦ Planets[/b]  FileScape's main view. New here? Press [b]Learn to play[/b] above for a few minutes of guided play.\n" +
                 "  Each folder is a small world; its folders hang in the sky above flower launchers; files stand in groves.\n" +
                 "  [b]W A S D[/b] (or ↑ ↓) run, Shift faster · [b]drag[/b] (left or right mouse) or [b]← →[/b] look around, also while running · wheel zoom\n" +
+                "  [b]Step sideways[/b]: A D, or hold [b]Ctrl[/b] with ← → (add Shift to run) · handy along a gallery's easels\n" +
                 "  [b]Space[/b] jump, again in the air to twirl higher · on a launcher: Space flies there · [b]T[/b] overview of every known folder\n" +
                 "  [b]In the overview[/b]: click a world to orbit it · drag or ← → orbit · wheel zooms toward the pointer · middle-drag or WASD pan ·\n" +
                 "    [b][ ][/b] the next world round its ring · [b]Z[/b] up a level · [b]F[/b] frame it · [b]Shift[/b] faster (pan ×3, ← → ×1.6, a wheel notch counts twice) ·\n" +
                 "    [b]Enter[/b] lands there · [b]Esc[/b] or [b]T[/b] flies back down to where you stood (press again to hurry)\n" +
                 "  [b]E[/b] look closer (preview) · [b]Enter[/b] open with Windows · [b]Backspace[/b] back · U up · G fly to the selected world\n" +
+                "  [b]Pictures[/b]: click or E to look · double-click, R or a click on the preview's picture: view it large (← → or the ‹ › edges step,\n" +
+                "    wheel zoom, drag, Esc or a click outside comes back) · [b]Enter[/b] or [b]Open with Windows ↗[/b] opens the original in Windows' app\n" +
                 "  [b]J[/b] this world's list (every folder and file, filter by typing) · Ctrl+L go to a path · N sound\n" +
                 "  Every journey leaves from a launcher: you hop to the pad that leads there (toward a deeper folder, or the way back for\n" +
                 "    somewhere else; with no pad, a ring of light at your feet), then take off · [b]Esc[/b] before take-off stays\n" +
@@ -480,7 +483,7 @@ public partial class Hud : CanvasLayer
                 "[b]Places[/b] (the flat world: you are [i]inside[/i] a folder, on foot)\n" +
                 "Files stand around you as towers, grouped by type, each with its type's icon. Each child folder is a [b]gate[/b], named above it;\n" +
                 "    [b]walk through a gate[/b] to go in; the [b]▲ Up[/b] gate behind you goes back. Going up arrives facing the next ▲ gate.\n" +
-                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn    [b]W A S D[/b] walk and step sideways    hold [b]Shift[/b] run\n" +
+                "[b]Walking[/b]   [b]↑ / ↓[/b] walk forward / back    [b]← / →[/b] turn (hold [b]Ctrl[/b]: step sideways)    [b]W A S D[/b] walk and step sideways    hold [b]Shift[/b] run\n" +
                 "    hold [b]right mouse[/b] (or left-drag) to look; letting go levels the view (on foot only)    [b]Space[/b] jump: hold for a high jump, tap for a hop\n" +
                 "[b]Flight[/b]   [b]T[/b]: rise 16 m and look down across the place; [b]T[/b] again lands you safely on foot (the view levels)\n" +
                 "    [b]W A S D[/b] fly level (looking down never makes you dive)    [b]E[/b] / [b]Space[/b] up    [b]Q[/b] / [b]C[/b] down    [b]wheel[/b] speed (faster the higher you are)\n" +

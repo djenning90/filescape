@@ -145,11 +145,20 @@ public partial class PlanetWorld
         _previewMeta.AddThemeFontSizeOverride("font_size", 13);
         _previewMeta.AddThemeColorOverride("font_color", new Color(0.78f, 0.82f, 0.95f));
         _previewImage = new TextureRect { ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, CustomMinimumSize = new Vector2(340, 240), Visible = false };
+        // AD-94: the picture itself is a way into the large viewer (as a thumbnail is in any photo app).
+        _previewImage.MouseFilter = Control.MouseFilterEnum.Stop;
+        _previewImage.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+        _previewImage.TooltipText = "Click to view it large (R). Enter opens it with Windows instead.";
+        _previewImage.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } && OpenViewer()) _previewImage.AcceptEvent();
+        };
         _previewText = new RichTextLabel { BbcodeEnabled = false, ScrollActive = true, SelectionEnabled = true, SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false, CustomMinimumSize = new Vector2(340, 200) };
         _previewText.AddThemeFontSizeOverride("normal_font_size", 13);
         var close = new Button { Text = "Close (E / Esc)", FocusMode = Control.FocusModeEnum.None };
         close.Pressed += ClosePreview;
-        var open = new Button { Text = "Open with Windows (Enter)", FocusMode = Control.FocusModeEnum.None };
+        // AD-94: leaving FileScape for Windows' app is marked as leaving (↗, its own colour), apart from looking in-game.
+        var open = PictureViewer.OpenWithWindowsButton("Open with Windows ↗ (Enter)", "Leaves FileScape: opens the file in the app Windows uses for it.");
         open.Pressed += () => _s.OpenSelection();
         var row = new HBoxContainer();
         row.AddChild(open);
@@ -183,7 +192,7 @@ public partial class PlanetWorld
         _title.Text = tree.DisplayName(folderId);
         var c = _current.Comp;
         // PLANET-96/130: a gallery says so, why, and how to look (its canvases fill with pictures as you walk).
-        var world = _s.IsLive && c.Media.IsGallery ? $"a picture gallery{GalleryWhy(c.Media)}: E on a picture, then R to view it large" : PlanetText.WorldName(c.Theme);
+        var world = _s.IsLive && c.Media.IsGallery ? $"a picture gallery{GalleryWhy(c.Media)}: {GalleryArrivalCue}" : PlanetText.WorldName(c.Theme);
         var parts = new List<string> { world, _s.Summary(folderId) };
         var piled = c.Items.Where(i => i.Kind == PlanetItemKind.Pile).Sum(i => i.HiddenCount);
         if (piled > 0) parts.Add($"{c.Items.Count(i => i.Kind != PlanetItemKind.Pile):N0} stand here, {piled:N0} more in piles (J lists them all)");
@@ -261,6 +270,8 @@ public partial class PlanetWorld
     private void ShowPreview(FsTree tree, FsNode n)
     {
         _contentsPanel.Visible = false;
+        _previewShownId = n.Id; // the browsing rule's "shown" (PlanetWorld.Gallery, AD-94)
+        _previewOpenedDistance = GroundDistanceTo(n.Id);
         _previewTitle.Text = n.Name;
         var cat = FileCategories.Of(n.Name);
         var modified = n.ModifiedUtc is { } m ? m.ToLocalTime().ToString("d MMM yyyy, HH:mm", System.Globalization.CultureInfo.InvariantCulture) : "unknown";
@@ -365,6 +376,8 @@ public partial class PlanetWorld
         PreviewPlain("");
         _previewText.Visible = false;
         _expandButton.Visible = _s.IsLive; // PLANET-96: ⤢ (or R) views the picture large
+        _expandButton.Text = "⤢ View large (R)";
+        _expandButton.TooltipText = "View it large in FileScape (R, a click on the picture, or a double-click on its easel): ← → step through this folder's pictures; Esc comes back here.";
     }
 
     /// <summary>A few seconds of a sound file (read on a worker, bounded and shared), the music ducked underneath.</summary>

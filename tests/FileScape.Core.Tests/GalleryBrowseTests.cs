@@ -188,6 +188,13 @@ public class GalleryBrowseTests
     }
 
     [Fact]
+    public void A_file_that_does_not_stand_here_closes_its_preview_on_any_move()
+    {
+        var piled = new GalleryBrowse.Walk(-1, false, true, ShownDistanceMetres: float.PositiveInfinity, OpenedDistanceMetres: float.PositiveInfinity, ReachMetres: 2.8f);
+        GalleryBrowse.OnWalk(BrowseState.Previewing(Notes), piled).Effects.Should().Equal(BrowseEffect.ClosePreview);
+    }
+
+    [Fact]
     public void Steps_wrap_round_the_folder_and_Home_End_reach_its_ends()
     {
         GalleryBrowse.Step(0, -1, 5).Should().Be(4);
@@ -235,5 +242,15 @@ public class GalleryBrowseTests
         ArrowSidestep.Resolve(1, 1, sidestepHeld: true).Should().Be((1f, 0f), "an arrow and D the same way do not step faster");
         ArrowSidestep.Resolve(-1, 1, sidestepHeld: true).Should().Be((0f, 0f), "opposite ways cancel");
         ArrowSidestep.Resolve(0, 0, sidestepHeld: true).Should().Be((0f, 0f));
+    }
+
+    [Fact]
+    public void A_pure_sidestep_keeps_the_view_and_any_forward_intent_lets_the_camera_follow()
+    {
+        ArrowSidestep.CameraFollows(forward: 0, strafe: 1).Should().BeFalse("sliding along a row keeps looking at it");
+        ArrowSidestep.CameraFollows(forward: 0, strafe: -1).Should().BeFalse();
+        ArrowSidestep.CameraFollows(forward: 1, strafe: 1).Should().BeTrue("a diagonal run swings in as before");
+        ArrowSidestep.CameraFollows(forward: -1, strafe: 0).Should().BeTrue();
+        ArrowSidestep.CameraFollows(forward: 0, strafe: 0).Should().BeTrue("a jump's drift with no keys, as before");
     }
 }

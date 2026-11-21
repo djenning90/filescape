@@ -232,6 +232,8 @@ public static class GalleryBrowse
         if (state.Mode != BrowseMode.Preview) return BrowseStep.Stay(state);
         if (w.Focus == state.Shown) return BrowseStep.Stay(state);
         if (w.OnGallery && w.FocusIsPicture && w.Focus >= 0) return new(BrowseState.Previewing(w.Focus), LookAt);
+        // A file that does not stand here one by one (in a pile, the bench's README): any move puts its preview away, as before.
+        if (!float.IsFinite(w.ShownDistanceMetres)) return new(BrowseState.Walking, [BrowseEffect.ClosePreview]);
         var keep = MathF.Max(w.OpenedDistanceMetres, w.ReachMetres) + PreviewKeepSlackMetres;
         return w.ShownDistanceMetres > keep ? new(BrowseState.Walking, [BrowseEffect.ClosePreview]) : BrowseStep.Stay(state);
     }

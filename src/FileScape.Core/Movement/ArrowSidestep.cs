@@ -22,4 +22,12 @@ public static class ArrowSidestep
     /// </summary>
     public static (float Strafe, float Turn) Resolve(float sideKeys, float arrows, bool sidestepHeld) =>
         sidestepHeld ? (Math.Clamp(sideKeys + arrows, -1f, 1f), 0f) : (sideKeys, arrows);
+
+    /// <summary>
+    /// Whether the planets' chase camera may swing in behind a moving traveller this frame (PLANET-165): not during a
+    /// pure sidestep (<paramref name="strafe"/> without <paramref name="forward"/>), so the view stays on the row you are
+    /// sliding along — before this, a held A or D swung the camera round behind the sideways run after 1.2 s and the
+    /// sidestep became a slow turn. Any forward or backward intent (or no keys: a jump's drift) swings in as before.
+    /// </summary>
+    public static bool CameraFollows(float forward, float strafe) => forward != 0 || strafe == 0;
 }

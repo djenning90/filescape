@@ -1,4 +1,5 @@
 using FileScape.App.Places;
+using FileScape.Core.Movement;
 using FileScape.Core.Planets;
 using Godot;
 using NVector3 = System.Numerics.Vector3;
@@ -249,8 +250,10 @@ public partial class PlanetWorld
         if (!blockedKeys)
         {
             fwd = Axis(InputBindings.Back, InputBindings.Forward);
-            strafe = Axis(InputBindings.Left, InputBindings.Right);
-            KeyboardLook(dt, Axis(InputBindings.TurnLeft, InputBindings.TurnRight));
+            // A D step sideways; ← → turn the camera, or step sideways too while Ctrl is held (PLANET-165, AD-94).
+            var (side, turn) = ArrowSidestep.Resolve(Axis(InputBindings.Left, InputBindings.Right), Axis(InputBindings.TurnLeft, InputBindings.TurnRight), Godot.Input.IsActionPressed(InputBindings.Sidestep));
+            strafe = side;
+            KeyboardLook(dt, turn);
             run = Godot.Input.IsActionPressed(InputBindings.Fast);
             jumpHeld = Godot.Input.IsActionPressed(InputBindings.Jump);
         }
@@ -339,7 +342,8 @@ public partial class PlanetWorld
         UpdateArrivalFraming(dt, moved: jump || wish.LengthSquared() > 0.01f || !_walker.Grounded);
         var moving = _walker.Velocity.Length() > 0.8f; // above 0.8 m/s counts as moving (the camera may swing in)
         ReturnPitchWhileWalking(dt, moving);
-        UpdateCamera(dt, lookAt: null, moving: moving);
+        // A pure sidestep keeps the view on the row you slide along (PLANET-165): the camera does not swing in behind it.
+        UpdateCamera(dt, lookAt: null, moving: moving && ArrowSidestep.CameraFollows(fwd, strafe));
         UpdateFocus();
         UpdateEdgeWarning(dt);
     }

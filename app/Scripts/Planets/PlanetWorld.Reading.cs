@@ -49,10 +49,13 @@ public partial class PlanetWorld
     /// <summary>The preview's text as shown (markup applied, tags gone; probes).</summary>
     public string PreviewShownText => _previewText.GetParsedText();
 
+    /// <summary>The Expand button's words for a text file (a picture's preview says "View large" instead, AD-94).</summary>
+    private const string ExpandText = "⤢ Expand (R)", ExpandTip = "Expand: read the whole file in the large reading view (R). Esc or R closes it.";
+
     /// <summary>The Expand icon, in the preview's title row (BuildPreviewPanel places it in the upper-right corner).</summary>
     private Button MakeExpandButton()
     {
-        _expandButton = new Button { Text = "⤢ Expand (R)", FocusMode = Control.FocusModeEnum.None, Visible = false, TooltipText = "Expand: read the whole file in the large reading view (R). Esc or R closes it." };
+        _expandButton = new Button { Text = ExpandText, FocusMode = Control.FocusModeEnum.None, Visible = false, TooltipText = ExpandTip };
         _expandButton.AddThemeFontSizeOverride("font_size", ExpandIconPixels);
         _expandButton.Pressed += () =>
         {
@@ -83,6 +86,8 @@ public partial class PlanetWorld
         _previewText.ScrollToLine(0);
         _previewTextId = id;
         _expandButton.Visible = true;
+        _expandButton.Text = ExpandText; // a picture's preview relabels it "View large" (PlanetWorld.Overlay, AD-94)
+        _expandButton.TooltipText = ExpandTip;
     }
 
     /// <summary>The line under a Markdown excerpt that goes on in the file.</summary>
