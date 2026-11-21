@@ -64,6 +64,15 @@ public partial class Hud : CanvasLayer
     private double _toastUntil;
     private PanelContainer _help = null!;
 
+    /// <summary>
+    /// The HUD's own game clock (AD-91): toasts, the first-run hint and the fly highlight expire by frame time, so they
+    /// last as long in game time on a slow, a fast or a fixed-step (<c>--fixed-fps</c>) run. Advanced in <see cref="_Process"/>.
+    /// </summary>
+    private readonly FileScape.Core.Timing.FrameClock _clock = new();
+
+    /// <summary>Seconds of game time since the HUD was created (<see cref="_clock"/>); the timers below are on it.</summary>
+    private double NowSeconds => _clock.Now.TotalSeconds;
+
     private readonly List<Control> _extraBlocking = [];
 
     /// <summary>Adds a panel built elsewhere (the walkthrough's card, the welcome dialog) to <see cref="BlockingRects"/>, so clicks on it reach the GUI, not the world.</summary>
@@ -588,10 +597,11 @@ public partial class Hud : CanvasLayer
     /// <summary>Timers (hint, toast, fly highlight) and the per-frame restacking of the left column and the hint.</summary>
     public override void _Process(double delta)
     {
-        var nowS = Time.GetTicksMsec() / 1000.0;
+        _clock.Advance(delta);
+        var nowS = NowSeconds;
         if (_hintPanel.Visible && nowS - _hintShownAt > HintTimeoutSeconds) DismissHint();
         _flyLabel.AddThemeColorOverride("font_color", nowS < _flyHighlightUntil ? new Color(1f, 0.92f, 0.5f) : new Color(0.75f, 0.95f, 1f));
-        if (_toastPanel.Visible && Time.GetTicksMsec() / 1000.0 > _toastUntil)
+        if (_toastPanel.Visible && nowS > _toastUntil)
         {
             _toastPanel.Visible = false;
         }
@@ -833,7 +843,7 @@ public partial class Hud : CanvasLayer
         _hintLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.94f, 1f));
         _hintPanel.AddChild(_hintLabel);
         _root.AddChild(_hintPanel);
-        _hintShownAt = Time.GetTicksMsec() / 1000.0;
+        _hintShownAt = NowSeconds;
 
         _flyPanel = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
         _flyPanel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
@@ -870,7 +880,7 @@ public partial class Hud : CanvasLayer
         _flyLabel.Text = places
             ? landing ? "LANDING…" : $"✈ {(altitude is { } h ? $"{h:0} m up · " : "")}{speed:0} m/s  ·  {move}  ·  E/Space up · Q/C down  ·  B aerial view  ·  T land"
             : $"FLYING  ·  speed {speed:0.#} u/s (wheel to change, Shift ×3)  ·  release right mouse or Esc to stop";
-        if (highlight) _flyHighlightUntil = Time.GetTicksMsec() / 1000.0 + FlyHighlightSeconds;
+        if (highlight) _flyHighlightUntil = NowSeconds + FlyHighlightSeconds;
     }
 
     /// <summary>The Flight toggle: shown in Places only, pressed while flying.</summary>
@@ -905,7 +915,7 @@ public partial class Hud : CanvasLayer
         _toast.Text = text;
         _toast.AddThemeColorOverride("font_color", color ?? new Color(0.9f, 0.95f, 1f));
         _toastPanel.Visible = true;
-        _toastUntil = Time.GetTicksMsec() / 1000.0 + seconds;
+        _toastUntil = NowSeconds + seconds;
     }
 
     public Theme UiTheme => _root.Theme;

@@ -61,7 +61,7 @@ public partial class Main : IWorldSession
     void IWorldSession.FollowLink(string documentPath, FileScape.Core.Shell.MarkdownLink link) => FollowReaderLink(new Ui.ReaderDocument("", "", "", documentPath), link);
     bool IWorldSession.ShowReadme() { ShowReadme(); return true; }
     string IWorldSession.Summary(int id) => _tree == null ? "" : PlaceText.Summary(_tree, _tree[id]);
-    TimeSpan IWorldSession.Now => _clock.Elapsed;
+    TimeSpan IWorldSession.Now => _gameClock.Now; // the game clock (AD-91), not the wall clock
     SignLayer IWorldSession.Signs => _signs;
 
     /// <summary>The commands that mean something different on a planet; the rest (open, back, up, J, L, Ctrl+L…) are shared.</summary>

@@ -61,7 +61,18 @@ public partial class Main : Node3D
 
     private readonly Visualization[] _visualizations = [new ClassicVisualization(), new DistrictVisualization()];
     private readonly SelectionState _selection = new();
+    /// <summary>
+    /// The app's wall clock (time since start): per-frame work budgets, refresh throttles, hitch diagnostics and the state
+    /// file's <c>appMs</c>, which real-input probes compare with their own clocks. Not for anything the player sees move
+    /// or expire: that is <see cref="_gameClock"/>.
+    /// </summary>
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    /// <summary>
+    /// The game clock (AD-91): the frames' deltas summed, so the world's timing (IWorldSession.Now) is frame-rate
+    /// independent and follows Godot's fixed step under <c>--fixed-fps</c>. Advanced first thing each frame.
+    /// </summary>
+    private readonly FileScape.Core.Timing.FrameClock _gameClock = new();
 
     private CameraRig _rig = null!;
     private WorldEnvironment _world = null!;
@@ -629,6 +640,7 @@ public partial class Main : Node3D
     /// </summary>
     public override void _Process(double delta)
     {
+        _gameClock.Advance(delta);
         if (_closing) return; // SHUT-01: no new work once closing has begun
         if (_experimentOnly) return;
         RefreshCardOnViewChange();
