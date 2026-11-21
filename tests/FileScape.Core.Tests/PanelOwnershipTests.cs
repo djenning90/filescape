@@ -15,7 +15,7 @@ public class PanelOwnershipTests
     private static readonly PanelId[] All = Enum.GetValues<PanelId>().Where(p => p != PanelId.None).ToArray();
 
     private static readonly PanelId[] KeyboardPanels =
-        [PanelId.Viewer, PanelId.Confirm, PanelId.Welcome, PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions];
+        [PanelId.Viewer, PanelId.Confirm, PanelId.Welcome, PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions, PanelId.TextField];
 
     private static IEnumerable<PanelKey> EveryKey()
     {
@@ -68,9 +68,23 @@ public class PanelOwnershipTests
         }
 
         // The deliberate passes, by name (AD-68): F keys, Ctrl+L and Ctrl+O everywhere but the choices; J from the two navigation panels.
-        KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesShortcuts).Should().BeEquivalentTo([PanelId.Viewer, PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions]);
+        KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesShortcuts).Should().BeEquivalentTo([PanelId.Viewer, PanelId.Reader, PanelId.Settings, PanelId.Locations, PanelId.Destinations, PanelId.LocationActions, PanelId.TextField]);
         KeyboardPanels.Where(p => PanelOwnership.Rule(p).PassesDestinationsKey).Should().BeEquivalentTo([PanelId.Locations, PanelId.Destinations]);
         PanelOwnership.Route(PanelId.Confirm, new PanelKey(PanelKeyKind.FunctionKey)).Should().Be(KeyRoute.Consume, "a choice is waiting");
+    }
+
+    /// <summary>AD-92: the legacy Places drawer's filter (no panel row) let Enter on an empty list open the selection, PgUp
+    /// travel up and the arrows walk. A focused field anywhere now owns them; a registered panel's field stays that panel's.</summary>
+    [Fact]
+    public void A_focused_text_field_outside_any_panel_owns_its_keys()
+    {
+        PanelOwnership.Owner([PanelId.TextField]).Should().Be(PanelId.TextField);
+        PanelOwnership.Route(PanelId.TextField, new PanelKey(PanelKeyKind.Other)).Should().Be(KeyRoute.Consume, "Enter, PgUp, the arrows and letters are the field's");
+        PanelOwnership.Route(PanelId.TextField, new PanelKey(PanelKeyKind.Escape)).Should().Be(KeyRoute.Close, "Esc lets go of the field");
+        PanelOwnership.Route(PanelId.TextField, new PanelKey(PanelKeyKind.FunctionKey)).Should().Be(KeyRoute.Pass, "F1 still opens Help");
+        PanelOwnership.Owner([PanelId.Destinations, PanelId.TextField], PanelId.Destinations).Should().Be(PanelId.Destinations);
+        PanelOwnership.Owner([PanelId.Confirm, PanelId.TextField]).Should().Be(PanelId.Confirm, "a choice still comes first");
+        PanelOwnership.OnWorldPress([PanelId.TextField], click: true).Should().Be(WorldPress.Untouched, "a click on the world acts (and takes the focus back)");
     }
 
     [Fact]
