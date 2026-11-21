@@ -287,6 +287,48 @@ public sealed class WorldExplorerTests : IDisposable
         h.Pump(() => h.Tree[b].ScanState == DirScanState.Complete, 5);
     }
 
+    /// <summary>
+    /// PLANET-196 (seventh pass, stream S8): discovery can hurry a folder that is waiting in the background traversal.
+    /// The background walk queues every folder it finds (the tree shows them pending) at the lowest priority; a Discover
+    /// for one of them was ignored (the explorer only took folders it had never queued), so the overview's or play's
+    /// discovery could never bring a world in your neighbourhood forward of the whole walk: it waited behind every other
+    /// folder of the arrival. Now Discover promotes it to the look-ahead queue, which is served before the background.
+    /// One worker, and every background folder but the target held at a gate released one at a time, so the order is
+    /// exact: the first free worker after the request takes the target.
+    /// </summary>
+    [PosixFact]
+    public void Discover_brings_a_folder_waiting_in_the_background_walk_forward()
+    {
+        var arrival = Path.Combine(_root, "walk");
+        for (var i = 0; i < 30; i++) Directory.CreateDirectory(Path.Combine(arrival, $"c{i:00}", "inner"));
+        Directory.CreateDirectory(Path.Combine(arrival, "zz-target", "inner"));
+        using var gate = new SemaphoreSlim(0);
+        using var h = new Harness(arrival, new WorldExplorer.Options
+        {
+            Locations = [new LocationSeed("/", "/", LocationKind.Volume, true)],
+            Background = true,
+            MaxConcurrent = 1,
+            BeforeEnumerate = p => { if (Path.GetFileName(p).StartsWith('c')) gate.Wait(TimeSpan.FromSeconds(20)); },
+        });
+        try
+        {
+            var id = h.Await(WorldExplorer.ArrivalTicket).NodeId;
+            h.Pump(() => h.Tree[id].ScanState == DirScanState.Complete);
+            var target = h.Child(id, "zz-target");
+            h.Tree[target].ScanState.Should().Be(DirScanState.Pending, "the background walk has queued it, last (the listing is sorted by name)");
+            h.Pump(() => h.Session.Snapshot().CurrentPath?.EndsWith("c00", StringComparison.Ordinal) == true, 5); // the one worker holds c00 at the gate
+            h.Explorer.Discover(target);
+            Thread.Sleep(100); // the request reaches the coordinator
+            gate.Release(); // c00 finishes: the worker is free once
+            h.Pump(() => h.Tree[target].ScanState == DirScanState.Complete, 3);
+            h.Tree[h.Child(id, "c29")].ScanState.Should().Be(DirScanState.Pending, "the rest of the walk still waits");
+        }
+        finally
+        {
+            gate.Release(100); // let the walk finish before the harness closes
+        }
+    }
+
     /// <summary>SHUT-01: closing never waits for an outstanding filesystem call; the coordinator stops at once.</summary>
     [PosixFact]
     public void Closing_stops_the_explorer_without_waiting_for_a_stalled_listing()

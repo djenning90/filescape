@@ -20,6 +20,17 @@ public enum OverviewDiscoveryState
 }
 
 /// <summary>
+/// The tree's folders by state (<see cref="OverviewDiscovery.Census"/>): known (every folder), listed (its contents are
+/// in the tree), waiting (known by name, or queued: discovery may list it) and failed (denied, unavailable). Known minus
+/// the other three are folders deliberately not listed (cloud, links' stubs, the entry limit, a cancelled walk).
+/// </summary>
+public readonly record struct DiscoveryCensus(int Known, int Listed, int Waiting, int Failed)
+{
+    /// <summary>The census as a JSON object (the probe state file; counts only, never names).</summary>
+    public string Json => $"{{\"known\":{Known},\"listed\":{Listed},\"waiting\":{Waiting},\"failed\":{Failed}}}";
+}
+
+/// <summary>
 /// The overview's discovery scheduler (PLANET-76, AD-71): while the overview is open it decides which of the worlds it
 /// draws are listed next, so the known hierarchy grows outward without visiting anything. Engine-free and deterministic
 /// for a given tree and clock, so its order and bounds are unit-tested (<c>OverviewDiscoveryTests</c>).
@@ -262,15 +273,48 @@ public sealed class OverviewDiscovery
     /// <summary>
     /// A folder the overview may list ahead: a plain folder known only by name. Location roots and the hub are opened only
     /// by going there; a failed, denied, unavailable or cloud folder keeps its state until the player retries it; a folder
-    /// with a note (a refusal from <see cref="ListAhead"/>, the entry limit) is not asked for again.
+    /// with a note (a refusal from <see cref="ListAhead"/>, the entry limit) is not asked for again. A folder the
+    /// background walk has queued (pending) is eligible too (PLANET-196): asking for it brings it forward of the walk.
     /// </summary>
     public static bool Eligible(FsNode n) =>
         n.Kind == NodeKind.Directory
-        && n.ScanState == DirScanState.Unlisted
+        && n.ScanState is DirScanState.Unlisted or DirScanState.Pending
         && n.Location == LocationKind.None
         && n.ParentId >= 0
         && n.Error == null
         && (n.Flags & (NodeFlags.AccessDenied | NodeFlags.EnumerationError | NodeFlags.Unavailable | NodeFlags.Vanished | NodeFlags.CloudNotTraversed | NodeFlags.CloudPlaceholder)) == 0;
+
+    /// <summary>
+    /// What the tree knows (PLANET-195, AD-98): its folders by state, counted the same whether the overview is open or not,
+    /// so "newly discovered" (more folders listed or known) can be told from "newly displayed" (more of them drawn by
+    /// the overview's budget). <paramref name="within"/> limits the count to some folders (a neighbourhood).
+    /// </summary>
+    public static DiscoveryCensus Census(FsTree tree, Func<FsNode, bool>? within = null)
+    {
+        int known = 0, listed = 0, waiting = 0, failed = 0;
+        foreach (var n in tree.Nodes)
+        {
+            if (n.Kind != NodeKind.Directory || within != null && !within(n)) continue;
+            known++;
+            switch (n.ScanState)
+            {
+                case DirScanState.Complete: listed++; break;
+                case DirScanState.Unlisted or DirScanState.Pending or DirScanState.Listing: waiting++; break;
+                case DirScanState.Failed: failed++; break;
+            }
+        }
+
+        return new DiscoveryCensus(known, listed, waiting, failed);
+    }
+
+    /// <summary>
+    /// Why <paramref name="after"/> is not progress from <paramref name="before"/> (fewer folders known or listed: the
+    /// session's tree only ever learns), or null when it is (probes check it across opening the overview).
+    /// </summary>
+    public static string? Regression(DiscoveryCensus before, DiscoveryCensus after) =>
+        after.Known < before.Known ? $"folders known fell from {before.Known} to {after.Known}"
+        : after.Listed < before.Listed ? $"folders listed fell from {before.Listed} to {after.Listed}"
+        : null;
 
     /// <summary>Requests whose folder changed state are answered; requests older than the timeout give up their slot.</summary>
     private void Settle(FsTree tree, TimeSpan now)

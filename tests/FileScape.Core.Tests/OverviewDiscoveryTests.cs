@@ -239,8 +239,42 @@ public sealed class OverviewDiscoveryTests
         var candidates = tree.Nodes.Select((n, i) => new OverviewDiscovery.Candidate(n.Id, n.Depth, i)).ToList();
         var d = new OverviewDiscovery();
         var asked = d.Step(tree, candidates, [], TimeSpan.Zero, _ => true);
-        asked.Select(id => tree[id].Name).Should().Equal("plain");
+        // "pending" was left out before PLANET-196: a folder queued by the background walk could not be brought forward.
+        asked.Select(id => tree[id].Name).Should().BeEquivalentTo(["plain", "pending"]);
         OverviewDiscovery.Eligible(tree.Find("link")).Should().BeFalse("a link is not a folder: it is shown, never followed");
+    }
+
+    /// <summary>
+    /// PLANET-196: a drawn world the background walk has queued (pending in the tree) is asked for like an unlisted one,
+    /// so the explorer brings it forward of the walk (<c>WorldExplorerTests.Discover_brings_a_folder_waiting_in_the_background_walk_forward</c>);
+    /// it counts as listed when the walk's listing lands, and the counts of a census tell what is known from what is listed.
+    /// </summary>
+    [Fact]
+    public void A_folder_waiting_in_the_background_walk_is_asked_for_and_the_census_counts_it_as_waiting()
+    {
+        var tree = new Spec("root")
+            .Dir(new Spec("walked") { State = DirScanState.Complete })
+            .Dir(new Spec("queued") { State = DirScanState.Pending })
+            .Dir(new Spec("named") { State = DirScanState.Unlisted })
+            .Dir(new Spec("denied") { State = DirScanState.Failed, Flags = NodeFlags.AccessDenied })
+            .Build();
+        var census = OverviewDiscovery.Census(tree);
+        census.Known.Should().Be(5, "every folder the tree holds, the root included");
+        census.Listed.Should().Be(2, "the root and \"walked\"");
+        census.Waiting.Should().Be(2, "\"queued\" and \"named\": known by name only");
+        census.Failed.Should().Be(1);
+        var candidates = tree.Nodes.Where(n => n.IsDirectory).Select((n, i) => new OverviewDiscovery.Candidate(n.Id, n.Depth, i)).ToList();
+        var d = new OverviewDiscovery();
+        d.Step(tree, candidates, [], TimeSpan.Zero, _ => true).Select(id => tree[id].Name).Should().BeEquivalentTo(["queued", "named"]);
+        var b = new ScanBatch();
+        b.DirectoryUpdates.Add(new DirectoryUpdate(tree.Find("queued").Id, DirScanState.Complete));
+        tree.Apply(b);
+        d.Step(tree, candidates, [], TimeSpan.FromSeconds(0.1), _ => true);
+        d.Listed.Should().Be(1, "the walk's own listing answers the request");
+        var after = OverviewDiscovery.Census(tree);
+        after.Listed.Should().Be(census.Listed + 1);
+        OverviewDiscovery.Regression(census, after).Should().BeNull("progress only grows");
+        OverviewDiscovery.Regression(after, census).Should().NotBeNull("a census with fewer listed folders than before is a regression");
     }
 
     [Fact]

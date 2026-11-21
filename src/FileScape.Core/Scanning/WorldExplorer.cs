@@ -264,8 +264,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     /// <summary>
     /// Lists a folder for the overview's discovery (PLANET-76, AD-71; the app's scheduler is
     /// <see cref="Planets.OverviewDiscovery"/>): like <see cref="Reveal"/> it is not a visit (no destinations or context
-    /// are listed ahead of it), never opens a location root, lists only a folder never listed, and waits behind listings
-    /// the user is waiting for (prefetch priority). Unlike Reveal it goes through <see cref="ListAhead"/> as background
+    /// are listed ahead of it), never opens a location root, lists only a folder never listed (one waiting in the
+    /// background walk is brought forward of the walk, PLANET-196), and waits behind listings the user is waiting for
+    /// (prefetch priority). Unlike Reveal it goes through <see cref="ListAhead"/> as background
     /// listing does, so Linux system filesystems and network shares are refused with their note. Entries and metadata
     /// only, within the node budget's non-reserved part (FS-10).
     /// </summary>
@@ -417,7 +418,9 @@ public sealed class WorldExplorer : IScanSource, IDisposable
             case ExpandRequest:
                 break;
             case DiscoverRequest dr when dr.Id != 0 && !_roots.ContainsValue(dr.Id) && _dirs.TryGetValue(dr.Id, out var d):
-                if (d.State == DirState.Unlisted && !d.Retry) Ahead(d, Priority.Prefetch, ListAheadKind.Background);
+                // PLANET-196: a folder waiting in the background walk is brought forward too (before, only a folder never
+                // queued was taken, so discovery could not hurry one the walk had queued behind every other).
+                if (d.State == DirState.Unlisted && !d.Retry || d.State == DirState.Queued && d.Priority == Priority.Background) Ahead(d, Priority.Prefetch, ListAheadKind.Background);
                 break;
             case DiscoverRequest:
                 break;
@@ -460,8 +463,10 @@ public sealed class WorldExplorer : IScanSource, IDisposable
     private void Enqueue(Dir d, Priority p)
     {
         if (d.State is DirState.Listing or DirState.Listed) return;
-        if (d.State == DirState.Queued && p != Priority.Urgent) return;
-        if (d.State != DirState.Queued && p != Priority.Background)
+        // A queued folder moves up only to Urgent, or out of the background walk into a higher queue (PLANET-196).
+        var fromWalk = d.State == DirState.Queued && d.Priority == Priority.Background && p < Priority.Background;
+        if (d.State == DirState.Queued && p != Priority.Urgent && !fromWalk) return;
+        if ((d.State != DirState.Queued || fromWalk) && p != Priority.Background)
         {
             _batch.DirectoryUpdates.Add(new DirectoryUpdate(d.Id, DirScanState.Pending));
         }
