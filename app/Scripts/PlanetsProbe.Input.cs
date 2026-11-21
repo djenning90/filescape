@@ -165,6 +165,21 @@ public partial class PlanetsProbe
         await Frames(3);
         Check(!P.ListOpen, "Esc closes the list");
 
+        // ---- PLANET-149 (AD-92): the breadcrumb's ▾ beside the current folder opens the same list, the filter focused;
+        // ▾ again closes it; a click on the world closes it and does nothing else; ☰ and the breadcrumb are unchanged.
+        var drop = App.Hud.CrumbDropdownRect;
+        Check(drop.Size.X > 0 && App.Hud.BreadcrumbNames.Count > 0, F($"the breadcrumb has its ▾ beside “{App.Hud.BreadcrumbNames.LastOrDefault()}” at ({drop.GetCenter().X:0},{drop.GetCenter().Y:0})"));
+        await TypeAfterOpening("the breadcrumb's ▾", async () => await Click(App.Hud.CrumbDropdownRect.GetCenter()), "Music");
+        await Click(App.Hud.CrumbDropdownRect.GetCenter());
+        await Frames(3);
+        Check(!P.ListOpen && App.GetViewport().GuiGetFocusOwner() == null, $"▾ again closes the list and the keyboard is the game's (focus: {FocusName})");
+        await TypeAfterOpening("the breadcrumb's ▾ again", async () => await Click(App.Hud.CrumbDropdownRect.GetCenter()), "Lantern");
+        selectedBefore = App.Selection.Selected;
+        await ClickWorldAt(new Vector2(900, 250));
+        await Frames(3);
+        Check(!P.ListOpen && App.Selection.Selected == selectedBefore && !P.Busy && App.Navigator.Current == root,
+            $"opened from ▾, a click on the world closes the list and does nothing else (selection {App.Selection.Selected}, focus: {FocusName})");
+
         // ---- in the overview
         await Key(Godot.Key.T);
         await Until(() => P.UniverseOpen, 3);
