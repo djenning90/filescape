@@ -149,6 +149,31 @@ Homecoming by default, its identity still Hub); a look at Settings at 1.0 and 1.
 
 ## Seventh pass (2026-11-21)
 
+### Stream F: integration fixes after every stream merged (PLANET-198)
+
+Four journeys failed on main 208faa3 (journeys-20261121-043542) and two more showed up in the regression set. Each
+classified (product / instrument), fixed, and passed at least twice (the first in a focused run, the second in the
+regression set on the committed build):
+
+| Journey | Failure | Cause | Kind | Fix |
+|---|---|---|---|---|
+| explore-ui1.0 | Esc in the legacy drawer's filter left the drawer open; the next step's J then closed it | AD-92's bare-field Esc (`PanelId.TextField`) only released the focus; Esc no longer reached the filter's own handler | product (K) | `Main.KeyboardOwner.ClosePanel`: the drawer's filter closes its drawer |
+| planets-gallery | PLANET-165 "19° between the camera and the motion" | the sample gallery's sidestep reaches the rail and slides along it (S6's wall slide): camera turned 0°, path bent 52° | instrument | the check measures the camera's own turn carried along the walk and the path's bend |
+| planets-lookouts | wheel 50° → out 50° → in 50° | the zoom multiplied the unclamped framing (≈ 150° for a near world), so 0.62 × 150° stayed clamped at 50° | product (S8) | Core `TelescopeLens` (wheel → in 19.5°) |
+| planets-lookouts | stones "E not used" | the telescope visit now climbs on other worlds (S8), the baseline count was stale | instrument | count from just before the walk |
+| planets-text | prompt named a neighbour | after a hop to a file the nearest neighbour won the focus, while the preview said "Close (E / Esc)" | product | Core `ObjectFocus`: what you looked closer at stays the focus until you walk 0.5 m or the preview moves on (PLANET-198) |
+| planets-text | Markdown preview / reading view showed the plain file | the hop is not `Busy`; the probe saw the previous preview and R opened it | instrument | wait for the hopped-to file's preview |
+| planets-text | 1280×720 UI 1.5: preview 150..551 in 480 | the preview's fixed gap and minimum heights | product (T) | `PanelFit.BottomGap` + compact minimums (now 150..450) |
+| planets-overview-sample | double-click on a name focused another | the first press's focus moves the camera and the names; the second press resolved afresh | product (S8) | the second press stays on the first press's name |
+| planets-overview-hub | the same check, first press | clicked 1.2 s after the focus while the names still moved | instrument | click once the name stood still 10 frames |
+
+Not reproduced in 3 runs: explore-ui1.0 "click the row … − selected" once in a 3-at-once run with "window focus lost"
+just before the click (a parallel launch taking the OS focus, V2's open note): provisional instrument.
+
+Seen, not fixed (for DJ): at 1280×720 UI 1.5 the prompt runs under the preview panel (its left key cap is hidden) and
+the toolbar is cut at the right; a held sidestep along the gallery's rail slides along it (S6), which may feel like the
+view turning.
+
 ### Stream S5: gameplay stalls removed (PLANET-174..180, AD-96)
 
 Measured with `--automate=planets-stalls --diag-frames=…` on staged builds (injected input, never real OS input), the
