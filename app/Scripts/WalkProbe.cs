@@ -156,9 +156,9 @@ public partial class WalkProbe : ProbeBase
     private async Task<bool> WalkThrough(Godot.Key key, double maxSeconds)
     {
         var before = App.CompletedTransitions;
-        var start = Time.GetTicksMsec();
+        var timedOut = Deadline(maxSeconds); // game time and wall clock (AD-91)
         Key1(key, true);
-        while (!App.InTransition && (Time.GetTicksMsec() - start) / 1000.0 < maxSeconds) await Frames(1);
+        while (!App.InTransition && !timedOut()) await Frames(1);
         Key1(key, false);
         await WaitPlace();
         return App.CompletedTransitions > before;
@@ -176,13 +176,13 @@ public partial class WalkProbe : ProbeBase
         foreach (var k in keys) Key1(k, true);
         await Seconds(0.45); // past the walker's start-up ramp, so the window measures the steady speed
         var p0 = FeetXz;
-        var t0 = Time.GetTicksUsec();
+        var t0 = ClockSeconds; // game time under --sim-clock, as the Seconds waits around it (AD-91)
         await Seconds(window); // a longer window keeps one frame of sampling jitter below 2 %
         var p1 = FeetXz;
-        var t1 = Time.GetTicksUsec();
+        var t1 = ClockSeconds;
         foreach (var k in keys) Key1(k, false);
         await Seconds(0.3);
-        return NVector2.Distance(p0, p1) / ((t1 - t0) / 1e6f);
+        return NVector2.Distance(p0, p1) / (float)(t1 - t0);
     }
 
     /// <summary>A right-mouse look by <paramref name="total"/> pixels in equal steps, one a frame; records the pitch just before release.</summary>
@@ -541,14 +541,14 @@ public partial class WalkProbe : ProbeBase
         Key1(Godot.Key.T, false);
         // Continuous, not a cut: the rise takes visible time and no single frame carries much of it (a per-frame speed
         // measured from the probe's own timestamps proved too noisy against the frames' time steps).
-        var riseStart = Time.GetTicksMsec();
+        var riseStart = ClockSeconds * 1000; // ms of game time under --sim-clock (AD-91)
         var riseEnd = riseStart;
         for (var i = 0; i < 150; i++)
         {
             await Frames(1);
             var y = App.Rig.CameraPosition.Y;
             maxStep = MathF.Max(maxStep, MathF.Abs(y - last));
-            if (y - last > 0.002f) riseEnd = Time.GetTicksMsec();
+            if (y - last > 0.002f) riseEnd = ClockSeconds * 1000;
             last = y;
         }
 
@@ -556,7 +556,7 @@ public partial class WalkProbe : ProbeBase
         // a cut would put most of the rise in one frame. A frame that rises more than 2 mm counts as still rising.
         var rise = last - y0;
         Check(App.Locomotion == Locomotion.Flying && rise > 3.3f && maxStep < 0.25f * rise && riseEnd - riseStart > 300 && App.Hud.FlyChipVisible && App.Hud.FlightButtonPressed,
-            F($"T takes off: a continuous rise of {rise:0.0} m over {riseEnd - riseStart} ms (largest frame step {maxStep:0.00} m), chip and pressed button"));
+            F($"T takes off: a continuous rise of {rise:0.0} m over {riseEnd - riseStart:0} ms (largest frame step {maxStep:0.00} m), chip and pressed button"));
         await Hold(1.5, Godot.Key.E);
         await Hold(1.0, Godot.Key.W);
         await Shot("flying");
@@ -691,17 +691,17 @@ public partial class WalkProbe : ProbeBase
             await look(); // releases, then waits 3 frames
             var soon = W.LookPitch.Value;
             var yawHeld = W.Yaw.Value;
-            var t0 = Time.GetTicksUsec();
+            var t0 = ClockSeconds; // game time under --sim-clock (AD-91)
             var previous = MathF.Abs(soon);
             var monotone = true;
-            while (App.Leveling && Time.GetTicksUsec() - t0 < 2_000_000)
+            while (App.Leveling && ClockSeconds - t0 < 2) // at most 2 s of levelling
             {
                 await Frames(1);
                 monotone &= MathF.Abs(W.LookPitch.Value) <= previous + 1e-3f;
                 previous = MathF.Abs(W.LookPitch.Value);
             }
 
-            var seconds = (Time.GetTicksUsec() - t0) / 1e6;
+            var seconds = ClockSeconds - t0;
             await Seconds(0.3);
             return (_pitchAtRelease, soon, W.LookPitch.Value, yawHeld, W.Yaw.Value, monotone, seconds);
         }
@@ -783,9 +783,9 @@ public partial class WalkProbe : ProbeBase
         var named = 0;
         var byPlate = 0;
         var closeShot = false;
-        var start = Time.GetTicksMsec();
+        var timedOut = Deadline(6); // 6 s for the ≈ 9 m approach: a generous bound
         Key1(Godot.Key.W, true);
-        while (!App.InTransition && (Time.GetTicksMsec() - start) < 6000) // 6 s for the ≈ 9 m approach: a generous bound
+        while (!App.InTransition && !timedOut())
         {
             await Frames(1);
             if (App.InTransition) break;
@@ -849,20 +849,21 @@ public partial class WalkProbe : ProbeBase
         var arrivals = new List<(string Name, double Seconds)>();
         var relocations = App.Relocations;
         Key1(Godot.Key.W, true);
-        var segmentStart = Time.GetTicksMsec();
+        var segmentStart = ClockSeconds; // game time under --sim-clock (AD-91)
         var t0 = segmentStart;
+        var chainTimedOut = Deadline(40); // 40 s for three Ups
         var last = App.Navigator.Current;
-        while (App.Navigator.Current != root && (Time.GetTicksMsec() - t0) < 40_000) // 40 s for three Ups
+        while (App.Navigator.Current != root && !chainTimedOut())
         {
             await Frames(1);
             if (App.Navigator.Current != last)
             {
                 // A transition began: the time from arrival to the next crossing, with W held throughout.
-                arrivals.Add((Tree.DisplayName(App.Navigator.Current), (Time.GetTicksMsec() - segmentStart) / 1000.0));
+                arrivals.Add((Tree.DisplayName(App.Navigator.Current), ClockSeconds - segmentStart));
                 last = App.Navigator.Current;
                 if (last == root) break;
                 await Until(() => !App.InTransition, 3);
-                segmentStart = Time.GetTicksMsec();
+                segmentStart = ClockSeconds;
                 if (App.LastUpwardRoute is not { Verified: true }) Log($"arrival in {Tree.DisplayName(last)}: route not verified");
                 await Frames(2);
                 await Shot($"upward-arrival-{Tree.DisplayName(last).ToLowerInvariant()}");
@@ -870,7 +871,7 @@ public partial class WalkProbe : ProbeBase
         }
 
         Key1(Godot.Key.W, false); // released at once on reaching the arrival root: never above it
-        var total = (Time.GetTicksMsec() - t0) / 1000.0;
+        var total = ClockSeconds - t0;
         await WaitPlace();
         Log("upward chain with W held: " + string.Join(", ", arrivals.Select(a => F($"→ {a.Name} after {a.Seconds:0.0} s"))) + F($"; total {total:0.0} s"));
         Check(App.Navigator.Current == root && arrivals.Count == 3 && arrivals.Select(a => a.Name).SequenceEqual(new[] { "Coast", "Journeys", Tree.DisplayName(root) }),

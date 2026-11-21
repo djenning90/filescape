@@ -137,6 +137,7 @@ public sealed class ListAheadTests : IDisposable
         Listing.Of(h.Tree[dirs[0]]).Should().Be(ListingState.Unlisted);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [PosixFact]
     public void A_listing_in_progress_is_distinct_from_queued()
     {

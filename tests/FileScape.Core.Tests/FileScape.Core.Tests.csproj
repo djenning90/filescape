@@ -5,6 +5,14 @@
     <!-- Test method names describe behaviour with underscores. -->
     <NoWarn>$(NoWarn);CA1707;CA2007;CA1001;CA1063;CA1816</NoWarn>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- TEST-12 (AD-90): the Release test run (tools/fs.sh test, test-wsl) JITs every method optimised at once. With tiered
+         compilation, 24 classes side by side kept starting new methods, which kept postponing the background promotion
+         to optimised code, so the DSP and walker loops ran unoptimised for much of the run (WSL 2026-11-20: 42-61 s and
+         430-500 CPU-s with tiering, 40 s and 330 CPU-s without; one test at a time the suite is 130 s of work).
+         Debug (test-perf, whose bounds were measured on Debug) keeps the default. -->
+    <TieredCompilation>false</TieredCompilation>
+  </PropertyGroup>
   <ItemGroup>
     <!-- FluentAssertions is pinned to 7.x: 7.2.0 is Apache-2.0. 8.x moved to the Xceed licence, which requires a paid licence for commercial use. -->
     <PackageReference Include="FluentAssertions" Version="7.2.0" />
@@ -15,6 +23,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FileScape.Core\FileScape.Core.csproj" />
     <ProjectReference Include="..\..\src\FileScape.Fixtures\FileScape.Fixtures.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The area sets for tools/fs.sh test-area (TEST-13); TestAreaTests reads it beside the assembly. -->
+    <None Include="areas.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

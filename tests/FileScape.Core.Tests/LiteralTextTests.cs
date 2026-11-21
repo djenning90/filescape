@@ -55,10 +55,11 @@ public class LiteralTextTests
 
     public static IEnumerable<object[]> HostileNames() => Hostile.Select(n => new object[] { n });
 
-    /// <summary>The hostile names a file or folder can really have: no '/' (no filesystem allows one in a name), plus
-    /// bracket names without it.</summary>
+    /// <summary>The hostile names a file or folder can really have: no '/' (no filesystem allows one in a name), and on
+    /// Windows no '\' either (it is the path separator there, so Path.GetExtension reads it as one), plus bracket names
+    /// without them.</summary>
     public static IEnumerable<object[]> HostileFileNames() =>
-        Hostile.Where(n => !n.Contains('/')).Concat(["[b]bold", "[url=https:x]click", "[img]a.png", "[i]", "x[b]y.[b]"]).Select(n => new object[] { n });
+        Hostile.Where(n => !n.Contains('/') && !(OperatingSystem.IsWindows() && n.Contains('\\'))).Concat(["[b]bold", "[url=https:x]click", "[img]a.png", "[i]", "x[b]y.[b]"]).Select(n => new object[] { n });
 
     // ------------------------------------------------------------------ the legacy views' inspector
 

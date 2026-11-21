@@ -41,7 +41,10 @@ public interface IWorldSession
     /// <summary>The graphics quality setting.</summary>
     Quality Quality { get; }
 
-    /// <summary>The app clock (time since start).</summary>
+    /// <summary>
+    /// The game clock: frame deltas summed since start (AD-91). It follows the wall clock in play and Godot's fixed step
+    /// under <c>--fixed-fps</c>, so timing built on it is frame-rate independent. Wall-clock budgets use a Stopwatch.
+    /// </summary>
     TimeSpan Now { get; }
 
     /// <summary>True for a live filesystem (open and reveal act on real files); false for synthetic data.</summary>

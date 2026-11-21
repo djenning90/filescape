@@ -92,8 +92,8 @@ public class SyntheticAndModelTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
-    public void Cancelling_a_throttled_synthetic_scan_is_acknowledged_quickly_and_marks_pending_dirs()
+    /// <summary>A throttled 50,000-node synthetic scan cancelled after 0.4 s, with every batch applied.</summary>
+    private static (FsTree Tree, ScanProgress Progress) CancelAThrottledScan()
     {
         using var session = new ScanSession(new SyntheticTreeSource { TargetNodes = 50_000, NodesPerSecond = 5_000 });
         var tree = new FsTree(session.Source);
@@ -107,15 +107,32 @@ public class SyntheticAndModelTests
             tree.Apply(b);
         }
 
-        var progress = session.Snapshot();
+        return (tree, session.Snapshot());
+    }
+
+    [Fact]
+    public void Cancelling_a_throttled_synthetic_scan_is_acknowledged_and_marks_pending_dirs()
+    {
+        var (tree, progress) = CancelAThrottledScan();
         progress.State.Should().Be(ScanState.Cancelled);
         progress.CancelAcknowledgedAfter.Should().NotBeNull();
-        // FS-09: "immediately" is checked as under 250 ms (live cancels measure ≈ 0.2 ms; the bound's exact value is not
-        // recorded). Fewer than the 50,000 targeted nodes shows the scan stopped rather than finishing.
-        progress.CancelAcknowledgedAfter!.Value.Should().BeLessThan(TimeSpan.FromMilliseconds(250));
+        // Fewer than the 50,000 targeted nodes shows the scan stopped rather than finishing.
         tree.Count.Should().BeLessThan(50_000);
         tree.Nodes.Should().Contain(n => n.ScanState == DirScanState.Cancelled);
         tree.Nodes.Should().NotContain(n => n.ScanState == DirScanState.Pending, "every unfinished directory must be marked, not left pending");
+    }
+
+    /// <summary>
+    /// FS-09's "immediately", checked as under 250 ms (live cancels measure ≈ 0.2 ms; the bound's exact value is not
+    /// recorded). A wall-clock bound (TEST-11): 309 ms beside the build and the other host's suite (2026-11-20), so it runs
+    /// in the serial perf step.
+    /// </summary>
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
+    [Fact]
+    public void Cancelling_a_throttled_synthetic_scan_is_acknowledged_within_250_ms()
+    {
+        var (_, progress) = CancelAThrottledScan();
+        progress.CancelAcknowledgedAfter!.Value.Should().BeLessThan(TimeSpan.FromMilliseconds(250));
     }
 
     [Fact]

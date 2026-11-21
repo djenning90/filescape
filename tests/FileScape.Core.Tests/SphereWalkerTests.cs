@@ -30,6 +30,7 @@ public class SphereWalkerTests
         return t.LengthSquared() > 1e-12f ? Vector3.Normalize(t) : Vector3.Zero;
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(0f, 1f, 0f, 1f, 0f, 0f)]  // from exactly +Y: through −Y (its antipode)
     [InlineData(0f, -1f, 0f, 0f, 0f, 1f)] // from exactly −Y: through +Y

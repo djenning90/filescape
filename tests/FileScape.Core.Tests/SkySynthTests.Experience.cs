@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using FileScape.Core.Audio;
 using FileScape.Core.Planets;
+using static FileScape.Core.Tests.SkySynthKit;
+using Xunit.Abstractions;
 
 namespace FileScape.Core.Tests;
 
@@ -34,7 +36,7 @@ public sealed class SkySynthScanFactAttribute : FactAttribute
 /// arrangements are pinned where they were: every place plays the identity it played before, with or without an
 /// experience in between (the behaviour baseline and the whole-cycle hashes are the sample-level check).
 /// </summary>
-public partial class SkySynthTests
+public class SkySynthExperienceTests(ITestOutputHelper output)
 {
     /// <summary>Every kind of place the app can arrive at, with its depth bands, inside a project or not.</summary>
     private static readonly WorldCharacter[] Places =
@@ -56,6 +58,7 @@ public partial class SkySynthTests
         return done();
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void Without_an_experience_every_place_plays_the_arrangement_it_played_before_and_gets_it_back_after_one()
     {
@@ -313,6 +316,7 @@ public partial class SkySynthTests
         overview.PieceVariation.Should().Be(0);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void The_experience_pieces_are_on_the_grid_the_overlook_as_DJ_heard_it_and_in_game_they_render_clean()
     {
@@ -357,7 +361,7 @@ public partial class SkySynthTests
     }
 
     [Fact]
-    public void The_aurora_voice_stays_finite_bounded_and_cheap()
+    public void The_aurora_voice_stays_finite_and_bounded()
     {
         // The extremes: every role, low to high, soft to hard, resonance at the voices' settings; the output stays finite and below the clipper.
         var w = new SketchWriter(120, DiatonicMode.Ionian, 62);
@@ -382,7 +386,13 @@ public partial class SkySynthTests
         output.WriteLine($"before {lb:0.0} LUFS peak {before.Max(MathF.Abs):0.000}; after {la:0.0} LUFS peak {after.Max(MathF.Abs):0.000}");
         Math.Abs(la - lb).Should().BeLessThan(3);
         after.Max(MathF.Abs).Should().BeLessThan(SoftClipFrom);
+    }
 
+    /// <summary>The wall-clock half of the aurora voice's checks (TEST-11): measured in the serial perf step.</summary>
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
+    [Fact]
+    public void The_aurora_voice_costs_well_under_2_percent_of_a_core()
+    {
         // The cost per voice, against the saw stack it extends: 16 held notes for 4 s each.
         var cost = VoiceCost();
         output.WriteLine($"per voice: aurora pad {cost.Aurora:0} ns/sample ({cost.Aurora * Rate / 1e7:0.00} % of real time), saw-stack strings {cost.Saw:0} ns/sample ({cost.Saw * Rate / 1e7:0.00} %), empty mix {cost.Empty:0} ns/frame");

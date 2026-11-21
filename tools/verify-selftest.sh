@@ -92,7 +92,7 @@ bash -c '
   trap "interrupt_current; timing_table interrupted-run 9.9; exit 143" TERM
   probe_step long 30 "$2/long.txt" probe sleep 20
 ' _ "$REPO" "$INT_OUT" > "$INT_OUT/table.txt" 2>&1 & runner=$!
-sleep 0.5; t=$(date +%s.%N); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
+sleep 0.5; t=$(mono_s); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
 if grep -qE '^long +interrupted' "$INT_OUT/table.txt" && grep -q '^TOTAL .*1 interrupted' "$INT_OUT/table.txt" && (( $(echo "$took < 3" | bc) )); then
   echo "ok    interrupted                stopped in $took s, row and table printed"
 else echo "WRONG interrupted (took $took s):"; sed 's/^/      /' "$INT_OUT/table.txt"; BAD=$((BAD + 1)); fi
@@ -122,6 +122,52 @@ wait "$holder"
 IFS=$'\t' read -r _ _ _ _ _ tsecs twait _ < <(awk -F'\t' '$4 == "waited"' "$FS_TIMING_LOG")
 if (( $(echo "${twait:-0} >= 0.8 && ${tsecs:-9} < 0.5" | bc) )); then echo "ok    timed --lock               waited $twait s, active $tsecs s"
 else echo "WRONG timed --lock: wait '$twait', active '$tsecs'"; BAD=$((BAD + 1)); fi
+
+# Journeys side by side (TEST-15, AD-91): three 1 s launches at most three at once take about 1 s, not 3; each is
+# judged as before (one fails on its assertion), and its row says it ran in parallel. The batch holds the launch lock
+# once: a holder's 1 s is waited for once, in the first row's note.
+flock "$LOCK" sleep 1.0 & holder=$!
+sleep 0.2
+before=$FAILS; t=$(mono_s)
+for n in 1 2 3; do
+  content="$P2"; [[ $n == 2 ]] && content='PASS a\nFAIL b\n'
+  pool_add sim "par-$n" 10 "$R/par-$n.txt" journey "sim clock" bash -c "sleep 1; double '$R/par-$n.txt' '$content' 0"
+done
+FS_LAUNCH_LOCK="$LOCK" pool_run sim 3 0 > /dev/null
+took="$(secs_since "$t")"; wait "$holder"
+par_rows="$(printf '%s\n' "${TIMING_ROWS[@]}" | grep -c '^par-[123]|.*parallel ×3')"
+par_waits="$(printf '%s\n' "${TIMING_ROWS[@]}" | grep '^par-' | grep -c 'lock wait')"
+table="$(timing_table selftest 1.0)"
+if [[ $par_rows -eq 3 && $par_waits -eq 1 && $((FAILS - before)) -eq 1 ]] && (( $(echo "$took < 2.9" | bc) )) \
+   && grep -qE '^parallel +[0-9.]+ +3 journeys, [0-9.]+ s of steps in [0-9.]+ s, up to 3 at once' <<<"$table" \
+   && grep -qE '^desktop +[0-9.]+ ' <<<"$table"; then
+  echo "ok    parallel                   3 launches in $took s (lock waited once), one failure counted, rows and totals"
+else echo "WRONG parallel (took $took s, rows $par_rows, waits $par_waits, fails $((FAILS - before))):"; sed 's/^/      /' <<<"$table" | tail -6; BAD=$((BAD + 1)); fi
+# One at a time (the real-time queue) is the serial path: in order, the lock per launch.
+pool_add rt rt-a 5 "$R/rt-a.txt" journey "" bash -c "double '$R/rt-a.txt' '$P2' 0"
+pool_add rt rt-b 5 "$R/rt-b.txt" journey "" bash -c "double '$R/rt-b.txt' '$P2' 0"
+pool_run rt 1 > /dev/null
+order="$(printf '%s\n' "${TIMING_ROWS[@]}" | grep -E '^rt-[ab]\|pass' | cut -d'|' -f1 | tr '\n' ' ')"
+[[ "$order" == "rt-a rt-b " ]] && echo "ok    one at a time              in queue order" || { echo "WRONG one at a time: '$order'"; BAD=$((BAD + 1)); }
+# A signal during a parallel batch stops its launches and records each as interrupted.
+PINT="$OUT/pint"; mkdir -p "$PINT"
+bash -c '
+  source "$1/tools/verify-lib.sh"; OUT="$2"; SUM="$2/summary.txt"; FAILS=0
+  trap "pool_interrupt; timing_table interrupted-batch 9.9; exit 143" TERM
+  pool_add sim p-long-1 30 "$2/a.txt" journey "" sleep 21; pool_add sim p-long-2 30 "$2/b.txt" journey "" sleep 21
+  pool_run sim 2 0
+' _ "$REPO" "$PINT" > "$PINT/table.txt" 2>&1 & runner=$!
+sleep 0.7; t=$(mono_s); kill -TERM "$runner"; wait "$runner"; took="$(secs_since "$t")"
+if [[ "$(grep -cE '^p-long-[12] +interrupted' "$PINT/table.txt")" -eq 2 ]] && (( $(echo "$took < 3" | bc) )); then
+  echo "ok    parallel interrupted       both launches stopped in $took s and recorded"
+else echo "WRONG parallel interrupted (took $took s):"; sed 's/^/      /' "$PINT/table.txt"; BAD=$((BAD + 1)); fi
+pgrep -af 'sleep 21' | grep -q . && { echo "WRONG parallel interrupted: a launch still runs"; pkill -f 'sleep 21'; BAD=$((BAD + 1)); }
+# The desktop row (TEST-16): logged apart, never a rerun, and summed by fs.sh timing.
+timing_log_desktop check-selftest 12.5; timing_log_desktop check-selftest 2.5
+summary="$("$REPO/tools/fs.sh" timing)"
+if grep -qE 'desktop +15\.0 s in 2 check' <<<"$summary" && [[ "$(awk -F'\t' '$3 == "desktop" && $8 == 1' "$FS_TIMING_LOG" | wc -l)" -eq 0 ]]; then
+  echo "ok    desktop                    occupancy logged per check and summed apart"
+else echo "WRONG desktop:"; sed 's/^/      /' <<<"$summary"; BAD=$((BAD + 1)); fi
 
 echo "timing table:"; timing_table selftest 1.0 | sed 's/^/  /'
 rm -rf "$OUT"

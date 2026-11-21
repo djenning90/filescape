@@ -207,10 +207,10 @@ public partial class PlanetsProbe
     /// </summary>
     private async Task WalkToward(NVector3 dir, float stopMetres, double timeoutSeconds)
     {
-        var start = Time.GetTicksMsec();
+        var timedOut = Deadline(timeoutSeconds); // game time and wall clock (AD-91)
         var lastDist = float.MaxValue;
         var stuck = 0;
-        while ((Time.GetTicksMsec() - start) / 1000.0 < timeoutSeconds)
+        while (!timedOut())
         {
             var d = P.DistanceTo(dir);
             if (d <= stopMetres) break;

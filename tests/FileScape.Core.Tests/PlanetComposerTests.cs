@@ -250,6 +250,7 @@ public class PlanetComposerTests
         ShouldBeReachable(c);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Perf)]
     [Fact]
     public void Composing_an_800_file_folder_is_cheap()
     {
@@ -388,6 +389,7 @@ public class PlanetComposerTests
         }
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [MemberData(nameof(Planets))]
     public void Nothing_overlaps_and_everything_is_reachable(string which)
@@ -428,6 +430,7 @@ public class PlanetComposerTests
         if (children.Count > 0 && c.ParentLauncher == null) MathF.Abs(PlanetFrame.AzimuthOf(children[0].Direction)).Should().BeLessThan(0.01f, "the first name straight ahead (12 o'clock)");
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Fact]
     public void An_ubuntu_like_root_puts_every_folder_on_rings_round_the_arrival_home_included()
     {
@@ -462,7 +465,7 @@ public class PlanetComposerTests
             for (var j = i + 1; j < pads.Count; j++)
             {
                 var dAz = MathF.Abs(MathF.IEEERemainder(PlanetFrame.AzimuthOf(pads[i].Direction) - PlanetFrame.AzimuthOf(pads[j].Direction), 2 * MathF.PI));
-                dAz.Should().BeGreaterThan(0.03f, $"{pads[i].Name} and {pads[j].Name} on different bearings");
+                if (!(dAz > 0.03f)) dAz.Should().BeGreaterThan(0.03f, $"{pads[i].Name} and {pads[j].Name} on different bearings"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
 
@@ -502,7 +505,7 @@ public class PlanetComposerTests
             for (var j = i + 1; j < obs.Count; j++)
             {
                 var d = c.Surface.SurfaceDistance(obs[i].Direction, obs[j].Direction);
-                d.Should().BeGreaterThanOrEqualTo(obs[i].Radius + obs[j].Radius - 1e-3f, $"obstacles {i} ({obs[i]}) and {j} ({obs[j]}) overlap on {c.Name}");
+                if (!(d >= obs[i].Radius + obs[j].Radius - 1e-3f)) d.Should().BeGreaterThanOrEqualTo(obs[i].Radius + obs[j].Radius - 1e-3f, $"obstacles {i} ({obs[i]}) and {j} ({obs[j]}) overlap on {c.Name}"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
 
@@ -512,7 +515,8 @@ public class PlanetComposerTests
             c.Surface.SurfaceDistance(it.Direction, c.Overlook.Direction).Should().BeGreaterThan(c.Overlook.Radius + it.Radius, "no item on the overlook");
             foreach (var l in c.Launchers)
             {
-                c.Surface.SurfaceDistance(it.Direction, l.Direction).Should().BeGreaterThan(l.PadRadius + it.Radius, "no item in a launcher pad");
+                var d = c.Surface.SurfaceDistance(it.Direction, l.Direction);
+                if (!(d > l.PadRadius + it.Radius)) d.Should().BeGreaterThan(l.PadRadius + it.Radius, "no item in a launcher pad"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
 
             if (c.Media.IsGallery && it.Category == FileCategory.Image && it.Kind != PlanetItemKind.Pile) it.Scale.Should().Be(PlanetComposer.GalleryPictureScale);
@@ -530,7 +534,8 @@ public class PlanetComposerTests
         {
             foreach (var f in c.Shape.FlatSpots)
             {
-                c.Surface.SurfaceDistance(d.Direction, f.Direction).Should().BeGreaterThan(f.Radius, "decorations keep off flat spots");
+                var dd = c.Surface.SurfaceDistance(d.Direction, f.Direction);
+                if (!(dd > f.Radius)) dd.Should().BeGreaterThan(f.Radius, "decorations keep off flat spots"); // Asserted only where violated: a FluentAssertions call per pair was most of this test's time (TEST-12).
             }
         }
     }
@@ -632,6 +637,7 @@ public class PlanetComposerTests
         return (tree, tree.Find("Photos").Id);
     }
 
+    [Trait(TestKinds.Trait, TestKinds.Slow)]
     [Theory]
     [InlineData(3)]
     [InlineData(30)]
