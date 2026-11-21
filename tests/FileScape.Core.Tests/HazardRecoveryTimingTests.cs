@@ -213,8 +213,9 @@ public class HazardRecoveryTimingTests(ITestOutputHelper output)
     public void Each_press_on_the_way_down_after_a_jump_falls_short_is_a_catch_or_an_effort()
     {
         // A plain held jump at a 9 m gap falls short with no ground in reach (≈ 5 m from the take-off, beyond ReturnReach):
-        // Space every 0.03 s on the way down until the fall begins, each answered. (A tapped short hop comes down within ReturnReach of the take-off
-        // and is caught back onto it.)
+        // Space every 0.03 s on the way down until the fall begins, each answered. (Before AD-97 a tapped short hop came down
+        // within ReturnReach of the take-off and was caught back onto it with W still held forward; now the rim left is caught
+        // back only by steering back towards it: HazardAirIntentTests.)
         var (surface, span, g0, g1) = Gap(9f);
         var w = new SphereWalker();
         var start = span.PointAlong(g0 - 4f);
