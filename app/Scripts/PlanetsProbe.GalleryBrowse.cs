@@ -137,9 +137,16 @@ public partial class PlanetsProbe
         await Seconds(0.5);
         var right = P.ViewCamera.GlobalBasis.X;
         var from = P.Walker.Feet;
+        var up0 = P.Walker.Up;
+        var camFwd0 = -P.ViewCamera.GlobalBasis.Z;
         Inject(new InputEventKey { Keycode = Godot.Key.Ctrl, PhysicalKeycode = Godot.Key.Ctrl, Pressed = true, CtrlPressed = true });
         Key1(Godot.Key.Right, true, ctrl: true);
-        await Seconds(SidestepHoldSeconds - 0.2); // past the camera's 1.2 s swing-in delay: a pure sidestep must not turn into a swing
+        await Seconds(0.4);
+        var early = P.Walker.Feet;
+        await Seconds(0.2);
+        var earlyMotion = P.Walker.Feet - early;
+        var earlyUp = P.Walker.Up;
+        await Seconds(SidestepHoldSeconds - 0.8); // past the camera's 1.2 s swing-in delay: a pure sidestep must not turn into a swing
         var late = P.Walker.Feet;
         await Seconds(0.2);
         var motion = P.Walker.Feet - late;
@@ -149,7 +156,15 @@ public partial class PlanetsProbe
         await Frames(3);
         var along = NVector3.Dot(P.Walker.Feet - from, new NVector3(right.X, right.Y, right.Z));
         var toMotion = motion.LengthSquared() > 1e-6f ? Mathf.RadToDeg(MathF.Acos(Math.Clamp(NVector3.Dot(NVector3.Normalize(motion), NVector3.Normalize(new NVector3(camFwd.X, camFwd.Y, camFwd.Z))), -1f, 1f))) : 0f;
-        Check(along > 0.5f && toMotion > 60f, F($"PLANET-165: Ctrl + → steps sideways ({along:0.00} m to the right) and the view stays across the motion after {SidestepHoldSeconds:0.0} s ({toMotion:0}° between the camera and the motion; ≈ 90° is a sidestep, ≈ 0° a swing behind)"));
+        // The view's own turn, carried along the walk (a heading from north drifts on a small sphere; the angle to the
+        // motion changes when the walk slides along a fence or an easel, PLANET-185, without the camera turning): the
+        // camera's forward at the start, rotated as the ground's up rotated, against its forward now, on the ground plane.
+        var upNow = P.Walker.Up;
+        var camTurn = TangentAngle(Carry(new NVector3(camFwd0.X, camFwd0.Y, camFwd0.Z), up0, upNow), new NVector3(camFwd.X, camFwd.Y, camFwd.Z), upNow);
+        var pathBend = TangentAngle(Carry(earlyMotion, earlyUp, upNow), motion, upNow);
+        Log(F($"sidestep: camera turned {camTurn:0}°, the path bent {pathBend:0}° (a slide along something when the camera did not turn), {toMotion:0}° between the camera and the motion at the end"));
+        Check(along > 0.5f && camTurn < SidestepMaxCameraTurnDegrees && (toMotion > 60f || pathBend > 30f),
+            F($"PLANET-165: Ctrl + → steps sideways ({along:0.00} m to the right) and the view stays after {SidestepHoldSeconds:0.0} s (the camera turned {camTurn:0}°; {toMotion:0}° between it and the motion, the path bent {pathBend:0}°)"));
         Check(!P.PreviewOpen || P.PreviewShownId == App.Selection.Selected, $"walking along the easels the preview shows the selection (open {P.PreviewOpen}; followed to {(P.PreviewFollows >= 0 ? Tree[P.PreviewFollows].Name : "none")})");
         await Shot("browse-after-sidestep");
         var heading = P.CameraHeadingDegrees();
@@ -157,6 +172,29 @@ public partial class PlanetsProbe
         await Hold(0.4, Godot.Key.Right);
         var turned = MathF.Abs(Mathf.Wrap(P.CameraHeadingDegrees() - heading, -180f, 180f));
         Check(turned > 10f && Vector3Distance(from, P.Walker.Feet) < 0.2f, F($"→ alone still turns ({turned:0} °, moved {Vector3Distance(from, P.Walker.Feet):0.00} m)"));
+    }
+
+    /// <summary>A held sidestep may leave the view turned this much at most, degrees (a swing in behind is ≈ 90°; the
+    /// camera's roll and pitch settling and the carry's approximation stay well under it).</summary>
+    private const float SidestepMaxCameraTurnDegrees = 20f;
+
+    /// <summary><paramref name="v"/> rotated as the ground's up turned from <paramref name="fromUp"/> to <paramref name="toUp"/> (the shortest rotation: a walk along a great circle).</summary>
+    private static NVector3 Carry(NVector3 v, NVector3 fromUp, NVector3 toUp)
+    {
+        var q = System.Numerics.Quaternion.Identity;
+        var axis = NVector3.Cross(fromUp, toUp);
+        var s = axis.Length();
+        if (s > 1e-6f) q = System.Numerics.Quaternion.CreateFromAxisAngle(axis / s, MathF.Atan2(s, NVector3.Dot(fromUp, toUp)));
+        return NVector3.Transform(v, q);
+    }
+
+    /// <summary>The angle between <paramref name="a"/> and <paramref name="b"/> on the ground plane under <paramref name="up"/>, degrees (0 when either is vertical).</summary>
+    private static float TangentAngle(NVector3 a, NVector3 b, NVector3 up)
+    {
+        a -= up * NVector3.Dot(a, up);
+        b -= up * NVector3.Dot(b, up);
+        if (a.LengthSquared() < 1e-8f || b.LengthSquared() < 1e-8f) return 0f;
+        return Mathf.RadToDeg(MathF.Acos(Math.Clamp(NVector3.Dot(NVector3.Normalize(a), NVector3.Normalize(b)), -1f, 1f)));
     }
 
     /// <summary>A point on screen over nothing pickable and no panel (the ground or sky beside the easels), or null.</summary>
