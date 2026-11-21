@@ -231,6 +231,10 @@ public partial class PlanetWorld
             // (planets-overview-sample, seventh-pass integration: #14 then #116).
             int? nameHit = doubleClick && _lastNameClick >= 0 && _s.Now - _lastNameClickAt < NameDoubleClickWindow && _uniIndex.ContainsKey(_lastNameClick)
                 ? _lastNameClick : SignTarget(at);
+            // A world drawn under the pointer beats another world's name lying over it (seventh-pass candidate run: the
+            // "you are here" name was placed over home's disc while home was not yet named, so a click on home focused
+            // the root and Enter then did nothing): the name placement keeps clear of named worlds only.
+            if (nameHit is { } over && _lastNameClick != over && PickUniverseDisc(at) is var disc && disc >= 0 && disc != over) nameHit = null;
             if (nameHit is { } nameOf && _uniIndex.ContainsKey(nameOf))
             {
                 _lastNameClick = doubleClick ? -1 : nameOf;

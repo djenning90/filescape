@@ -715,7 +715,7 @@ public partial class PlanetWorld
         // or enlarged for that (its name would move away from under the pointer).
         var overName = !_orbiting && !_uniPanning && SignTarget(mouse) is { } nm && _uniIndex.ContainsKey(nm) ? nm : -1;
         _uniHoverOnName = overName >= 0;
-        _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? (overName >= 0 ? overName : PickUniverse(mouse)) : -1;
+        _uniHovered = !_orbiting && !_uniPanning && !_s.Hud.BlockingRects.Any(r => r.HasPoint(mouse)) ? (overName >= 0 && PickUniverseDisc(mouse) is var disc && (disc < 0 || disc == overName) ? overName : PickUniverse(mouse)) : -1; // a world's disc beats another's name (as Click)
         if (_uniSelectRing != null)
         {
             var sel = _uniIndex.TryGetValue(_uniSelected, out var si) ? _uniBodies[si] : default;
@@ -820,6 +820,30 @@ public partial class PlanetWorld
             var px = c.DistanceTo(_camera.UnprojectPosition(at + right * DrawnRadius(b, at)));
             var d = c.DistanceTo(screen);
             if (d > MathF.Max(px * 1.25f, PickMinPixels) || d >= best) continue;
+            best = d;
+            id = b.NodeId;
+        }
+
+        return id;
+    }
+
+    /// <summary>
+    /// The world whose drawn disc itself (not enlarged, no minimum) contains the point, nearest centre first, or −1: what
+    /// the pointer is visibly on, which wins over another world's name lying over it (<see cref="Click"/>, the hover).
+    /// </summary>
+    private int PickUniverseDisc(Vector2 screen)
+    {
+        var best = float.PositiveInfinity;
+        var id = -1;
+        var right = _camera.GlobalBasis.X;
+        for (var i = 0; i < _uniBodies.Count; i++)
+        {
+            var (b, at) = _uniBodies[i];
+            if (!Drawn(i) || _camera.IsPositionBehind(at)) continue;
+            var c = _camera.UnprojectPosition(at);
+            var px = c.DistanceTo(_camera.UnprojectPosition(at + right * DrawnRadius(b, at)));
+            var d = c.DistanceTo(screen);
+            if (d > px || d >= best) continue;
             best = d;
             id = b.NodeId;
         }
