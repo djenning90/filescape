@@ -234,3 +234,15 @@ the console-launched game returns to the terminal prompt without Ctrl+C. He expl
 The tag targets the packaged source `e07392560983a2e0e9ebf8de7cd72c65c8d2da01`; later documentation
 commits record verification and publication without changing the packaged application.
 The original-history archive remains private.
+
+## Publication completed
+
+- Public source: https://github.com/djenning90/filescape
+- First prerelease: https://github.com/djenning90/filescape/releases/tag/v0.1.0-playtest
+- Annotated tag `v0.1.0-playtest` targets packaged source `e07392560983a2e0e9ebf8de7cd72c65c8d2da01`.
+- Windows ZIP and SHA-256 sidecar uploaded. An unauthenticated download of the published ZIP matched
+  `8f0f3d0a9257c8ed9c5e9258d73909678486d564d9209145c3b9866c79426416`.
+- GitHub reports the source public and the release published as a prerelease. The original-history
+  archive was independently checked and remains private.
+
+Earlier dated pending-publication notes above describe the preparation history; this record supersedes them.
