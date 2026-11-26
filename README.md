@@ -11,9 +11,9 @@ FileScape is a playable file explorer for Windows, including your WSL folders. T
 like a place you can get to know by exploring it. A file you need should be easy to reach, and a folder you’ve passed a
 hundred times should still be able to surprise you.
 
-![The traveller beside a telescope on a tower of books, overlooking colourful folder worlds and a star-filled nebula](docs/media/planets-telescope-overlook.png)
+![The traveller and a telescope beneath a giant pink flower, with a photo gallery and blue nebula around the little green world](docs/media/planets-photo-garden.png)
 
-*Look out from a tower of books. Each world around you is another folder to explore.*
+*Garden Photos: a photo folder becomes a gallery beneath the stars. Interface hidden for photography.*
 
 ## Play in a few minutes
 
@@ -31,12 +31,17 @@ them with Windows.
 
 ## A few places to discover
 
-| A project you can walk into | Your folders become star systems | A little danger along the way |
-| --- | --- | --- |
-| [![Reading a project's Markdown README in Lantern Workshop](docs/media/planets-project-workbench.png)](docs/media/planets-project-workbench.png) | [![Overview showing folder worlds arranged in connected star systems](docs/media/planets-universe-overview.png)](docs/media/planets-universe-overview.png) | [![Falling towards the black hole inside a fractured Hazard World](docs/media/planets-hazard-world.png)](docs/media/planets-hazard-world.png) |
-| Read a README and find your project's entry points. | Pull back to see how the places you've explored connect. | Jump across broken ground; a missed landing brings you back to the parent folder. |
+| A workshop beneath the auroras | A universe of folders |
+| --- | --- |
+| [![The traveller at a project workbench beneath green auroras, a glowing constellation, and nearby worlds](docs/media/planets-aurora-workshop.png)](docs/media/planets-aurora-workshop.png) | [![Large nearby planets frame a ring of smaller worlds, with distant connected star systems behind them](docs/media/planets-overview-close.png)](docs/media/planets-overview-close.png) |
+| Every kind of place has its own atmosphere. | Move among the worlds to see how your folders connect. |
 
-*Captured from the public playtest build on November 25, 2026, using the bundled sample worlds. Click an image to see it full size.*
+| Your project, close at hand | A little danger along the way |
+| --- | --- |
+| [![Reading a project's Markdown README in Lantern Workshop](docs/media/planets-project-workbench.png)](docs/media/planets-project-workbench.png) | [![Falling towards the black hole inside a fractured Hazard World](docs/media/planets-hazard-world.png)](docs/media/planets-hazard-world.png) |
+| Read a README and find your project's entry points. | A missed landing brings you back to the parent folder. |
+
+*November 25, 2026 captures of the public playtest's worlds. Scenic views use a separately positioned camera with the interface hidden; gameplay views retain it. Click an image to see it full size.*
 
 ## Help shape FileScape
 

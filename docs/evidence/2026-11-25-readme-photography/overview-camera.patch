@@ -1,0 +1,117 @@
+diff --git a/app/Scripts/Planets/PlanetWorld.Photography.cs b/app/Scripts/Planets/PlanetWorld.Photography.cs
+new file mode 100644
+index 0000000..6f946d3
+--- /dev/null
++++ b/app/Scripts/Planets/PlanetWorld.Photography.cs
+@@ -0,0 +1,34 @@
++using Godot;
++namespace FileScape.App.Planets;
++/// <summary>Camera-only framing in the isolated README photography checkout; not a shipping feature.</summary>
++public partial class PlanetWorld
++{
++    public void PhotoFrameUniverse(int id, float systems, float yaw, float pitch)
++    {
++        var i = _uniBodies.FindIndex(b => b.Body.NodeId == id);
++        if (i < 0) return;
++        _uniFocus = _uniFocusTarget = _uniBodies[i].At;
++        _uniDistance = _uniDistanceTarget = SystemSize(_uniBodies[i].Body) * systems;
++        _uniYaw = yaw;
++        _uniPitch = pitch;
++    }
++
++    public IEnumerable<Transform3D> PhotoRingViews(int id)
++    {
++        var centre = _uniBodies.First(b => b.Body.NodeId == id);
++        var n = centre.Body.OrbitNormal;
++        var up = new Vector3(n.X, n.Y, n.Z).Normalized();
++        var kids = _uniBodies.Where(b => b.Body.ParentId == id).ToList();
++        for (var i = 0; i < kids.Count; i += Math.Max(1, kids.Count / 6))
++        {
++            var child = kids[i];
++            var outward = (child.At - centre.At).Normalized();
++            foreach (var near in new[] { 3f, 6f })
++            {
++                var at = child.At + outward * child.Body.Radius * near + up * child.Body.Radius * 2.5f;
++                var target = centre.At + (child.At - centre.At) * .18f;
++                yield return new Transform3D(Basis.LookingAt(target - at, up), at);
++            }
++        }
++    }
++}
+diff --git a/app/Scripts/PlanetsProbe.Photography.cs b/app/Scripts/PlanetsProbe.Photography.cs
+new file mode 100644
+index 0000000..bf83962
+--- /dev/null
++++ b/app/Scripts/PlanetsProbe.Photography.cs
+@@ -0,0 +1,59 @@
++using Godot;
++using FileScape.App.Planets;
++namespace FileScape.App;
++/// <summary>Disposable camera-only overview photography harness.</summary>
++public partial class PlanetsProbe
++{
++    private async Task PhotographyRun()
++    {
++        await Until(() => App.Tree is { Count: > 1 } && P.Composition != null && !P.Busy, 40);
++        await Seconds(5);
++        var root = App.Navigator.Current;
++        await Key(Godot.Key.T); await Until(() => P.UniverseOpen, 8); await Seconds(10);
++        var cluster = Child(root, "Constellations");
++        var rig = new ReadmePhotoRig { ProcessPriority = 1000, AppRoot = App, Camera = P.Camera };
++        App.AddChild(rig);
++        P.PhotoFrameUniverse(cluster, .7f, .8f, .4f);
++        await Seconds(1);
++        var poses = P.PhotoRingViews(cluster).ToList();
++        for (var i = 0; i < poses.Count; i++)
++        {
++            rig.Pose = poses[i]; rig.Fov = 62; rig.HideHud = true;
++            await Seconds(.5);
++            await Shot("overview-among-worlds-" + i);
++        }
++        rig.Release(); rig.QueueFree();
++    }
++}
++
++/// <summary>Applies a photographic camera after the game tick; temporarily hides existing CanvasLayers without editing pixels.</summary>
++public partial class ReadmePhotoRig : Node
++{
++    public Main AppRoot = null!;
++    public Camera3D Camera = null!;
++    public Transform3D? Pose;
++    public float Fov = 55;
++    public bool HideHud;
++    private readonly Dictionary<CanvasLayer, bool> _visible = new();
++    public override void _Process(double delta)
++    {
++        if (Pose is { } pose) { Camera.GlobalTransform = pose; Camera.Fov = Fov; }
++        if (HideHud) HideLayers(AppRoot);
++    }
++    private void HideLayers(Node node)
++    {
++        if (node is CanvasLayer layer)
++        {
++            if (!_visible.ContainsKey(layer)) _visible[layer] = layer.Visible;
++            layer.Visible = false;
++        }
++        foreach (var child in node.GetChildren()) HideLayers(child);
++    }
++    public void Release()
++    {
++        Pose = null;
++        HideHud = false;
++        foreach (var (layer, visible) in _visible) if (GodotObject.IsInstanceValid(layer)) layer.Visible = visible;
++        _visible.Clear();
++    }
++}
+diff --git a/app/Scripts/PlanetsProbe.cs b/app/Scripts/PlanetsProbe.cs
+index 010b2fe..716d5cc 100644
+--- a/app/Scripts/PlanetsProbe.cs
++++ b/app/Scripts/PlanetsProbe.cs
+@@ -111,6 +111,7 @@ public partial class PlanetsProbe : ProbeBase
+         else if (Mode == "planets-camera-trace") await CameraTraceRun();
+         else if (Mode == "planets-tutorial") await TutorialRun();
+         else if (Mode == "planets-tutorial-cues") await TutorialCuesRun(); // PlanetsProbe.TutorialCues.cs
++        else if (Mode == "planets-photography") await PhotographyRun();
+         else if (Mode == "planets-hazard") await HazardTour(); // PlanetsProbe.Hazard.cs
+         else if (Mode == "planets-actions") await ActionsTour(); // PlanetsProbe.Actions.cs
+         else if (Mode == "planets-arrival") await ArrivalTour(); // PlanetsProbe.Actions.cs
