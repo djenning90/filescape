@@ -35,7 +35,8 @@ love to see turned into a world? A few sentences about your first session are pl
 screenshot you’re comfortable sharing.
 
 **Make something with us.** Have an idea for a world, a musical variation, or a better way to get to your projects?
-Open an issue to sketch it, or send a pull request for a focused change. The [architecture guide](docs/architecture.md)
+Read the [contributor guide](CONTRIBUTING.md), open an issue to sketch an idea, or send a focused pull request.
+The [architecture guide](docs/architecture.md)
 is a starting point for the code, and the [design decisions](docs/decisions.md) explain how the game fits together.
 
 ## Build from source

@@ -9,4 +9,12 @@
   - Never disturb DJ's open applications, including a running FileScape.
   - Never list or scan private folders. Use the fixtures under `%TEMP%\FileScape-fixtures` and `/tmp/filescape-wsl-fixtures`.
   - Never change permissions on user files.
-  - Don't push or publish.
+  - Push completed, verified main milestones to origin as authorised by DJ. Public visibility, release tags and
+    published releases still require DJ's explicit approval.
+
+## Repository history
+
+The normal checkout at /home/david/src/filescape now uses the reviewed noreply history.
+origin is https://github.com/djenning90/filescape.git. Use it for ongoing development and backups.
+history is the private original-history archive at https://github.com/djenning90/filescape-history-private.git.
+Keep its commits out of origin's branches. Future commits use 6992039+djenning90@users.noreply.github.com.

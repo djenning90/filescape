@@ -121,7 +121,7 @@ GitHub backup). What is still open:
 | Item | Why it is open | Next action |
 |---|---|---|
 | Existing release ZIPs need the MIT licence | MIT selected by DJ on 2026-11-25; root `LICENSE` now names David Jennings | Repackage the release candidate so its ZIP includes `LICENSE.txt` |
-| Publish the noreply history | DJ approved noreply commit attribution and historical email cleanup on 2026-11-25; original history stays in the private backup | Verify the publication copy, then choose its remote destination and public visibility |
+| Public visibility of the cleaned history | Noreply history verified and backed up to private djenning90/filescape on 2026-11-25; normal checkout uses it; original preserved in filescape-history-private | Complete release checks and obtain DJ's approval to make filescape public |
 | Public release / tags / visibility / optional history drops | DJ's decisions (publishing.md) | DJ |
 | Install the candidate | DJ's FileScape may be open; agents never replace a running build | Close FileScape, then `tools/fs.sh promote <staging dir>` |
 | 1280×720 at UI 1.5: the prompt runs under the preview's edge; the toolbar is cut at the right | Found by stream F's `planets-text`; not fixed this pass | Fit the toolbar (overflow menu or smaller buttons) and offset the prompt from the preview at narrow widths; add the check to `planets-text` |

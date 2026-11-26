@@ -5,6 +5,21 @@ build after the second playtest), what has been fixed, how the history is backed
 decisions that are DJ's to make, and the exact remaining steps. The private backup is on GitHub (see the newest
 refresh); nothing has been published.
 
+## 2026-11-25 publication preparation
+
+DJ selected MIT with copyright holder David Jennings and approved noreply attribution.
+The normal development checkout now tracks the cleaned private repository at github.com/djenning90/filescape.
+Its 496 inherited commits were checked against the original parent relationships, messages, names, dates, and files.
+The only historical file edits remove the original personal email.
+
+The original history is retained privately at github.com/djenning90/filescape-history-private, available through
+the history remote. The diagnostic branch is preserved there. Ongoing development and verified milestone pushes
+belong on origin/main. Contributors should start from the cleaned history.
+
+The contributor guide is CONTRIBUTING.md, and docs/release-notes.md is the draft public playtest introduction.
+The public release and repository visibility remain awaiting DJ's approval. The first release needs a package
+built from the cleaned history with LICENSE.txt included, plus the outstanding desktop checks listed in the draft.
+
 ## 2026-11-20 (seventh pass) refresh at a glance
 
 | Item | State |
@@ -163,14 +178,15 @@ Short list (2026-11-19):
 1. **Licence (decided 2026-11-25).** DJ selected **MIT**, with **David Jennings** as the copyright holder.
    The root `LICENSE` contains `Copyright (c) 2026 David Jennings` and the standard MIT terms.
    `tools/fs.sh package` includes it as `LICENSE.txt` in future ZIPs. Existing ZIPs need repackaging.
-2. **GitHub owner and repository name.** Personal account or an organisation, and the name (`filescape` assumed).
+2. **GitHub owner and repository name (settled).** `djenning90/filescape`; the original history remains in the
+   private `djenning90/filescape-history-private` repository.
    Note the name overlap: "FileScape" is also a 2008 GPLv2 Linux file manager on SourceForge and an MIT Media Lab
    project page; "FileScope" products exist. No trademark search was done.
 3. **Author email (decided 2026-11-25).** DJ approved `6992039+djenning90@users.noreply.github.com` for future
    FileScape commits and a publication copy with the original personal email removed from commit identities and
-   historical files. Preserve the development history and original private backup. Prepare and verify the copy before
-   choosing its remote destination and public visibility. Rewritten commits have new IDs; contributors must use the
-   selected publication history once it is published.
+   historical files. The cleaned history was verified and pushed to private `djenning90/filescape` on 2026-11-25.
+   The original private backup is `djenning90/filescape-history-private`. The normal checkout now uses the cleaned
+   history. Rewritten commits have new IDs; new contributors should clone `djenning90/filescape`.
 4. **The public Windows release.** Source only, or also a GitHub pre-release with the ZIP (e.g. `v0.1.0-playtest`);
    it is unsigned (SmartScreen warns) and targets .NET 10.
 5. **.NET 10.** Done 2026-11-20 (AD-89): the app, Core and Fixtures target `net10.0`.
