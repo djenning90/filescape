@@ -19,8 +19,8 @@ The build timestamp is 2026-11-26 UTC (2026-11-25 Pacific).
   sample composition and grounded movement passed; process exited 0. See `extracted-smoke.log`.
 - No running user instance was closed or replaced. The candidate remains staged.
 
-Still pending: ordinary Explorer double-click on a clean Windows profile, Windows Terminal
-shutdown check, and DJ's publication approval. The automated extracted launch does not
-establish Explorer association behavior or the terminal check. Known UI and intermittent
-measurement limitations remain in the release notes. No tag or GitHub release was created;
-the GitHub repository remains private.
+David subsequently completed both manual checks: the downloaded ZIP was extracted, launched through
+Explorer, and played successfully; the terminal launch returned to its prompt after closing the game.
+These are owner-reported manual passes, separate from the automated smoke evidence above.
+David approved public repository visibility and the `v0.1.0-playtest` prerelease.
+Known UI and intermittent measurement limitations remain in the release notes.

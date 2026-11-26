@@ -6,7 +6,8 @@ Publication preparation update (2026-11-25): the normal checkout now tracks the 
 history. Candidate `e07392560983` is freshly exported and packaged with MIT, third-party notices, and .NET 10.0.15;
 staged and clean-extraction smoke checks passed. Gameplay sources match the seventh-pass candidate below.
 See [release notes](release-notes.md) and [verification evidence](evidence/2026-11-25-publication/README.md).
-Public visibility, the release, and the final Explorer/Windows Terminal checks remain pending.
+David passed the final Explorer and terminal shutdown checks and approved public visibility and the
+`v0.1.0-playtest` release. See publishing notes for the release record.
 
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 

@@ -225,3 +225,12 @@ were left intact. Ordinary Explorer launch and Windows Terminal shutdown checks 
 The development checkout now uses the cleaned history, tracking `origin/main`. The original history
 is retained through the private `history` remote. Do not merge that original history into clean `main`
 or push its refs to `origin`. No public tag, release, or visibility change has been made.
+
+## First public playtest approval
+
+David passed both final manual checks: the extracted ZIP launches and plays through Explorer, and closing
+the console-launched game returns to the terminal prompt without Ctrl+C. He explicitly approved making
+`djenning90/filescape` public and publishing `v0.1.0-playtest` with the verified ZIP and checksum.
+The tag targets the packaged source `e07392560983a2e0e9ebf8de7cd72c65c8d2da01`; later documentation
+commits record verification and publication without changing the packaged application.
+The original-history archive remains private.

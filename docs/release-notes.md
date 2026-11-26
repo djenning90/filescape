@@ -1,4 +1,4 @@
-# FileScape first public playtest release notes draft
+# FileScape v0.1.0-playtest
 
 Explore your files as little worlds you can run around. Launch between folders, visit a project workbench, look
 through a telescope, and walk among photographs while each place plays its own music.
@@ -34,12 +34,11 @@ What made you want to keep exploring? Where did you first get stuck?
 At 1280 by 720 with UI scale 1.5, the toolbar and preview can overlap other content.
 The first arrival may pause briefly while the world is composed.
 Some automated jump measurements have failed intermittently and passed on rerun.
-The final Windows Terminal shutdown and ordinary Explorer launch checks remain pending.
 
 Cloud-only pictures may download when Windows has no cached thumbnail. FileScape bounds automatic downloads.
 Native Linux and macOS builds are future work.
 
-## Release preparation
+## Build and verification
 
 Prepared candidate: `e07392560983`, source commit `e07392560983a2e0e9ebf8de7cd72c65c8d2da01`.
 Windows x64 ZIP: `FileScape-e07392560983-win-x64.zip` (77,424,650 bytes).
@@ -50,6 +49,6 @@ successfully. The ZIP includes MIT and third-party notices and .NET 10.0.15. App
 the seventh-pass candidate; no gameplay changes were made during publication preparation.
 See [verification evidence](evidence/2026-11-25-publication/README.md).
 
-Before publishing, finish the pending desktop checks, refresh the limitations, and obtain DJ's approval for
-repository visibility and the release. This is a draft; no release or tag has been published.
+David verified that the extracted game launches and plays through Explorer and that closing the console launch
+returns to the terminal prompt without Ctrl+C. David approved public source and this prerelease.
 Source and release documentation use the MIT License, copyright 2026 David Jennings.

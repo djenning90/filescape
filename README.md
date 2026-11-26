@@ -15,7 +15,7 @@ hundred times should still be able to surprise you.
 
 ## Play in a few minutes
 
-1. **Get the Windows x64 ZIP.** The public download is being prepared for **Releases**. You can [build from source](#build-from-source) in the meantime.
+1. **Get the Windows x64 ZIP.** Download the [first public playtest](https://github.com/djenning90/filescape/releases/tag/v0.1.0-playtest).
 2. **Extract the ZIP and run `FileScape.exe`.** The app opens in **This computer**, with your drives and WSL distributions.
 3. **Choose Learn to play.** The guided walkthrough takes you to **Starter Sky**, a bundled sample world. You can replay it from **Help → Learn to play**.
 
@@ -31,7 +31,7 @@ them with Windows.
 
 **Play it and tell us what happened.** What made you want to explore? Where did you get lost? Which folder would you
 love to see turned into a world? A few sentences about your first session are plenty. Share an idea or report a bug in
-**Issues**. For a bug, include the build ID and the steps that got you there. Starter Sky is a good place to capture a
+[Issues](https://github.com/djenning90/filescape/issues). For a bug, include the build ID and the steps that got you there. Starter Sky is a good place to capture a
 screenshot you’re comfortable sharing.
 
 **Make something with us.** Have an idea for a world, a musical variation, or a better way to get to your projects?
