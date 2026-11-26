@@ -166,10 +166,11 @@ Short list (2026-11-19):
 2. **GitHub owner and repository name.** Personal account or an organisation, and the name (`filescape` assumed).
    Note the name overlap: "FileScape" is also a 2008 GPLv2 Linux file manager on SourceForge and an MIT Media Lab
    project page; "FileScope" products exist. No trademark search was done.
-3. **Author email.** Every commit carries your personal address. Choose: (a) rewrite it to your GitHub noreply
-   address (`<id>+<user>@users.noreply.github.com`; the candidate does exactly this and nothing else; recommended for a
-   public repo), (b) publish as is, or (c) a squashed snapshot (loses the history). For the **private backup**, the
-   original history can be pushed as is unless GitHub's "Block command line pushes that expose my email" is on.
+3. **Author email (decided 2026-11-25).** DJ approved `6992039+djenning90@users.noreply.github.com` for future
+   FileScape commits and a publication copy with the original personal email removed from commit identities and
+   historical files. Preserve the development history and original private backup. Prepare and verify the copy before
+   choosing its remote destination and public visibility. Rewritten commits have new IDs; contributors must use the
+   selected publication history once it is published.
 4. **The public Windows release.** Source only, or also a GitHub pre-release with the ZIP (e.g. `v0.1.0-playtest`);
    it is unsigned (SmartScreen warns) and targets .NET 10.
 5. **.NET 10.** Done 2026-11-20 (AD-89): the app, Core and Fixtures target `net10.0`.
