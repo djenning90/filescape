@@ -11,7 +11,9 @@ FileScape is a playable file explorer for Windows, including your WSL folders. T
 like a place you can get to know by exploring it. A file you need should be easy to reach, and a folder you’ve passed a
 hundred times should still be able to surprise you.
 
-![Starter Sky, FileScape’s sample world](docs/media/planets-starter-sky.png)
+![The traveller beside a telescope on a tower of books, overlooking colourful folder worlds and a star-filled nebula](docs/media/planets-telescope-overlook.png)
+
+*Look out from a tower of books. Each world around you is another folder to explore.*
 
 ## Play in a few minutes
 
@@ -22,10 +24,19 @@ hundred times should still be able to surprise you.
 Drag with the left mouse button to look around, move with **WASD**, and press **Space** to jump. Step onto a launch pad
 and press **Space** again to fly to its folder. Press **T** to pull back into Overview, and **Esc** to return to the surface. Press **F1** for the full controls.
 
-Looking for somewhere to go after the tutorial? Find **Event Horizon** in Starter Sky and see [what happens when you miss the edge](docs/media/planets-black-hole.png).
+Looking for somewhere to go after the tutorial? Find **Event Horizon** in Starter Sky and see [what happens when you miss the edge](docs/media/planets-hazard-world.png).
 
 Exploring in FileScape leaves your files in place. You can preview supported files in the game or deliberately open
 them with Windows.
+
+## A few places to discover
+
+| A project you can walk into | Your folders become star systems | A little danger along the way |
+| --- | --- | --- |
+| [![Reading a project's Markdown README in Lantern Workshop](docs/media/planets-project-workbench.png)](docs/media/planets-project-workbench.png) | [![Overview showing folder worlds arranged in connected star systems](docs/media/planets-universe-overview.png)](docs/media/planets-universe-overview.png) | [![Falling towards the black hole inside a fractured Hazard World](docs/media/planets-hazard-world.png)](docs/media/planets-hazard-world.png) |
+| Read a README and find your project's entry points. | Pull back to see how the places you've explored connect. | Jump across broken ground; a missed landing brings you back to the parent folder. |
+
+*Captured from the public playtest build on November 25, 2026, using the bundled sample worlds. Click an image to see it full size.*
 
 ## Help shape FileScape
 
