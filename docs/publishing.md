@@ -211,3 +211,17 @@ Steps 3, 4, 9 and 11 need your credentials. Build the candidate first (History, 
 10. Verify from GitHub: clone, check `git rev-parse HEAD` equals `<commit>`, build per the README; download the zip, check the SHA-256, run it on a clean Windows profile.
 11. Make it public: `gh repo edit <owner>/filescape --visibility public --accept-visibility-change-consequences`.
 12. `git worktree remove ../filescape-release`.
+
+## Verified Windows candidate (2026-11-25)
+
+Build `e07392560983` is staged at `%LOCALAPPDATA%\FileScape\staging-20261126-065829-217944`.
+The ZIP and matching `.zip.sha256` sidecar are in `%LOCALAPPDATA%\FileScape`.
+The package includes MIT, third-party notices, and .NET 10.0.15. Fresh export and clean-extraction
+smoke checks passed. See [release notes](release-notes.md) for the complete source ID and checksum,
+and [verification evidence](evidence/2026-11-25-publication/README.md) for the scope of the checks.
+The application sources match the seventh-pass candidate. The existing user instance and installed build
+were left intact. Ordinary Explorer launch and Windows Terminal shutdown checks remain pending.
+
+The development checkout now uses the cleaned history, tracking `origin/main`. The original history
+is retained through the private `history` remote. Do not merge that original history into clean `main`
+or push its refs to `origin`. No public tag, release, or visibility change has been made.

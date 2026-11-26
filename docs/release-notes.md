@@ -41,6 +41,15 @@ Native Linux and macOS builds are future work.
 
 ## Release preparation
 
-Before publishing, replace this section with the build ID, source commit, ZIP name, SHA-256, and the verification
-results for the actual release. Finish the pending desktop checks and refresh the limitations.
+Prepared candidate: `e07392560983`, source commit `e07392560983a2e0e9ebf8de7cd72c65c8d2da01`.
+Windows x64 ZIP: `FileScape-e07392560983-win-x64.zip` (77,424,650 bytes).
+SHA-256: `8f0f3d0a9257c8ed9c5e9258d73909678486d564d9209145c3b9866c79426416`.
+
+The fresh export and a clean extraction both passed startup and grounded-movement smoke checks and exited
+successfully. The ZIP includes MIT and third-party notices and .NET 10.0.15. Application and test sources match
+the seventh-pass candidate; no gameplay changes were made during publication preparation.
+See [verification evidence](evidence/2026-11-25-publication/README.md).
+
+Before publishing, finish the pending desktop checks, refresh the limitations, and obtain DJ's approval for
+repository visibility and the release. This is a draft; no release or tag has been published.
 Source and release documentation use the MIT License, copyright 2026 David Jennings.

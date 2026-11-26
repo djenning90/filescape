@@ -2,6 +2,12 @@
 
 Last updated: 2026-11-21, the seventh pass (PLANET-141..199, TEST-10..17, AD-89..99): faster verification (Core 412 → 51–64 s, `check full` 42.9 → 16.3 min, journeys on a simulated clock three at a time), legacy views by the menu only, keys per context, coherent text, stalls removed, airborne intent and the curved steps, the gallery as one experience, the telescope's travel and the overview's names, every travel route through a launcher, the Starter Sky's new music, .NET 10. Final candidate `e229fa313504` (staged, not installed); see "Seventh pass".
 
+Publication preparation update (2026-11-25): the normal checkout now tracks the cleaned private GitHub
+history. Candidate `e07392560983` is freshly exported and packaged with MIT, third-party notices, and .NET 10.0.15;
+staged and clean-extraction smoke checks passed. Gameplay sources match the seventh-pass candidate below.
+See [release notes](release-notes.md) and [verification evidence](evidence/2026-11-25-publication/README.md).
+Public visibility, the release, and the final Explorer/Windows Terminal checks remain pending.
+
 Vocabulary: **Demonstrated** = observed with recorded evidence; **Provisional** = works in limited conditions; **Failed** = observed not working; **Unknown** = not established.
 
 ## Seventh pass (2026-11-20 to 21)
@@ -120,7 +126,7 @@ GitHub backup). What is still open:
 
 | Item | Why it is open | Next action |
 |---|---|---|
-| Existing release ZIPs need the MIT licence | MIT selected by DJ on 2026-11-25; root `LICENSE` now names David Jennings | Repackage the release candidate so its ZIP includes `LICENSE.txt` |
+| Release ZIP includes the MIT licence | Completed 2026-11-25 in candidate `e07392560983`; packaged license matches source | Supersedes older unlicensed ZIPs; see publication evidence |
 | Public visibility of the cleaned history | Noreply history verified and backed up to private djenning90/filescape on 2026-11-25; normal checkout uses it; original preserved in filescape-history-private | Complete release checks and obtain DJ's approval to make filescape public |
 | Public release / tags / visibility / optional history drops | DJ's decisions (publishing.md) | DJ |
 | Install the candidate | DJ's FileScape may be open; agents never replace a running build | Close FileScape, then `tools/fs.sh promote <staging dir>` |
