@@ -160,9 +160,9 @@ in the `net10-check` worktree (the same three `TargetFramework` lines) is supers
 
 Short list (2026-11-19):
 
-1. **Licence and copyright name (blocker).** No `LICENSE` yet, so a public repository would be "all rights reserved".
-   Proposed: **MIT** (simplest; matches Godot and .NET). Needed from you: the licence and the exact copyright holder
-   ("Copyright (c) 2026 <name>"). Then add `LICENSE` at the root; `tools/fs.sh package` puts it in the ZIP.
+1. **Licence (decided 2026-11-25).** DJ selected **MIT**, with **David Jennings** as the copyright holder.
+   The root `LICENSE` contains `Copyright (c) 2026 David Jennings` and the standard MIT terms.
+   `tools/fs.sh package` includes it as `LICENSE.txt` in future ZIPs. Existing ZIPs need repackaging.
 2. **GitHub owner and repository name.** Personal account or an organisation, and the name (`filescape` assumed).
    Note the name overlap: "FileScape" is also a 2008 GPLv2 Linux file manager on SourceForge and an MIT Media Lab
    project page; "FileScope" products exist. No trademark search was done.

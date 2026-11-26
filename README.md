@@ -60,4 +60,4 @@ Built with the Godot Engine and .NET. The Windows package includes their licence
 draws inspiration from *Super Mario Galaxy*, and Classic FSN from SGI’s *FSN* file-system navigator. FileScape’s worlds,
 art, and synthesized music are original.
 
-FileScape’s own licence is pending.
+FileScape is licensed under the [MIT License](LICENSE). Copyright (c) 2026 David Jennings.

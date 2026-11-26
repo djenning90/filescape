@@ -120,7 +120,7 @@ GitHub backup). What is still open:
 
 | Item | Why it is open | Next action |
 |---|---|---|
-| Licence and copyright holder | DJ's decision; the ZIP and repository have no LICENSE | DJ names the licence (MIT proposed) and holder; then add `LICENSE` (`fs.sh package` includes it) |
+| Existing release ZIPs need the MIT licence | MIT selected by DJ on 2026-11-25; root `LICENSE` now names David Jennings | Repackage the release candidate so its ZIP includes `LICENSE.txt` |
 | Author email in history before going public | DJ's decision; the private origin already holds the original history | Choose: rewrite (publish the rewritten candidate as a new repository or force-push) or publish as is |
 | Public release / tags / visibility / optional history drops | DJ's decisions (publishing.md) | DJ |
 | Install the candidate | DJ's FileScape may be open; agents never replace a running build | Close FileScape, then `tools/fs.sh promote <staging dir>` |
